@@ -85,3 +85,39 @@ This row has no screen. The browser walk, the journey score, D1–D20 and the BI
 Verdict: Changes needed
 1. Major — finding 1: the reset vs in-flight demo write fragment, with a named DW4 concurrency case.
 2. minors 2–7 (fix or record in the PR); 8 goes to part 2.
+
+## Round 3 (diff-only, 2793a882)
+Diff-only re-review (P-277, P-270) of `cebeb0fa..2793a882`: merge 9fd20a3e3 (origin/main 63f5cc913) + 2793a882a. Not a screen: no browser walk, the journey score is N/A, and so are D1–D20.
+* **Unchanged apart from the folder name (blob hashes):**
+  * migration.sql: old `20261118150000_…` and new `20261125113000_aud1c_audit_chain` are the same blob, 501c955cd (`git diff -M`: 100% rename, 0 lines).
+  * audit.prisma: 20ae193ff on both.
+  * canonical.ts (line 2) and check_aud1c_chain.ts (line 17, `NEW`) each change one line, the folder name only.
+  * No reference to the old stamp is left in the PR's files.
+* **`git diff origin/main 2793a882 --stat`:** 8 files, all the PR's: the two records, MODULE.md (+1/−1), MODULE.rows/AUD-1c.md, canonical.ts, the migration, audit.prisma and the test.
+* **Stamp:** 20261125113000 is unique on main and on every origin branch I fetched (only this branch has it). It is later than main's newest, `20261124170000_aud3_audit_log_keys`, and is not more than two days ahead.
+* **Module card (P-712):**
+  * MODULE.md takes main's card whole. The only change is one sentence on the audit-trail bullet; the frozen Tests./Tables./Entry points. lines are untouched. The card is 39 of its 40 lines.
+  * `MODULE.rows/AUD-1c.md` has 3 lines (`Entry points:`, `Tables:`, `Tests:`).
+  * `module-cards.py tree`: PASS (15 cards). `BASE=origin/main module-cards.py pr <changed> <PR body>`: PASS (1 module touched). `check-module-cards.sh`: 44 fixtures pass.
+* **Main's new side since the merge base 628742f00 (18 Nov), against the chain's assumptions:**
+  * **Writers.** Every line still goes through `audit/audit-event.ts`'s three `tx.auditEvent.create` calls. The chain columns are `@ignore`, so no writer sets them, and no code reads or writes `chain_key`, `seq`, `prev_hash` or `entry_hash`. AUD-3/3c's firm-less `ourstaff:` lines go to `platform`. PF-12b's `touchPlatform` is unchanged in kind. The `fo3a_set_name_unique` migration's raw INSERT runs before this one, so the back-fill chains it.
+  * **Isolation (decision 5).** Main now has eight REPEATABLE READ transactions: case-prepare.ts:212, drafts.ts:186, reads/invoices.ts:96 and 155, parties.ts:106, payments.ts:87 and 97, tax/routes.ts:55. All are read-only: no audit write, directly or through a helper (`seen`, `withPaymentActions` → `refunds.standing`).
+    * AUD-3's access report (report.ts:164) and AUD-4's export (firm-read/service.ts:183) write `audit.exported` in their own READ COMMITTED transaction, then read in a RR read-only snapshot.
+    * There is no SERIALIZABLE anywhere. The decision holds, but the PR body's "only case-prepare.ts" is now stale (minor 1).
+  * **Deletes.** No new delete path for `audit_event`: `demo.ts` (wipe, sweep) is unchanged, and PF-21d's erasure does not touch the trail. No new `DISABLE TRIGGER` or `session_replication_role` outside tests.
+  * **BEFORE INSERT triggers.** None is new on `audit_event`. The new ones are all on other tables.
+  * **Columns.** audit.prisma is unchanged on main. `aud_event_canonical` covers all 15 data columns. `aud_ourstaff_actor_word` only redefines `aud_event_actor_type`, so `OUR_STAFF` reaches the hash as `actor_type::text`.
+  * **Sample firms.** `SAMPLE_FIRM_KEYS` and `samples/firms.json` are still `sample-firm` and `sample-solo`, the list in `aud_chain_key_of`.
+* **Test:** isolated copy `aud1crev` on :4612 (`xr_studio_aud1crev`) at 2793a882, then `check_aud1c_chain.ts 4612 xr_studio_aud1crev`: **33 passed, 0 failed**. The reset race waited 426 ms. The copy was stopped afterwards.
+* **CI at 2793a882: `fast` and `ci` are red.** Step "migration slots (SPD-2, P-802)" fails. Locally, `migration-slots.py check origin/main..2793a882` gives: `REFUSED 20261125113000_aud1c_audit_chain: its name carries no area … Fix: git mv …/20261125113000_aud1c_audit_chain …/20261125113000_audit__aud1c_audit_chain`.
+  * I tried the rename in a scratch worktree (not pushed): PASS. The SQL writes only `audit_event` and `aud_chain_check` (audit.prisma), so the area is `audit`, a barrier area.
+
+### Findings
+1. **Major — the migration folder breaks SPD-2's name rule, and CI is red** (`prisma/migrations/20261125113000_aud1c_audit_chain/`).
+   * Fix: `git mv` it to `20261125113000_audit__aud1c_audit_chain` (same stamp, SQL byte-identical).
+   * Update the folder name in `tests/check_aud1c_chain.ts:17` (`NEW`) and `api/src/platform/audit/canonical.ts:2`.
+   * Re-run `migration-slots.py check` and `check_aud1c_chain.ts`, then get a green `fast`/`ci`.
+2. minor — decision 5 in the PR body says "On main only case-prepare.ts reads under REPEATABLE READ". Main now has eight read-only RR transactions and two RR export snapshots, none writing an audit line. Correct the sentence.
+
+Majors: `prisma/migrations/20261125113000_aud1c_audit_chain/` (folder name; SPD-2 refusal), `tests/check_aud1c_chain.ts:17`, `api/src/platform/audit/canonical.ts:2`.
+Reviewer: Changes 2793a882a3c22f49018907956c231b34d3b73c86

@@ -14,7 +14,7 @@ import { canonical, entryHash, VECTOR, ZERO_HASH, type CanonicalLine } from "../
 
 const PORT = Number(process.argv[2] ?? 4607), COPY = process.argv[3] ?? "xr_studio_runtime_aud1c";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261125113000_aud1c_audit_chain";
+const NEW = "20261125113000_audit__aud1c_audit_chain";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const BARE = `xr_studio_aud1c_bare_${process.pid}`, EMPTY = `xr_studio_aud1c_empty_${process.pid}`, BEFORE = `xr_studio_aud1c_before_${process.pid}`;
