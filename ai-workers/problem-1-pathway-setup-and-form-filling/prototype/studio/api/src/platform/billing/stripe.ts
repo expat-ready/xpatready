@@ -22,8 +22,7 @@ export function taxOf(i: { subtotal: number; subtotal_excluding_tax: number | nu
 /** The Customer Portal's one configuration (PORTAL_FEATURES: card, invoices, cancel at period end; plan switching off,
  *  PF-16), found by its metadata or made once. Shared by the portal hand-off and the set-up script (R1.91 part 1). */
 export async function ensurePortalConfiguration(stripe: Stripe): Promise<{ id: string; created: boolean }> {
-  const found = (await stripe.billingPortal.configurations.list({ active: true, limit: 100 })).data.find((c) => c.metadata?.pf5 === PORTAL_TAG);
-  if (found) return { id: found.id, created: false };
+  for await (const c of stripe.billingPortal.configurations.list({ active: true, limit: 100 })) if (c.metadata?.pf5 === PORTAL_TAG) return { id: c.id, created: false };
   const made = await stripe.billingPortal.configurations.create({ features: PORTAL_FEATURES as unknown as Stripe.BillingPortal.ConfigurationCreateParams.Features, metadata: { pf5: PORTAL_TAG } }, { idempotencyKey: PORTAL_TAG });
   return { id: made.id, created: true };
 }
