@@ -89,7 +89,9 @@ export class AuditChainVerifier {
       const at = BigInt(c.verified_seq), [v] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
       read++;
       const same = !!v && !!c.verified_hash && Buffer.from(v.h).equals(Buffer.from(c.verified_hash));
-      if (!same) return this.found(tx, k, c, { chainKey: k, fromSeq: String(at), toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: v ? "verified-changed" : "missing" }, read);
+      // A rewrite: from the verified place to the head. A removal: the removed lines, from the head after it to the verified place (review m1).
+      if (!same) return this.found(tx, k, c, v ? { chainKey: k, fromSeq: String(at), toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: "verified-changed" }
+        : { chainKey: k, fromSeq: String((head === null ? 0n : BigInt(head)) + 1n), toSeq: String(at), why: "missing" }, read);
       if (mode === "incremental" && c.status !== "BROKEN") { start = at; prev = Buffer.from(v!.h); }
     } else if (c && sample && mode === "incremental" && c.status !== "BROKEN" && BigInt(c.verified_seq) > 0n) {
       // A sample: chain may restart (the demo reset): a changed verified place re-reads it from seq 1.
