@@ -213,4 +213,11 @@ m = max((lo - c).total_seconds(), (c - hi).total_seconds(), 0) / 60
 if m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"); fi
   if [ -n "$msg" ]; then [ "$mine" = 1 ] && echo "$msg" >> "$out" || echo "WARN  ${msg#STATE TIME: } (already on ${STATE_TIME_BASE:-origin/main})"; fi
 fi
+# OS-16 (P-615, P-440b): a fresh Lead's start read, the files product/LEAD-START.md lists, summed as bytes / 4. The total
+# and a WARN over 40k print here; over 70k (P-615), or a row naming a missing file or section, fails. No LEAD-START.md
+# (a throwaway test copy): nothing. Test: check-start-read.sh.
+if [ -f "$PH/LEAD-START.md" ]; then
+  sr=$(python3 -I "$PH/tools/start-read.py" --product "$PH" --root "$ROOT" 2>&1) || [ -n "$sr" ] || sr="START READ: start-read.py failed and printed nothing"
+  printf '%s\n' "$sr" | grep -v '^START READ: ' | grep . ; printf '%s\n' "$sr" | grep '^START READ: ' >> "$out"
+fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0
