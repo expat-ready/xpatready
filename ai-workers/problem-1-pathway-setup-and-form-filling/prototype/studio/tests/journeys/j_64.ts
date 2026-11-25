@@ -11,27 +11,32 @@
 //   W3 sample-solo's Owner gets 404 on HEAD and PATCH of W1's upload id.
 //   W4 a .pdf-named file whose bytes are not an allowed kind → PF-F4's words on screen, no row, no file.
 //   W5 W1's cut and resume on a Pixel 7.
+//   W6 at 1024 px, keyboard only: Add, sign in with the keyboard, focus is back on Add; Enter uploads; focus is back on
+//      Add after it; axe finds no WCAG A/AA violation on the Documents panel. A staff member whose only role is Read only
+//      (labelled test data) is told so in words, never "no longer on the server".
 // Sample people and synthetic files only; US$0, no model call, live AI off. Screenshots (device scale 2):
 // product/screens/CS-D1u/. Run from prototype/ (HEADED=1 opens a visible browser, slowed):
-//   zsh studio/tools/isolated.sh j64 4464 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j64 4464 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_64.ts j64 4464
+//   zsh studio/tools/isolated.sh j64 4434 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j64 4434 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_64.ts j64 4434
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { chromium, devices, type BrowserContext, type Page } from "playwright";
 import { textPdf } from "../../acceptance/lib/fixtures.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
 
-const [NAME, PORT] = [process.argv[2] ?? "j64", Number(process.argv[3] ?? 4464)];
+const [NAME, PORT] = [process.argv[2] ?? "j64", Number(process.argv[3] ?? 4434)];
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://127.0.0.1:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
 const VAR = join(STUDIO, "var", `isolated-${NAME}`);
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "CS-D1u"); mkdirSync(SHOTS, { recursive: true });
 const HEADED = process.env.HEADED === "1";
 const { ok, summary } = recorder();
+const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const { call, sql: rawSql } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0]?.trim() ?? "";
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
@@ -174,6 +179,46 @@ try {
   if (fit.page > 0) console.log(`NOTE  W5: the case page scrolls sideways by ${fit.page} px on a Pixel 7, from ${fit.wide.join(", ") || "another element"} (not this row's panel)`);
   await w5.page.locator(`[data-other-documents="${person}"]`).screenshot({ path: join(SHOTS, "w5-pixel7-listed.png") });
   await w5.ctx.close();
+
+  // ------------------------------------------------- W6: 1024 px, keyboard only, axe; a Read-only person's words
+  const ctx6 = await browser.newContext({ viewport: { width: 1024, height: 800 }, baseURL: BASE, colorScheme: "light", reducedMotion: "reduce", deviceScaleFactor: 2 });
+  await ctx6.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* private window */ } }, OFFICER);
+  const p6 = await ctx6.newPage(); p6.on("pageerror", (e) => errors.push(`1024: ${e.message}`));
+  await p6.goto(`/cases/${caseId}`);
+  const add6 = p6.locator(`[data-other-documents="${person}"] [data-other-upload="letter_of_invitation"]`);
+  await add6.waitFor({ timeout: 60_000 });
+  const onAdd = () => add6.evaluate((e) => e === document.activeElement);
+  const signInByKeys = async (email: string) => {
+    await add6.focus(); await p6.keyboard.press("Enter");
+    const card = p6.locator("[data-other-sign-in]"); await card.waitFor({ timeout: 15_000 });
+    await card.getByLabel("Firm key").focus(); await p6.keyboard.type("sample-firm"); await p6.keyboard.press("Tab"); await p6.keyboard.type(email); await p6.keyboard.press("Enter");
+    await card.waitFor({ state: "detached", timeout: 30_000 });
+    await p6.waitForLoadState("networkidle");   // the signed-in page's reads settle before the next key
+    return p6.waitForFunction((who) => document.activeElement?.closest(`[data-other-documents="${who}"]`)?.hasAttribute("data-other-documents") && document.activeElement.hasAttribute("data-other-upload"), person, { timeout: 5_000 }).then(() => true, async () => { console.log(`FAIL  W6: focus after sign-in is on ${await p6.evaluate(() => `${document.activeElement?.tagName} ${document.activeElement?.outerHTML.slice(0, 120)}`)}`); return false; });
+  };
+  const focusAfterSignIn = await signInByKeys(emailOf(OFFICER));
+  if (!focusAfterSignIn) await add6.focus();   // said above as a failure; the walk goes on from the button
+  const [chooser6] = await Promise.all([p6.waitForEvent("filechooser"), p6.keyboard.press("Enter")]);
+  await chooser6.setFiles({ name: "invitation-keyboard.pdf", mimeType: "application/pdf", buffer: bigPdf(200_000, "w6") });
+  await p6.locator("[data-upload-words='done']").waitFor({ timeout: 60_000 });
+  const focusAfterUpload = await p6.waitForFunction(() => document.activeElement?.hasAttribute("data-other-upload"), null, { timeout: 5_000 }).then(() => true, () => false);
+  ok("R1.64 W6: at 1024 px, keyboard only: Enter on Add, the sign-in typed and sent with Enter, focus back on Add; Enter uploads; focus back on Add after it",
+    focusAfterSignIn && focusAfterUpload && await onAdd(), { focusAfterSignIn, focusAfterUpload });
+  const axe = await new AxeBuilder({ page: p6 }).include("[data-documents-panel]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+  ok("R1.64 W6: axe finds no WCAG A/AA violation on the Documents panel at 1024 px", axe.violations.length === 0, axe.violations.map((v) => v.id));
+  await p6.locator(`[data-other-documents="${person}"]`).screenshot({ path: join(SHOTS, "w6-1024-keyboard.png") });
+  // Labelled test data: the second representative's roles ended and Read only given, then restored.
+  const rep2 = sql(`select id from platform_staff where actor_id = 'user-T'`), firmA = sql(`select id from platform_firm where key = 'sample-firm'`);
+  rawSql(`update platform_role_grant set ended_at = now(), ended_by = 'J-64 (Sample)', end_reason = 'Sample: Read only' where staff_id = '${rep2}' and ended_at is null; insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${firmA}', '${rep2}', 'READ_ONLY', 'J-64 (Sample)')`);
+  await p6.evaluate(() => { try { sessionStorage.removeItem("xr-staff-session"); } catch { /* ignore */ } }); await p6.reload(); await add6.waitFor({ timeout: 60_000 });
+  await signInByKeys(emailOf("user-T"));
+  const chooser7 = await Promise.all([p6.waitForEvent("filechooser", { timeout: 15_000 }), p6.keyboard.press("Enter")]).then(([c]) => c, () => null);
+  await chooser7?.setFiles({ name: "invitation-read-only.pdf", mimeType: "application/pdf", buffer: bigPdf(2_000, "w6ro") });
+  const roWords = await p6.locator("[data-upload-refused]").textContent({ timeout: 30_000 }).catch(() => null);
+  ok("R1.64 W6 fail: a Read-only staff member is told in words (\"Your role cannot add documents to cases. Nothing was stored.\"), never \"no longer on the server\"",
+    roWords === "Your role cannot add documents to cases. Nothing was stored.", roWords);
+  rawSql(`update platform_role_grant set ended_at = now(), ended_by = 'J-64 (Sample)', end_reason = 'Sample: roles back' where staff_id = '${rep2}' and role = 'READ_ONLY' and ended_at is null; update platform_role_grant set ended_at = null, ended_by = null, end_reason = null where staff_id = '${rep2}' and role <> 'READ_ONLY'`);
+  await ctx6.close();
   ok("J-64: no page error in any walk", errors.length === 0, errors.slice(0, 3));
 } finally {
   await browser.close();
