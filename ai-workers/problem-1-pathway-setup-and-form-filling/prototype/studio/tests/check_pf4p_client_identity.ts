@@ -20,6 +20,8 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { runContract } from "../ports/contracts/contract.ts";
+import { identityPortContract } from "../ports/contracts/identity-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -232,6 +234,9 @@ try {
   ok("PF-4p fail (review m1): a closed firm's client: the live session and a new sign-in are each 401 FIRM_CLOSED", closedMe.status === 401 && closedMe.body.code === "FIRM_CLOSED" && closedIn.status === 401 && closedIn.body.code === "FIRM_CLOSED", [closedMe.body, closedIn.body]);
   sql(`update platform_firm set status = 'ACTIVE' where id = '${FB}'`);
   ok("PF-4p pass (review m1): the firm active again, its client signs in", (await signIn("sample-solo", "client.c@example.test")).status === 200);
+  // PF-0c: the client stand-in passes IdentityPort's contract, as every identity adapter does.
+  const ACC = randomUUID();
+  await runContract(identityPortContract, "ClientLocalIdentity", () => { const id = new ClientLocalIdentity(SIGNING, () => Date.now()); return { identity: id, who: { staffId: ACC }, token: ({ secondStep }: { secondStep: boolean }) => id.issue(ACC, { authTimeMs: Date.now() - 60_000, secondStep }), expiredToken: () => new ClientLocalIdentity(SIGNING, () => Date.now() - 2 * 3600_000).issue(ACC, { authTimeMs: Date.now() - 2 * 3600_000 - 60_000 }) }; }, ok);
   console.log(`PENDING  PF-4p SA-2-35: a held or locked firm's client reads status and own documents only — PF-27's firmAllows is not on main; the stub allows all (${await firmAllows(FA, "portal.upload")}). PF-27 turns this line into its test.`);
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);
