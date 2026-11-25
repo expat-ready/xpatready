@@ -13,4 +13,4 @@ Key choices, in short:
 * 12 weeks, gates G0 (wk 1) to G5 (wk 12); about 110 capabilities; lab rate 4.7/day vs about 2.5 to 3/day needed; re-forecast at end of week 4.
 * Cost about US$9,000 to 12,000 a month (approximate, not looked up), plus pen test and counsel review.
 
-Open: founder chooses the beta cut (all Release 1 at launch minimum, or one journey first).
+Decided 26 Nov (founder): the beta is all of Release 1 at launch minimum (about 110 capabilities), not one journey first.
