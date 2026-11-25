@@ -64,10 +64,124 @@ svg .lbl{fill:var(--fg);font-size:12px}
 <div class="wrap">
 
 <header style="display:flex;flex-direction:column;gap:8px">
-  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 5 · 25 Nov 2026, 11:27 IST (v4)</div>
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 5 · 25 Nov 2026, 13:12 IST (v6)</div>
   <h1>Where we are, how the machine works, and what we fix today</h1>
   <p class="lede">Every number below comes from GitHub, <span class="mono">origin/main</span> or a measured report (<span class="mono">design/why-targets-missed-2026-11-24.md</span>, 72-hour window to 24 Nov 22:23 IST). Where a figure is an estimate it says so.</p>
 </header>
+
+<section id="self-checking">
+  <div class="eyebrow">v6 · Lead 5 · 25 Nov 13:12 IST · self-checking builders, handed to me by your side session: my teach-back for you to confirm</div>
+  <h2>Self-checking builders: what I understood, how I enforce it, who does what, when</h2>
+  <p class="lede">Your aim, as I understood it: a builder proves its own change works in a real browser <b>before</b> it commits, so mistakes stop at the builder instead of turning into red batches, qa findings or surprises in your walk. Six items do it. Each one runs by itself as a check, not as a rule someone has to remember.</p>
+
+  <h3>Today: mistakes are found late</h3>
+  <div class="panel scroll">
+  <svg viewBox="0 0 980 150" width="100%" style="min-width:820px" role="img" aria-label="Today's pipeline">
+    <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+    <g>
+      <rect x="6" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="61" y="56" text-anchor="middle" class="lbl">Builder codes</text><text x="61" y="74" text-anchor="middle">self-walk optional</text>
+      <rect x="128" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="183" y="56" text-anchor="middle" class="lbl">Reviewer agent</text><text x="183" y="74" text-anchor="middle">reads code, approves</text>
+      <rect x="250" y="30" width="110" height="62" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="305" y="56" text-anchor="middle" class="lbl">PR checks</text><text x="305" y="74" text-anchor="middle">guard, then full CI</text>
+      <rect x="372" y="30" width="110" height="62" rx="8" fill="var(--bad-soft)" stroke="var(--bad)"/><text x="427" y="56" text-anchor="middle" class="lbl">Merge queue</text><text x="427" y="74" text-anchor="middle">re-tests batches</text>
+      <rect x="494" y="30" width="110" height="62" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/><text x="549" y="56" text-anchor="middle" class="lbl">qa on main</text><text x="549" y="74" text-anchor="middle">scores each batch</text>
+      <rect x="616" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="671" y="56" text-anchor="middle" class="lbl">Nightly</text><text x="671" y="74" text-anchor="middle">every suite</text>
+      <rect x="738" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="793" y="56" text-anchor="middle" class="lbl">Your walks</text><text x="793" y="74" text-anchor="middle">D17, D20</text>
+      <g stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar2)"><line x1="116" y1="61" x2="126" y2="61"/><line x1="238" y1="61" x2="248" y2="61"/><line x1="360" y1="61" x2="370" y2="61"/><line x1="482" y1="61" x2="492" y2="61"/><line x1="604" y1="61" x2="614" y2="61"/><line x1="726" y1="61" x2="736" y2="61"/></g>
+      <text x="6" y="18">Nobody runs the screen before the commit, so misses surface here:</text>
+      <text x="305" y="118" text-anchor="middle" style="fill:var(--warn)">PR: 12 of the latest 260 judged CI runs red (5%)*</text>
+      <text x="427" y="138" text-anchor="middle" style="fill:var(--bad)">red batches: 1 in 3 (72 h to 24 Nov)</text>
+    </g>
+  </svg>
+  <p class="note">* The 12 of 260 figure is the side session's count; the batch figure is from design/why-targets-missed-2026-11-24.md.</p>
+  </div>
+
+  <h3>After: the builder checks itself before it commits</h3>
+  <div class="panel scroll">
+  <svg viewBox="0 0 980 240" width="100%" style="min-width:820px" role="img" aria-label="Pipeline after self-checking builders">
+    <g>
+      <rect x="6" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="61" y="65" text-anchor="middle" class="lbl">Builder codes</text>
+      <rect x="128" y="22" width="150" height="78" rx="8" fill="var(--ok-soft)" stroke="var(--ok)"/><text x="203" y="44" text-anchor="middle" class="lbl">verify (automatic)</text><text x="203" y="62" text-anchor="middle">before every app-code</text><text x="203" y="78" text-anchor="middle">commit · up to 3 fixes</text><text x="203" y="94" text-anchor="middle">then stop and report</text>
+      <rect x="290" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="345" y="56" text-anchor="middle" class="lbl">Reviewer</text><text x="345" y="74" text-anchor="middle">sees the evidence</text>
+      <rect x="412" y="30" width="110" height="62" rx="8" fill="var(--ok-soft)" stroke="var(--ok)"/><text x="467" y="56" text-anchor="middle" class="lbl">PR checks</text><text x="467" y="74" text-anchor="middle">+ 4 new checks</text>
+      <rect x="534" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="589" y="56" text-anchor="middle" class="lbl">Merge queue</text><text x="589" y="74" text-anchor="middle">fewer red batches</text>
+      <rect x="656" y="30" width="110" height="62" rx="8" fill="var(--surface)" stroke="var(--line)"/><text x="711" y="56" text-anchor="middle" class="lbl">qa on main</text><text x="711" y="74" text-anchor="middle">fewer misses</text>
+      <rect x="778" y="30" width="96" height="62" rx="8" fill="var(--ok-soft)" stroke="var(--ok)"/><text x="826" y="56" text-anchor="middle" class="lbl">Nightly</text><text x="826" y="74" text-anchor="middle">+ mutation</text>
+      <rect x="886" y="30" width="88" height="62" rx="8" fill="var(--ok-soft)" stroke="var(--ok)"/><text x="930" y="50" text-anchor="middle" class="lbl">First-use</text><text x="930" y="66" text-anchor="middle">agent, then</text><text x="930" y="82" text-anchor="middle">your walk</text>
+      <g stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar2)"><line x1="116" y1="61" x2="126" y2="61"/><line x1="278" y1="61" x2="288" y2="61"/><line x1="400" y1="61" x2="410" y2="61"/><line x1="522" y1="61" x2="532" y2="61"/><line x1="644" y1="61" x2="654" y2="61"/><line x1="766" y1="61" x2="776" y2="61"/><line x1="874" y1="61" x2="884" y2="61"/></g>
+      <text x="6" y="128" class="lbl">What verify does, in the builder's own isolated copy:</text>
+      <text x="6" y="148">1 walks only the journeys the change touches, at one screen width</text>
+      <text x="6" y="166">2 browser console clean and the accessibility scan (axe) clean</text>
+      <text x="6" y="184">3 page speed: LCP ≤ 2.5 s, layout shift CLS ≤ 0.1</text>
+      <text x="500" y="148">4 the screenshot matches the approved reference</text>
+      <text x="500" y="166">5 data saved once (no double write)</text>
+      <text x="500" y="184">6 up to 3 fix rounds; still red → stop, report, no commit</text>
+      <text x="6" y="214" style="fill:var(--ok)">The 4 new PR checks: verify evidence present · speed budgets · visual compare · all-routes sign-in sweep (design check follows)</text>
+    </g>
+  </svg>
+  </div>
+
+  <h3>The six items: the machine that enforces each, and its proof</h3>
+  <p class="lede">None of these is a prose rule. Each has a check that runs by itself and a file or line that proves it ran. Every one starts as a <b>warning</b> and becomes <b>required</b> only after it has been clean for 24 hours or 10 PR runs (P-717 (b)), so it never blocks good work on a false alarm.</p>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Item</th><th>Enforced by</th><th>Proof it ran</th><th>Warning → required</th></tr></thead>
+    <tbody>
+      <tr><td><b>OS-72 verify</b> (project skill, runs before each app-code commit)</td><td>Claude Code runs the <span class="mono">verify</span> skill itself before a commit, plus a new <span class="mono">pr-rules</span> step: an app-code PR without verify evidence is flagged, plus a lead-watch ACT line for each one</td><td>a "Verify:" block in the PR (journeys walked, console, axe, speed, screenshot, fix rounds) with its run id</td><td>after the trial lane's numbers, decided 27 Nov 12:00; required after 24 h or 10 clean runs</td></tr>
+      <tr><td><b>OS-73 speed budgets</b> LCP ≤ 2.5 s, CLS ≤ 0.1 (now in STANDARDS §9)</td><td>a budget helper inside the Playwright packs and verify; a CI step</td><td>a per-screen speed table in the CI artifact</td><td>after 24 h or 10 clean runs</td></tr>
+      <tr><td><b>OS-74 visual compare</b></td><td>a CI step that compares each screen state with its reference (1024 and 1440 px, dates and ids masked)</td><td>a diff report per PR; a changed reference needs my label, on your behalf, and you see it in the recorded walk</td><td>after 24 h or 10 clean runs</td></tr>
+      <tr><td><b>OS-75 design-system check</b></td><td>a CI step that reads computed styles: tokens, fonts, type scale, one primary button per panel, red only for errors, 4.5:1 contrast, 44 px targets at 375 px, no sideways scroll</td><td>a report per screen</td><td>after 24 h or 10 clean runs</td></tr>
+      <tr><td><b>OS-76 mutation testing</b> (Stryker, version pinned)</td><td>a nightly workflow plus a floor check: the score may only rise</td><td>the nightly score file; a lead-watch ACT when it drops</td><td>the floor blocks once two nightly scores exist</td></tr>
+      <tr><td><b>OS-77a first-use agent</b></td><td>a lead-watch ACT line before each milestone gate: "first-use walk missing"</td><td>the recorded walk with every wrong turn listed</td><td>from its first gate</td></tr>
+      <tr><td><b>OS-77b all-routes sign-in sweep</b></td><td>a CI step: every API route, signed out and with the wrong role, must refuse; the whole sweep also runs nightly</td><td>a route table in the CI artifact; a planted open route fails its test</td><td>after 24 h or 10 clean runs</td></tr>
+    </tbody></table></div>
+  <p class="note"><b>Also in the agents' own instructions,</b> not only in RULES: OS-72's PR updates the builder skills (<span class="mono">next</span>, <span class="mono">screen-build</span>), the checkers (<span class="mono">journey-test</span>, <span class="mono">qa</span>) and the reviewer agent, so each one runs or reads the verify evidence as a step.</p>
+
+  <h3>What happens to work already done, and to new work</h3>
+  <div class="two">
+    <div class="panel"><h3>Already done (the 62 Works rows on main)</h3><ul>
+      <li>Nothing is rebuilt. Each new check runs <b>one baseline sweep</b> over main when it lands.</li>
+      <li>References are taken from today's main. The speed budgets run over every Works pack, the sign-in sweep over every route, and the design check over every screen. Mutation gets a first score.</li>
+      <li>Each breach becomes a fix row by severity, so a Blocker or Major jumps the queue (P-820 order otherwise).</li>
+    </ul></div>
+    <div class="panel"><h3>In flight and new</h3><ul>
+      <li><b>PRs in review now</b> are not forced to change mid-review. They pick verify up when they next merge main, as a warning.</li>
+      <li><b>Every new row's "Done when"</b> carries verify evidence, and the reviewer reads it before approving.</li>
+      <li>Nothing changes the merge queue, gates A and B or the required checks during the 48-hour plan.</li>
+    </ul></div>
+  </div>
+
+  <h3>Who does what (R responsible · A accountable · C consulted · I informed)</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Item</th><th>You</th><th>Lead</th><th>OS-PM</th><th>qa lane</th><th>Builder lanes</th><th>Reviewer and breaker agents</th></tr></thead>
+    <tbody>
+      <tr><td>OS-72 verify</td><td>I</td><td>A (trial and go decision)</td><td>R (builds it)</td><td>C</td><td>R (run it; one trial lane first)</td><td>C (read the evidence)</td></tr>
+      <tr><td>OS-73 speed budgets</td><td>I</td><td>A (STANDARDS §9)</td><td>R</td><td>C</td><td>R (fix breaches)</td><td>C</td></tr>
+      <tr><td>OS-74 visual compare</td><td>I (sees changes in the walk)</td><td>A (approves changed references for you)</td><td>R (the check)</td><td>R (takes the references)</td><td>R (fix diffs)</td><td>C</td></tr>
+      <tr><td>OS-75 design check</td><td>C (product taste only, one question at a time)</td><td>A</td><td>R (the check)</td><td>R (the rules list)</td><td>R (fix breaches)</td><td>C</td></tr>
+      <tr><td>OS-76 mutation</td><td>I (Stryker install approved)</td><td>A (§1 gate entry)</td><td>R</td><td>C</td><td>R (raise weak tests)</td><td>C</td></tr>
+      <tr><td>OS-77a first-use agent</td><td>A for D17/D20 (your walk; agents simulate, never award)</td><td>R (schedules it, prepares your short walk)</td><td>R (builds the agent)</td><td>C</td><td>I</td><td>I</td></tr>
+      <tr><td>OS-77b sign-in sweep</td><td>I</td><td>A</td><td>R</td><td>C</td><td>R (fix any open route)</td><td>C (breaker plants one)</td></tr>
+    </tbody></table></div>
+
+  <h3>When each starts (honest sizes; the fast parts now, the heavy parts through the pipeline in order)</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Item</th><th>Size</th><th>Starts</th><th>Warning live</th><th>Required (earliest)</th></tr></thead>
+    <tbody>
+      <tr><td>STANDARDS §9 speed budgets</td><td>minutes</td><td class="num">done 13:0x (#3711)</td><td class="num">with #3711</td><td class="num">—</td></tr>
+      <tr><td>OS-72 verify skill + skill texts + pr-rules evidence step</td><td>medium: a skill file, 5 skill texts, one check</td><td class="num">25 Nov 13:3x (OS-PM 2 has it)</td><td class="num">25 Nov ~20:00</td><td class="num">trial lane 26 Nov 09:00 → decision 27 Nov 12:00</td></tr>
+      <tr><td>OS-73 budget helper</td><td>small</td><td class="num">after OS-72, 26 Nov ~09:00</td><td class="num">26 Nov ~14:00, baseline over every Works pack that evening</td><td class="num">27 Nov ~14:00</td></tr>
+      <tr><td>OS-77b sign-in sweep</td><td>small to medium</td><td class="num">26 Nov ~14:00</td><td class="num">26 Nov ~20:00, baseline over every route</td><td class="num">27 Nov ~20:00</td></tr>
+      <tr><td>OS-74 visual compare</td><td>medium (references for every screen)</td><td class="num">27 Nov 12:00 (qa, after the 48-hour scoring)</td><td class="num">28 Nov</td><td class="num">29 Nov</td></tr>
+      <tr><td>OS-75 design check</td><td>medium</td><td class="num">27 Nov 12:00 (qa list), check 28 Nov</td><td class="num">29 Nov</td><td class="num">30 Nov</td></tr>
+      <tr><td>OS-76 mutation</td><td>heavy (new tool, nightly)</td><td class="num">1 Dec (§1 gate entry, version pinned)</td><td class="num">2 Dec nightly</td><td class="num">floor after 2 nightlies, ~4 Dec</td></tr>
+      <tr><td>OS-77a first-use agent</td><td>medium</td><td class="num">1 Dec</td><td class="num">before the next milestone gate</td><td class="num">by 4 Dec</td></tr>
+    </tbody></table></div>
+  <p class="note">The pipeline's own fixes keep their order ahead of these (P-827). Product lanes keep building the whole time, because these are tools, workflows and records only, in their own queue.</p>
+
+  <div class="needs y"><b>What I need from you</b>
+    <span>1. Confirm I understood (the question on your screen). 2. Your D17 and D20 walks stay yours: I schedule them and bring you a short prepared walk after the first-use agent has walked it. 3. Nothing else: correctness comes from official sources, our decisions and industry practice, changed references I approve on your behalf, and Stryker is the only new install (pinned, through the §1 gate). Any other tool comes to you with an install proposal first.</span></div>
+</section>
+
+
 
 <section>
   <div class="eyebrow">v4 · Lead 5 · 25 Nov 11:27 IST · founder ask A385: the whole plan, on plan or not, hourly plan, monitoring, operating system first</div>
