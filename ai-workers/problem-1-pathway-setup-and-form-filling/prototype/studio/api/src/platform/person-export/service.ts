@@ -52,7 +52,7 @@ const SYSTEM = "system:person-export";
 const ODD = /(?![\u200c\u200d])[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;   // ZWNJ and ZWJ stay: ordinary Persian and Hindi (break R2-m1)
 export const REASON_MAX = 300;
 const RequestBody = z.strictObject({
-  reason: z.string({ required_error: "Say why you are exporting this person's data." }).trim()
+  reason: z.string().trim()
     .min(1, "Say why you are exporting this person's data.")
     .refine((r) => !ODD.test(r) && (r as unknown as { isWellFormed(): boolean }).isWellFormed(), "Write it as one line of ordinary text.")
     .refine((r) => /[\p{L}\p{N}]/u.test(r), "Say why in words.")
@@ -144,7 +144,7 @@ export class PersonExports {
       // Review m4: a second click while the first is still being prepared is the same export, not a second copy; one
       // queued longer than STALE_MS lost its build and is closed (break R2-M1). Two requests in the same instant can still
       // make two rows, both logged (break R2-m2, Minor).
-      const queued = await tx.platformPersonExport.findFirst({ where: firmScope(firmId, { personId, requestedBy: s.staffId.toLowerCase(), state: "QUEUED" }), orderBy: { createdAt: "desc" } });
+      const queued = await tx.platformPersonExport.findFirst({ where: firmScope(firmId, { personId, requestedBy: s.staffId.toLowerCase(), state: "QUEUED" as const }), orderBy: { createdAt: "desc" } });
       if (queued && this.d.now().getTime() - queued.createdAt.getTime() < STALE_MS) return queued;
       if (queued) await this.closeStale(tx, queued);
       const r = await tx.platformPersonExport.create({ data: { firmId, personId, requestedBy: s.staffId, reason } });
