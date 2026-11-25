@@ -21,6 +21,7 @@ import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
 import { billToProvince, type BillToParty } from "./bill-to.ts";
 import { failClosed, invoiceInScope, partyInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { taxForLine } from "./tax-round.ts";
+import { liveParty } from "../live-party.ts";
 
 type Tx = Prisma.TransactionClient;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,6 +72,7 @@ export class InvoiceDrafts {
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: d.companyId!.toLowerCase() }), select: { id: true } });
       // C5 (Lead 14, #3321 (2)): a party outside the caller's scope is the same 404 as a missing one, before anything is written
       if (!client || !partyInScope(scope, client.id)) notFound(d.personId ? "person" : "company");
+      await liveParty(tx, ctx.firmId, client!.id, scope);   // FO-9b part 2m: never a draft on a merged-away client (held FOR KEY SHARE)
       const currency = d.currency ?? settings.defaultCurrency;
       // FO-7g part 3 (P-797): the Bill-to province starts as the client's Canadian address, else the firm's province, as a
       // code (null while the firm's province is not one of the 13: the tax default then warns, never guesses).
