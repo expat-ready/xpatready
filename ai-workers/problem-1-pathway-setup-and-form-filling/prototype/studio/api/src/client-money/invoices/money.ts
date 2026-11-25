@@ -32,7 +32,8 @@ type Reader = Tx | PrismaClient;
 type Locked = { issued: boolean; number: string | null; currency: "CAD" | "USD"; personId: string | null; companyId: string | null };
 const refuse = (code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
 /** The firm's business address on one line (samples/firms.json's office shape), or "" when none is saved. */
-const addressOf = (a: unknown): string => { if (!a || typeof a !== "object" || Array.isArray(a)) return ""; const o = a as Record<string, unknown>, t = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
+/** The firm's business address as printed lines (exported for FO-7r part 2's statement letterhead). */
+export const addressOf = (a: unknown): string => { if (!a || typeof a !== "object" || Array.isArray(a)) return ""; const o = a as Record<string, unknown>, t = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
   return [[t("unit"), [t("street_number"), t("street_name")].filter(Boolean).join(" ")].filter(Boolean).join("-"), t("city"), [t("province_state"), t("postal_code")].filter(Boolean).join(" "), t("country")].filter(Boolean).join(", "); };
 /** The letterhead as the document printed it, for the audit line's after values (R2-F3: an issued document never
  *  changes when the firm's name or address later does). */

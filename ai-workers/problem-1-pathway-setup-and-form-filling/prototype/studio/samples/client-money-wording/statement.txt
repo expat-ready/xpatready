@@ -1,0 +1,15 @@
+# Sample wording (FO-7r part 2, R1.111; AG-6-28 rule 3: the library template "Your statement" until the template
+# library holds it). Unconfirmed: no accountant.
+{{firmName}}
+{{firmAddress}}
+
+YOUR STATEMENT
+For: {{billTo}}
+Period: {{period}}
+Date {{issuedOn}}
+
+{{accounts}}
+{{held}}
+{{summary}}
+Each amount is in its own currency; amounts in two currencies are never added together.
+Questions about this statement? Reply to this email.
