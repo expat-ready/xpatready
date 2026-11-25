@@ -1,5 +1,5 @@
-// platform-client-identity.prisma — clients' own sign-in (the client portal's pool). Owner: Lead B (platform); built by the
-// screens lane for R1.62 (PF-4p part 1, map row 62; P-584 (4); amendment B, P-600 condition 1: its own area file).
+// platform-client-identity.prisma — clients' own portal sign-in: accounts and invitations (PF-4p, R1.62). Owner: Lead B (platform).
+// Built by the screens lane for R1.62 (PF-4p part 1, map row 62; P-584 (4); amendment B, P-600 condition 1: its own area file).
 //
 // A third sign-in group, walled from the firm's staff (platform.prisma) and from ExpatReady's own staff
 // (platform-system.prisma): a client account belongs to one firm and names that firm's front-office person (fo_person),
