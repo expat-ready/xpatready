@@ -36,7 +36,7 @@ TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
-TESTS="$TESTS check-after-read-owed.sh"   # P-823: the Lead's after-reads owed
+TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
@@ -696,12 +696,12 @@ P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
-P823 calls|product/tools/migration-additive.py|s/ or calls(s) or dots(s) or ops(s):/ or dots(s) or ops(s):/|check-queue-gate.sh
-P823 quoted call|product/tools/migration-additive.py|s/^        if not \(re.search(r.(.bREFERENCES\)/        if False and \1/|check-queue-gate.sh
-P823 dots|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or ops(s):/|check-queue-gate.sh
-P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-queue-gate.sh
-P823 narrow index|product/tools/migration-additive.py|s/^            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index/            ok = True   # an index/|check-queue-gate.sh
-P823 narrow alter|product/tools/migration-additive.py|s/^            ok = True   # one column of a built-in type, no default, no constraint/            ok = True\n        elif s.upper().startswith("ALTER"):\n            ok = True/|check-queue-gate.sh
+P823 calls|product/tools/migration-additive.py|s/ or calls(s) or dots(s) or ops(s):/ or dots(s) or ops(s):/|check-migration-additive.sh
+P823 quoted call|product/tools/migration-additive.py|s/^        if not \(re.search(r.(.bREFERENCES\)/        if False and \1/|check-migration-additive.sh
+P823 dots|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or ops(s):/|check-migration-additive.sh
+P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-migration-additive.sh
+P823 narrow index|product/tools/migration-additive.py|s/^            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index/            ok = True   # an index/|check-migration-additive.sh
+P823 narrow alter|product/tools/migration-additive.py|s/^            ok = True   # one column of a built-in type, no default, no constraint/            ok = True\n        elif s.upper().startswith("ALTER"):\n            ok = True/|check-migration-additive.sh
 P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
 P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
 P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh
