@@ -1,3 +1,3 @@
 Entry points: behind PF-4's guard, `GET|POST clients/:id/notes`, `GET clients/:id/notes/:noteKey/versions`, `PUT clients/:id/notes/:noteKey/text|pin|visibility` (notes on a case client, the same `CaseNotes` rules), and `GET cases/:id/timeline?cursor=&kinds=&author=&from=&to=` (`case-notes/timeline.ts` `CaseTimeline`: the case's audit lines and notes, newest first, 50 a page, keyset cursor; `agent/case:show`) (CS-NT1 part 3).
-Tables: caseNote gains `case_client_id` (exactly one of case and case client; migration 20261125100000_shared__csnt1c_case_client_note, CS-NT1 part 3).
+Tables: caseNote gains `case_client_id` (exactly one of case and case client; migration 20261125140100_shared__csnt1c_case_client_note, CS-NT1 part 3).
 Tests: tests/check_csnt1_timeline.ts.

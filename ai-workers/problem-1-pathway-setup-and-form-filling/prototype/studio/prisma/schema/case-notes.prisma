@@ -5,7 +5,7 @@
 // fields: the note follows its case through the migration's triggers (the case's firm checked on insert, the case row
 // held for the insert, its notes removed when the case row goes), so no back-relation line is needed on cases.prisma's
 // Case (CS-K1 holds that file next), as case-search.prisma does.
-// CS-NT1 part 3 (migration 20261125100000_shared__csnt1c_case_client_note): a note on a case client too (AG-13-20, "a note on a
+// CS-NT1 part 3 (migration 20261125140100_shared__csnt1c_case_client_note): a note on a case client too (AG-13-20, "a note on a
 // case or a person"): exactly one of case_id and case_client_id (a check); the same triggers hold the client row, check
 // its firm and remove its notes with it. Still no relation fields (cases.prisma untouched).
 
