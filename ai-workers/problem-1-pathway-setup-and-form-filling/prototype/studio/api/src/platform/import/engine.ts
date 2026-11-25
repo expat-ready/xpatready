@@ -217,7 +217,8 @@ export class ImportService {
         });
       } catch (e) {
         seen.clear(); for (const k of before0) seen.add(k);
-        if (e instanceof ImportTargetUnavailable) throw e;
+        // The store or the database is not reachable (a passing fault, re-review N3): the job stops, to be retried.
+        if (e instanceof ImportTargetUnavailable || ["P1001", "P1002", "P1008", "P1017", "P2024"].includes(String((e as { code?: string }).code))) throw e;
         if ((await this.d.db.platImportBatch.findFirst({ where: { firmId, id: batchId }, select: { state: true } }))?.state !== "RUNNING") return;   // another job finished it
         // Another job wrote this row first (its write stands), or the target refused the row: recorded, the run goes on.
         const other = await this.d.db.platImportRow.findFirst({ where: { firmId, batchId, phase: "RUN", rowNumber: row }, select: { outcome: true } });

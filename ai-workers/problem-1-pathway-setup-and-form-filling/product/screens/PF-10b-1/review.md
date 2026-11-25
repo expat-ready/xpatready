@@ -62,3 +62,42 @@ Journey-test (reviewer, API-level only): **5.5/10**, see `journey-test-reviewer-
 **Verdict: Block**: fix 1, 2, 3, and either fix 4 or record the tech lead's ruling on it. Minors 5 to 8 are recommended in the same round.
 
 Reviewer: Block 36321e5bce188c69a6cefe898fa160add1717fdc
+
+## Re-review 44e66d4 (diff only)
+
+Scope: `git diff 36321e5..44e66d4` under `prototype/studio/` (engine.ts, csv.ts, routes.ts, features/platform-import.ts, ports/import-target.ts, the check, the module card). The batch list and origin routes moved to part 2 (size cap), so they are not reviewed here. Reviewer: a session that did not build it.
+
+**Evidence run**
+* The builder's check (`tsx --tsconfig api/tsconfig.json tests/check_pf10b_import_engine.ts`): **46 passed, 0 failed**, and its scratch database was dropped.
+* The reviewer's script (scratchpad `rr44.mts`, not committed) adapts the round-1 B1/B2/B3 cases and the breaker's F1/F2/F3 to the job model. It uses the fake jobs from `ports/jobs.ts` and `jobs.runDue()`, plus a target that writes a real table inside the row's transaction, with its own partial unique key and a check constraint. Nest ran on :4434.
+* A second script (`rr44_real.mts`) wires the **real** feature module (`features/platform-import.ts` default export, so `ImportJobs`), PF-14's `PlatformJobs` on pg-boss, and PF-12's walls, on :4435. A 200-row run came back 201 RUNNING in 25 ms. The pg-boss job then finished it PARTIAL (199 created, 1 `write_failed`). Audit: uploaded, dry_run, started, finished.
+* Both scratch databases (`xr_studio_pf10b_rr_*`, `xr_studio_pf10b_rrreal_*`) were dropped. No :4400 and no paid call (US$0). `tsc` on the whole API ran out of memory here, so the type check is left to CI.
+
+**Round-1 findings**
+| # | Finding | Status | Evidence |
+|---|---|---|---|
+| M1 / F2 | Resume drops a person | **Fixed** | `keyOf` now returns null when a required field is missing (engine.ts:~236), and a resumed job adds a written row's key only when its outcome is not ERROR (:205). B1 (`,dup@x.test` / `Zed,crash@x.test` / `Ann,dup@x.test`, store down at row 2, then Run again): PARTIAL, rows 2 and 3 CREATE, Ann created. F2 (`,dup2` / `Bob,dup2` / `Cy`): Bob created, row 2 CREATE. The check has a fail test (DW5 "break M1, F2"). |
+| M2 | Any P2002 is taken as another run's write | **Fixed** | The catch (:218-225) re-reads the RUN row and swallows only when it exists. Otherwise it writes ERROR `write_failed`. Target's own unique key on row 2 of 3: PARTIAL 2/0/0/1, row 2 "row: could not be saved (nothing of it was imported)". |
+| M3 | One failing row sticks the batch | **Fixed** | A check constraint on row 2: the click answers 201 RUNNING, the job ends PARTIAL with an undo deadline, rows 1 and 3 created. The version-bump dead end is gone: the hash is checked only on DRY_RUN_READY (:176-178), and a resume after `version` 1→2 ends COMPLETED. Only `ImportTargetUnavailable` stops the job (:220), and it is retried. |
+| M4 | Run inside the HTTP request (STANDARDS §3) | **Fixed** | `run` moves the batch to RUNNING and enqueues `platform.import.run` (:187-189). `ImportJobs.onModuleInit` registers the handler before PF-14's worker starts (platform-import.ts:36-47). Fake jobs: 300 rows at 10 ms each, the click took 15 ms and the job 4.4 s. On the real pg-boss wiring with walls, see above. |
+| F1 | A header over 200 characters makes every run fail | **Not fixed (partly)** | The reported case is fixed: `"h"×201` → 422 HEADER_TOO_LONG at upload. A header that passes the reader can still break the run, see **N1**. |
+| 5 | Double Preview gives a 500 | Fixed | Three dry runs at once: one 201, two 409 PREVIEW_BUSY. |
+| 6 | Tests miss the transaction rules | Partly | The test target now writes a real table in the transaction, so per-row rollback and `write_failed` are tested. Still no failing test for the advisory lock (:211), the version check (:178), or two jobs of one batch at once. |
+| 7a / 7b / 7c | Wrong or unclear words | Fixed | (a) A second Run click at the same moment gives 409 ALREADY_RUNNING "This import has already started." (b) TOO_LARGE is now 422 and names the limit, because main.ts rewrites 413 (routes.ts:17, :22). (c) A 201-character source gives the field message "At most 200 characters." |
+| 8 | 5 MB against the row's 10 MB | Fixed | MAX_BYTES is 10 MB (csv.ts:6). |
+| F3 / F4 / F5 / F6 / F7a,c,d | Breaker Minors | Fixed | F3: two `work()` calls on one batch at once (43 rows, 2 with no key, a second Run click a minute later) gave 43/43 RUN rows, 41+2 records (no double), and one `finished` audit line. F4: control characters are refused before anything is stored. F5: `Object.hasOwn` (:121). F7a: a CR-only file is read. F7b (line numbers) is not changed. |
+
+**New findings**
+* **N1, Major (Must): F1's failure still happens for a header whose characters are outside the Basic Multilingual Plane.**
+  * Where: csv.ts:55 counts code points (`[...h].length > MAX_HEADER`), but `Mapping` (ports/import-target.ts:64) caps keys with `z.string().max(200)`, which counts UTF-16 units. A header of 101 to 200 code points that is over 200 units passes the reader and fails `Mapping`.
+  * Repro: `Full name,E-mail,<"😀"×101>` plus one row. Upload gives 201, and the dry run with `{Full name: name, E-mail: email}` gives **201 DRY_RUN_READY**. `POST /run` then gives **500** from `Mapping.parse(b0.mapping)` (engine.ts:177), every time; main.ts answers "Something went wrong on the server". Sending the column back with null gives 422 "Invalid key in record". This is the breaker's F1 symptom unchanged: the preview passes and the run can never happen.
+  * Real trigger: a form-tool question header close to 200 characters with a few emoji or supplementary-plane characters.
+  * Fix: one unit in both places (for example `h.length > MAX_HEADER` in csv.ts, or a code-point refine in `Mapping`). Add a fail test with an astral-character header next to DW1's `"h"×201`.
+* **N2, Minor (Should): a Run click on a stopped batch can silently queue nothing.** Where: the key `import:<batch>:run:<written>:<minute>` (engine.ts:188). A click in the same minute as an earlier one, with no new row written (for example a job that stopped at row 1), answers 201 RUNNING but enqueues nothing (`queued: false`). Seen in the script: the state stayed RUNNING until the clock passed the minute. pg-boss's own retries (3, with backoff) still run, so nothing is lost. Say "already queued" or drop the minute once the earlier job has failed.
+* **N3, Minor (Should): a passing database fault becomes a lasting row error.** Where: the catch at engine.ts:218-225 records any error other than `ImportTargetUnavailable` as `write_failed`. That includes the engine's own transaction timeout, deadlock, or pool timeout (Prisma P2028, P2034, P2024). Such a row ends as "could not be saved" when a retry would have worked. The words are true, and re-importing the file adds no duplicate. Consider treating those Prisma codes like `ImportTargetUnavailable`.
+
+**Journey (reviewer, API-level only, no screen in part 1): 7/10.** This is up from 5.5. A run no longer loses or misreports rows, it returns at once, and refusals are in words. The open N1 dead end keeps the score below 8. No separate journey report was written in this round (the caller limited the files written to this section).
+
+**Verdict: Block**: fix N1 (one header-length unit for the reader and `Mapping`, with a fail test). M1 to M4 are fixed. N2, N3 and the rest of Minor 6 are recommended.
+
+Reviewer: Block 44e66d41434b178d0ab82483cf7ee989f5ef08f4

@@ -52,7 +52,7 @@ try { readCsv(enc(`a\n${"1\n".repeat(MAX_ROWS + 1)}`)); } catch (e) { rowsMsg = 
 ok("PF-10b DW1 fail: one row over the ceiling → refused, the message names the limit (AG-18-58); the ceiling itself passes", /at most 5,000/.test(rowsMsg) && readCsv(enc(`a\n${"1\n".repeat(MAX_ROWS)}`)).rows.length === MAX_ROWS, rowsMsg);
 ok("PF-10b DW1 pass/fail: a report cell starting =, +, -, @ is neutralised; ordinary text is unchanged (AG-18-21)", safeCell("=1+1") === "'=1+1" && safeCell("@x") === "'@x" && safeCell("-2") === "'-2" && safeCell("Jane") === "Jane" && safeCell("a,b") === "\"a,b\"");
 
-ok("PF-10b DW1 fail: a header over 200 characters or with a control character → HEADER_TOO_LONG (break F1, F4)", refusedCsv(`${"h".repeat(201)},b\n1,2\n`, "HEADER_TOO_LONG") && refusedCsv("a\u0000,b\n1,2\n", "HEADER_TOO_LONG") && readCsv(enc(`${"h".repeat(200)},b\n1,2\n`)).header.length === 2);
+ok("PF-10b DW1 fail: a header over 200 UTF-16 units (101 emoji: re-review N1) or with a control character → HEADER_TOO_LONG (break F1, F4)", refusedCsv(`${"h".repeat(201)},b\n1,2\n`, "HEADER_TOO_LONG") && refusedCsv("a\u0000,b\n1,2\n", "HEADER_TOO_LONG") && refusedCsv(`${"😀".repeat(101)},b\n1,2\n`, "HEADER_TOO_LONG") && readCsv(enc(`${"h".repeat(200)},b\n1,2\n`)).header.length === 2);
 ok("PF-10b DW1 pass (break F7): a CR-only ';' file and a line of spaces only", readCsv(enc("a;b\r1;2,5\r  \r")).rows.map((r) => r.join("|")).join("/") === "1|2,5");
 // ------------------------------------------------- the test target: a real table, written in the engine's transaction
 type Tx = { $queryRaw: <T>(q: TemplateStringsArray, ...v: unknown[]) => Promise<T>; $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<number> };

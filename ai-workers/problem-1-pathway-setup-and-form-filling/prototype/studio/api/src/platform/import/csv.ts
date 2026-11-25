@@ -7,7 +7,7 @@ export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_ROWS = 5000;
 export const MAX_COLUMNS = 60;
 export const MAX_CELL = 2000;
-/** A column's name in the first line (the mapping keys it; ports/import-target.ts Mapping). */
+/** A column's name in the first line, in UTF-16 units as zod counts the mapping's keys (ports/import-target.ts Mapping). */
 export const MAX_HEADER = 200;
 export class CsvRefused extends Error {
   constructor(readonly code: "NOT_UTF8" | "TOO_LARGE" | "HEADER_TOO_LONG" | "TOO_MANY_ROWS" | "TOO_MANY_COLUMNS" | "CELL_TOO_LONG" | "NO_HEADER" | "HEADER_REPEATED" | "UNCLOSED_QUOTE" | "NO_ROWS", message: string) { super(message); this.name = "CsvRefused"; }
@@ -52,7 +52,7 @@ export function readCsv(bytes: Uint8Array): Csv {
   if (!header.length || header.every((h) => h === "")) throw new CsvRefused("NO_HEADER", "The first line names the columns: it is empty.");
   const blank = header.findIndex((h) => h === "");
   if (blank >= 0) throw new CsvRefused("NO_HEADER", `Column ${blank + 1} has no name in the first line.`);
-  const long = header.findIndex((h) => [...h].length > MAX_HEADER || /[\p{Cc}\p{Cf}]/u.test(h));
+  const long = header.findIndex((h) => h.length > MAX_HEADER || /[\p{Cc}\p{Cf}]/u.test(h));
   if (long >= 0) throw new CsvRefused("HEADER_TOO_LONG", `Column ${long + 1}'s name in the first line is over ${MAX_HEADER} characters or has a control character: is the first line the column names?`);
   const dup = header.findIndex((h, k) => header.indexOf(h) !== k);
   if (dup >= 0) throw new CsvRefused("HEADER_REPEATED", `Columns ${header.indexOf(header[dup]) + 1} and ${dup + 1} have the same name: give each column its own name.`);
