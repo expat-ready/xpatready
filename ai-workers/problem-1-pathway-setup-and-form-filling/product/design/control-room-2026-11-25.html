@@ -70,9 +70,59 @@ svg .lbl{fill:var(--fg);font-size:12px}
 </header>
 
 <section>
-  <div class="needs"><b>🔴 Needs you: one answer</b>
-    <span>What time today can you sit for about 2 hours to open the outside accounts (Stripe test mode, BoldSign sandbox key, Google and Microsoft test sign-in, AWS reads)? You decided the sitting itself (P-821). I drive the browser; you sign in and accept terms.</span>
-    <span><b>Recommend:</b> today 11:00 IST. 14 of the 44 unproven rows cannot pass without these accounts, so without them we stop at about 87 of 101 around 1 Dec.</span></div>
+  <div class="eyebrow">Update 09:4x IST · founder ask: 87 proven in 2–3 days, full focus</div>
+  <h2>Plan to 87</h2>
+  <p>87 = the 60 proven today + <b>R1.13</b> (alarm confirmed) + the <b>26 rows that need no outside account</b>. Of those 26, <b>12 are Partial</b> and <b>14 are Not built</b>, so they still have to be built before they can be proven. On 20–21 Nov we proved 13 and 16 a day because finished work had piled up waiting for qa. That pile is gone: today a row waits on its last parts, not on proof.</p>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>Day (IST)</th><th>Rows that reach Works</th><th>What it waits on</th><th>Total</th></tr></thead>
+    <tbody>
+      <tr><td class="num">Today 25 Nov</td><td>R1.13 logs and alerts · R1.93 our team's console · R1.86 breach register</td><td>#3615 full run (running) · j_93 walk (running) · #3579 back in the queue</td><td class="num">60 → 63</td></tr>
+      <tr><td class="num">26 Nov</td><td>R1.58 trust or operating · R1.56 client invoices · R1.85 data requests · R1.29 one person record · R1.10 checking every input · R1.87 our access to a firm's data · R1.105 keep periods · R1.55 withdraw and re-issue</td><td>1–3 parts each, all with open PRs or named rows (morning report table)</td><td class="num">→ 71</td></tr>
+      <tr><td class="num">27 Nov</td><td>R1.76 notes and timeline · R1.98 corporate clients · R1.3 walls between firms · R1.106 assessment AS-1 · plus R1.54, R1.61 if BoldSign and Stripe open today</td><td>3–7 parts each; account rows need the sitting</td><td class="num">→ 75–77</td></tr>
+      <tr><td class="num">28 Nov</td><td>First of the 14 Not-built rows (the smallest: R1.34 one person's export, R1.35 contacts import, R1.75 tasks, R1.64 resumable upload)</td><td>14 more builders started today and the weekly budget</td><td class="num">→ 79–82</td></tr>
+      <tr><td class="num">1–2 Dec</td><td>The rest of the 14 Not-built rows</td><td>As above</td><td class="num">→ 87</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p><b>The plain answer:</b> 87 in 3 days needs 14 capabilities built from nothing in parallel. At the measured 3.4 days per capability, that does not fit in 3 days. With every lane on it we expect <b>about 80 by 28 Nov and 87 by 1–2 Dec</b>. The Partials are what finish first.</p>
+  <div class="needs"><b>🔴 The real limit for a 3-day push is the weekly plan, not the machines</b>
+    <span>Weekly use is 29% now and resets 1 Dec 10:30 IST. Last night 16 busy lanes used 5–6% an hour. With 14 more builders (about 30 lanes), the remaining 67% lasts roughly 6–8 hours, so we would stop this evening. <b>Hypothesis:</b> the per-lane rate comes from last night's total, not measured per lane. Extra usage is off.</span>
+    <span><b>Recommend:</b> turn on extra usage with a cap you set (it is your money, so the call and the amount are yours). Without it: run the 12 Partials and 6 builders on the smallest Not-built rows, and stop new starts at 85%.</span></div>
+</section>
+
+<section>
+  <h2>Why enforcement isn't happening yet, and the plan</h2>
+  <div class="two">
+    <div class="panel"><h3>What the enforcement lanes were</h3>
+      <ul>
+        <li><b>OS-2 (owed enforcers):</b> built and landed walks on merge (ENF-733), the flow constraint (ENF-738), the GitHub-only human sample (ENF-782b) and the start.sh reinstall. It ran out of context before it could start P-822/P-823, so it wrote a brief and stopped.</li>
+        <li><b>OS-1:</b> the migration-slot fix #3035, ready once #3491 merges.</li>
+        <li><b>OS-3 (started 09:1x on your yes):</b> P-822, then P-823, then ENF-778a.</li>
+        <li>The lanes did enforce things. But each enforcer warns for 24 h first and needs a second PR to block (P-717 b). Leads changed hourly, so those second PRs and labels waited for days (#3035: 55 h).</li>
+      </ul></div>
+    <div class="panel"><h3>So product work is never slowed by OS work</h3>
+      <ul>
+        <li><b>Separate merge lines already exist:</b> verdicts, product, pipeline and records queues. Product runs ahead of pipeline, so an OS PR never holds a product PR back.</li>
+        <li><b>The shared part is the 4 batch checks that run at once and the same machines.</b> Rule: OS PRs touch only tools, workflows and records, never product code, and stay under 800 lines.</li>
+        <li><b>An enforcer only blocks after it has passed on real PRs.</b> P-717 b's warn period stays, except where you waive it.</li>
+        <li><b>One owner per enforcer file</b> (queue-gate.sh: OS-1, then OS-3), so two OS lanes never collide.</li>
+      </ul></div>
+  </div>
+  <div class="panel"><h3>The Lead's own job and tools, first (your priority)</h3>
+    <ol>
+      <li><b>lead-watch prints only what to act on:</b> today it lists about 90 old branches as "act" lines, which hides the real ones. Fix: only branches pushed in the last 7 days.</li>
+      <li><b>Every Lead step that can be a script becomes one:</b> requeue after a green full run, dispatch the walk after a qa merge, records PR plus RULES refresh, the full run on a "Question for the tech lead". I did each of these by hand this morning, at about 5–10 minutes each.</li>
+      <li><b>The 82 prose rules, in batches of 10 per PR:</b> each becomes a lead-watch check (prints an act line), a gate check (blocks a PR), or is retired. Lead-loop rules go first.</li>
+      <li><b>One-page start read under 40k tokens,</b> so a Lead hand-over takes minutes, not an hour.</li>
+    </ol>
+    <p class="note">Owner: a new OS-4 lane for items 1–3, started on your next yes. It shares no files with OS-3.</p>
+  </div>
+</section>
+
+<section>
+  <div class="needs y"><b>Earlier today (done)</b>
+    <span>Outside accounts sitting: running in its own session since 08:4x. Stripe is signed in now.</span></div>
   <div class="needs y"><b>🟡 Decide when you can</b>
     <span>The new blocking check (P-822, <span class="mono">pr-suites</span> required before the label) would normally run as a warning for 24 hours first (P-717 b). We already have the evidence it needs: 18 of 33 real defects were red there before the queue. <b>Recommend:</b> make it blocking on landing, with the 4 most flaky tests quarantined at the same time.</span></div>
 </section>
@@ -80,8 +130,8 @@ svg .lbl{fill:var(--fg);font-size:12px}
 <section>
   <h2>The headline</h2>
   <div class="kpis">
-    <div class="kpi"><span class="eyebrow">Works (qa-proven)</span><span class="n">57<span style="font-size:16px;color:var(--muted)"> / 101</span></span><span class="s">+2 since midnight (R1.65, R1.53)</span></div>
-    <div class="kpi"><span class="eyebrow">Partial</span><span class="n">23</span><span class="s">some parts built</span></div>
+    <div class="kpi"><span class="eyebrow">Works (qa-proven)</span><span class="n">60<span style="font-size:16px;color:var(--muted)"> / 101</span></span><span class="s">+5 since midnight (09:06 IST)</span></div>
+    <div class="kpi"><span class="eyebrow">Partial</span><span class="n">20</span><span class="s">some parts built</span></div>
     <div class="kpi"><span class="eyebrow">Not built</span><span class="n">21</span><span class="s">all in wave 4</span></div>
     <div class="kpi"><span class="eyebrow">Proving rate</span><span class="n">4.7<span style="font-size:16px;color:var(--muted)">/day</span></span><span class="s">net, 22–24 Nov</span></div>
     <div class="kpi"><span class="eyebrow">Needed</span><span class="n">2.6<span style="font-size:16px;color:var(--muted)">/day</span></span><span class="s">44 rows in 17 days to 12 Dec</span></div>
