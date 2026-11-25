@@ -7,6 +7,7 @@ Sources: AG-3-19, AG-3-11, AG-3-13, BR-6, AG-3-38, AG-3-27, AG-3-32, AG-3-34, AG
 * `engine/eligibility/` (AS-1m): gates in the configurator's condition language, three outcomes, failed gate named, missing facts named (POSSIBLY). `EligibilityPort` with a fake and a contract test.
 * A gate is `{key, label, condition, whenNotMet?}`: **no citation on a gate**.
 * Release refuses a draft with **no form line** (`releaseLineProblems`, G5): the five streams are assessment only (P-650 (2)), so they cannot be released today.
+* Release also refuses a gate whose fact no form of the combination asks (`engine/eligibility-gates.ts` `gateProblems`, P-62): on an assessment-only release the facts are asked of the person through `requiredFacts`, so AS-2a replaces that check there with "the fact is a live library field". Facts the provincial gates read that the library lacks (a NOC TEER category, a points total, a connection to the province) are added in the data parts through the library's own guarded change, each labelled Sample where no official page defines it.
 * No lead assessment store (FO-15a/b not built: R1.106's parts); AS-1g (#3478, draft) and AS-1s (scores) not merged.
 
 ## The five streams (P-607 (9): the stream whose official page publishes its own grid or points)
