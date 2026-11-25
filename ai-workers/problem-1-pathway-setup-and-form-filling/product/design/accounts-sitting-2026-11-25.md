@@ -46,6 +46,14 @@ Written 25 Nov 08:3x IST by the sitting session (Opus 5.5 medium, P-788), from `
 | — | Microsoft Entra test app (Outlook) | none in Release 1's first build | — | — | — | — | **deferred by P-621** (founder, 16 Nov: Google only for now) |
 | — | Alarm email | R1.13 | — | — | SNS topic `xr-staging-on-call` | US$0 | **done, P-818** |
 
+## Founder rule for every Lead, lane and sub-lane (founder, typed 25 Nov ~09:2x IST, in this sitting)
+
+"Why you are not doing all of these yourself? ... You have all my approvals and computer skills. Do everything yourself in inbuilt browser. And please make this note and keep handing it over to all the leads and future leads and all the sub-lanes."
+
+**How to apply:** every browser step for an outside account (navigate, open tabs, click, choose settings, test or sandbox modes, decline cookies, create test objects, check results) is done by the session itself in the built-in browser, in a tab of its own. The founder is asked only for what no agent may do whatever the approval: typing a password or one-time code, and copying or pasting an API key or secret value (the session opens both pages, the founder copies on one and pastes on the other). If the built-in browser's pane is hidden (the session is not open in a window), the page may not draw: ask the founder once to open the session with its Browser pane showing. Extends P-580 and the Lead's "do it yourself first" rule; the Lead records it as a DECISIONS row and in every hand-over.
+
 ## Log
 
 (One line per account as it opens: date and IST time, account, where the value lives by name, rows unblocked.)
+
+* **25 Nov 09:4x IST, Stripe test mode: open.** Account "Expat Ready" was already there (founder signed in). Connect forced its own sandbox, so the working sandbox is **"New business" (`acct_1UbvT1HcKzI5jQfN`, Test)**, with Connect on and business model "platform" chosen; the first sandbox (`acct_1Uc4KPQY3Fc3AOMz`) is not used. Founder pasted that sandbox's test secret key into **`xr/staging/PLATFORM_STRIPE_SECRET_KEY`** (Secrets Manager ca-central-1; new version seen on its Versions tab; value not seen by the session; the loader refuses a malformed or live key at the next deploy, which checks it). Unblocks **R1.22, R1.57, R1.61, R1.91**. **Still to do (builder rows):** the two webhook endpoints need staging's address and the app's webhook routes, so `PLATFORM_STRIPE_WEBHOOK_SECRET` and `PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET` (the latter has no `xr/staging/` secret in CDK yet) are set when PF-5 part 2 / FO-7c register them; the session makes the endpoint, the founder pastes the `whsec_` value. Cost US$0.
