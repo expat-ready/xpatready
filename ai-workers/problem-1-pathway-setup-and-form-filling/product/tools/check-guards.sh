@@ -686,9 +686,10 @@ SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    fo
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
 # OS-72: the verify skill's plan; each row switches one rule off.
 MUT="$MUT"'
-OS72 demo|prototype/studio/tools/verify-plan.sh|s/ \&\& \[ "\$PORT" != 4400 \]//|check-verify-plan.sh
+OS72 cap|prototype/studio/tools/verify-plan.sh|s/-lt "\$MAX" ]; then caps+=/-lt 99 ]; then caps+=/|check-verify-plan.sh
+OS72 tests|prototype/studio/tools/verify-plan.sh|/^if ! printf .%s.n. "\$files" /s/ grep -vqE / grep -qE /|check-verify-plan.sh
 OS72 empty|prototype/studio/tools/verify-plan.sh|/select-suites.mjs --packs failed/s/exit 2/true/|check-verify-plan.sh
-OS72 records|prototype/studio/tools/verify-plan.sh|/^case "\$kind" in notes/s/records)/none)/|check-verify-plan.sh'
+OS72 data|prototype/studio/tools/verify-plan.sh|/scoring data could not be read/s/exit 2/true/|check-verify-plan.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
