@@ -114,7 +114,12 @@ try {
   const sent = await api(TA, "POST", `/front-office/money/trust/requests/${q1}/send`);
   ok("J-60 W3 pass (API step): Send → Sent as DR-0001 for CAD 1,130.00, emailed", sent.status === 200 && sent.body?.number === "DR-0001" && sent.body?.totalMinor === 113000 && sent.body?.email === "SENT", sent.body);
   // The local email adapter's inbox (GET /api/demo/platform-inbox, a lane copy only), as J-100 reads it.
-  const inbox = (await api(null, "GET", `/demo/platform-inbox?address=${encodeURIComponent(`j60.ana.${run}@example.org`)}`)).body?.messages as { subject: string; body: string }[] ?? [];
+  // The mail leaves through the outbox's own send, a moment after the commit: read for up to 15 s, as J-100 does.
+  let inbox: { subject: string; body: string }[] = [];
+  for (let i = 0; i < 75 && !inbox.some((m) => /DR-0001/.test(m.subject)); i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    inbox = (await api(null, "GET", `/demo/platform-inbox?address=${encodeURIComponent(`j60.ana.${run}@example.org`)}`)).body?.messages ?? [];
+  }
   const mailText = inbox.map((m) => `${m.subject} ${m.body}`).join(" ");
   ok("J-60 W3 pass: the email holds DR-0001, CAD 1,130.00 including CAD 130.00 estimated tax, and the trust details; it offers no card",
     /DR-0001/.test(mailText) && /1,130\.00 \(including CAD 130\.00 estimated tax\)/.test(mailText) && /transit 00011/.test(mailText) && !/card/i.test(mailText), mailText.slice(0, 600));
