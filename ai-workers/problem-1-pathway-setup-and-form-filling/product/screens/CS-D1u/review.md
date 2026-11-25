@@ -39,3 +39,52 @@ BIC-11 Met: Add is a secondary button, with no primary in the block (`w1-1440-pa
 **Not checked:** a real screen reader; 1280 and 375 px UXL screenshots; the full CI; deactivated staff (`status`) between creation and finish; the S3 rail (off by design). D17 and D20 stay with the founder.
 
 Verdict: Changes d3510ea38c13767f7c7cb0a16dae7bbbc5f51747
+
+## Round 2 (diff-only, cba94bbb)
+
+**Verdict: Changes.** One Major (Must), in the journey script only, and a two-line fix. The rail change and the product code close every round-1 Must. Commit reviewed: `cba94bbbe5926f683f47114fcfda786a96dd4ac4`. Diff read: `git diff 710f5e3c5 cba94bbbe`, the fixes after the round-1 records. Reviewer: the same independent session role (not the builder). **Journey score: 9.5 / 10, pass** (round 2 in `journey-test-reviewer-2026-11-25.md`).
+
+### Round-1 findings
+| Finding | Status | Evidence |
+|---|---|---|
+| Review 1 / B3 (Major): bytes kept after a refusal | **Closed** | The door's `check()` runs after PF-F4 and before `FilesPort.put`, outside the transaction (`rail.ts:188-191`). A 4xx after `put` removes the key and the staging copy (`:210`). DW5 (damaged PDF) and DW9 (role ended mid-upload) now also check "no stored bytes, no staging copy". In check_pff2 the "CS-D1u rail" checks cover a check that returns 4xx, a check that returns 5xx (copy kept), maxBytes at finish, onComplete 4xx after `put` (key removed), and a non-refusal failure (kept, then swept). |
+| Review 3 / B1 (Major): pypdf inside the 5 s transaction | **Closed** | pypdf runs in `check()` (`staff-door.ts:81-89`). DW11: a sound 10.4 MB PDF of 90,000 pages is stored, 204 in 7.9 s. Before, it got a 500 that looped forever. |
+| B2 (Major): over 20 MB taken | **Closed** | `maxBytes: MAX_DOCUMENT_BYTES` (`staff-door.ts`), checked at creation (`rail.ts:152`) and at the finish (`:184`). DW10: 20 MB + 1 byte gets 413 in words; exactly 20 MB opens. |
+| Review 2 / B4 (Major): "no longer on the server" for a person who may not upload | **Closed** | `uploaderOf` answers 403 in words: NO_RIGHT or NO_CASE_USER (`staff-door.ts:37-46`). `refusalWords` shows a door's own plain-text 404 (`resumable-upload.ts:43`). DW3 and DW9 pass. J-64 W6 shows the Read-only words on screen (it passed in my runs with a delay added; see R2-1). |
+| B5 (Minor): latin1 "repair" of correct names | **Closed** | The rail's name is kept (`staff-door.ts:87`). DW12 passes. |
+| B6 (Minor): any linked case user accepted | **Closed** | Only a runtime case user with case duty is accepted (`staff-door.ts:43`). DW3 B6 (client login) gets 403. |
+| Review 6 (Minor): no test that turns red for the firm check or the finish re-check | **Closed** | DW3 "door's firm check" (a sample-solo session bridged to a sample-firm user gets 404) and DW9. |
+| Review 4 / B8 (Minor): focus to `<body>` | **Closed in product** | `aria-disabled` while busy, and focus goes back to Add after sign-in and after the upload ends (`other-documents.tsx:28-31, 36, 54`). The decision panel takes focus only when the sign-in happened inside that panel (`case-decision.tsx:100-112`). check_csc1s_decision_browser: 52/52. J-64 W6 focus checks pass (with the delay). |
+| Review 5 (Minor): a refusal said twice | **Closed** | The status stays empty when failed (`other-documents.tsx:58`). J-64 W4 checks it. |
+| Review 7 / B9 (Minor): list words, no fold | **Closed** | "· current" and "· replaced <date>". Earlier versions fold behind "N earlier versions" (FoldOut). J-64 W5 checks it. |
+| Review 8 (Minor): DOCS file kept after a failed commit | **Partly closed** | Closed for the multipart route (`case-documents.ts:285-287`). Still open on the rail finish: `staff-door.ts:93` calls `storeVersion` inside the rail's transaction, and if that commit fails the DOCS file stays; a retry writes a new one. Rare. Carry it as a follow-up (R2-4). |
+| Review 9 (Minor): ports, axe, keyboard, 1024 px | **Closed** | Ports are 4433 and 4434. W6 adds 1024 px, keyboard, axe, and the Read-only words. |
+| B7 (closed case still takes uploads), B10 (reload drops the upload silently) | **Carried** | Follow-ups, as agreed. Both gaps were already on the multipart route. |
+
+### New findings, worst first
+1. **R2-1 Major (Must): J-64 W6 fails as committed on this Linux Chromium: 2 of 2 runs failed.** It timed out at `j_64.ts:206`: `Promise.all([p6.waitForEvent("filechooser"), p6.keyboard.press("Enter")])` saw no file chooser in 30 s. The product side is in place: focus was on the Add button, the token was present, and the sign-in card had closed (probe screenshot in the scratchpad). The same walk passes 16/16 when a 150 ms wait comes between arming the waiter and pressing Enter. In that run, the unchanged Read-only step (`:220`, same pattern) then failed once (`roWords` null). So this is a test race: `keyboard.press` lands before the file-chooser interception is armed, and `locator.click()` in W1 hides the race with its actionability wait. CI walks journeys on Linux Chromium (`item-proof.yml`, `walks.yml`), so the PR's proof for review 2 and 4 is not reliable. Fix: arm the waiter, give the page a frame, then press, at both lines. For example, `const w = p6.waitForEvent("filechooser"); await add6.press("Enter"); await w`. Then run it twice.
+2. **R2-2 Minor: while an upload is busy, the Add button looks enabled and a press does nothing.** `aria-disabled` has no style. The Button's `disabled:` classes do not match it (`w5-pixel7-paused.png` shows a normal button next to "Upload paused"). The status words do say what is happening. Fix: add `aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`, or the team Button's own disabled look.
+3. **R2-3 Minor (rail, follow-up): the expiry sweep can retire a key that a finish is committing right now.** `sweep` reads `plat_file` in its own transaction (`rail.ts:250`). Take a finish whose PATCH started just before 24 h, is past `files.put`, and has not yet committed. The sweep sees no row, and `files.delete` writes the PF-Fd tombstone. Then the finish commits a SCANNING `plat_file` row that names retired, absent bytes. The window is milliseconds and it needs the 24 h boundary. Fix: skip ids in `this.#finishing`, or delete only keys of uploads expired more than an hour. When the sweep runs before `put`, it is safe: deleting an absent key retires nothing.
+4. **R2-4 Minor: review 8 is still open on the rail finish** (see the table). Fix: give `storeVersion` the plan from `check`, and remove `plan.abs` when the rail's finish throws, for example through an `onFailed` hook or the door's own try.
+5. **R2-5 Nit (rail): if `store.remove` fails after a 4xx (the error is swallowed at `rail.ts:210`), a later HEAD runs the finish again.** The second `put` meets the retired key and answers 409 "This file is already stored.", which is wrong. Rare. Logging the swallowed error would make it visible.
+
+### Regression questions asked in the brief
+* **Can deleting a key after a 4xx remove another upload's bytes, or an older version's?** No. The key is `case-documents/<person>/<upload id>`, and the upload id is unique (`staff-door.ts` keyOf). Document versions live in DOCS under their own ids, not under this key. A 4xx means the transaction rolled back, so no row names the key. A second process finishing the same upload gets P2002 and returns the first file (`:207-208`). The theoretical case: one process refuses in onComplete and another succeeds on the same upload. That needs two API tasks, and the rail is off there (`off`, M1 of #3640).
+* **Does a retired key refuse a retry forever?** Not on any reachable path. After a 4xx, the staging copy is removed, so a retry gets 404 and a new upload gets a new id and key. After a 5xx, nothing is deleted. `put` of the same bytes on a live key is idempotent (`front-office/files.ts:45`), so the retry stores. The exception is R2-5.
+* **Does the expiry sweep race a finish in flight?** Only in the narrow window of R2-3.
+* **The decision panel's focus change.** The `focusin` tracker ignores `<body>`, so when the card unmounts the last place stays "inside". Signing in on the decision panel's own card (`case-decision.tsx:128`, inside `root`) still moves focus to its heading. Signing in on the Documents card leaves focus with the Documents panel. check_csc1s 52/52. That suite has no named focus check, so the m1 behaviour rests on code reading plus J-64 W6.
+
+### What I ran (isolated copies, never :4400; Postgres 127.0.0.1:54329; US$0)
+| Run | Result |
+|---|---|
+| `check_pff2_uploads.ts` | exit 0, 52/52 |
+| `check_csd1u_staff_door.ts` 4433 | exit 0, 30/30 |
+| `check_csc1s_decision_browser.cjs` 4435 (the lane's port in place of its header's 4491) | exit 0, 52/52 |
+| `journeys/j_64.ts` j64 4434, as committed, twice | **exit 1 both times**: 12 PASS, then a TimeoutError at `:206` (R2-1) |
+| a scratchpad copy of j_64 with a 150 ms wait before W6's Enter, twice | 16/16 once; 15/16 once (the unchanged `:220` raced) |
+
+The screenshots j_64 rewrote are restored with `git checkout`. Someone else changed `break-report.md` in this worktree during the review (not this reviewer). I left it as found.
+
+**#3640, commit 38ddab45 (the rail part: `rail.ts`, `doors.ts`, `check_pff2_uploads.ts`, identical at this head):** no Blocker or Major. Minors R2-3 and R2-5 are follow-ups. My verdict on that commit is **Approve** for #3640. R2-1 is in `j_64.ts`, not in that commit.
+
+Verdict: Changes cba94bbbe5926f683f47114fcfda786a96dd4ac4

@@ -47,3 +47,21 @@
 3. Keep focus on the Add button (`aria-disabled` while busy, focus back after sign-in), and announce a refusal once. This raises accessibility.
 
 **Not tested:** a real screen reader; an intended user's unaided walk (D17 and D20 stay with the founder); a deactivated staff member mid-upload; the S3 rail.
+
+## Round 2 (diff-only, cba94bbb)
+The round-1 journeys were replayed with J-64 W1 to W6 plus the staff-door suite (30/30), with refusal words checked underneath (403 and 404 bodies, no FilesPort bytes, no staging copy). J-64 as committed fails at W6 2 of 2 times on Linux Chromium. The cause is a test race (review R2-1): the file-chooser waiter is armed while Enter is already pressed. With a 150 ms wait, W1 to W6 pass 16/16 (focus back on Add after sign-in and after upload, axe 0 at 1024 px, the Read-only words).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | W1, W5, W6 (keyboard) |
+| Next step obvious | 1 | unchanged |
+| Plain words | 1 | Read only: "Your role cannot add documents to cases. Nothing was stored."; no case user, role ended, person not on case: their own words |
+| Feedback and state | ½ | the status line and the refusal are each said once; the Add button looks enabled while busy (R2-2) |
+| Correct data | 1 | refused files leave no row, bytes or staging copy (DW5, DW9) |
+| Error recovery | 1 | a slow sound PDF stores (DW11); a 5xx keeps the upload for a retry |
+| Accessibility and screen sizes | 1 | focus kept (W6), axe 0, 1024 px |
+| Speed | 1 | unchanged; the 10 MB, 90k-page PDF takes 7.9 s, which is the pypdf limit |
+| Visual quality | 1 | "· current", earlier versions folded |
+| Trust and sources | 1 | unchanged |
+
+**Score 9.5 / 10, pass.** Fix first: R2-1, so the scripted replay is reliable. Not tested: a real screen reader, and an unaided walk by an intended user (D17/D20 stay with the founder).

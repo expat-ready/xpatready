@@ -96,3 +96,51 @@ starts the file again"; the panel tells the person nothing.
   (`case-documents.ts:294`), and the checklist read that lists them is officer-only (`case-checklist.ts:143`).
 
 Verdict: Changes d3510ea38c13767f7c7cb0a16dae7bbbc5f51747
+
+## Round 2 (cba94bbb)
+
+Head cba94bbbe5926f683f47114fcfda786a96dd4ac4 (fixes `git diff 710f5e3c5 cba94bbbe`). Isolated copy `brk64b` on :4437
+(PLATFORM_IDENTITY=local; stopped and dropped after). Same probes as round 1 plus new ones; scripts in the scratchpad.
+
+**Round 1, re-run.** B1 closed: the 8 s, 99,500-page PDF is 204 (9.9 s), the same as multipart; a small file behind two
+multipart reads is 204 (7.5 s); ten slow finishes at once are all 204 (13-49 s), a checklist GET meanwhile 58 ms. B2
+closed: declared 20 MiB → 201, 20 MiB+1 → 413 in words; a valid PDF of exactly 20,971,520 bytes is stored; multipart
+matches (20 MiB 201, +1 413); a body longer than declared is tus's 413. B3 closed for a refusal at the check: damaged PDF
+400, no new bytes, no staging, nothing in the firm folder. B4 closed: role ended mid-upload, and Add again, say "Your role
+cannot add documents to cases. Nothing was stored." B5 closed: `Ã©tude.pdf` stays as sent. B6 closed: linked to `user-A`,
+to client `user-P`, to nobody, or relinked to the client before finish: 403 in words, nothing staged. B8 closed: keyboard
+at 1024 px, focus is on Add after the inline sign-in and after the upload. B9 closed: 1 current row, "48 earlier
+versions" folded, Add 90 px below the panel top at 1440, 1024 and 200 % zoom, no overflow.
+
+**N1 Minor (B3 residue): a 5xx after put, then a refused retry, leaves bytes no row and no cleanup knows.** On a retry,
+check()'s refusal removes only the staging copy (`rail.ts:190`), not bytes an earlier attempt put; the sweep reads only
+staging (`rail.ts:237`), so it never sees them. Steps: another transaction holds the person+type lock 9 s; PATCH → 500
+after 8.5 s (P2028), key put, staging kept (correct). End the role; HEAD → 403, staging gone; bytes stay. Role back: HEAD
+404. A sweep 25 h later left the key: still 1 live file with no `plat_file` row at the end of the run.
+
+**N2 Minor: the expiry cleanup can delete bytes a finish in flight is about to name.** `rail.ts:250` treats "no committed
+row" as "no row": a finish between `files.put` and its commit is not seen. Steps (the rail's own `sweep()` on the copy's
+staging, file store and database, clock +25 h): finish waits 3 s in its transaction, sweep runs → key tombstoned, bytes
+gone, staging removed; the finish then commits: PATCH 204 with a file id, `plat_file` SCANNING and a new current
+`case_document`, but no bytes under the key (2 of 2 runs). Needs a finish in the last seconds before expiry.
+
+**N3 Minor: a slow check under a HEAD holds tus's lock; other requests get tus's raw words.** A HEAD's finish runs inside
+tus's lock (`rail.ts:80`); `#words` passes tus's own answers through (`rail.ts:124`). Steps: nine multipart slow PDFs fill
+the reader queue; staff PATCH, HEAD at +2 s, HEAD at +4 s, empty PATCH at +6 s. The finish takes 48 s. The second HEAD
+gets 500 at 34 s and the empty PATCH 500 "failed to acquire lock before timeout". Later HEAD 200, one file. The client
+retries a 500, so it recovers; no second file or version.
+
+**N4 Minor: access is re-checked before the PDF read, not at the write.** `staff-door.ts:83` checks, then `:87` reads (8 s
+here, longer behind the queue); `onComplete` no longer checks. Steps: user-T's role ended 2.5 s into an 8 s finish → 204,
+version and audit line `staff:<id>` written 6 s after the role ended. Round 1's "held" (refused when ended before finish)
+still holds when the role ends before the last byte.
+
+**Held (new code).** 403 vs 404: firm B's Owner gets 404 "No such case." for a firm-A case with A's person, an own-line
+type, an unknown type, a random or no person, upper-case id, and for a random case; median 7 vs 8 ms. Firm-B staff with no
+right: 403 "Your role cannot…" for an A case, a random id and garbage alike. Firm B's own case works (201). The key is per
+upload (`case-documents/<person>/<upload id>`), so neither removal path touches another upload's or an earlier version's
+bytes; every version's key was live at the end except N1/N2's. A plain retry after the 5xx stores the same bytes under the
+same key (put accepts it): one row, one version, no extra copy in the workspace folder. A 4xx after put (rail suite) is
+final by design (staging goes too), so key retirement never refuses a retry that could still work.
+
+Verdict: Approve cba94bbbe5926f683f47114fcfda786a96dd4ac4
