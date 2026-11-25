@@ -146,6 +146,15 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
     : `Please check this answer. It did not match the ${doc} on file. If it is wrong, change it here. Your case officer settles any difference with you.`;
 }
 
+/** Who may reach a case at all, as reach() decides it before any look-up (R1.10 A5: a door that checks an id's shape before
+ *  the body calls this first, so authorise before validate stays: a person with no case duty is 403 whatever the id). */
+export function mayReach(actor: Actor, want: "read" | "answer" | "officer") {
+  const officer = isOfficer(actor), client = (actor.duties as readonly string[]).includes("answer");
+  if (!officer && !client) fail(`${actor.name} (simulated) works on configuration, not on cases.`, HttpStatus.FORBIDDEN);
+  if (want === "officer" && !officer) fail("Only the case officer can do this.", HttpStatus.FORBIDDEN);
+  return { officer, client };
+}
+
 @Injectable()
 export class Runtime {
   constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs,
@@ -163,9 +172,7 @@ export class Runtime {
    *  its release's hash: a changed pin or release is refused, never read. */
   async reach(actor: Actor, caseId: string, want: "read" | "answer" | "officer") {
     const workspaceId = await this.ws.id();
-    const officer = isOfficer(actor), client = (actor.duties as readonly string[]).includes("answer");
-    if (!officer && !client) fail(`${actor.name} (simulated) works on configuration, not on cases.`, HttpStatus.FORBIDDEN);
-    if (want === "officer" && !officer) fail("Only the case officer can do this.", HttpStatus.FORBIDDEN);
+    const { officer } = mayReach(actor, want);
     const c = await this.db.case.findFirst({ where: { id: caseId, workspaceId }, include: REACHED });
     // C6.11 (BR-20): staff reach only their own firm's cases; another firm's case is "not found", as for a client.
     if (!c || (!officer && c.clientActorId !== actor.id) || (officer && c.firmKey !== firmOfActor(actor)?.key)) fail("No such case.", HttpStatus.NOT_FOUND);
