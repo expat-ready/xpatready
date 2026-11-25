@@ -44,14 +44,15 @@ ok "branch-sweep.sh, which reads items.json, waits for lead-queue.sh, which writ
 # steps 3 and 3b, cut out and run as written, on three comments: an open PR's question and lane report, a closed PR's question
 sed -n '/^# One read of every comment/,/^git fetch/p' "$L" | grep -v '^git fetch' > "$T/asks.sh"; mkdir -p "$T/a"
 c() { jq -nc --argjson n "$1" --arg b "$2" '{n: ($n | tostring), b: $b}'; }
-asks() { ( STATE_DIR="$T/a"; since=x; gh() { [ "${RC:-0}" = 0 ] || return 1; [ -z "${NONE:-}" ] || return 0; c 7 "x Question for the tech lead: y"; c 7 "again: Question for the tech lead"; c 8 "Ready for Lead 5"; c 9 "Question for the tech lead"; c 10 "thanks"; [ -z "${CUT:-}" ] || printf '{"n":"8","b":"Question fo\n'; [ -z "${HALF:-}" ]; }
-  ACT() { echo "ACT $1"; }; fresh() { :; }; . "$T/asks.sh" ) 2>&1; }
+asks() { ( STATE_DIR="$T/a"; since=x; gh() { [ "${RC:-0}" = 0 ] || return 1; [ -z "${NONE:-}" ] || return 0; c 7 "x Question for the tech lead: y"; c 7 "again: Question for the tech lead"; c 8 "Ready for Lead 5"; c 9 "Question for the tech lead"; c 10 "thanks"; [ -z "${FULL:-}" ] || c 7 "Question for the tech lead: please start the full run"; [ -z "${CUT:-}" ] || printf '{"n":"8","b":"Question fo\n'; [ -z "${HALF:-}" ]; }
+  ACT() { echo "ACT $1"; }; fresh() { :; }; seen() { :; }; act=0; . "$T/asks.sh" ) 2>&1; }
 echo '[{"number":7},{"number":8},{"number":10}]' > "$T/a/prs-body.json"; o=$(asks)
 ok "one ACT for an open PR's question and one for a lane report, none for a closed PR" "$([ "$(grep -c '^ACT' <<<"$o")" = 2 ] && grep -q '#7 has a new question' <<<"$o" && grep -q '#8 has a lane report' <<<"$o" && echo 1)" "$o"
 echo '[]' > "$T/a/prs-body.json"; o=$(asks); ok "an empty open-PR list drops no question" "$(grep -q '#9 has a new question' <<<"$o" && echo 1)" "$o"
 echo 'not json' > "$T/a/prs-body.json"; o=$(asks); ok "an unreadable open-PR list drops no question" "$(grep -q '#9 has a new question' <<<"$o" && grep -q '#7 ' <<<"$o" && echo 1)" "$o"
 o=$(RC=1 asks); ok "comments that cannot be read are an ACT, never 'no questions'" "$(grep -q '^ACT comments since x unreadable' <<<"$o" && echo 1)" "$o"
 o=$(CUT=1 asks); ok "an answer cut short is an ACT, and what was whole before the cut is still shown" "$(grep -q '^ACT comments since x cut short' <<<"$o" && grep -q '#7 has a new question' <<<"$o" && echo 1)" "$o"
+echo '[{"number":7}]' > "$T/a/prs-body.json"; o=$(FULL=1 LEAD_WATCH_FULL_RUN_POST=0 asks); ok "3a: an open PR's question asking for the full run is an ACT with the words (OS-06)" "$(grep -q '^ACT   #7 asks for the full run: type /run full' <<<"$o" && echo 1)" "$o"
 o=$(NONE=1 asks); ok "no comment in the window is no ACT" "$([ -z "$o" ] && echo 1)" "$o"
 o=$(HALF=1 asks); ok "a later page that fails is an ACT, with the first page's questions shown" "$(grep -q '^ACT comments since x unreadable' <<<"$o" && grep -q '#7 has a new question' <<<"$o" && echo 1)" "$o"
 ok "the comments are read by time, in full, not found by a search" "$(grep -q 'issues/comments?since=$since&per_page=100" --paginate' "$L" && ! grep -qE '^[a-z]+=\$\(gh search prs' "$L" && echo 1)"
