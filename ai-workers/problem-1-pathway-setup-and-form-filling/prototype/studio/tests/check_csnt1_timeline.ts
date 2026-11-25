@@ -22,7 +22,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261125100000_csnt1c_case_client_note", PART1 = "20261122110000_csnt1a_case_note";
+const NEW = "20261125100000_shared__csnt1c_case_client_note", PART1 = "20261122110000_csnt1a_case_note";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_csnt1c_${process.pid}`, DEMO = `xr_studio_csnt1c_demo_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
