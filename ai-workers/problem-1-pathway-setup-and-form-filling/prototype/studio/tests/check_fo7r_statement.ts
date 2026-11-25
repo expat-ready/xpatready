@@ -287,6 +287,11 @@ try {
   const small = await walk(allStmt, PA, { pageSize: "2" }), one = await walk(allStmt, PA, { pageSize: "200" });
   ok("FO-7r S7 pass: pages of 2 walk exactly the lines of one page of 200, in the same order", JSON.stringify(small.items) === JSON.stringify(one.items) && one.items.length > 4 && one.next === null, { small: small.items.length, one: one.items.length });
   const big = await call(tA, "GET", `/front-office/money/parties/person/${PA}/statement?pageSize=500`), forged = await call(tA, "GET", `/front-office/money/parties/person/${PA}/statement?after=bm9wZQ`);
+  // review R4-1: a forged cursor whose fact time is no real time is 422 naming after, never the database's 500
+  const forge = (r: string) => Buffer.from(JSON.stringify({ a: 0, c: "CAD", t: "2026-11-25T00:00:00.000000", o: 1, r, id: PA, v: PA }), "utf8").toString("base64url");
+  const bad99 = await call(tA, "GET", `/front-office/money/parties/person/${PA}/statement?after=${forge("2026-99-99T99:99:99.000000")}`), bad0 = await call(tA, "GET", `/front-office/money/parties/person/${PA}/statement?after=${forge("0000-01-01T00:00:00.000000")}`);
+  const good1999 = await call(tA, "GET", `/front-office/money/parties/person/${PA}/statement?after=${forge("1999-12-31T23:00:00.000000")}`);
+  ok("FO-7r S7 fail (review R4-1): a cursor with time 2026-99-99 or year 0000 → 422 naming after; a real 1999 time → 200", bad99.status === 422 && bad0.status === 422 && JSON.stringify(bad99.body).includes("after") && good1999.status === 200, { bad99: bad99.status, bad0: bad0.status, good: good1999.status });
   ok("FO-7r S7 fail: pageSize 500 → 422 naming pageSize; a cursor the list did not give → 422 naming after", big.status === 422 && JSON.stringify(big.body).includes("pageSize") && forged.status === 422 && JSON.stringify(forged.body).includes("after"), { big: big.body, forged: forged.body });
 
   // ---------------------------------------------------------------------------------------------------- S8

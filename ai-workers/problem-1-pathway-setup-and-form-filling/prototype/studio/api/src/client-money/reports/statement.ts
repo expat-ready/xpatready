@@ -39,7 +39,8 @@ export type Statement = { party: Party; period: { from: string | null; to: strin
 const Query = z.strictObject({ from: Day.optional(), to: Day.optional(), caseId: z.string().regex(UUID).optional(), pageSize: z.string().optional(), after: z.string().optional() });
 /** A fact's own time in the cursor, as written by to_char: any year the database holds (break R3-m1: a payment another
  *  writer dated 1999 or 3001 must not end the walk; the page's own key `t` is at or after the invoice's issue). */
-const FactTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$/);
+const FactTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$/).refine((t) => {   // a real time of years 0001-9999 (review R4-1: 2026-99-99 reached the database, a 500)
+  const d = new Date(`${t.slice(0, 23)}Z`); return t.slice(0, 4) !== "0000" && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 23) === t.slice(0, 23); });
 const Cursor = z.strictObject({ a: z.union([z.literal(0), z.literal(1)]), c: z.enum(["CAD", "USD"]), t: Stamp, o: z.number().int().min(0).max(2_147_483_647), r: FactTime, id: z.string().regex(UUID), v: z.string().regex(UUID) });
 /** Trust lines sort by seq alone: one fixed key time (never created_at, the transaction's start: trust/reads.ts's break Major 1). */
 const TRUST_KEY = "2000-01-01 00:00:00+00";
@@ -118,24 +119,6 @@ export class MoneyStatement {
   }
 }
 
-/** The period's totals per account and currency, and one page of its lines (each with its running balance). */
-async function read(tx: Tx, base: Prisma.Sql, from: string | undefined, to: string | undefined, pageSize: number, after: z.infer<typeof Cursor> | null) {
-  const start = from ? Prisma.sql`(${from}::date::timestamp at time zone 'UTC')` : null, end = to ? Prisma.sql`((${to}::date + 1)::timestamp at time zone 'UTC')` : null;
-  const inPeriod = Prisma.sql`${start ? Prisma.sql`run.at >= ${start}` : Prisma.sql`true`} and ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}`;
-  const cur = after ? Prisma.sql`(run.acct, run.currency, run.k, run.o, run.r, run.id, run.inv) > (${after.a}::int, ${after.c}::text, (${after.t}::timestamp at time zone 'UTC'), ${after.o}::int, (${after.r}::timestamp at time zone 'UTC'), ${after.id}::uuid, ${after.v}::uuid)` : Prisma.sql`true`;
-  // one statement: the lines are computed once (run, materialized), the totals and the page both read from it (break
-  // M2: two statements computed the whole ledger twice)
-  const [one] = await tx.$queryRaw<{ totals: { acct: number; currency: "CAD" | "USD"; opening: string; closing: string; lines: number }[];
-      rows: { acct: number; currency: "CAD" | "USD"; k: string; o: number; r: string; id: string; inv: string; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amount: string; balance: string }[] }[]>(readSql(base, start, end, inPeriod, cur, pageSize));
-  const totals = one?.totals ?? [], rows = one?.rows ?? [];
-  const page = rows.slice(0, pageSize), last = page.at(-1), acct = (a: number): Account => a === 0 ? "INVOICES" : "TRUST";
-  return {
-    accounts: totals.map((t) => ({ account: acct(t.acct), currency: t.currency, openingMinor: Number(t.opening), closingMinor: Number(t.closing), lines: t.lines })),
-    items: page.map((r) => ({ account: acct(r.acct), currency: r.currency, at: `${r.at}Z`, kind: r.kind, reference: r.reference, invoiceId: r.invoiceId, caseId: r.caseId, amountMinor: Number(r.amount), balanceAfterMinor: Number(r.balance) })),
-    pageSize, next: rows.length > pageSize && last ? cursorText({ a: last.acct, c: last.currency, t: last.k, o: last.o, r: last.r, id: last.id, v: last.inv }) : null,
-  };
-}
-
 /** The page read's SQL (exported for the plan check in tests/check_fo7r_statement.ts). */
 export function readSql(base: Prisma.Sql, start: Prisma.Sql | null, end: Prisma.Sql | null, inPeriod: Prisma.Sql, cur: Prisma.Sql, pageSize: number): Prisma.Sql {
   return Prisma.sql`${base},
@@ -159,4 +142,22 @@ export function readSql(base: Prisma.Sql, start: Prisma.Sql | null, end: Prisma.
         row_number() over (order by pg.acct, pg.currency, pg.k, pg.o, pg.r, pg.id, pg.inv) as n
       from pg join sp on sp.acct = pg.acct and sp.currency = pg.currency and sp.k = pg.k and sp.o = pg.o and sp.r = pg.r and sp.id = pg.id and sp.inv = pg.inv)
     select (select coalesce(json_agg(t order by t.acct, t.currency), '[]'::json) from t) as totals, (select coalesce(json_agg(p order by p.n), '[]'::json) from p) as rows`;
+}
+
+/** The period's totals per account and currency, and one page of its lines (each with its running balance). */
+async function read(tx: Tx, base: Prisma.Sql, from: string | undefined, to: string | undefined, pageSize: number, after: z.infer<typeof Cursor> | null) {
+  const start = from ? Prisma.sql`(${from}::date::timestamp at time zone 'UTC')` : null, end = to ? Prisma.sql`((${to}::date + 1)::timestamp at time zone 'UTC')` : null;
+  const inPeriod = Prisma.sql`${start ? Prisma.sql`run.at >= ${start}` : Prisma.sql`true`} and ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}`;
+  const cur = after ? Prisma.sql`(run.acct, run.currency, run.k, run.o, run.r, run.id, run.inv) > (${after.a}::int, ${after.c}::text, (${after.t}::timestamp at time zone 'UTC'), ${after.o}::int, (${after.r}::timestamp at time zone 'UTC'), ${after.id}::uuid, ${after.v}::uuid)` : Prisma.sql`true`;
+  // one statement: the lines are computed once (run, materialized), the totals and the page both read from it (break
+  // M2: two statements computed the whole ledger twice)
+  const [one] = await tx.$queryRaw<{ totals: { acct: number; currency: "CAD" | "USD"; opening: string; closing: string; lines: number }[];
+      rows: { acct: number; currency: "CAD" | "USD"; k: string; o: number; r: string; id: string; inv: string; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amount: string; balance: string }[] }[]>(readSql(base, start, end, inPeriod, cur, pageSize));
+  const totals = one?.totals ?? [], rows = one?.rows ?? [];
+  const page = rows.slice(0, pageSize), last = page.at(-1), acct = (a: number): Account => a === 0 ? "INVOICES" : "TRUST";
+  return {
+    accounts: totals.map((t) => ({ account: acct(t.acct), currency: t.currency, openingMinor: Number(t.opening), closingMinor: Number(t.closing), lines: t.lines })),
+    items: page.map((r) => ({ account: acct(r.acct), currency: r.currency, at: `${r.at}Z`, kind: r.kind, reference: r.reference, invoiceId: r.invoiceId, caseId: r.caseId, amountMinor: Number(r.amount), balanceAfterMinor: Number(r.balance) })),
+    pageSize, next: rows.length > pageSize && last ? cursorText({ a: last.acct, c: last.currency, t: last.k, o: last.o, r: last.r, id: last.id, v: last.inv }) : null,
+  };
 }
