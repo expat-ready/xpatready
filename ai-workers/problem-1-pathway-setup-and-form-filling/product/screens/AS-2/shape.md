@@ -51,3 +51,6 @@ Shape approved, with three changes: (a) FO-15a/b built in this lane after AS-2a;
 2. **The five streams** for the founder's P-607 (9) card: the five above (Ontario's Foreign Worker stream closed on 30 May 2026, so Ontario Workforce Priority). Recommended.
 3. **The client copy waits on FO-15b** (R1.106's part, unbuilt and unowned in flight). Recommend: whoever builds FO-15a/b next (R1.106's builder) does them before AS-2c; if no one is on them by the time AS-2d2 merges, this lane builds FO-15a and FO-15b from their BACKLOG rows (no duplicate).
 4. Saskatchewan's and Manitoba's 60-point gate reads an answered points total until AS-2e (recommended), rather than waiting for the grids.
+
+## The tech lead's second answer (Lead 5 on #3663, 25 Nov 12:20 IST)
+(1) AS-2a2 is its own part (each PR under 800 lines). (2) The provincial facts enter the field library as configurator data through the configurator's own guarded save, each fact with its source quote or a Sample label; no direct database insert. AS-2d1 therefore starts by adding a `gate` kind to C3.6's "Add the fact this rule needs" (`api/src/rule-facts.ts`, one proposal through `insertProposals`, a second person approves), then loads each stream's gates through the gates save.
