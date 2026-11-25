@@ -56,10 +56,10 @@ export const ourStaff = () => {
 };
 
 /** One firm-read line on that firm's trail, in `tx` (through AuditPort: its rules and its alert). */
-export async function recordFirmRead(tx: Tx, firmId: string, call: Call, scope?: string): Promise<void> {
+export async function recordFirmRead(tx: Tx, firmId: string, call: Call): Promise<void> {
   const { actor } = ourStaff();
   await auditEvent.record(tx, { firmId, actor, action: FIRM_READ, entity: "platform_firm", entityKey: firmId.toLowerCase(),
-    summary: "ExpatReady staff read this firm's records.", detail: { method: call.method, route: call.route, ...(scope ? { scope } : {}) }, before: null, after: null });   // a read: nothing before or after
+    summary: "ExpatReady staff read this firm's records.", detail: { method: call.method, route: call.route }, before: null, after: null });   // a read: nothing before or after
 }
 
 /** One firm-less cross_tenant.access line on the platform's own trail, in `tx`: the staff member (the actor) and the scope. */
@@ -171,11 +171,13 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
     const f = data.firmFilter ? req.query?.firm : undefined, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
     // AUD-3 breach read (R1.87 P6): a read across firms that names firms in its answer (noteFirmsRead, tracker.ts: one breach's
     // affected and notified firms) also writes one firm-read line on each of their trails, in the same transaction as
-    // its platform line: all or none, before the answer.
-    const firms = firmsReadInRequest().filter((f) => UUID.test(f));
+    // its platform line: all or none, before the answer. Round 1 (breaker M1 on #3660): a firm's line names neither the
+    // route nor the scope (a firm must not learn from it that our breach register names it, whatever we decided to tell
+    // it); both stay on the platform line, under the same correlation id. Up to 200 firms: 60 s (breaker m1, as notify).
+    const firms = firmsReadInRequest().filter((f) => UUID.test(f)), quiet: Call = { method: call.method, route: "/api/system" };
     await this.db.$transaction(async (tx) => {
       await recordCrossTenant(tx, data.scope, call, filters);
-      for (const f of firms) await recordFirmRead(tx, f, call, data.scope);
-    });
+      for (const f of firms) await recordFirmRead(tx, f, quiet);
+    }, { timeout: 60_000, maxWait: 10_000 });
   }
 }

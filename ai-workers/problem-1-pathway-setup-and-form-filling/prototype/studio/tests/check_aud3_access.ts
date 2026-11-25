@@ -352,8 +352,8 @@ try {
   const x0 = lines(`action = '${CROSS_TENANT}'`), b7 = lines(`firm_id = '${firmB}'`);
   const wantSA = idsWhere(`firm_id = '${firmA}' and at >= '${day(-1)}' and at < '${day(2)}'`).length;
   const sA = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}`, { token: ownerT });
-  const searchRead = (firm: string, rid: string | null) => sql(`select count(*) || '|' || coalesce(string_agg(actor || '|' || (detail->>'route') || '|' || (detail->>'scope'), ','), '') from audit_event
-    where firm_id = '${firm}' and action = '${FIRM_READ}' and correlation_id = '${rid}'`);
+  const searchRead = (firm: string, rid: string | null) => sql(`select count(*) || '|' || coalesce(string_agg(actor || '|' || (detail->>'route') || '|' || coalesce(detail->>'scope', 'none'), ','), '') from audit_event
+    where firm_id = '${firm}' and action = '${FIRM_READ}' and correlation_id = '${rid}'`);   // round 3: a firm's line names no route or scope (#3660 breaker M1)
   const allSA: any[] = [];
   for (let r = sA, n = 0; r.status === 200 && n < 20; n++) { allSA.push(...r.body.lines); if (!r.body.next) break; r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}&cursor=${r.body.next}`, { token: ownerT }); }
   ok("AUD-3 DW7 pass (SA-11-8): our search narrowed to firm A answers 200 with every line on firm A's trail in the range (any actor type), newest first, each with its firm, trail, who and plain action words",
@@ -361,7 +361,7 @@ try {
     && allSA.some((l) => l.action === FIRM_READ && l.actionWords === "ExpatReady staff read the firm's records") && new Set(allSA.map((l) => l.id)).size === allSA.length, { status: sA.status, got: allSA.length, wantSA });
   ok("AUD-3 DW7 fail (narrowed): the search narrowed to firm A holds none of firm B's lines and no platform-trail line", allSA.every((l) => l.firmId !== firmB) && !allSA.some((l) => l.firmId === null));
   ok("AUD-3 DW7 pass (SA-11-12, BR-14: the query that produced the evidence logs itself): each search page wrote one cross_tenant.access line on the platform's own trail naming the staff member, the scope and firm A, and one firm-read line on firm A's own trail (the firm whose lines it read)",
-    searchLine(sA.requestId) === `none|ourstaff:${OWNER}|${SEARCH_SCOPE}|${firmA}` && searchRead(firmA, sA.requestId) === `1|ourstaff:${OWNER}|${SEARCH}|${SEARCH_SCOPE}`, { line: searchLine(sA.requestId), read: searchRead(firmA, sA.requestId) });
+    searchLine(sA.requestId) === `none|ourstaff:${OWNER}|${SEARCH_SCOPE}|${firmA}` && searchRead(firmA, sA.requestId) === `1|ourstaff:${OWNER}|/api/system|none`, { line: searchLine(sA.requestId), read: searchRead(firmA, sA.requestId) });
   ok("AUD-3 DW7 fail: a search of firm A's lines writes nothing on firm B's trail", lines(`firm_id = '${firmB}'`) === b7);
   // Round 1, breaker M1: narrowed to firm A by an entity key or a correlation id, never naming the firm: firm A still gets
   // its read line, and firm A's access report shows it.
