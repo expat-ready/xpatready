@@ -176,3 +176,27 @@ Reviewer: Approve b901ec4bca97b68707a4e9964abaebe4850a427c
 **Verdict: Approve**
 * Blockers: none. Majors: none. Minors: none open. Round 2's m5 and break n2, n3 and n5 are fixed, and n2 and n3 each have a fail test that bites.
 * Nits (optional, part 2 is fine): n1 (pin `extra_float_digits` with one test), n2 (the "2 KB" in the header).
+
+## Round 4 (diff-only, allowed by the tech lead)
+Head `041947a3853ab2afbc21dbbb6e3769fab4adde15`. Scope: `git diff 44f8e3902..041947a38` only (2 files, +14 / -8). Not re-run: the screen walk and the journey test (no screen or behaviour change in this diff; round 3's records stand).
+
+### What I checked
+* **`.mergify.yml`: the `mig-platform-custom` scope and its capacity of 1.** The scope holds `prisma/schema/platform-custom.prisma`, `migrations/*_platform-custom__*/**` and `migrations/*_shared__*/**`, the same shape as every other area. The PR's migration (`20261125130000_shared__pf22a_custom_fields`) is a `shared__` one, so the barrier scopes still serialise it.
+  * `bash product/tools/check-mergify-scopes.sh`: PASS (309 checks; 33 area scopes, 4 barrier areas).
+  * `migration-slots.py mergify --write` run on a scratch copy of the committed file (exit 0): the result is **byte-identical** to the committed `.mergify.yml`. The file is generated, not hand-edited.
+* **`tests/check_pf22a_custom_schema.ts`: is it a pure move?** Yes. Both versions have the same lines once blank lines are dropped and the lines sorted. The only differences are one added comment line (the P-600 reason) and one dropped blank line. Both versions have 70 `ok(` calls, so no check is added or dropped. The order does not change what is tested: the rollback runs on `DEMO`, and the later migrations and `prisma migrate diff` run on `EMPTY`.
+  * `bash product/tools/check-own-migration-guard.sh`: 47 passed, 0 failed.
+  * `own-migration-guard.py` on the round-3 version of the file: **REFUSED** (`walled()` read at line 66 and again at line 88, after the later-migrations loop at line 76). On the head version: PASS. So the move was needed, and it is enough.
+  * `npx tsx tests/check_pf22a_custom_schema.ts` (Postgres 127.0.0.1:54329): **86 passed, 0 failed**, the same count as round 3.
+
+### Findings
+None. No Blocker, Major, Minor or Nit is new in this diff. Round 3's nits n1 (`extra_float_digits` pin) and n2 ("2 KB" in the header) are still open. They are optional and can wait for part 2.
+
+### Could not check
+* CI's full run on this head. When I looked, `guards part 1-4` and `parts (1, 3-6, 9)` were still in progress, and `review-rounds` showed *cancelled*. `ci`, `fast`, `guard`, `pr-rules`, `read-gate`, `module-cards`, `outside-wave`, `completes-ready`, CodeQL and the Mergify protections were green.
+
+Reviewer: Approve 041947a3853ab2afbc21dbbb6e3769fab4adde15
+
+**Verdict: Approve**
+* Blockers: none. Majors: none. Minors: none.
+* Nits (optional, carried from round 3): n1, n2.
