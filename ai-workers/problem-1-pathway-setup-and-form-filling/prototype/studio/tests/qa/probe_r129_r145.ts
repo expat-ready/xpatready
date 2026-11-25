@@ -47,9 +47,11 @@ for (const w of [400, 1024]) {
     await p.keyboard.press("Escape"); await p.waitForTimeout(300);
     const closed = !(await dlg.isVisible().catch(() => false)); const back = await p.evaluate(() => (document.activeElement?.textContent ?? "").trim());
     line(open && closed && /^Merge/.test(back), "keyboard: Enter opens the merge dialog, Escape closes it, focus back on its Merge button", { open, closed, back });
-    const before = sql(`select count(*) from information_schema.tables where table_name like '%merge%'`);
-    await btn.click(); await p.getByRole("button", { name: /Next/ }).first().click().catch(() => {}); await p.reload(); await p.waitForLoadState("networkidle");
-    line(!(await p.getByRole("dialog").isVisible().catch(() => false)), "reload mid-dialog: the page comes back with no dialog open", before);
+    const merged = () => sql(`select count(*) from fo_person where merged_into_id is not null`);
+    const before = merged();
+    await btn.click(); await p.getByRole("button", { name: /Next/ }).first().click().catch(() => {}); await p.reload(); await p.waitForLoadState("networkidle"); await p.waitForTimeout(800);
+    const after = merged(), open2 = await p.getByRole("dialog").isVisible().catch(() => false);
+    line(!open2 && before === after, "reload mid-dialog: the page comes back with no dialog open and nothing merged (merged-away people before = after)", { before, after, dialog: open2 });
   } else line(false, "keyboard: a Merge button to open", "none on To review");
   await p.context().close(); }
 // API: Case Officer may not publish a template; unknown field via API 422 (repeat), very long subject refused in words

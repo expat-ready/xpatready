@@ -25,21 +25,35 @@ Independent re-run: the two runs on 373cf8d8c are separate jobs on separate mach
 * **W7 = the next capability's first step:** the walk ends on R1.30's Leads list (all open) showing Lena's lead with its filters. PASS.
 * No page error.
 
-## My own probes (`tests/qa/probe_r129_r145.ts`, on a copy after j_29 and j_45): 31/31 PASS
+## My own probes (`tests/qa/probe_r129_r145.ts`, on a fresh copy after j_29 and j_45): 31/31 PASS, exit 0 (rerun after the reviewer's round 1 tightened the reload check)
 * 400 and 1024 px: People to merge (To review and Merged) — no sideways scroll, axe WCAG 2.2 A/AA clean, no page error. Screenshot 400 px: rows stack, the case row's reason sits under its disabled Merge….
 * Wrong role by URL: the Case Officer opening `/front-office/duplicates` sees the pairs but **no Merge button** (the API refuses with 403 in j_29 W6).
 * Keyboard: Enter on Merge… opens the dialog, Escape closes it, focus returns to the Merge… button.
-* Reload mid-dialog: the page comes back with no dialog open and nothing merged.
+* Reload mid-dialog (open Merge…, Next, reload): no dialog open, and the count of merged-away people is the same before and after (2 = 2, `fo_person.merged_into_id`).
+* The same probe also covers R1.45's template screens and API (400/1024 px, axe, Case Officer 403, stale 409, empty and too-long subject 422); those lines are reported in the R1.45 report (#3790).
 
 ## Suites underneath (local, `run-suites.sh --only`, main 373cf8d8c)
-See the table at the end (filled when the run finished).
+All 10 PASS, exit 0 (records commit c7a094701 over main 373cf8d8c; app code identical to main; logs in `studio/var/suites`, not committed):
+
+| Suite | Result |
+|---|---|
+| check_fo9a_duplicates.ts | 53/53 |
+| check_fo9b_merge.ts | 88/88 |
+| check_fo9b_review.ts | 82/82 |
+| check_fo9b_auto_merge.ts (part 2b) | 39/39 |
+| check_fo9b_2m_money_merged.ts (part 2m) | 30/30 |
+| check_fo9s_duplicates_browser.ts | 32/32 |
+| check_fo9s_review_browser.ts | 38/38 |
+| check_fo9s_merge_browser.ts | 25/25 |
+| check_pf19s_templates_browser.ts (R1.45/R1.46) | 30/30 |
+| check_fo5f2_template_safety.ts (R1.45 nearest) | 72/72 |
 
 ## Bugs
 0 Blocker · 0 Critical · 0 Major · 0 Minor new. Builder-listed Minors from #3716 (not re-logged; for the Lead's list): after the lost-answer message Back then Next turns Merge on again (a second click is a safe 409); very long unbroken names overflow headers; the notice can outlive an Undo in another tab; `fieldWhy` trims differently from the server; 36 px buttons at 375 px; j_29's fixed 500 ms wait.
 Housekeeping (no row): j_29's step labels still say "part missing: FO-9b part 2b, #3527" and "bites once W4's control passes" although #3527 is merged — the steps themselves pass; the words are stale. Suggestion below.
 
 ## Known flaky suite
-`check_fo9s_merge_browser.ts` (being quarantined by #3760): result in the suites table; nothing it covers changed since #3716.
+`check_fo9s_merge_browser.ts` (being quarantined by #3760): passed first try here, 25/25; nothing it covers changed since #3716.
 
 ## What I could not test
 Headed browser pane (cloud copy, no display; the walks recording stands in). The shared demo :4400 read-only walk (not on this machine). Coverage (c8) not run this round.
