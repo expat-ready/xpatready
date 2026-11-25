@@ -41,3 +41,10 @@ Runtime lane, 25 Nov IST, from main 63f5cc913. **Draft until the tech lead appro
 6. **Branch per part:** this session's branch is `claude/eloquent-goodall-y7jjmw` (part 0 + 2a here); later parts need their own branches `claude/runtime-fo7c-<part>`. OK?
 
 Duplicate check: searched BACKLOG*.md (FO-7c, FO-7s2, J-61, PF-27), open PRs (all 28 open: "FO-7c", "Stripe", "pay link", "R1.57"; #3177 is J-61's challenge and says part 2 is not built), main's `api/src` (`client-money/card/` part 1 only; no `pay/` web module; no `j_57.ts`) and `qa/BUGS.md`; none.
+
+## Follow-ups from part 2a's review (Lead 5 on #3633, 25 Nov 11:49 IST)
+* **Later FO-7c row (with its migration):** store the open hosted payment's id on the invoice, so a settled, credited or replaced link expires its page at once (closes the accepted residual Minor: a page paid in the seconds before an offline payment lands).
+* **Part 2b:** card money above the amount due is recorded as FO-7b's "extra" (never fees earned), with a test.
+* **FO-7s2 part 2:** the client's pay page sends `Referrer-Policy: no-referrer` (the link's token is in Stripe's return URLs).
+* **FO-7w1 (#3654):** adds a deposit column; whichever of it and part 2a merges second adds the pay-link refusal for a deposit invoice.
+* **Part 5:** the first walk on `STRIPE_TEST_SECRET_KEY` prints only `GET /v1/account`'s id and `livemode`; it must be the "New business" sandbox with `livemode: false`.
