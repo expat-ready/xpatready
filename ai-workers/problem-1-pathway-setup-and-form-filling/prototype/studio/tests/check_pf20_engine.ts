@@ -24,6 +24,7 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { fakeAlerts } from "../ports/alert.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
+import { MessageRefused } from "../ports/messages.ts";
 import type { AuditPort } from "../ports/audit.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -45,8 +46,7 @@ try {
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(URL)} } });\n`);
   const diff = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
   ok("PF-20 DW0 pass: prisma migrate diff between the fully migrated database and the schema is empty", diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 600));
-  ok("PF-20 DW0 pass: the four auto_ tables each have PF-12's forced policy",
-    sql(`select count(*) from pg_class c where relname in ('auto_recipe','auto_recipe_step','auto_run','auto_step_run') and relrowsecurity and relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'pf12_firm')`) === "4");
+  ok("PF-20 DW0 pass: the four auto_ tables each have PF-12's forced policy", sql(`select count(*) from pg_class c where relname in ('auto_recipe','auto_recipe_step','auto_run','auto_step_run') and relrowsecurity and relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'pf12_firm')`) === "4");
 
   await seedSampleFirms(db);
   const firmA = sql(`select id from platform_firm where key='sample-firm'`), firmB = sql(`select id from platform_firm where key='sample-solo'`);
@@ -63,6 +63,9 @@ try {
   ] });
   registry.register({ module: "test", key: "test.two_steps", label: "Two steps (Sample)", description: "Two marketing messages a day apart (Sample).", defaultOn: true, steps: [
     { delayMinutes: 0, class: "MARKETING", subject: "First (Sample)", body: "First (Sample)." }, { delayMinutes: 24 * 60, class: "MARKETING", subject: "Second (Sample)", body: "Second (Sample)." },
+  ] });
+  registry.register({ module: "test", key: "test.ask", label: "Ask first (Sample)", description: "One message to approve, then one by itself (Sample).", defaultOn: true, steps: [
+    { delayMinutes: 0, class: "SERVICE", subject: "Approve me (Sample)", body: "Ask (Sample).", mode: "ASK" }, { delayMinutes: 60, class: "SERVICE", subject: "Then me (Sample)", body: "Auto (Sample)." },
   ] });
   const auto = new Automation({ db, messages, jobs, audit: auditEvent, registry, clock });
   await auto.register();
@@ -83,8 +86,7 @@ try {
 
   // DW0's database rules (the engine never writes these; a second running run or a silent end are refused).
   const recipes0 = await auto.recipes(firmA);
-  ok("PF-20 pass: the firm's recipes are made from the registry on first read, each as the registry says (off unless defaultOn)",
-    recipes0.length === 2 && recipes0.find((r) => r.key === "test.follow_up")?.on === false && recipes0.find((r) => r.key === "test.two_steps")?.on === true && recipes0[0].steps.length === 3, recipes0);
+  ok("PF-20 pass: the firm's recipes are made from the registry on first read, each as the registry says (off unless defaultOn)", recipes0.length === 3 && recipes0.find((r) => r.key === "test.follow_up")?.on === false && recipes0.find((r) => r.key === "test.two_steps")?.on === true && recipes0.find((r) => r.key === "test.follow_up")?.steps.length === 3, recipes0);
 
   // ------------------------------------------------------------------------------------------- DW2 off → no run
   const pOk = await consented(), pNo = { kind: "FO_PERSON" as const, id: uuid() }, aOk = box("ok"), aNo = box("no");
@@ -92,8 +94,7 @@ try {
   ok("PF-20 DW2 fail: a person enrolled while the recipe is off → no run starts (AG-2-31 §11)", !off.started && off.reason === "recipe off" && (await db.autoRun.count()) === 0, off);
   const on = await auto.setOn(firmA, "test.follow_up", true, "staff:pf20");
   const r1 = await enrolNow(firmA, "test.follow_up", pOk, aOk), r2 = await enrolNow(firmA, "test.follow_up", pNo, aNo), again = await enrolNow(firmA, "test.follow_up", pOk, aOk);
-  ok("PF-20 DW2 pass: switched on, two people are enrolled; the same person enrolled again makes no second run",
-    on?.on === true && r1.started && r2.started && !again.started && again.reason === "already running" && again.runId === (r1.started ? r1.runId : "") && (await db.autoRun.count({ where: { firmId: firmA } })) === 2, { r1, again });
+  ok("PF-20 DW2 pass: switched on, two people are enrolled; the same person enrolled again makes no second run", on?.on === true && r1.started && r2.started && !again.started && again.reason === "already running" && again.runId === (r1.started ? r1.runId : "") && (await db.autoRun.count({ where: { firmId: firmA } })) === 2, { r1, again });
   const runOk = r1.started ? r1.runId : "", runNo = r2.started ? r2.runId : "";
   ok("PF-20 DW0 fail: the database refuses a second RUNNING run of one recipe and person, and an ENDED run without its reason",
     refused(`insert into auto_run (id, firm_id, recipe_id, subject_kind, subject_id, channel, address, enrolled_by) select gen_random_uuid(), firm_id, recipe_id, subject_kind, subject_id, channel, address, 'x' from auto_run where id = '${runOk}'`, /auto_run_one_running/)
@@ -105,10 +106,8 @@ try {
   ok("PF-20 DW1 fail: before the step's time nothing is sent (every step QUEUED, no outbox row)", before.every((s) => s.state === "QUEUED") && (await outboxTo(aOk)).length === 0 && (await outboxTo(aNo)).length === 0, before.map((s) => s.state));
   await clock.advance({ minutes: 2 });
   const [s1ok] = await steps(runOk), [s1no] = await steps(runNo), sentOk = await outboxTo(aOk);
-  ok("PF-20 DW1 pass: at its time the consented person's MARKETING step is SENT through the outbox (the consent that allowed it named)",
-    s1ok.state === "SUCCESS" && !!s1ok.outboxId && sentOk.length === 1 && sentOk[0].state === "SENT" && !!sentOk[0].consentId, { s1ok, sentOk });
-  ok("PF-20 DW1 fail: the person without consent is SKIPPED with the gate's reason, nothing sent, and the run goes on (still RUNNING, next step QUEUED)",
-    s1no.state === "SKIPPED" && s1no.reason === "NO_CONSENT: MARKETING" && (await outboxTo(aNo)).every((o) => o.state === "SUPPRESSED") && (await db.autoRun.findUniqueOrThrow({ where: { id: runNo } })).state === "RUNNING" && (await steps(runNo))[1].state === "QUEUED", s1no);
+  ok("PF-20 DW1 pass: at its time the consented person's MARKETING step is SENT through the outbox (the consent that allowed it named)", s1ok.state === "SUCCESS" && !!s1ok.outboxId && sentOk.length === 1 && sentOk[0].state === "SENT" && !!sentOk[0].consentId, { s1ok, sentOk });
+  ok("PF-20 DW1 fail: the person without consent is SKIPPED with the gate's reason, nothing sent, and the run goes on (still RUNNING, next step QUEUED)", s1no.state === "SKIPPED" && s1no.reason === "NO_CONSENT: MARKETING" && (await outboxTo(aNo)).every((o) => o.state === "SUPPRESSED") && (await db.autoRun.findUniqueOrThrow({ where: { id: runNo } })).state === "RUNNING" && (await steps(runNo))[1].state === "QUEUED", s1no);
 
   // ------------------------------------------------------------------------------------------- DW3 a step switched off
   sql(`update auto_recipe_step set mode = 'OFF' where position = 2 and recipe_id = (select recipe_id from auto_run where id = '${runOk}')`);
@@ -127,8 +126,7 @@ try {
     && jobs.jobs.filter((j) => j.name === STEP_QUEUE && j.key === stepJobKey(step3.id)).every((j) => j.status === "cancelled"), { offR, runsAfter });
   await clock.advance({ days: 3 });
   const late = await auto.runStep(firmA, step3.id);
-  ok("PF-20 DW4 fail: after the off, no queued message is sent (past its time, and its job run anyway answers CANCELLED)",
-    late === "CANCELLED" && (await outboxTo(aOk)).length === 1 && (await db.autoStepRun.findUniqueOrThrow({ where: { id: step3.id } })).reason === STEP_REASON.RECIPE_OFF, late);
+  ok("PF-20 DW4 fail: after the off, no queued message is sent (past its time, and its job run anyway answers CANCELLED)", late === "CANCELLED" && (await outboxTo(aOk)).length === 1 && (await db.autoStepRun.findUniqueOrThrow({ where: { id: step3.id } })).reason === STEP_REASON.RECIPE_OFF, late);
   const line = sql(`select summary from audit_event where action = 'automation.recipe.off' and entity_key = (select id::text from auto_recipe where firm_id = '${firmA}' and key = 'test.follow_up')`);
   ok("PF-20 DW4 pass: the off is one audit line naming the counts", /switched off: 2 running, 2 queued messages cancelled/.test(line), line);
 
@@ -139,8 +137,7 @@ try {
   await tx((t) => consent.withdraw(t, { firmId: firmA, subject: pW, channel: "EMAIL", purpose: "MARKETING", via: "UNSUBSCRIBE", by: "system:unsubscribe" }));
   await clock.advance({ days: 1, minutes: 1 });
   const runW = rW.started ? rW.runId : "", sW = await steps(runW), runWrow = await db.autoRun.findUniqueOrThrow({ where: { id: runW } });
-  ok("PF-20 DW5 pass→fail: the first step went to the consented person; after the withdrawal the next step is SKIPPED (\"WITHDRAWN: MARKETING\") and the run ends \"unsubscribed\"",
-    sW[0].state === "SUCCESS" && sW[1].state === "SKIPPED" && /^WITHDRAWN/.test(sW[1].reason ?? "") && runWrow.state === "ENDED" && runWrow.exitReason === EXIT.UNSUBSCRIBED && (await outboxTo(aW)).filter((o) => o.state === "SENT").length === 1, { sW, runWrow });
+  ok("PF-20 DW5 pass→fail: the first step went to the consented person; after the withdrawal the next step is SKIPPED (\"WITHDRAWN: MARKETING\") and the run ends \"unsubscribed\"", sW[0].state === "SUCCESS" && sW[1].state === "SKIPPED" && /^WITHDRAWN/.test(sW[1].reason ?? "") && runWrow.state === "ENDED" && runWrow.exitReason === EXIT.UNSUBSCRIBED && (await outboxTo(aW)).filter((o) => o.state === "SENT").length === 1, { sW, runWrow });
 
   // ------------------------------------------------------------------------------------------- DW6 registration
   let twice = "";
@@ -152,10 +149,8 @@ try {
   const gRun = sql(`insert into auto_run (id, firm_id, recipe_id, subject_kind, subject_id, channel, address, enrolled_by) values (gen_random_uuid(), '${firmA}', '${gone}', 'FO_PERSON', '${pG.id}', 'EMAIL', '${aG}', 'seed:pf20') returning id`).split("\n")[0];
   const gStep = sql(`insert into auto_step_run (id, firm_id, run_id, position, due_at) values (gen_random_uuid(), '${firmA}', '${gRun}', 1, now()) returning id`).split("\n")[0];
   const gOut = await auto.runStep(firmA, gStep);
-  ok("PF-20 DW6 fail: a recipe whose module no longer registers it is never run (SKIPPED \"recipe not registered\", nothing sent)",
-    gOut === "SKIPPED" && (await db.autoStepRun.findUniqueOrThrow({ where: { id: gStep } })).reason === STEP_REASON.NOT_REGISTERED && (await outboxTo(aG)).length === 0, gOut);
-  ok("PF-20 DW6 pass: an unregistered key can neither be switched nor enrolled", (await auto.setOn(firmA, "gone.recipe", false, "staff:pf20")) === null
-    && (await tx((t) => auto.enrol(t, { firmId: firmA, recipeKey: "gone.recipe", subject: pG, channel: "EMAIL", address: aG, by: "staff:pf20" }))).started === false);
+  ok("PF-20 DW6 fail: a recipe whose module no longer registers it is never run (SKIPPED \"recipe not registered\", nothing sent)", gOut === "SKIPPED" && (await db.autoStepRun.findUniqueOrThrow({ where: { id: gStep } })).reason === STEP_REASON.NOT_REGISTERED && (await outboxTo(aG)).length === 0, gOut);
+  ok("PF-20 DW6 pass: an unregistered key can neither be switched nor enrolled", (await auto.setOn(firmA, "gone.recipe", false, "staff:pf20")) === null && (await tx((t) => auto.enrol(t, { firmId: firmA, recipeKey: "gone.recipe", subject: pG, channel: "EMAIL", address: aG, by: "staff:pf20" }))).started === false);
 
   // ------------------------------------------------------------------------------------------- DW7 once; firms apart
   await auto.setOn(firmA, "test.follow_up", true, "staff:pf20");
@@ -167,8 +162,7 @@ try {
   await clock.advance({ minutes: 61 });
   const twiceRun = [await auto.runStep(firmA, firstStep), await auto.runStep(firmA, firstStep)];
   ok("PF-20 DW7 pass: a step job run twice sends once (SUCCESS both times, one outbox row)", twiceRun.every((s) => s === "SUCCESS") && (await outboxTo(aT)).length === 1, twiceRun);
-  ok("PF-20 DW7 fail: firm B reads none of firm A's runs for the person, and its own off touches none of them",
-    (await auto.runsFor(firmB, pT)).length === 0 && (await auto.setOn(firmB, "test.follow_up", false, "staff:pf20"))?.endedRuns === 0 && (await auto.runsFor(firmA, pT))[0]?.state === "RUNNING");
+  ok("PF-20 DW7 fail: firm B reads none of firm A's runs for the person, and its own off touches none of them", (await auto.runsFor(firmB, pT)).length === 0 && (await auto.setOn(firmB, "test.follow_up", false, "staff:pf20"))?.endedRuns === 0 && (await auto.runsFor(firmA, pT))[0]?.state === "RUNNING");
   ok("PF-20 pass: \"Enrolled in\" lists the person's run with each step's state", (await auto.runsFor(firmA, pT))[0]?.steps.map((s) => s.state).join() === "SUCCESS,QUEUED,QUEUED");
 
   // ------------------------------------------------------------------------------------------- DW8 off races an enrolment (break M1)
@@ -181,13 +175,11 @@ try {
   await new Promise((r) => setTimeout(r, 400));
   const raced = await enrolNow(firmA, "test.follow_up", pR, aR);
   await offing;
-  ok("PF-20 DW8 fail (break M1): an enrolment racing a switch-off waits for it and starts no run; the recipe has none running",
-    !raced.started && raced.reason === "recipe off" && (await auto.recipes(firmA)).find((r) => r.key === "test.follow_up")?.running === 0, { raced, recipes: await auto.recipes(firmA) });
+  ok("PF-20 DW8 fail (break M1): an enrolment racing a switch-off waits for it and starts no run; the recipe has none running", !raced.started && raced.reason === "recipe off" && (await auto.recipes(firmA)).find((r) => r.key === "test.follow_up")?.running === 0, { raced, recipes: await auto.recipes(firmA) });
   const offRecipe = sql(`select id from auto_recipe where firm_id = '${firmA}' and key = 'test.follow_up'`);
   const left = sql(`insert into auto_run (id, firm_id, recipe_id, subject_kind, subject_id, channel, address, enrolled_by) values (gen_random_uuid(), '${firmA}', '${offRecipe}', 'FO_PERSON', '${uuid()}', 'EMAIL', '${box("left")}', 'seed:pf20') returning id`).split("\n")[0];
   const again2 = await auto.setOn(firmA, "test.follow_up", false, "staff:pf20");
-  ok("PF-20 DW8 pass: switching off a recipe already off still ends a run left running on it",
-    again2?.endedRuns === 1 && (await db.autoRun.findUniqueOrThrow({ where: { id: left } })).exitReason === EXIT.RECIPE_OFF, again2);
+  ok("PF-20 DW8 pass: switching off a recipe already off still ends a run left running on it", again2?.endedRuns === 1 && (await db.autoRun.findUniqueOrThrow({ where: { id: left } })).exitReason === EXIT.RECIPE_OFF, again2);
 
   // ------------------------------------------------------------------------------------------- DW9 a held message (break M2)
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(clock.now());
@@ -201,10 +193,8 @@ try {
   sql(`update msg_send_counter set sent = 0 where firm_id = '${firmA}' and day = '${today}'`);
   await clock.advance({ days: 2 });
   const heldAfter = await db.msgOutbox.findUniqueOrThrow({ where: { id: heldRow.id } });
-  ok("PF-20 DW9 fail (break M2): switching off withdraws the waiting message (SUPPRESSED \"CANCELLED: recipe switched off\"); once the limit clears, the sweep never sends it",
-    heldAfter.state === "SUPPRESSED" && heldAfter.stateReason === "CANCELLED: recipe switched off" && !heldAfter.sentAt && (await outboxTo(aH)).every((o) => o.state !== "SENT"), heldAfter);
-  ok("PF-20 DW9 pass: the off counts the withdrawn message with the cancelled step (2 queued messages)", offH?.cancelledSteps === 2
-    && /switched off: 1 running, 2 queued messages cancelled/.test(sql(`select summary from audit_event where action = 'automation.recipe.off' and entity_key = (select id::text from auto_recipe where firm_id = '${firmA}' and key = 'test.two_steps')`)), offH);
+  ok("PF-20 DW9 fail (break M2): switching off withdraws the waiting message (SUPPRESSED \"CANCELLED: recipe switched off\"); once the limit clears, the sweep never sends it", heldAfter.state === "SUPPRESSED" && heldAfter.stateReason === "CANCELLED: recipe switched off" && !heldAfter.sentAt && (await outboxTo(aH)).every((o) => o.state !== "SENT"), heldAfter);
+  ok("PF-20 DW9 pass: the off counts the withdrawn message with the cancelled step (2 queued messages)", offH?.cancelledSteps === 2 && /switched off: 1 running, 2 queued messages cancelled/.test(sql(`select summary from audit_event where action = 'automation.recipe.off' and entity_key = (select id::text from auto_recipe where firm_id = '${firmA}' and key = 'test.two_steps')`)), offH);
 
   // ------------------------------------------------------------------------------------------- the engine's input (break m2, m3)
   await auto.setOn(firmA, "test.two_steps", true, "staff:pf20");
@@ -220,6 +210,38 @@ try {
   let tab = ""; try { new AutomationRegistry().register({ module: "test", key: "test.tab", label: "Tab", description: "Tab.", defaultOn: false, steps: [{ delayMinutes: 0, class: "SERVICE", subject: "a\tb", body: "x" }] }); } catch (e) { tab = String(e); }
   let nul = ""; try { new AutomationRegistry().register({ module: "test", key: "test.nul", label: "Nul", description: "Nul.", defaultOn: false, steps: [{ delayMinutes: 0, class: "SERVICE", subject: "ok", body: "a\u0000b" }] }); } catch (e) { nul = String(e); }
   ok("PF-20 fail (break m2): the registry refuses a subject with a tab or line separator and a body with NUL", /one line/.test(tab) && /NUL/.test(nul), { tab, nul });
+
+  // ------------------------------------------------------------------------------------------- DW10 each Conductor rule fails alone (review M2)
+  const enrolBare = async (key: string, tag: string) => { const p = await consented(), a = box(tag); const r = await tx((t) => auto.enrol(t, { firmId: firmA, recipeKey: key, subject: p, channel: "EMAIL", address: a, by: "staff:pf20" })); return { p, a, run: r.started ? r.runId : "", ids: r.started ? r.stepRunIds : [] }; };
+  const xOff = await enrolBare("test.two_steps", "xoff");
+  sql(`update auto_recipe set "on" = false where firm_id = '${firmA}' and key = 'test.two_steps'`);
+  await clock.advance({ minutes: 1 });
+  const xOff1 = await auto.runStep(firmA, xOff.ids[0]);
+  sql(`update auto_recipe set "on" = true where firm_id = '${firmA}' and key = 'test.two_steps'`);
+  await clock.advance({ days: 1, minutes: 1 });
+  const xOff2 = await auto.runStep(firmA, xOff.ids[1]), xOffRun = await db.autoRun.findUniqueOrThrow({ where: { id: xOff.run } });
+  ok("PF-20 DW10 fail (review M1, M2): a step whose recipe is off when its time comes is CANCELLED and ends the whole run; switched on again, its later step never sends", xOff1 === "CANCELLED" && xOffRun.state === "ENDED" && xOffRun.exitReason === EXIT.RECIPE_OFF && xOff2 === "CANCELLED" && (await outboxTo(xOff.a)).length === 0, { xOff1, xOff2, xOffRun });
+  const xAsk = await enrolBare("test.ask", "xask");
+  await clock.advance({ minutes: 1 });
+  const ask1 = await auto.runStep(firmA, xAsk.ids[0]);
+  await clock.advance({ minutes: 61 });
+  const ask2 = await auto.runStep(firmA, xAsk.ids[1]);
+  await jobs.runDue();
+  const askRun = await db.autoRun.findUniqueOrThrow({ where: { id: xAsk.run } });
+  ok("PF-20 DW10 fail (review M2): an \"Ask me first\" step waits (AWAITING_APPROVAL, nothing sent); the next automatic step still sends", ask1 === "AWAITING_APPROVAL" && ask2 === "SUCCESS" && (await outboxTo(xAsk.a)).map((o) => o.state).join() === "SENT", { ask1, ask2 });
+  const askOff = await auto.setOn(firmA, "test.ask", false, "staff:pf20");
+  ok("PF-20 DW10 pass (review m5): a waiting approval keeps its run open, and switching off closes it (CANCELLED)", askRun.state === "RUNNING" && askOff?.cancelledSteps === 1 && (await db.autoStepRun.findUniqueOrThrow({ where: { id: xAsk.ids[0] } })).state === "CANCELLED", { askRun, askOff });
+  const xEnd = await enrolBare("test.two_steps", "xend");
+  const endIds = await tx((t) => auto.endRunsFor(t, firmA, xEnd.p, "replied"));
+  await auto.cancelJobs(endIds);
+  await clock.advance({ minutes: 1 });
+  const endStep = await auto.runStep(firmA, xEnd.ids[0]), endRun = await db.autoRun.findUniqueOrThrow({ where: { id: xEnd.run } });
+  ok("PF-20 DW10 fail (review M2): a goal met (endRunsFor \"replied\") ends the run and cancels both steps; no step sends after it", endIds.length === 2 && endRun.state === "ENDED" && endRun.exitReason === "replied" && endStep === "CANCELLED" && (await outboxTo(xEnd.a)).length === 0, { endIds, endRun, endStep });
+  const refusing = new Automation({ db, messages: Object.assign(Object.create(messages) as typeof messages, { send: async () => { throw new MessageRefused("the template needs the field \"name\""); } }), jobs, audit: auditEvent, registry, clock });
+  const xFail = await enrolBare("test.two_steps", "xfail");
+  await clock.advance({ minutes: 1 });
+  const failState = await refusing.runStep(firmA, xFail.ids[0]), failRow = await db.autoStepRun.findUniqueOrThrow({ where: { id: xFail.ids[0] } });
+  ok("PF-20 DW10 fail (review M2): a message the outbox refuses marks the step FAILED with its reason, nothing sent, and the run goes on", failState === "FAILED" && /needs the field/.test(failRow.reason ?? "") && (await outboxTo(xFail.a)).length === 0 && (await db.autoRun.findUniqueOrThrow({ where: { id: xFail.run } })).state === "RUNNING", failRow);
 } finally {
   await db.$disconnect().catch(() => undefined);
   spawnSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB], { stdio: "ignore" });

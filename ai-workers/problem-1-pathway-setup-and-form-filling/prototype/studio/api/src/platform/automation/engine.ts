@@ -167,8 +167,9 @@ export class Automation {
     // A step handed to the outbox whose message still waits there (the daily limit, not yet sent) is withdrawn (break M2).
     const handed = (await tx.autoStepRun.findMany({ where: firmScope(firmId, { runId: { in: runs }, state: "SUCCESS" as const, outboxId: { not: null } }), select: { outboxId: true } })).map((s) => s.outboxId as string);
     const withdrawn = handed.length ? await this.d.messages.withdrawQueued(tx, firmId, handed, `CANCELLED: ${stepReason}`) : 0;
-    const cancelled = (await tx.autoStepRun.findMany({ where: firmScope(firmId, { runId: { in: runs }, state: "QUEUED" as const }), select: { id: true } })).map((s) => s.id);
-    await tx.autoStepRun.updateMany({ where: firmScope(firmId, { id: { in: cancelled }, state: "QUEUED" as const }), data: { state: "CANCELLED", reason: stepReason, doneAt: now } });
+    // The rows this UPDATE changed (a step being sent holds its row: the UPDATE waits, re-reads it SUCCESS and leaves it, so
+    // the count names only what was cancelled; review m1). A step awaiting approval is closed too (review m5).
+    const cancelled = (await tx.autoStepRun.updateManyAndReturn({ where: firmScope(firmId, { runId: { in: runs }, state: { in: ["QUEUED", "AWAITING_APPROVAL"] as ("QUEUED" | "AWAITING_APPROVAL")[] } }), data: { state: "CANCELLED", reason: stepReason, doneAt: now }, select: { id: true } })).map((s) => s.id);
     await tx.autoRun.updateMany({ where: firmScope(firmId, { id: { in: runs }, state: "RUNNING" as const }), data: { state: "ENDED", exitReason: exit, endedAt: now } });
     return { ended: runs, cancelled, withdrawn };
   }
@@ -186,9 +187,11 @@ export class Automation {
       const finish = async (state: "SUCCESS" | "SKIPPED" | "AWAITING_APPROVAL" | "FAILED" | "CANCELLED", reason: string | null, outboxId: string | null = null) => {
         await tx.autoStepRun.update({ where: { id: sr.id }, data: { state, reason, outboxId, doneAt: now } });
         let cancel: string[] = [];
-        const stopped = state === "SKIPPED" && reason !== null && STOPPED.test(reason);
-        if (stopped) cancel = (await this.#endRuns(tx, firmId, { id: run.id }, EXIT.UNSUBSCRIBED, STEP_REASON.RUN_ENDED)).cancelled;
-        else if (run.state === "RUNNING" && (await tx.autoStepRun.count({ where: firmScope(firmId, { runId: run.id, state: "QUEUED" as const }) })) === 0)
+        // The run ends with the step when the person said stop, or when its recipe is off (review M1: the whole run, so
+        // switching the recipe on again never sends its later steps).
+        const exit = state === "SKIPPED" && reason !== null && STOPPED.test(reason) ? EXIT.UNSUBSCRIBED : reason === STEP_REASON.RECIPE_OFF && run.state === "RUNNING" ? EXIT.RECIPE_OFF : null;
+        if (exit) cancel = (await this.#endRuns(tx, firmId, { id: run.id }, exit, exit === EXIT.RECIPE_OFF ? STEP_REASON.RECIPE_OFF : STEP_REASON.RUN_ENDED)).cancelled;
+        else if (run.state === "RUNNING" && (await tx.autoStepRun.count({ where: firmScope(firmId, { runId: run.id, state: { in: ["QUEUED", "AWAITING_APPROVAL"] as ("QUEUED" | "AWAITING_APPROVAL")[] } }) })) === 0)
           await tx.autoRun.update({ where: { id: run.id }, data: { state: "ENDED", exitReason: EXIT.FINISHED, endedAt: now } });
         return { state, outboxId, cancel };
       };
