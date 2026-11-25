@@ -6,7 +6,7 @@
 //      or the one 404: the body is still read, only after the id's shape;
 //   Q  GET /api/runtime/clients and GET /api/runtime/documents/past-keep-period with ?pf28Unknown=x: 400 naming it; with
 //      their own keys only (?query=, ?page=1; none, ?after=) they answer 200; a malformed cursor stays 400;
-//   D  the document flags door keeps its order: a person with no case duty is refused 403 whatever the id.
+//   D  the document flags and review-run doors keep their order: a person without the duty is refused 403 whatever the id.
 // Sample data only; no model call (US$0). Run from prototype/ (never :4400):
 //   zsh studio/tools/isolated.sh runtime_pf28a5 4799 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf28_a5_case_ids.ts 4799
 // (the usage line run-suites.sh reads; by hand, stop the copy after: zsh studio/tools/isolated.sh runtime_pf28a5 4799 stop)
@@ -68,4 +68,12 @@ ok("A5 Q fail: the keep-period list with an unknown query key → 400 naming it"
 ok("A5 Q pass: the keep-period list with no query → 200; a cursor it did not give is still 400", kOk.status === 200 && kAfter.status === 400, { list: kOk.status, after: kAfter.status });
 const d = await call("POST", `/api/runtime/documents/${BAD}/flags`, { actor: "user-A" }, {});
 ok("A5 D pass: the configuration author (no case duty) setting a document's flags is refused 403 before the id is read", d.status === 403 || d.status === 401, d.status);
+// Review M1 (round 1): the review-run doors decide who may act (reach's own duty checks) before the id's shape: the
+// configuration author and a client are 403 whatever the id, as on main.
+const rr: string[] = [];
+for (const actor of ["user-A", "user-P"]) for (const p of [`/api/runtime/cases/${BAD}/review-runs/plan`, `/api/runtime/cases/${BAD}/review-runs`, `/api/runtime/cases/${id()}/review-runs/plan`]) {
+  const a = await call("POST", p, { actor }, { forms: ["IMM 5257"], subject: id() });
+  if (a.status !== 403) rr.push(`${actor} ${p.replace(/[0-9a-f-]{36}/, ":id")} → ${a.status}`);
+}
+ok("A5 D fail (review M1): on the review-run doors a person with no case-officer duty is 403 whatever the id (authorise before the id's shape)", rr.length === 0, rr);
 process.exit(summary() ? 1 : 0);
