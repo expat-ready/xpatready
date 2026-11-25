@@ -20,8 +20,9 @@ import { FoldOut } from "@/components/fold-out";
 
 /** contracts/eligibility.ts EligibilityGatesView, as the web reads it (that module's type imports reach engine files
  *  that need Node, which the web build cannot type-check). */
-type Gate = { key: string; label: string; condition: Record<string, unknown>; whenNotMet?: "needs_review" };
-type EligibilityGatesView = { gates: Gate[]; judgement: string[]; disclaimer: string | null; version: number; savedBy: string | null; savedAt: string | null; released?: { gates: Gate[]; judgement: string[]; disclaimer: string; release: number } | null };
+// AS-2a: a gate's source and the assessment-only flag are kept as read on a re-save (no editing of them here yet).
+type Gate = { key: string; label: string; condition: Record<string, unknown>; whenNotMet?: "needs_review"; source?: unknown };
+type EligibilityGatesView = { gates: Gate[]; judgement: string[]; disclaimer: string | null; assessmentOnly?: boolean; version: number; savedBy: string | null; savedAt: string | null; released?: { gates: Gate[]; judgement: string[]; disclaimer: string; release: number } | null };
 type Change = { kind: string; key: string; change: "added" | "changed" | "removed"; label?: string };
 type Combo = CombinationView & { draft: CombinationView["draft"] & { changes?: Change[] } };
 type Errors = Record<string, string>;
@@ -121,14 +122,14 @@ function GatesEditor({ id, taken, waiting, close }: { id: string; taken: Set<str
   return <GatesForm key={gen} id={id} read={g.data} taken={taken} waiting={waiting} close={close} reload={() => void g.refetch().then(() => setGen((n) => n + 1))} />;
 }
 
-type Row = { uid: number; key?: string; label: string; condition: Tree | null; whenNotMet: "not_eligible" | "needs_review"; confirm?: boolean };
+type Row = { uid: number; key?: string; label: string; condition: Tree | null; whenNotMet: "not_eligible" | "needs_review"; confirm?: boolean; source?: unknown };
 type Line = { uid: number; text: string };
 let uidSeq = 0;
 const uid = () => ++uidSeq;
 
 function GatesForm({ id, read, taken, waiting, close, reload }: { id: string; read: EligibilityGatesView; taken: Set<string>; waiting: boolean; close: () => void; reload: () => void }) {
   const qc = useQueryClient(), toast = useToast(), fields = useLibraryFields();
-  const [rows, setRows] = React.useState<Row[]>(() => read.gates.length ? read.gates.map((x: Gate) => ({ uid: uid(), key: x.key, label: x.label, condition: x.condition, whenNotMet: x.whenNotMet ?? "not_eligible" })) : [{ uid: uid(), label: "", condition: null, whenNotMet: "not_eligible" }]);
+  const [rows, setRows] = React.useState<Row[]>(() => read.gates.length ? read.gates.map((x: Gate) => ({ uid: uid(), key: x.key, label: x.label, condition: x.condition, whenNotMet: x.whenNotMet ?? "not_eligible", ...(x.source ? { source: x.source } : {}) })) : [{ uid: uid(), label: "", condition: null, whenNotMet: "not_eligible" }]);
   const [lines, setLines] = React.useState<Line[]>(() => read.judgement.map((text) => ({ uid: uid(), text })));
   const [disclaimer, setDisclaimer] = React.useState(read.disclaimer ?? ""); // m5: a saved disclaimer is sent back as read
   const [errors, setErrors] = React.useState<Errors>({}), [top, setTop] = React.useState<string | null>(null), [stale, setStale] = React.useState<string | null>(null), [busy, setBusy] = React.useState(false);
@@ -141,8 +142,8 @@ function GatesForm({ id, read, taken, waiting, close, reload }: { id: string; re
     if (busy) return;
     // BR-4: keys of saved gates are kept; a new gate's key is made now, from its label.
     const used = new Set([...taken, ...rows.flatMap((r) => (r.key ? [r.key] : []))]);
-    const gates = rows.map((r) => { const key = r.key ?? keyFor(r.label, used); used.add(key); return { key, label: r.label, condition: r.condition ?? {}, ...(r.whenNotMet === "needs_review" ? { whenNotMet: "needs_review" } : {}) }; });
-    const body = { gates, judgement: lines.map((l) => l.text), disclaimer: disclaimer.trim() ? disclaimer : null, ...(read.version ? { version: read.version } : {}) };
+    const gates = rows.map((r) => { const key = r.key ?? keyFor(r.label, used); used.add(key); return { key, label: r.label, condition: r.condition ?? {}, ...(r.whenNotMet === "needs_review" ? { whenNotMet: "needs_review" } : {}), ...(r.source ? { source: r.source } : {}) }; });
+    const body = { gates, judgement: lines.map((l) => l.text), disclaimer: disclaimer.trim() ? disclaimer : null, ...(read.assessmentOnly ? { assessmentOnly: true } : {}), ...(read.version ? { version: read.version } : {}) };
     setBusy(true); setTop(null); setStale(null); setErrors({});
     try {
       await api(`/combinations/${id}/eligibility-gates`, { method: "PUT", json: body });
@@ -158,7 +159,7 @@ function GatesForm({ id, read, taken, waiting, close, reload }: { id: string; re
       } else setTop((e as Error).message);
     } finally { setBusy(false); }
   };
-  const shown = (f: string) => /^gates\.\d+\.(label|condition|whenNotMet)$/.test(f) || /^judgement\.\d+$/.test(f) || f === "disclaimer";
+  const shown = (f: string) => /^gates\.\d+\.(label|condition|whenNotMet|source)$/.test(f) || /^judgement\.\d+$/.test(f) || f === "disclaimer";
   const others = Object.entries(errors).filter(([f]) => !shown(f)).map(([, m]) => m);
   return (
     <Dialog open wide guard onOpenChange={(o) => { if (!o) close(); }} title="Edit the eligibility rules"

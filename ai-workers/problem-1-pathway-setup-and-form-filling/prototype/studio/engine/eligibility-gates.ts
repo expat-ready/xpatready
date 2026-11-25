@@ -8,9 +8,9 @@ import { checkCondition } from "./validate.ts";
 import { OUTCOME_WORDS } from "../contracts/case-check-words.ts";
 
 // AS-1m: the gate types and gateFacts live in engine/eligibility/gates.ts; re-exported here for their callers.
-import { gateFacts, type Gate, type SnapshotEligibility, type StoredEligibility, type WhenNotMet } from "./eligibility/gates.ts";
-export { gateFacts };
-export type { Gate, SnapshotEligibility, StoredEligibility, WhenNotMet };
+import { ASSESSMENT_ONLY_WORDS, gateFacts, isAssessmentOnly, type Gate, type GateSource, type SnapshotEligibility, type StoredEligibility, type WhenNotMet } from "./eligibility/gates.ts";
+export { ASSESSMENT_ONLY_WORDS, gateFacts, isAssessmentOnly };
+export type { Gate, GateSource, SnapshotEligibility, StoredEligibility, WhenNotMet };
 export type FieldError = { field: string; message: string };
 
 /** BR-6 default, Sample (ASSUMPTIONS C8; Unconfirmed: no counsel). Q1 taken as recommended: the disclaimer lives on the
@@ -96,11 +96,40 @@ function lineProblem(x: string, what: string, max: number): string | null {
   return null;
 }
 
+export const SOURCE_SECTION_MAX = 200, SOURCE_QUOTE_MAX = 2000, SOURCE_URL_MAX = 500;
+/** AS-2a (AGENTS rule 4, P-170): a gate's source as given, checked: `{ url, section, quote, date }` (an https page, the
+ *  section, the words quoted from it, the day it was read, never in the future) or `{ sample: true }`. Returns the
+ *  source to store, or the refusal in words. `today` is YYYY-MM-DD (the caller's clock; the engine reads none). */
+export function checkSource(raw: unknown, today: string): { source?: GateSource; problem?: string } {
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== "object" || Array.isArray(raw)) return { problem: "Give the source as { url, section, quote, date } from the official page, or { sample: true }." };
+  const o = raw as Record<string, unknown>, keys = Object.keys(o);
+  if (keys.length === 1 && o.sample === true) return { source: { sample: true } };
+  if ("sample" in o) return { problem: "A source is either the official page (url, section, quote, date) or { sample: true }, never both." };
+  const extra = keys.filter((k) => !["url", "section", "quote", "date"].includes(k));
+  if (extra.length) return { problem: `Not part of a source: ${extra.join(", ")} (only url, section, quote and date).` };
+  const str = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
+  const url = str("url"), section = str("section"), quote = str("quote"), date = str("date");
+  let host = "";
+  try { const u = new URL(url); host = u.protocol === "https:" ? u.hostname : ""; } catch { /* refused below */ }
+  if (!host || chars(url) > SOURCE_URL_MAX || unclean(url, true)) return { problem: `The source needs the official page's https address (at most ${SOURCE_URL_MAX} characters).` };
+  if (!section || blank(section) || unclean(section, true) || chars(section) > SOURCE_SECTION_MAX) return { problem: `Name the section of the page the rule is under, in one line of at most ${SOURCE_SECTION_MAX} characters.` };
+  if (!quote || blank(quote) || unclean(quote, false) || chars(quote) > SOURCE_QUOTE_MAX) return { problem: `Quote the page's own words for the rule (at most ${SOURCE_QUOTE_MAX} characters).` };
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date), real = !!d && new Date(Date.UTC(+d[1], +d[2] - 1, +d[3])).getUTCDate() === +d[3] && +d[2] >= 1 && +d[2] <= 12;
+  if (!real) return { problem: "Give the date the page was read as YYYY-MM-DD (a real day)." };
+  if (date > today) return { problem: `The date the page was read (${date}) is after today (${today}).` };
+  return { source: { url, section, quote, date } };
+}
+
 /** BR-2, BR-2a: the gates, judgement lines and disclaimer a save may store, or the refusals on their fields. A condition
  *  with no root subjectKind is stored with PERSON and only then checked (contracts/rules.ts validatePredicate needs a
  *  root kind); another root kind is refused. `fieldTypes`/`derived` are the library's live fields and derived keys. */
-export function checkGates(input: { gates: { key?: unknown; label?: unknown; condition?: unknown; whenNotMet?: unknown }[]; judgement: unknown[]; disclaimer?: unknown }, fieldTypes: Map<string, string>, derived: Set<string>): { gates: Gate[]; judgement: string[]; disclaimer: string | null; errors: FieldError[] } {
+export function checkGates(input: { gates: { key?: unknown; label?: unknown; condition?: unknown; whenNotMet?: unknown; source?: unknown }[]; judgement: unknown[]; disclaimer?: unknown; assessmentOnly?: unknown }, fieldTypes: Map<string, string>, derived: Set<string>, today = new Date().toISOString().slice(0, 10)): { gates: Gate[]; judgement: string[]; disclaimer: string | null; assessment_only?: true; errors: FieldError[] } {
   const errors: FieldError[] = [];
+  // AS-2a (P-650 (2)): only true or absent; an assessment-only combination needs at least one gate.
+  if (input.assessmentOnly !== undefined && input.assessmentOnly !== null && typeof input.assessmentOnly !== "boolean") errors.push({ field: "assessmentOnly", message: "Assessment only is true or false." });
+  const only = input.assessmentOnly === true;
+  if (only && !input.gates.length) errors.push({ field: "assessmentOnly", message: `${ASSESSMENT_ONLY_WORDS} needs at least one gate: it is how a person is assessed.` });
   const seen = new Set<string>(), labels = new Map<string, number>();
   const gates: Gate[] = input.gates.map((g, i) => {
     const key = typeof g.key === "string" ? g.key.trim() : "", label = typeof g.label === "string" ? g.label.trim() : "";
@@ -116,6 +145,11 @@ export function checkGates(input: { gates: { key?: unknown; label?: unknown; con
     // P-230 (1): "when not met" is data; only the two words are taken, and the default is not stored.
     if (g.whenNotMet !== undefined && g.whenNotMet !== null && g.whenNotMet !== "not_eligible" && g.whenNotMet !== "needs_review") errors.push({ field: `gates.${i}.whenNotMet`, message: 'When a gate is not met it means "not_eligible" (the default) or "needs_review" (the representative reviews it).' });
     const review = g.whenNotMet === "needs_review" ? { whenNotMet: "needs_review" as const } : {};
+    // AS-2a: the gate's source (stored only when given); on an assessment-only combination every gate needs one.
+    const src = checkSource(g.source, today);
+    if (src.problem) errors.push({ field: `gates.${i}.source`, message: src.problem });
+    else if (!src.source && only) errors.push({ field: `gates.${i}.source`, message: `${ASSESSMENT_ONLY_WORDS}: each gate cites its official page (url, section, quote, date) or is labelled { sample: true }.` });
+    const cited = src.source ? { source: src.source } : {};
     const raw = g.condition;
     if (raw == null || typeof raw !== "object" || Array.isArray(raw) || !Object.keys(raw).length) {
       errors.push({ field: `gates.${i}.condition`, message: "A gate needs a rule the answers on file can settle. Anything only an officer can weigh goes under Officer's judgement." });
@@ -133,7 +167,7 @@ export function checkGates(input: { gates: { key?: unknown; label?: unknown; con
     const condition = { ...given, subjectKind: "PERSON" }; // BR-2a
     const ruleErrors = checkCondition(condition, fieldTypes, derived);
     for (const e of ruleErrors.length ? ruleErrors : valueProblems(condition, fieldTypes, derived)) errors.push({ field: `gates.${i}.condition`, message: `The rule ${e}.` });
-    return { key, label, condition, ...review };
+    return { key, label, condition, ...review, ...cited };
   });
   const lines = new Map<string, number>();
   const judgement = input.judgement.map((l, i) => {
@@ -155,7 +189,7 @@ export function checkGates(input: { gates: { key?: unknown; label?: unknown; con
     // here rather than stored and then dropped without a word (review minor 5).
     else if (!gates.length && !judgement.length) errors.push({ field: "disclaimer", message: "A disclaimer goes with eligibility gates: add a gate or an officer's judgement line, or leave the disclaimer out." });
   }
-  return { gates, judgement, disclaimer, errors };
+  return { gates, judgement, disclaimer, ...(only ? { assessment_only: true as const } : {}), errors };
 }
 
 /** A condition in words, with its values, for the change summary (break report M1: the expert sees what is signed). */
@@ -178,6 +212,8 @@ export function conditionWords(n: unknown): string {
 /** B148 (P-236): a gate not met, when its "when not met" is the default, gives this outcome (lower case in a line). */
 const NOT_MET_WORD = OUTCOME_WORDS.NOT_ELIGIBLE.toLowerCase();
 const whenWords = (g: Gate) => (g.whenNotMet === "needs_review" ? ` — when not met: the representative reviews it (never ${OUTCOME_WORDS.NOT_ELIGIBLE} on its own)` : "");
+/** AS-2a: the source in the change summary, so the expert signs the page and words a gate rests on. */
+const sourceWords = (g: Gate) => (!g.source ? "" : "sample" in g.source ? " — source: Sample" : ` — source: ${g.source.url} (${g.source.section}, read ${g.source.date}): "${g.source.quote.length > 200 ? `${g.source.quote.slice(0, 197)}…` : g.source.quote}"`);
 const shortWords = (c: unknown) => { const w = conditionWords(c); return w.length > 300 ? `${w.slice(0, 297)}…` : w; };
 
 /** BR-1, BR-6: what a release carries, or nothing when no gate and no judgement line is set (so a combination without
@@ -185,7 +221,7 @@ const shortWords = (c: unknown) => { const w = conditionWords(c); return w.lengt
 export function snapshotEligibility(stored: unknown): SnapshotEligibility | undefined {
   const e = stored as Partial<StoredEligibility> | null | undefined;
   if (!e || (!(e.gates ?? []).length && !(e.judgement ?? []).length)) return undefined;
-  return { gates: (e.gates ?? []).map((g) => ({ key: g.key, label: g.label, condition: g.condition, ...(g.whenNotMet === "needs_review" ? { whenNotMet: g.whenNotMet } : {}) })), judgement: [...(e.judgement ?? [])], disclaimer: e.disclaimer ?? DEFAULT_DISCLAIMER };
+  return { gates: (e.gates ?? []).map((g) => ({ key: g.key, label: g.label, condition: g.condition, ...(g.whenNotMet === "needs_review" ? { whenNotMet: g.whenNotMet } : {}), ...(g.source ? { source: g.source } : {}) })), judgement: [...(e.judgement ?? [])], disclaimer: e.disclaimer ?? DEFAULT_DISCLAIMER, ...(e.assessment_only === true ? { assessment_only: true as const } : {}) };
 }
 
 /** BR-5 (and BR-2 again at release, since the library may have changed): a gate's rule is still valid, and every fact
@@ -199,6 +235,13 @@ export function gateProblems(e: SnapshotEligibility | undefined, placed: Set<str
   for (const g of e?.gates ?? []) {
     const ruleErrors = checkCondition(g.condition, fieldTypes, derived);
     for (const x of ruleErrors.length ? ruleErrors : valueProblems(g.condition, fieldTypes, derived)) out.push({ level: "error", where: "Eligibility", item: g.key, message: `"${g.label}": the rule ${x}.` });
+    // AS-2a (P-650 (2)): an assessment-only release has no form, so its facts are asked of the person being assessed
+    // (EligibilityPort.requiredFacts), not placed on a form: each must be a live library field (checkCondition above
+    // names one that is not), never a worked-out value.
+    if (isAssessmentOnly(e)) {
+      for (const f of gateFacts({ gates: [g] })) if (derived.has(f) && !fieldTypes.has(f)) out.push({ level: "error", where: "Eligibility", item: g.key, message: `This gate reads ${words(f)}, a value worked out from other answers, not one a person is asked ("${g.label}").` });
+      continue;
+    }
     for (const f of gateFacts({ gates: [g] })) {
       // Only a plain asked fact can settle a gate: a derived (worked-out) value is never asked of anyone, so it is refused
       // too (review Major on 5120b6f2; allowing derived gates whose inputs are asked would be a later, separate choice).
@@ -225,18 +268,20 @@ export function eligibilityChanges(prev: SnapshotEligibility | undefined, next: 
   const a = new Map((prev?.gates ?? []).map((g) => [g.key, g])), b = new Map((next?.gates ?? []).map((g) => [g.key, g]));
   for (const [k, g] of b) {
     const was = a.get(k);
-    if (!was) { line(k, "added", `Gate: ${g.label} — rule: ${shortWords(g.condition)}${whenWords(g)}`); continue; }
+    if (!was) { line(k, "added", `Gate: ${g.label} — rule: ${shortWords(g.condition)}${whenWords(g)}${sourceWords(g)}`); continue; }
     if (canonical(was as never) === canonical(g as never)) continue;
     // Review minor 7 and break report M1: the SME sees the old label and, when the rule changed, the rule in words with
     // its values, before and after.
     const rule = canonical(was.condition as never) !== canonical(g.condition as never);
     const when = (was.whenNotMet ?? null) !== (g.whenNotMet ?? null);
-    line(k, "changed", `Gate: ${was.label === g.label ? g.label : `${was.label} → ${g.label}`}${rule ? ` (rule changed: ${shortWords(g.condition)}; was: ${shortWords(was.condition)})` : ""}${when ? ` (when not met: ${g.whenNotMet === "needs_review" ? "the representative reviews it" : NOT_MET_WORD}; was: ${was.whenNotMet === "needs_review" ? "the representative reviews it" : NOT_MET_WORD})` : ""}`);
+    const cite = canonical((was.source ?? null) as never) !== canonical((g.source ?? null) as never);
+    line(k, "changed", `Gate: ${was.label === g.label ? g.label : `${was.label} → ${g.label}`}${rule ? ` (rule changed: ${shortWords(g.condition)}; was: ${shortWords(was.condition)})` : ""}${when ? ` (when not met: ${g.whenNotMet === "needs_review" ? "the representative reviews it" : NOT_MET_WORD}; was: ${was.whenNotMet === "needs_review" ? "the representative reviews it" : NOT_MET_WORD})` : ""}${cite ? ` (source changed${sourceWords(g) || ": none"})` : ""}`);
   }
   // Break report m4: gate order is content (missing facts are listed in gate order), so a reorder is reviewed.
   const keptA = [...a.keys()].filter((k) => b.has(k)), keptB = [...b.keys()].filter((k) => a.has(k));
   if (keptA.join("|") !== keptB.join("|")) line("gate_order", "changed", `Gates reordered: ${(next?.gates ?? []).map((g) => g.label).join(" · ")}`);
   for (const [k, g] of a) if (!b.has(k)) line(k, "removed", `Gate: ${g.label}`);
+  if (!!prev?.assessment_only !== !!next?.assessment_only) line("assessment_only", next?.assessment_only ? "added" : "removed", next?.assessment_only ? `${ASSESSMENT_ONLY_WORDS}: no case opens on it; it is used to assess a person` : `No longer ${ASSESSMENT_ONLY_WORDS.toLowerCase()}`);
   const ja = prev?.judgement ?? [], jb = next?.judgement ?? [];
   if (canonical(ja) !== canonical(jb)) line("officers_judgement", !ja.length ? "added" : !jb.length ? "removed" : "changed", jb.length ? `Officer's judgement, not checked by rules: ${jb.join("; ")}` : "Officer's judgement: no lines");
   const da = prev?.disclaimer ?? null, db = next?.disclaimer ?? null;

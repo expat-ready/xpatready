@@ -1,5 +1,6 @@
 // Product Studio application service: programs and combinations, the shared library (versioned edits), the
 // combination's own configuration, previews through the common renderer, validation, review and release.
+import { isAssessmentOnly } from "../../engine/eligibility/gates.ts";
 import { itemState, libraryFilter, lockItem, openItemChanges, originWords, refuseRetired, retiredFieldKeys } from "./library-items.ts";
 import { current } from "../../engine/where-used.ts";
 import { FILLS_LOCK } from "./who-fills.ts";
@@ -115,10 +116,10 @@ function retiredPeople(c: { label: string; retiredAt: Date | null }) {
 // UX-A part 1 (review M1): "set up", in the words of contracts/counts.ts: a form attached but not set up is still on the
 // combination ("2 forms · 0 set up"), so this never says "no forms" beside a count that says 2.
 export const EMPTY_WORDS = "Nothing to release yet: no form is set up on this combination and it has no documents. Set up the forms it files (Find forms, add one from the Form library, or finish one attached) before sending it for review.";
-export const emptyProblem = (s: Pick<Snapshot, "forms" | "document_requirements">) =>
-  s.forms.length || (s.document_requirements ?? []).length ? [] : [{ level: "error" as const, where: "Release", item: "", message: EMPTY_WORDS }];
+export const emptyProblem = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }) =>
+  s.forms.length || (s.document_requirements ?? []).length || isAssessmentOnly(s.eligibility as never) ? [] : [{ level: "error" as const, where: "Release", item: "", message: EMPTY_WORDS }];
 /** What a release needs on it before anything else is judged: F8 (something), then G5 (P-248: a form line and a document line). */
-export const contentProblems = (s: Pick<Snapshot, "forms" | "document_requirements">) => [...emptyProblem(s), ...releaseLineProblems(s)];
+export const contentProblems = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }) => [...emptyProblem(s), ...releaseLineProblems(s)];
 export { FORM_LINE_WORDS, formLineProblem, isFormLine }; // G5: the rule itself is engine/programs.ts (pure, for the C5.1 pack)
 
 @Injectable()

@@ -37,7 +37,7 @@ export class EligibilityGates {
   }
 
   private view(e: StoredEligibility | null): EligibilityGatesView {
-    return { gates: e?.gates ?? [], judgement: e?.judgement ?? [], disclaimer: e?.disclaimer ?? null, version: e?.version ?? 0, savedBy: nameOf(e?.by), savedAt: e?.at ?? null };
+    return { gates: e?.gates ?? [], judgement: e?.judgement ?? [], disclaimer: e?.disclaimer ?? null, assessmentOnly: e?.assessment_only === true, version: e?.version ?? 0, savedBy: nameOf(e?.by), savedAt: e?.at ?? null };
   }
 
   /** GET: the draft's gates, and what the newest release carries. */
@@ -71,7 +71,7 @@ export class EligibilityGates {
     // BR-3: the first save needs no version; every later one names the version it read (checked after the fields, so
     // a refusal on a field is said first).
     if (before ? b.version !== current : b.version !== undefined && b.version !== 0) this.stale(before);
-    const next: StoredEligibility = { gates: checked.gates, judgement: checked.judgement, disclaimer: checked.disclaimer, version: current + 1, by: actor.id, at: new Date().toISOString() };
+    const next: StoredEligibility = { gates: checked.gates, judgement: checked.judgement, disclaimer: checked.disclaimer, version: current + 1, by: actor.id, at: new Date().toISOString(), ...(checked.assessment_only ? { assessment_only: true as const } : {}) };
     // The version is checked again in the write itself, so two saves at once cannot both pass.
     const done = await this.db.$executeRaw(Prisma.sql`UPDATE "combination" SET "eligibility" = ${JSON.stringify(next)}::jsonb WHERE "id" = ${id}::uuid AND COALESCE(("eligibility"->>'version')::int, 0) = ${current}`);
     if (!done) this.stale((await this.combination(id)).eligibility as StoredEligibility | null);
