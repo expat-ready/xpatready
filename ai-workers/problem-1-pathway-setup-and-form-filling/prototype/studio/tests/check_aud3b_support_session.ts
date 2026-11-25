@@ -118,9 +118,10 @@ try {
   const blank = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: "   " } });
   const long = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: "x".repeat(201) } });
   const extra = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: REASON, mode: "CHANGE" } });
-  ok("AUD-3b SS1 fail (SA-2-16, BR-11: blank reason rejected): no reason, a blank one, one over 200 characters, or a field it does not take (mode CHANGE) → 422; nothing opened, no line",
-    noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && blank.status === 422 && long.status === 422 && extra.status === 422 && sessions() === n0 && lines("true") === l0,
-    { noReason: noReason.body?.code, blank: blank.status, long: long.status, extra: extra.status });
+  const wide = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: `Sample ${"\u{20000}".repeat(97)}` } });   // 104 characters, 201 UTF-16 units (round 2, R2-M1)
+  ok("AUD-3b SS1 fail (SA-2-16, BR-11: blank reason rejected): no reason, a blank one, one over 200 characters, a field it does not take (mode CHANGE), or 104 wide characters (201 UTF-16 units, over the audit line's limit; round 2) → 422 naming the field, never a 500; nothing opened, no line",
+    noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && blank.status === 422 && long.status === 422 && extra.status === 422 && wide.status === 422 && wide.body.fields?.reason && sessions() === n0 && lines("true") === l0,
+    { noReason: noReason.body?.code, blank: blank.status, long: long.status, extra: extra.status, wide: [wide.status, wide.body?.code] });
   const noKey = await call(base, "POST", START(firmB), { token: billingT, body: { reason: REASON } });
   const auditorStart = await call(base, "POST", START(firmB), { token: auditorT, body: { reason: REASON } });
   const noToken = await call(base, "POST", START(firmB), { body: { reason: REASON } });

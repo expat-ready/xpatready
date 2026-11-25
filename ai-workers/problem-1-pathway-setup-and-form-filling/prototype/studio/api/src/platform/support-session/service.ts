@@ -45,7 +45,7 @@ export const ALWAYS_BLOCKED = Object.freeze([
   "Starting another session", "Waiving a deficiency, approving a review, recording a decision, exporting a case", "Keeping the current message wording, switching automatic messages on or off",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const StartBody = strict({ reason: z.string().trim().min(1, "Give a reason or a ticket reference.").max(500) });
+export const StartBody = strict({ reason: z.string().trim().min(1, "Give a reason or a ticket reference.").max(500, `A reason of 1-${REASON_LIMIT} characters.`) });
 
 export type OpenSession = { id: string; firmId: string; reason: string; mode: string; startedAt: Date; endsAt: Date };
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -57,9 +57,10 @@ export class SupportSessions {
   async start(staff: SystemStaffContext, firmId: string, body: unknown, req?: { supportSession?: { id: string; reason: string } }) {
     const raw = parseInput(StartBody, body ?? {}).reason;
     // Round 1 (breaker m2): the reason the guard checked and logged, cleaned the same way (no control or direction
-    // characters, no NUL), at most 200 characters by code point, as the database counts them.
+    // characters, no NUL), at most 200 UTF-16 units: the audit line's own limit (ports/audit.ts), so a reason that passes
+    // here is never refused there (round 2, R2-M1: a 500 and a false alarm); within the database's 200 characters too.
     const reason = reasonOf(raw);
-    if (!reason || [...reason].length > REASON_LIMIT) problem(FIELD_ERROR_STATUS, "Check the details", `Give a reason or a ticket reference of 1-${REASON_LIMIT} characters, in plain text. Nothing was opened.`, { code: "INVALID", fields: { reason: `A reason of 1-${REASON_LIMIT} characters.` } });
+    if (!reason || reason.length > REASON_LIMIT) problem(FIELD_ERROR_STATUS, "Check the details", `Give a reason or a ticket reference of 1-${REASON_LIMIT} characters, in plain text. Nothing was opened.`, { code: "INVALID", fields: { reason: `A reason of 1-${REASON_LIMIT} characters.` } });
     if (typeof firmId !== "string" || !UUID.test(firmId)) problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
     const firm = firmId.toLowerCase(), { actor } = ourStaff();
     return this.db.$transaction(async (tx) => {

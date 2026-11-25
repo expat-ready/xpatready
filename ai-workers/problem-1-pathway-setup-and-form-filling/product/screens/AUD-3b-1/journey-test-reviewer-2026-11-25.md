@@ -62,3 +62,43 @@
 
 ## Not tested
 Any screen (PF-6sb), a real screen reader, an intended user's unaided walk (D17 and D20 stay with the founder), SA-2-41's end and change mode (later parts).
+
+---
+
+# Round 2 (head 517ea9daf; the journeys the diff touches)
+**Setup:**
+* Scratch worktree of the head, `isolated.sh rv2187 4437 start PLATFORM_SYSTEM_IDENTITY=local` (runtime-lane port, never :4400); stopped afterwards.
+* The same script as round 1 (`scratchpad/tools/journey2.sh`), plus the PR's harness with 26 probes.
+* Still API only.
+
+| # | Journey | Result |
+|---|---|---|
+| J1 | Support starts with a ticket reason and reads firm A | 201 (38 ms), read 200 (63 ms). The start line now carries the session in its column. |
+| J2-J7 | Wrong firm, list, nested start, Billing, a foreign id, a change | Unchanged: 403, 403, 403, 403, 401, 403 "read-only". |
+| J4b | Start again with no header | 409 "open until … (it ends by itself then)". |
+| J8 | The Owner exports firm A's access report in a session (GET and HEAD) | **403 "bulk export is never allowed"; 0 `audit.exported` lines** (round-1 Major fixed). The on-screen report → 200; the export outside the session → 200. |
+| J10 | Start while sending an ended session's header; HEAD on the firm | 201 (no longer a 401 dead end); HEAD → 200. |
+| J11 | Non-English reason: "Sample 工单 " + 110 CJK Extension B characters (120 characters) | **500 "Something went wrong"**, plus a BR-5 `audit_write_failed` alarm. With 90 of them → 201. (Major, R2-M1 in review.md.) |
+| J12 | Reason with a right-to-left override | 201. The override is stripped; the register, guard line and start line hold the same text. |
+| J13 | 300 Latin characters, then 600 | 422 "1-200 characters", then 422 REASON_TOO_LONG "at most 500 characters" (R2-S1). |
+
+## Score (each 0, ½ or 1)
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J8: start, read, and the export refused. |
+| Next step obvious | 1 | The 409 says when the session ends. A start with an old header works. |
+| Plain words | ½ | "bulk export is never allowed" is plain, but the length words disagree (200 against 500, J13). The firm still reads the reason only as raw `supportReason` (unchanged). |
+| Feedback and state | ½ | Distinct codes and Problem Details, but J11 gets a 500 for a valid reason. |
+| Correct data | 1 | No export and no export line in a session. The column is set. The reason is the same everywhere. |
+| Error recovery | ½ | NUL → 422, and the ended header no longer blocks a start. J11 gives no field message to recover by. |
+| Accessibility and screen sizes | N/A | No screen. |
+| Speed | 1 | 16-63 ms per call. |
+| Visual quality | N/A | No screen. |
+| Trust and sources | 1 | Every in-session line has who, session and reason. Refusals are logged. Reasons are Sample. |
+
+**6.5 of the 8 criteria that apply = 8.1 / 10: a pass, no criterion at 0.** The open Major (J11) still blocks the review.
+Fixes that would raise it, most valuable first:
+1. Count the 200-character limit the way the audit line counts it, so J11 gets a 422. This raises feedback and error recovery.
+2. One wording and one limit for every reason length. This raises plain words.
+
+Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (J9; the firm stand-in was not on in this copy, and that part is unchanged in this diff).
