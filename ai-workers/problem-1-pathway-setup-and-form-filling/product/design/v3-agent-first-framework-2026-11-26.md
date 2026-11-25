@@ -20,4 +20,4 @@ The same doc now holds the full blueprint the founder asked for, in 15 numbered 
 
 Decided 26 Nov (founder): trunk-based branching, no develop branch.
 
-Reviewed 26 Nov (fresh read of the whole doc and its 4 drawings): fixed two contradictions (who waits for a person in CI/CD; "no manual QA" vs the founder's 2-hour pass), marked 1.0 as awaiting the founder's Day 1 sign-off, and added the copy-paste agent system prompt (`CLAUDE.md`) and the shaper prompt. Still open: the architecture drawing says "Doers" (unexplained team word); timeline drawing shows G1-G5, G0 (week 1) only in text.
+Reviewed 26 Nov (fresh read of the whole doc and its 4 drawings): fixed two contradictions (who waits for a person in CI/CD; "no manual QA" vs the founder's 2-hour pass), marked 1.0 as awaiting the founder's Day 1 sign-off, and added the copy-paste agent system prompt (`CLAUDE.md`) and the shaper prompt. Drawings fixed the same day: architecture says "queues, scheduler, jobs" (was "Doers"); timeline now shows G0 at week 1.
