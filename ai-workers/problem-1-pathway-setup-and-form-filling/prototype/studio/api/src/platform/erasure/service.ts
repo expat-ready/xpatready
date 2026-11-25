@@ -121,6 +121,7 @@ export class Erasure {
       const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_erasure_cancel(${id.toLowerCase()}::uuid, ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`;
       if (out === "NOT_FOUND") notFound();
       if (out === "RUNNING") problem(409, "Erasing now", "An erasure has started on this request and has not finished recording; it cannot be cancelled.", { code: "ERASURE_RUNNING" });
+      if (out === "MAY_HAVE_ERASED") problem(409, "Cannot be cancelled", "An earlier run may already have erased this person's data, so the request cannot be withdrawn.", { code: "MAY_HAVE_ERASED" });
       if (out === "WINDOW_ENDED") problem(409, "Too late to cancel", "The 7-day window has ended; the erasure runs today.", { code: "WINDOW_ENDED" });
       if (out !== "CANCELLED") problem(409, "Nothing to cancel", "No erasure is scheduled for this request.", { code: "NOT_SCHEDULED" });
     });
@@ -140,7 +141,7 @@ export class Erasure {
           out.skipped.push(d.id); continue;
         }
         const k = await this.one(ErasureOrder.parse({ requestId: d.id, firmId: d.firm_id, personId: d.person_id }), today);
-        if (k) out[k].push(d.id);
+        out[k ?? "skipped"].push(d.id);   // part 2a item 4: an order another run still holds is counted as skipped, never silent
       } catch (e) {
         out.failed++;
         logPort.error("erasure_order_failed", e instanceof EraserFailed ? e.cause : e, { module: e instanceof EraserFailed ? e.module : "erasure" });
@@ -162,7 +163,11 @@ export class Erasure {
         // Lead 26, 27 on #3235: the erasers may have committed (the record failed, or COMMIT's answer was lost). The claim is
         // kept, so nobody can cancel a request whose data may be gone (cancel refuses any claim); a run after 30 minutes
         // retakes it and records the result.
-        await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${"The erasers ran, but their result could not be recorded. The request cannot be cancelled; the next daily run records it."}, ${ERASURE_ACTOR}, true, ${claim}::timestamptz)`.catch(() => undefined);
+        // R7-3: say which module failed, and "may": an earlier run may have erased, and this one may not have.
+        const kept = e instanceof EraserFailed && !state.erased
+          ? `${e.module}: FAILED on a run after an earlier one that may have erased; the claim is kept. The request cannot be cancelled; the next daily run records it.`
+          : "The erasers may have run, but their result could not be recorded. The request cannot be cancelled; the next daily run records it.";
+        await this.db.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${kept}, ${ERASURE_ACTOR}, true, ${claim}::timestamptz)`.catch(() => undefined);
         throw e;
       }
       // Review M2 (SA-11-40 Failure): the request shows the failure as a step (the module's name only), then the claim goes
@@ -187,6 +192,8 @@ export class Erasure {
       const results: { module: string; r: EraseOutcome }[] = [];
       for (const e of this.registry.erasers()) {
         try { results.push({ module: e.module, r: EraseOutcome.parse(await e.erase(tx, order)) }); } catch (err) { throw new EraserFailed(e.module, err); }
+        const { r } = results[results.length - 1];   // part 2a item 5: the mark commits exactly when the erasers do
+        await tx.$queryRaw`SELECT plat_data_request_erasure_mark_add(${order.requestId}::uuid, ${claim}::timestamptz, ${e.module}, ${r.outcome}, ${r.note})`;
       }
       state.erased = true;   // from here a failure (COMMIT, its lost answer, the record) keeps the claim
       return { kind: "ran", results } as const;
@@ -199,10 +206,15 @@ export class Erasure {
       // Review r6 M2: this run retook an earlier run's claim, whose erasers may have committed unrecorded. A person gone or a
       // hold placed since then ends the erasure HELD with true words and no erase day (never cancellable, nothing more
       // erased); staff may approve it again.
-      const unknown = "An earlier run may have erased this person's data; its result was not recorded, so what was erased is not known.";
+      // Part 2a item 5: an earlier run's marks say what it did (they committed with its erasers); without them, not known.
+      const earlier = retaken ? await tx.$queryRaw<{ module: string; outcome: string; note: string }[]>`SELECT module, outcome, note FROM plat_data_request_erasure_marks(${order.requestId}::uuid, ${claim}::timestamptz)` : [];
+      const marked = earlier.map((m) => `${m.module}: ${m.outcome} (${m.note})`).join("; ");
+      const unknown = earlier.length ? `An earlier run's result was not recorded at the time; its marks say: ${marked}.`
+        : "An earlier run may have erased this person's data; its result was not recorded, so what was erased is not known.";
       if (retaken && done.kind !== "ran") {
-        const why = done.kind === "gone" ? "The person record has since been merged away or is no longer in that firm." : `A legal hold now applies: ${done.held.join("; ")}.`;
-        const text = `${unknown} ${why} Nothing more was erased.`.slice(0, 2000);
+        const why = done.kind === "gone" ? "The person record has since been merged away or is no longer in that firm: log the request on the right person record (SA-11-40 rule 6)." : `A legal hold now applies: ${done.held.join("; ")}. When it is lifted, approve again.`;
+        const tail = " Nothing more was erased.";   // R7-4: never cut off by the length limit
+        const text = `${unknown} ${why}`.slice(0, 2000 - tail.length) + tail;
         await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_HELD', ${text}, ${ERASURE_ACTOR}, true, ${claim}::timestamptz)`;
         await finish("PARTIAL", text);
         return "partial" as const;
@@ -221,7 +233,7 @@ export class Erasure {
         await tx.$queryRaw`SELECT plat_data_request_erasure_step(${order.requestId}::uuid, 'ERASURE_RESULT', ${`${module}: ${r.outcome} — ${r.note}`}, ${ERASURE_ACTOR}, false, ${claim}::timestamptz)`;
       const kept = done.results.filter((x) => x.r.outcome === "KEPT");
       const found = done.results.map(({ module, r }) => `${module}: ${r.outcome} (${r.note})`).join("; ");
-      const actions = (retaken ? `An earlier run's result was not recorded; it may have erased first. This run: ${found}` : found).slice(0, 2000);
+      const actions = (retaken ? `${earlier.length ? `An earlier run's result was not recorded at the time; its marks say: ${marked}.` : "An earlier run's result was not recorded; it may have erased first."} This run: ${found}` : found).slice(0, 2000);
       await finish(kept.length ? "PARTIAL" : "COMPLETED", actions);
       return kept.length ? "partial" as const : "erased" as const;
     });

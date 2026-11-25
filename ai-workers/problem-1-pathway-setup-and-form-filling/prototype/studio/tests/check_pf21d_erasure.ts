@@ -301,12 +301,15 @@ try {
   sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
   sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P10}', 'Sample: a late inquiry', 'staff:${OWNER}')`);
   sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r10}'`);
+  const gapCancel10 = await throws(() => svc.cancel(as, null, r10, { note: "Sample: withdrawn in the gap" }), /ERASURE_RUNNING/);   // part 2a item 6
   const retook = await svc.run();
   const notes10 = sql(`select string_agg(coalesce(note, ''), ' / ' order by seq) from plat_data_request_event where request_id = '${r10}'`);
   const cancel10 = await throws(() => svc.cancel(as, null, r10, {}), /NOT_SCHEDULED|ERASURE_RUNNING/);
+  ok("PF-21d fail (part 2a item 6, Lead 4): after a crash, 30 minutes and a new hold, a cancel in the gap → 409; the retake then ends HELD and the rows stay",
+    gapCancel10 && !kinds(r10).includes("ERASURE_CANCELLED") && rowsOf(A, P10) === 0 && statusOf(r10) === "HELD|-", { gapCancel10, k: kinds(r10), rows: rowsOf(A, P10) });
   ok("PF-21d fail (review r6 M2): a retaken claim under a new hold → HELD, no erase day, the step says an earlier run may have erased and its result was not recorded (never \"nothing was erased\"); cancel → 409",
     retook.partial.includes(r10) && statusOf(r10) === "HELD|-" && cancel10 && /not recorded/.test(notes10) && /a late inquiry/.test(notes10)
-    && !/On legal hold; nothing was erased/.test(notes10) && /may have erased/.test(sql(`select actions_taken from plat_data_request where id = '${r10}'`)), { retook, s: statusOf(r10), notes10 });
+    && !/On legal hold; nothing was erased/.test(notes10) && /may have erased|its marks say: test\.rows: ERASED/.test(sql(`select actions_taken from plat_data_request where id = '${r10}'`)), { retook, s: statusOf(r10), notes10 });
   // review r6 M2: a retaken claim whose eraser then fails keeps the claim (an earlier run may have erased): cancel → 409.
   const P11 = person(A); addRows(A, P11);
   const r11 = await deletion(A, P11); await svc.approve(as, null, r11); clock.t += 7 * DAY;
@@ -317,16 +320,57 @@ try {
   const cancel11 = await throws(() => svc.cancel(as, null, r11, {}), /ERASURE_RUNNING/);
   ok("PF-21d fail (review r6 M2): a retaken claim whose eraser fails keeps the claim (never \"nothing was erased\" over an earlier unrecorded run): cancel → 409",
     retakeFail.failed === 1 && cancel11 && sql(`select erasing_since is not null from plat_data_request where id = '${r11}'`) === "t", { retakeFail, cancel11, k: kinds(r11) });
+  const notes11 = sql(`select string_agg(coalesce(note, ''), ' / ' order by seq) from plat_data_request_event where request_id = '${r11}'`);
+  ok("PF-21d fail (part 2a item 8, R7-3): a retake whose own eraser fails names that module and says \"may\"; it never claims the erasers ran",
+    /test\.second: FAILED on a run after an earlier one that may have erased/.test(notes11) && !/The erasers ran, but/.test(notes11), { notes11 });
+  // ----------------------------------------------------------------------------------------- PF-21d part 2a, items 2-8
+  // Item 5 (round 2 m3, R7-2): the lost-COMMIT run's marks committed with its erasers, so the run that records it says what
+  // the earlier run erased, never only "NOTHING".
+  const actions9 = sql(`select coalesce(actions_taken, '') from plat_data_request where id = '${r9}'`);
+  ok("PF-21d fail (part 2a item 5): a retake records the earlier run's marks (test.rows: ERASED), so the register never understates what was erased",
+    /its marks say: test\.rows: ERASED/.test(actions9), { actions9 });
+  // Item 8 (R7-1): a request a run retook stays marked. Approved again with the hold still on: cancel → 409, and the next run
+  // never says "nothing was erased"; with many long hold reasons the words still end "Nothing more was erased." (R7-4).
+  for (let i = 0; i < 5; i++) sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P10}', 'Sample: a long reason ${"x".repeat(470)}', 'staff:${OWNER}')`);
+  const again10 = await svc.approve(as, null, r10);
+  const cancelMarked = await throws(() => svc.cancel(as, null, r10, {}), /MAY_HAVE_ERASED/);
+  clock.t += 7 * DAY; const reRun10 = await svc.run();
+  const last10 = sql(`select note from plat_data_request_event where request_id = '${r10}' and kind = 'ERASURE_HELD' order by seq desc limit 1`);
+  ok("PF-21d fail (part 2a item 8, R7-1, R7-4): a request a run retook, approved again under a hold → cancel 409 MAY_HAVE_ERASED; the run ends HELD with the earlier run's words, ending \"Nothing more was erased.\"",
+    !!again10.eraseOn && cancelMarked && reRun10.partial.includes(r10) && statusOf(r10) === "HELD|-" && !/^On legal hold; nothing was erased/.test(last10)
+    && /earlier run/.test(last10) && last10.endsWith("Nothing more was erased.") && last10.length <= 2000, { cancelMarked, reRun10, last10: last10.slice(-120), n: last10.length });
+  // R7-4: the retake's gone path, with its next step.
+  const P13 = person(A), P13to = person(A); addRows(A, P13);
+  const r13 = await deletion(A, P13); await svc.approve(as, null, r13); clock.t += 7 * DAY;
+  mode = "breakRecord"; await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  sql(`update fo_person set merged_into_id = '${P13to}', merged_at = now() where id = '${P13}'`);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r13}'`);
+  const gone13 = await svc.run();
+  const last13 = sql(`select note from plat_data_request_event where request_id = '${r13}' and kind = 'ERASURE_HELD' order by seq desc limit 1`);
+  ok("PF-21d fail (part 2a item 8, R7-4): a retake whose person was merged away since → HELD, no erase day; the words give the earlier run's marks, the next step, and \"Nothing more was erased.\"",
+    gone13.partial.includes(r13) && statusOf(r13) === "HELD|-" && /its marks say: test\.rows: ERASED/.test(last13) && /log the request on the right person record/.test(last13) && last13.endsWith("Nothing more was erased."), { gone13, last13 });
+  // Item 4 (round 2 m4): an order another run still holds (a fresh claim) is counted as skipped, never silent.
+  const P14 = person(A); addRows(A, P14);
+  const r14 = await deletion(A, P14); await svc.approve(as, null, r14); clock.t += 7 * DAY;
+  sql(`update plat_data_request set erasing_since = now() where id = '${r14}'`);
+  const held14 = await svc.run();
+  ok("PF-21d fail (part 2a item 4): an order still claimed by another run → counted as skipped, nothing erased",
+    held14.skipped.includes(r14) && rowsOf(A, P14) === 2, { held14 });
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)
     && refusedBySql(`update plat_data_request set erase_on = received_on where id = '${r3}'`, /plat_data_request_erase_on_set/)
+    && refusedBySql(`update plat_data_request set erasing_since = now() where id = '${access}'`, /plat_data_request_erase_on_set/)   // part 2a item 2: a claim needs an erase day
     && refusedBySql(`select plat_data_request_erasure_step('${r3}', 'OVERDUE_ALERTED', 'x', 'system:x', false, null)`, /not an erasure step/));
   ok("PF-21d fail (walls): a firm's session cannot approve, cancel, read or run an order (refused by the database)",
     refusedAsApp(A, `select plat_data_request_erasure_approve('${r1}', '2027-01-01', 'staff:x')`, /only ExpatReady's own staff/)
     && refusedAsApp(A, `select plat_data_request_erasure_cancel('${r1}', null, 'staff:x', '2027-01-01')`, /only ExpatReady's own staff/)
     && refusedAsApp(A, `select plat_data_request_erasure_of('${r1}')`, /only ExpatReady's own staff/)
-    && refusedAsApp(A, `select plat_data_request_erasure_due('2027-01-01', 10)`, /only ExpatReady's own staff/));
+    && refusedAsApp(A, `select plat_data_request_erasure_due('2027-01-01', 10)`, /only ExpatReady's own staff/)
+    && refusedAsApp(B, `select plat_data_request_erasure_mark_add('${r1}', now(), 'test.rows', 'ERASED', 'x')`, /not an order of this firm|permission denied/)   // part 2a: a mark only for the session's own firm, under the run's claim
+    && refusedBySql(`select plat_data_request_erasure_mark_add('${r1}', now(), 'test.rows', 'ERASED', 'x')`, /not an order of this firm/)
+    && refusedBySql(`delete from plat_data_request_erasure_mark`, /plat_data_request_kept/));
   // ------------------------------------------------------------------------------------- the migration right after itself
   const prior = all.filter((d) => d < NEW);
   ok(`PF-21d: the migration has its own stamp, after every one before it (newest before: ${prior.at(-1)})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1);
