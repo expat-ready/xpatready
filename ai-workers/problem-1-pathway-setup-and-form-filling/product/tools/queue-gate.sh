@@ -8,7 +8,7 @@
 #            check "pr-suites" (pr-suites.yml's job, the PR's affected suites; P-822) is "success" on that exact head, from
 #            pr-suites.yml's own pull_request run: missing, pending, skipped, neutral, cancelled or red all refuse (a PR
 #            whose plan picks no suite gets "success" from that job, so "skipped" is never needed; SUITES_GATE below
-#            warns instead for its first 24 h, P-717 (2)); (c) no changed path
+#            blocks on landing: the founder's ruling of 25 Nov 11:3x IST waives P-717 (b)'s 24 h warn for it); (c) no changed path
 #            matches lead-read-paths.txt (.github/, .mergify.yml, the guards, schema, migrations, money,
 #            permissions; a screenshot, an image or .txt under product/, or a records-only PR sets off only the guard
 #            lines, never money or permissions: B206 part 3).
@@ -85,9 +85,10 @@ ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id
   run_started=$(echo "$r" | jq -r '.run_started_at // empty'); run_attempt=$(echo "$r" | jq -r '.run_attempt // 1'); run_status=$(echo "$r" | jq -r '.status // ""'); }
 
 # --- P-822 (founder, 25 Nov ~08:1x IST): "`pr-suites` (the PR's affected suites) becomes required before the label".
-# P-717 (2): a new blocking check warns for its first 24 h (or 10 PR runs), then blocks only if clean. The one line the
+# It blocks on landing (founder's ruling, 25 Nov ~11:3x IST, relayed by the tech lead on #3632: "blocks on landing, with no
+# 24 h warn period: P-717 (b) is waived for this check"). warn stays only as the kill switch; the one line the
 # Lead changes to make it block (QG_SUITES_GATE: the test's stand-in only; queue-gate.yml never sets it):
-SUITES_GATE="${QG_SUITES_GATE:-warn}"   # warn | block (any other value blocks)
+SUITES_GATE="${QG_SUITES_GATE:-block}"   # block | warn (the kill switch; any other value blocks)
 suites() {  # a commit → suites_state (success | missing | pending | <the conclusion> | unread), suites_why. The newest
   # check run "pr-suites" on it decides, counted only when it is pr-suites.yml's own pull_request run of THIS PR, based on
   # main, on this very commit, the check run in that run's own check suite, and the run itself ended success (breaker
