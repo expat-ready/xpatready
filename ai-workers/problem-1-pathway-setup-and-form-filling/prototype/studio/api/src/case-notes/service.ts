@@ -116,12 +116,12 @@ export class CaseNotes {
   subjectFor(ctx: StaffContext, kind: SubjectKind, id: string) { return this.subjectOf(this.db, ctx, kind, id); }
 
   /** The current version of every note of a case or client (or of one note), with when its first version was written. */
-  private async current(db: Tx | Db, s: { kind: SubjectKind; id: string }, noteKey?: string): Promise<Current[]> {
+  private async current(db: Tx | Db, s: { kind: SubjectKind; id: string; firmId: string }, noteKey?: string): Promise<Current[]> {
     const rows = await db.$queryRaw<(Omit<Row, "firmId" | "workspaceId" | "caseId" | "noteKey" | "byActor" | "createdAt"> & { firm_id: string; workspace_id: string; case_id: string; note_key: string; by_actor: string; created_at: Date; first_at: Date })[]>`
       select * from (
         select distinct on (n.note_key) n.id::text, n.firm_id::text, n.workspace_id::text, n.case_id::text, n.note_key::text, n.version, n.text, n.visibility, n.pinned, n.author, n.by_actor, n.created_at,
           (select v.created_at from case_note v where v.note_key = n.note_key and v.version = 1) as first_at
-        from case_note n where ${column(s.kind)} = ${s.id}::uuid and (${noteKey ?? null}::uuid is null or n.note_key = ${noteKey ?? null}::uuid)
+        from case_note n where ${column(s.kind)} = ${s.id}::uuid and n.firm_id = ${s.firmId}::uuid and (${noteKey ?? null}::uuid is null or n.note_key = ${noteKey ?? null}::uuid)
         order by n.note_key, n.version desc) cur
       order by pinned desc, first_at desc, note_key`;
     return rows.map((r) => ({ id: r.id, firmId: r.firm_id, workspaceId: r.workspace_id, caseId: r.case_id, noteKey: r.note_key, version: r.version, text: r.text, visibility: r.visibility, pinned: r.pinned, author: r.author, byActor: r.by_actor, createdAt: r.created_at, firstAt: r.first_at }));
@@ -145,7 +145,8 @@ export class CaseNotes {
       if (e instanceof HttpException) throw e;
       const m = String((e as Error)?.message ?? e);
       // Break m2: the case was deleted while the note was written (the insert trigger's foreign_key_violation, P2003).
-      if ((e as { code?: string })?.code === "P2003" || /case_note: no case/.test(m)) notFound();
+      // Break F4: the client's too (its own word in the 404).
+      if ((e as { code?: string })?.code === "P2003" || /case_note: no (case|client)/.test(m)) notFound(/case_note: no client/.test(m) ? "client" : "case");
       if (/P2034|could not serialize|deadlock/i.test(m)) problem(409, "Not possible now", "This note changed at the same time. Open it again.", { code: "NOTE_CHANGED" });
       throw e;
     }

@@ -7,6 +7,8 @@
 //               with no skip or duplicate across 120 lines of one timestamp
 //   CS-NT1 DW14 a kind, author and date filter returns only those lines; firm B's lines never appear on firm A's case
 //               (a line of firm B's naming firm A's case, written before AUD-1m's case_id, is left out); firm B → 404
+//   break F1, F2, F3, F5 (product/screens/CS-NT1c/break-report.md): an out-of-range cursor, pages left empty by the
+//               prefilter, a same-prefix case's line, a client moved to another firm
 // It runs in this process, as check_csnt1_notes.ts: a scratch database (every migration, PF-3's Sample seed, staff of
 // the starter roles) and a small Nest app with PF-4's guard and this row's feature. Cases and audit lines are fixtures
 // written in SQL. No server, no browser, no model call (US$0). Both scratch databases are dropped at the end.
@@ -214,6 +216,33 @@ try {
   ok("CS-NT1 DW14 fail: firm B reading firm A's case timeline → 404 (an unknown case 404, no session 401), and firm B's own case timeline answers with its own line",
     crossTl[0].status === 404 && !JSON.stringify(crossTl[0].body).includes("visitor") && crossTl[1].status === 404 && crossTl[2].status === 401
     && (await call(BASE, "GET", TL(b1.id), { token: TB })).body?.lines?.some((l: { summary: string }) => l.summary.startsWith("Firm B upload")), crossTl.map((x) => x.status));
+
+  // ----------------------------------------------------------------------- the breaker's findings (break-report.md)
+  const huge = Buffer.from(JSON.stringify(["9999999999999999999", "audit", randomUUID()])).toString("base64url"), top = Buffer.from(JSON.stringify(["9223372036854775807", "audit", randomUUID()])).toString("base64url");
+  const [hugeR, topR] = await Promise.all([call(BASE, "GET", TL(c.id, `?cursor=${huge}`), { token: T.OWNER }), call(BASE, "GET", TL(c.id, `?cursor=${top}`), { token: T.OWNER })]);
+  ok("break F1 fail: a cursor past PostgreSQL's bigint → 400 INVALID, never a 500; the largest bigint itself answers 200", hugeR.status === 400 && hugeR.body.code === "INVALID" && topR.status === 200, [hugeR.status, topR.status]);
+  const d = newCase(), d8 = d.id.slice(0, 8);
+  for (let i = 0; i < 10; i++) line({ at: `2026-11-01T10:00:${String(i).padStart(2, "0")}Z`, actor: "csnt1c-officer", action: "answered", entity: "case fact", key: null, summary: `Answer ${i} saved on case ${d8}`, caseId: d.id, firmId: FA });
+  sql(`set session_replication_role = replica; insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, actor_type)
+    select gen_random_uuid(), '${W}', '2026-11-10T10:00:00Z'::timestamptz + g * interval '1 second', 'csnt1c-officer', 'stage moved', 'case', null, 'Moved case 0000aaaa to Gathering (ref ${d8})', 'FIRM_STAFF' from generate_series(1, 300) g`);
+  const dp = await call(BASE, "GET", TL(d.id), { token: T.OWNER });
+  ok("break F2 pass: 300 lines the prefilter reads but case-feed.ts drops never leave an empty page: page 1 holds the case's 10 lines and says no more",
+    dp.status === 200 && dp.body.lines.length === 10 && dp.body.more === false && dp.body.lines.every((l: { summary: string }) => l.summary.includes(`saved on case ${d8}`)), { n: dp.body?.lines?.length, more: dp.body?.more });
+  const bc = randomUUID().replace(/^.{8}/, s8);
+  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key) values ('${bc}', '${W}', '${randomUUID()}', 'user-Q', 'user-S', 'C-2026-09999', 'sample-solo')`);
+  const leak = line({ at: tA(3_000), actor: "user-S", action: "stage moved", entity: "case", key: bc, summary: `FIRMB-LEAK moved case ${s8} to Submitted`, caseId: null, firmId: null });
+  const tlF3 = await call(BASE, "GET", TL(c.id), { token: T.OWNER });
+  ok("break F3 fail: a 'case' line keyed by another case's full id (the same first 8 characters, no firm id) never shows on this case's timeline",
+    tlF3.status === 200 && !JSON.stringify(tlF3.body).includes("FIRMB-LEAK") && !JSON.stringify(tlF3.body).includes(leak) && tlF3.body.lines.length === tl.body.lines.length, tlF3.body?.lines?.map((l: { summary: string }) => l.summary));
+  const lone = newCase(); sql(`set session_replication_role = replica; delete from runtime_case where id = '${lone.id}'`);
+  const loneNote = await call(BASE, "POST", CN(lone.client), { token: T.OWNER, body: { text: "Firm A's words about this person." } });
+  sql(`update case_client set firm_key = 'sample-solo' where id = '${lone.client}'`);
+  const bRead = await call(BASE, "GET", CN(lone.client), { token: TB });
+  ok("break F5 fail: a client moved to another firm in the database: that firm's list never shows the first firm's note (reads filter by the note's firm too)",
+    loneNote.status === 201 && bRead.status === 200 && bRead.body.notes.length === 0 && !JSON.stringify(bRead.body).includes("Firm A's words"), [loneNote.status, bRead.status, bRead.body]);
+  sql(`update case_client set firm_key = 'sample-firm' where id = '${lone.client}'`);
+  const aRead = await call(BASE, "GET", CN(lone.client), { token: T.OWNER });
+  ok("break F5 pass: moved back, its own firm reads the note again", aRead.status === 200 && aRead.body.notes.length === 1, aRead.body);
 
   // ------------------------------------------------------------------------------ the client's removal takes its notes
   const n0 = Number(sql(`select count(*) from case_note where case_client_id = '${a1.client}'`));

@@ -26,6 +26,7 @@ type Key = { us: bigint; source: Source; id: string };
 type Raw = { id: string; ust: string; actor: string; kind: TimelineKind; type: string; summary: string; entity?: string; entity_key?: string | null; case_id?: string | null; firm_id?: string | null; visibility?: string; pinned?: boolean };
 export type CaseTimelineLine = { at: string; kind: TimelineKind; type: string; actor: string; actorName: string | null; summary: string; refId: string; source: Source; visibility?: string; pinned?: boolean };
 
+const BIGINT_MAX = 9223372036854775807n;   // break F1: a larger cursor would fail PostgreSQL's bigint cast (a 500)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const invalid = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
@@ -35,7 +36,7 @@ const encode = (k: Key) => Buffer.from(JSON.stringify([k.us.toString(), k.source
 function decode(c: string): Key {
   try {
     const [us, source, id] = JSON.parse(Buffer.from(c, "base64url").toString("utf8")) as [string, Source, string];
-    if (/^\d{1,19}$/.test(us) && (source === "audit" || source === "note") && UUID.test(id)) return { us: BigInt(us), source, id: id.toLowerCase() };
+    if (/^\d{1,19}$/.test(us) && BigInt(us) <= BIGINT_MAX && (source === "audit" || source === "note") && UUID.test(id)) return { us: BigInt(us), source, id: id.toLowerCase() };
   } catch { /* below */ }
   return invalid("cursor", "This cursor is not one this timeline gave; start from the first page.");
 }
@@ -91,7 +92,9 @@ export class CaseTimeline {
         where true ${after(f, "audit", actors)}
         order by t.us desc, t.id collate "C" desc limit ${take}`;
       // Lines before AUD-1m's case_id: case-feed.ts's rule decides (the case it names is this one), never another firm's.
+      // Break F3: a "case" line keyed by another case's full id is that case's, even if its 8 first characters match.
       return rows.filter((r) => r.case_id === c.id || (r.case_id == null && (r.firm_id == null || r.firm_id === c.firmId)
+        && !(r.entity === "case" && r.entity_key && r.entity_key.toLowerCase() !== c.id.toLowerCase())
         && caseNamedBy({ entity: r.entity ?? "", entityKey: r.entity_key ?? null, summary: r.summary }) === short && firmMayRead({ entity: r.entity ?? "", entityKey: r.entity_key ?? null, summary: r.summary }, new Set([short]))));
     },
     note: (c, f, take, actors) => this.db.$queryRaw<Raw[]>`
@@ -99,7 +102,7 @@ export class CaseTimeline {
         select cur.note_key::text as id, (extract(epoch from cur.first_at) * 1000000)::bigint as us, cur.author as actor, 'note' as type, cur.text as summary, cur.visibility, cur.pinned, 'NOTE' as kind
         from (select distinct on (n.note_key) n.note_key, n.text, n.visibility, n.pinned, n.author,
                 (select v.created_at from case_note v where v.note_key = n.note_key and v.version = 1) as first_at
-              from case_note n where n.case_id = ${c.id}::uuid order by n.note_key, n.version desc) cur) t
+              from case_note n where n.case_id = ${c.id}::uuid and n.firm_id = ${c.firmId}::uuid order by n.note_key, n.version desc) cur) t
       where true ${after(f, "note", actors)}
       order by t.us desc, t.id collate "C" desc limit ${take}`,
   };
@@ -114,19 +117,29 @@ export class CaseTimeline {
       actors = s ? [`staff:${s.id}`, ...(s.actorId ? [s.actorId] : [])] : ["(nobody)"];
     }
     const take = TIMELINE_PAGE + 1;
-    const read = await Promise.all((Object.keys(this.SOURCES) as Source[]).map(async (source) => ({ source, rows: await this.SOURCES[source](c, f, take, actors) })));
-    // A source that read a full page may have older lines not read yet: nothing older than its last read line is shown.
-    // The audit source counts its rows before case-feed.ts's filter, so it is read again here unfiltered for the floor.
-    let floor: Key | null = null;
-    for (const { source, rows } of read) {
-      const raw = source === "audit" ? await this.auditFloor(c, f, take, actors) : rows.length === take ? keyOf(rows[take - 1], source) : null;
-      if (raw && (!floor || cmp(raw, floor) > 0)) floor = raw;
+    // Break F2: lines the SQL prefilter reads but case-feed.ts's rule drops can leave a page short; it is filled from
+    // the next reads (at most 10), so a page is short only at the end of the timeline.
+    const page: { r: Raw; source: Source; k: Key }[] = [];
+    let cursor = f.cursor, more = false, last: Key | null = null;
+    for (let round = 0; round < 10 && page.length < TIMELINE_PAGE; round++) {
+      const g = { ...f, cursor };
+      const read = await Promise.all((Object.keys(this.SOURCES) as Source[]).map(async (source) => ({ source, rows: await this.SOURCES[source](c, g, take, actors) })));
+      // A source that read a full page may have older lines not read yet: nothing older than its last read line is shown.
+      // The audit source counts its rows before case-feed.ts's filter, so it is read again here unfiltered for the floor.
+      let floor: Key | null = null;
+      for (const { source, rows } of read) {
+        const raw = source === "audit" ? await this.auditFloor(c, g, take, actors) : rows.length === take ? keyOf(rows[take - 1], source) : null;
+        if (raw && (!floor || cmp(raw, floor) > 0)) floor = raw;
+      }
+      const merged = read.flatMap(({ source, rows }) => rows.map((r) => ({ r, source, k: keyOf(r, source) })))
+        .filter((x) => !floor || cmp(x.k, floor) >= 0).sort((a, b) => cmp(b.k, a.k));
+      const need = TIMELINE_PAGE - page.length, got = merged.slice(0, need);
+      page.push(...got);
+      more = merged.length > need || floor !== null;
+      last = got.at(-1)?.k ?? floor ?? last;
+      if (!more) break;
+      cursor = last;
     }
-    const merged = read.flatMap(({ source, rows }) => rows.map((r) => ({ r, source, k: keyOf(r, source) })))
-      .filter((x) => !floor || cmp(x.k, floor) >= 0).sort((a, b) => cmp(b.k, a.k));
-    const page = merged.slice(0, TIMELINE_PAGE);
-    const more = merged.length > TIMELINE_PAGE || floor !== null;
-    const last = page.at(-1)?.k ?? floor;
     const names = await this.names(c.firmId, page.map((x) => x.r.actor));
     const lines: CaseTimelineLine[] = page.map(({ r, source }) => ({
       at: new Date(Number(BigInt(r.ust) / 1000n)).toISOString(), kind: r.kind, type: r.type, actor: r.actor, actorName: names.get(r.actor) ?? (r.actor.startsWith("system:") ? "The system" : null),
