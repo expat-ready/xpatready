@@ -136,6 +136,10 @@ try {
     ok(`FO-7c DW8 pass (${status}, charges ${charges ? "on" : "off"}): no card; the operating details block, no contact line`, r.status === 200 && r.body.card.offered === false && r.body.offline.details?.startsWith("Interac") && r.body.offline.contact === null && r.body.offline.reference === r.body.invoice.number, r.body);
   }
 
+  sql(`update money_payment_account set status = 'ACTIVE', charges_enabled = true, stripe_account_id = 'acct_1NotOnTheRail' where firm_id = '${A}'`);
+  const gone = await call(undefined, "POST", `/public/pay/${T1}/session`);
+  ok("FO-7c DW8 fail (AG-16-17): the row says ACTIVE but the processor no longer knows the account → 409 CARD_NOT_OFFERED with the offline details (never a 500, never another account)", gone.status === 409 && gone.body.code === "CARD_NOT_OFFERED" && gone.body.offline?.details?.startsWith("Interac"), gone.body);
+  sql(`update money_payment_account set stripe_account_id = '${acct}' where firm_id = '${A}'`);
   // ------------------------------------------------------------------------------------- the card session (ACTIVE)
   rail.set(acct, { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false });
   sql(`update money_payment_account set status = 'ACTIVE', charges_enabled = true, payouts_enabled = true where firm_id = '${A}'`);

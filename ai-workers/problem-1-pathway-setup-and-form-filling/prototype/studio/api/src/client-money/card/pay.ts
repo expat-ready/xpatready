@@ -28,7 +28,7 @@ import { logPort } from "../../platform/observability/log.ts";
 import { MONEY, UUID, notFound } from "../invoices/drafts.ts";
 import { dayOf, invoiceFacts } from "../invoices/facts.ts";
 import { invoiceInScope, type ScopeOf } from "../reads/visibility.ts";
-import { RailRefused, type CardRail } from "./rail.ts";
+import { RailAccountGone, RailRefused, type CardRail } from "./rail.ts";
 
 type Tx = Prisma.TransactionClient;
 export const PAY_TOKEN = /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})\.[A-Za-z0-9_-]{43}$/;
@@ -149,7 +149,7 @@ export class CardPay {
           metadata: { firm_id: firmId, invoice_id: v.id }, successUrl: `${back}/done`, cancelUrl: back, idempotencyKey: `fo7c-pay-${v.id}-${v.dueMinor}-${payments}` });
         return { url: s.url };
       } catch (e) {
-        if (!(e instanceof RailRefused)) throw e;
+        if (!(e instanceof RailRefused || e instanceof RailAccountGone)) throw e;   // refused, or the account is no longer ours to charge
         logPort.info("card_pay_refused_by_rail", { invoiceId: v.id });
         return problem(409, "Not possible now", CARD_DOWN, { code: "CARD_NOT_OFFERED", offline: await this.offline(db, firmId, v, firm) });
       }
