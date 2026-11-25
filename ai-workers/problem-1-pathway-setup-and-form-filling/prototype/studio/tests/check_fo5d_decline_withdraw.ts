@@ -60,7 +60,7 @@ try {
   const dirs = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
   for (const d of dirs) {
     execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
-    if (d === "20261125150000_fo5d_decline_reason")   // measured right after its own migration (the row's rule)
+    if (d === "20261125150000_front-office-signing__fo5d_decline_reason")   // measured right after its own migration (the row's rule)
       ok("FO-5d M pass: right after its migration, fo_signer has a nullable decline_reason text column and its check",
         sql(`select data_type || ':' || is_nullable from information_schema.columns where table_name = 'fo_signer' and column_name = 'decline_reason'`) === "text:YES"
           && count("pg_constraint", "conname = 'fo_signer_decline_reason_check'") === 1);

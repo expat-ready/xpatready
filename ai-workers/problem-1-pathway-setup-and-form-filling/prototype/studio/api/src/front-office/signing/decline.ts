@@ -3,7 +3,7 @@
 // (./service.ts, with none). Called inside the caller's transaction, after the request's row lock, on a live request and a
 // signer who has neither signed nor declined (the caller checked both under that lock).
 //   * One decline declines all (AG05-D2(6)): the signer's `declined_at` and `decline_reason` are written once (the database
-//     holds the reason only beside `declined_at`, and never changes either after: 20261125150000_fo5d_decline_reason); the
+//     holds the reason only beside `declined_at`, and never changes either after: 20261125150000_front-office-signing__fo5d_decline_reason); the
 //     request is DECLINED and ended, so every link of it is dead; signatures already given stay in the history; nobody else
 //     is emailed.
 //   * The agreement (a retainer or a consultation agreement, both fo_retainer rows): while it still shows this request's
