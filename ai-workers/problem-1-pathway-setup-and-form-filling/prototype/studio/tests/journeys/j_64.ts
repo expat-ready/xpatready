@@ -160,6 +160,8 @@ try {
   const w5 = await walk("Pixel 7", { ...devices["Pixel 7"] }, { name: "invitation-letter-phone.pdf", bytes: doc5 }, true, "w5-pixel7");
   const resumed5 = w5.seen.map((s) => /Resumed, (\d+)%$/.exec(s)?.[1]).filter((x): x is string => !!x).map(Number);
   const stored5 = sql(`select sha256 from case_document where subject_id = '${person}' and document_type = 'letter_of_invitation' and current`);
+  ok("R1.64 W5: on a Pixel 7 the same cut says \"Upload paused: reconnecting\", then \"Resumed, N%\" (N > 0), and the file is stored once with the original's sha256",
+    w5.paused && resumed5.length > 0 && resumed5[0] > 0 && !w5.refused && stored5 === sha(doc5) && fileRows() === files5 + 1 && docRows() === docs5 + 1, { paused: w5.paused, seen: w5.seen.slice(-5), refused: w5.refused });
   // The panel's block fits the phone: nothing of it past the right edge. The case page as a whole is measured too and,
   // when it scrolls sideways because of another panel, said as a NOTE naming that panel (not this row's).
   const fit = await w5.page.evaluate((who) => {
