@@ -63,3 +63,48 @@ Met: server authorisation, deny by default (403 for Case Officer); optimistic co
 A real screen reader. An intended user's unaided walk (D17, D20 stay with the founder). The withdraw email and the request cancel (#3648 is not merged; I read its diff only). The graph's per-screen coverage: the tool's route table does not resolve the front-office retainer controller (all `testedBy: []`). That is a tool gap for qa, not this PR. Retrofit mapping: there is no team screen for S6 to map against; none recorded or needed for this part.
 
 Reviewer: Changes e1418b1d2e7778b2d5ed8e5f77a65242bcd8ebaa
+
+## Round 2 (diff-only re-review, head ace1e1b5f3f7bb5778e737cfa612b4916586bf35)
+
+Scope: `git diff e1418b1d2 ace1e1b5f -- ':!*.png' ':!*.md'` only: `end-panels.tsx` (+60 / -30) and `check_fo5s3_end_panels_browser.ts` (+37). Isolated copy `rv2_fo5s3` on :4568 (PLATFORM_IDENTITY=local), never :4400; stopped afterwards, the check's screenshots put back with `git checkout -- '*.png'`, walk scripts left in the session scratchpad.
+
+**Verdict: Approve** for ace1e1b5f3f7bb5778e737cfa612b4916586bf35. 0 Blockers, 0 Majors open. 4 new Minors (below), none blocking. Journey score **9/10, pass** (round 2 section of `journey-test-reviewer-2026-11-25-part3a.md`). The #3648 condition from round 1 still stands: the PR stays draft until #3648 is on main.
+
+### Runs
+| Run | Result |
+|---|---|
+| `check_fo5s3_end_panels_browser.ts 4568 xr_studio_rv2_fo5s3`, twice | **23/23, exit 0** both times (13.7 s) |
+| Hand replay in Chromium (Playwright, headless, 1440×900, as a person: prospect page → Open the retainer → Signed offline) | K1-K6 below; no page error |
+
+### Does each fix close its finding?
+* **B1 / M1 (Signed offline reset after a 409): closed.** K1, the breaker's exact steps: v1 Sent; PDF and "Signed v1 at the office"; a colleague's PATCH makes v2 Draft; Record → the server's words stay ("This agreement has a newer version (2) than the one you saw (1). Open it again."), the stale notice is up, the file (1) and the reason are kept, Record is disabled. A forced click and Enter on it sent **0** requests; DB stays `DRAFT v2`, nothing filed. K2, the second variant (v1 and v2 sent, Version 1 picked, a colleague makes v3): same, and the pick stays "1". The mechanism is sound:
+  * `useOpenedOn` (`end-panels.tsx:42-47`) captures `{n, status}` in an effect on `[open]` only, and falls back to the live `r` for the one render before the effect runs (`stale` is false then, which is right).
+  * `expectedVersion` is `on.n` (`:102`, and `expectedStatus: on.status` in Withdraw `:60`), so even if a re-read arrived without a 409 the server would still refuse. After a re-read the button is off anyway (`:117`, `:71`).
+  * The reset effects (`:54`, `:92`) run on `[open]` only, so the re-read no longer clears the error, file, reason or pick.
+  * Stale compares version and status, which matches the server (withdraw checks `expectedStatus !== r.status`, `service.ts:663`). The query client has `refetchOnWindowFocus: false` (`lib/api.ts:46`), so the panel goes stale only after a 409 or a page action, never because a tab regained focus.
+  * After Cancel and reopening, the panel starts clean on the new version. It pre-selects "Version 2 (current)", the unsent draft. That is the concept's default (FO-5f item 3, "default the current one"), and now it is a fresh, deliberate opening. It is not a regression.
+* **Reviewer m4 / breaker m2 (a dead confirm after a 409): closed** by `disabled={stale}`. K4 (Withdraw, a colleague edits): 409 in words, the reason kept, "Withdraw retainer" disabled, the description still "Version 1, sent to …" (the version it opened on, now correct).
+* **confirmClose: never blocks a successful close or Cancel.** Success and Cancel call the `onOpenChange` prop directly (`:61`, `:107`, the footer Cancel), while Panel runs `confirmClose` only on Radix's own close paths (Escape, overlay, X; `controls.tsx:125`). Checked: K3 succeeded with a dirty panel and closed with 0 prompts, toast "Recorded as signed on paper. … is now a client."; Cancel on a dirty panel closed with 0 prompts, focus back on "Signed offline"; Escape on a dirty panel asked "Discard the file and reason you entered?", and dismissing kept the panel and the reason. Reviewer m7 / breaker m5: closed.
+* **Version choices on CLIENT_SIGNED (reviewer m2 / breaker m3): closed.** `choices = [on.n]` when the status is CLIENT_SIGNED, so the select is hidden and no `signedVersion` is sent. K6 (v1 and v2 sent, status set to CLIENT_SIGNED in the DB to stand in for the e-signature) showed no select. Elsewhere `v.n <= on.n` keeps a re-read's newer versions out of the list.
+* **Breaker M1 (consultation copy and toast): closed.** The panel copy branches on `r.kind` (`:119-121`). The toast follows `prospectWon === true` from the response (`:106-107`), which the server sets only for a RETAINER that actually moved to Won (`service.ts:755`, `:764`). The retainer path still says "… is now a client." (K3). The check's consultation case reads stage ACTIVE. Breaker m6 (the Withdraw wording on a consultation agreement) is closed too.
+* **Breaker m1 (focus on a server field error): closed** via `focusOf` (`:93`, `:109`) and `:64`. **Breaker m7 (wrapping at 375 px): closed** by `WRAP` on the body (`:25`). The check's 375 line still shows 0 sideways scroll.
+* **The two new test lines are honest, and both fail on the old code.** On e1418b1d2 the B1 line gets reason "", file 0, an enabled button and no "changed meanwhile" (round 1 walk K: `reason kept: "" | file kept: 0`), and its `status === "DRAFT"` part proves nothing was filed. The M1 line fails on the old copy's "makes … a client".
+
+### New findings (Minor, none blocking)
+* **r2-m1 Minor (test honesty).** `check_fo5s3_end_panels_browser.ts:197`: `/newer version|changed/i` is satisfied by the panel's own stale notice ("changed meanwhile"), so the line's claim "the server's 409 is shown in its words" is not proven. If the error Notice vanished, the line would stay green. **Fix:** assert `/newer version \(2\) than the one you saw \(1\)/` on the alert.
+* **r2-m2 Minor (test gap).** No line asserts the RETAINER toast "… is now a client." (`:174-176` checks Won in the DB but not the toast), so a mis-read `prospectWon` (always false) would pass every line. **Fix:** add `body.includes("is now a client")` to the Signed-offline pass line.
+* **r2-m3 Minor (copy).** `end-panels.tsx:48`: STALE says "This retainer changed … (a colleague saved, sent or ended it)" on a consultation agreement too, and it blames a colleague when the client's own signing or viewing caused the change. **Fix:** say "agreement" when `consult`, and "(someone saved, sent, signed or ended it)".
+* **r2-m4 Minor (breaker m4, still open and not in the PR's "Listed, not fixed").** `end-panels.tsx:70, 116`: `confirmClose` returns true while `busy`, so Escape during a running request closes the panel. K5 (request delayed 2.5 s, a colleague withdrew first, Escape): the panel closed without asking, the 409 was shown nowhere (no toast), and focus fell to BODY. DB `WITHDRAWN`, so no data harm. **Fix:** return false while `busy`, or toast the refusal when the panel is already closed. Either way, list it in the PR body.
+* Observation, not a finding: `check_fo5s3_end_panels_browser.ts:147`'s Escape now meets the discard prompt, which Playwright auto-dismisses, so the panel stays open until the next `goto`. The line is harmless but no longer closes anything.
+
+### The Minors the PR body leaves open
+I accept leaving all of them for this PR:
+* Round-1 m1 (placement under the Code panel): layout, no data risk.
+* m3 (no paper-file download and no reasons on the page): it is named for part 3b with the Declined state.
+* m5 (duplicate `postForm`): small, three copies.
+* m6 (assert `CANCELLED:WITHDRAWN` once #3648 is on main): tied to the existing merge condition.
+* The Lead wording note: a concept question.
+
+I ask that r2-m4 be added to that list, or fixed. r2-m1 and r2-m2 are one-line test changes, worth doing with m6.
+
+Reviewer: Approve ace1e1b5f3f7bb5778e737cfa612b4916586bf35

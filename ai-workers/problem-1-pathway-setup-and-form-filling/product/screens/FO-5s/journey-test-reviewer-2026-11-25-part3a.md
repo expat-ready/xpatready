@@ -46,3 +46,31 @@ J1: `fo_retainer.status` WITHDRAWN, `withdrawn_reason` exact, 1 audit line; `fo_
 
 ## Could not test
 A real screen reader. A headed, visible browser pane (headless, with screenshots at each decision point instead). An intended user's unaided walk (D17, D20: the founder's). The withdraw email and the request cancel until #3648 merges.
+
+## Round 2 (head ace1e1b5f3f7bb5778e737cfa612b4916586bf35, copy `rv2_fo5s3` on :4568)
+Re-walked the journeys round 1 failed or flagged, in headless Chromium at 1440×900, starting from the prospect page. The builder's check ran twice: 23/23, exit 0, no page error.
+| # | Journey | Result |
+|---|---|---|
+| K1 | B1 exactly: v1 Sent, PDF and reason, a colleague's edit makes v2, Record | **Held.** The server's words, the stale notice, the file and the reason all kept; Record off; forced click and Enter sent 0 requests; DB `DRAFT v2` |
+| K2 | v1 and v2 sent, Version 1 picked, a colleague makes v3 | **Held.** Pick stays 1; 409 in words; Record off; nothing filed |
+| K3 | Signed offline with typed work, success | **Held.** Closed with no prompt; toast "… is now a client."; `SIGNED_OFFLINE v1` |
+| K4 | Withdraw, a colleague edits meanwhile | **Held.** 409 in words, reason kept, the button off, "Version 1, sent to …" |
+| J7 | Escape / Cancel on a dirty panel | **Held.** Escape asks "Discard the file and reason you entered?" (dismiss keeps it); Cancel closes at once, focus on the opener |
+| J4 | Client signed, v1 and v2 sent | **Held.** No version pick offered |
+| K5 | Escape while the request runs, a colleague withdrew first | Closed without asking; the 409 shown nowhere; focus on BODY (r2-m4, Minor) |
+
+## Round 2 score
+| Criterion | Score | Evidence |
+|---|---|---|
+| task completed | 1 | J1-J3 as round 1; K3 |
+| next step obvious | ½ | actions still under the Code panel (m1, accepted for later) |
+| plain words | 1 | consultation copy fixed; stale notice plain. "This retainer … a colleague" on consultation agreements is a small wording point (r2-m3) |
+| feedback and state | 1 | K1, K2, K4: the server's words plus the stale notice, the button off |
+| correct data | 1 | K1, K2: nothing filed on a stale panel; K6 hides the choices that cannot succeed |
+| error recovery | 1 | file, reason and pick kept after a 409; focus on the server's field |
+| accessibility and screen sizes | 1 | check: axe clean, 375 / 1024 / 1440, no sideways scroll |
+| speed | 1 | unchanged |
+| visual quality | 1 | one warn and one danger notice, one primary (`fo5s3-offline-stale-1440.png`) |
+| trust and sources | ½ | the paper file and the reasons are still not on the page (m3, part 3b) |
+| **Total** | **9 / 10: pass** | no criterion at 0 |
+To reach 10: m1 (placement), then m3 (the paper file and the reason on the page). Could not test: a real screen reader, a headed pane, an intended user's unaided walk, the #3648 email.
