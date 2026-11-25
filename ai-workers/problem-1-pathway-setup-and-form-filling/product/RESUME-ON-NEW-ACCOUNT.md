@@ -2,6 +2,18 @@
 
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
+## Switch of 26 Nov (Lead 11 → the new account's Lead), written 01:32 IST 26 Nov: READ THIS BLOCK FIRST, then the 25-26 Nov block below
+**Saved before the switch (Lead 11, 01:3x):** STATE on `lead/2026-11-07-lead31` (Lead 11's line is the newest); RULES as of P-842; every side note in github.com/expat-ready/private (`notes/`, private-sync 01:2x, nothing new); the founder's five strategy chats of 25 Nov as transcript zips in the private home `transcripts/2026-11-26-account-switch/` (v3 technical blueprint, v3 development framework, lean team structure, floor-plan studio comparison, end-to-end testing strategy); the main copy's untracked files (reports/, research_notes/, ids.txt, q.txt, repos.txt) in `main-copy-untracked-2026-11-26/` there. The local sessions stay on this Mac; the zips are the copy if they do not.
+**At 01:14:** 64/110 Works; 0 merges in the last hour; queue held by red guards on batch 45678122864; #3623 requeued; #3418, #3758 red ci; batch culprits #2129 #3701 #3733 owe green full runs. Running: cloud qa 'qa · R1.29 and R1.45 proof' (pushes each step). Old-account standbys (Lead 12 local_e3d3047d) cannot run: start fresh ones.
+**Prompt for the founder to paste (Code tab, this folder, a new session):**
+```text
+/lead You are Lead 1 on the new account (switch of 26 Nov, about 01:30 IST). Lead 11 (local_fef3e227) has stopped; that is my answer to the two-Leads check. Mac session in the main copy, branch lead/2026-11-07-lead31. First: set current_lead in STATE to yourself and push; create your check (cron 3,33 * * * *, prompt exactly: run lead-watch; read STATE Start here); run get_usage and tell me the weekly %.
+Read product/RESUME-ON-NEW-ACCOUNT.md (the 26 Nov block, then the 25-26 Nov block), STATE "Hand-over Lead 10 → Lead 11" and "Start here", and RULES. Verify every claim against GitHub before acting. The plan is the control-room v4 plan (A386).
+Order of work: 1. unblock the merge queue (red guards on the batch; culprits #2129 #3701 #3733 back to green full runs; #3418 #3758 red ci); 2. qa proof for the 23 merges that have none (more qa, no new builds while 17 are building vs cap 8); 3. the owed Lead reads #3693 #3696 #3715 #3506 #2129 #3647 #3701; 4. Partials nearest to proven.
+MY APPROVALS, typed by me here, for this work only (lines I removed are not approved):
+- Start up to 3 cloud qa sessions and 2 standby Leads on the Mac (disk check permitting), Opus 5.5 medium.
+```
+
 ## Switch of 25-26 Nov (Lead 10 → the new account's Lead), written 23:1x IST 25 Nov: READ THIS BLOCK FIRST
 **Meter:** 91% at 22:07, 92% at 22:48, 93% at 23:04 (about 1-1.5%/h): 94% about 23:45, 96% about 01:00-02:30, 98% about 02:30-04:30 IST. The founder switches at 95-96% (A386).
 **Truth:** `STATE.md` on `lead/2026-11-07-lead31` (Lead 10's line under the Lead 9 → Lead 10 hand-over is the newest). RULES as of P-842 (#3769 merged). Proven 63/110 on main's `qa/CAPABILITIES.md` (55 at 00:00 IST 25 Nov, +8 today). Release 1 = 110 rows (P-842).
