@@ -1,0 +1,37 @@
+// front-office-activity.prisma — the client's progress stream. Owner: front office. Built for R1.62 (FO-14 part A).
+// One file per area (DB-SPLIT, studio/DEVELOPING.md): never edit another area's file without its owner.
+//
+// FO-14 part A (BACKLOG row FO-14; AG-15-29, -30, -54): one insert-only row per thing a client did at a door we own (the
+// signing door, pay links, booking self-service, later the client portal), written through ports/portal-activity.ts in
+// the door's own transaction. person_id names the firm's fo_person and case_id a case: plain uuids (no relation to another
+// area's file); the person is checked by a trigger in the migration (same firm), as are the insert-only rule, the source's
+// shape and PF-12's wall. "Last update" (the Tell-the-client half) is part B.
+
+/// What the client did.
+enum FoPortalActivityKind {
+  SIGN_IN
+  VIEW
+  UPLOAD
+  QUESTIONNAIRE_PROGRESS
+  SUBMIT
+  SIGNED
+  PAID
+}
+
+/// One thing a client did, at one door. Never changed or removed.
+model FoPortalActivityEvent {
+  id        String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId    String               @map("firm_id") @db.Uuid
+  /// The firm's fo_person (checked by fo_activity_person_ok).
+  personId  String               @map("person_id") @db.Uuid
+  kind      FoPortalActivityKind
+  caseId    String?              @map("case_id") @db.Uuid
+  /// The door, one lower-case word ("signing", "pay-link", "booking", "portal").
+  source    String
+  /// The door's own row id (a signer, a pay link, a booking), when it has one.
+  sourceRef String?              @map("source_ref")
+  at        DateTime             @default(now()) @db.Timestamptz
+
+  @@index([firmId, personId, at(sort: Desc)])
+  @@map("fo_portal_activity_event")
+}

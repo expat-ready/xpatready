@@ -24,6 +24,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { SIGNING_EVENT, SigningCompletedPayload } from "../../../../ports/events/signing.ts";
 import type { FilesPort } from "../../../../ports/files.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
+import { recordPortalActivity } from "../activity/adapter.ts";
 import { asBypass, touchFirms, withFirm } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { onSigningCompleted, SIGNING_ACTOR } from "../retainers/on-signing-completed.ts";
@@ -227,6 +228,7 @@ export class Signing {
         if (s.role === "FIRM" && signers.some((x) => x.role === "CLIENT" && !x.signedAt)) return notYet("The firm signs last, after every client");
         if (!s.consentedAt) return notYet("No consent to sign electronically is recorded for this signer yet");
         await tx.foSigner.update({ where: { id: s.id }, data: { signedAt: now < s.consentedAt ? s.consentedAt : now } });
+        if (s.role === "CLIENT" && s.personId) await recordPortalActivity(tx, { firmId, personId: s.personId, kind: "SIGNED", source: "signing", sourceRef: s.id });   // FO-14 part A
         const clientsDone = signers.every((x) => x.role !== "CLIENT" || x.signedAt || x.id === s.id);
         const to = clientsDone && q.status !== "CLIENT_SIGNED" ? "CLIENT_SIGNED" : q.status;
         if (to !== q.status) { await tx.foSignatureRequest.update({ where: { id: q.id }, data: { status: "CLIENT_SIGNED" } }); await moveRetainer(["SENT", "VIEWED"], "CLIENT_SIGNED"); }
