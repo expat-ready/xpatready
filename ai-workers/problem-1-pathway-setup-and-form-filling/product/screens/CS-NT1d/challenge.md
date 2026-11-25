@@ -150,5 +150,6 @@ Fact for the tech lead (outside this part, not an objection to the screen): the 
 * **Outside this screen:** the case scope gap in the notes and timeline routes (`caseScope` not applied; part 1 on `main` and `case-close.ts` alike) is raised with the tech lead on #3649 as a follow-up row. Only a firm that removes `agent/case:view.all` is affected; every seeded role holds it today.
 
 ## Agreement
+The tech lead (Lead 5), 25 Nov 12:50 IST, on #3694: concept r2 approved; §7 ruled as recommended (mentions limited to caseScope, access lines hidden, under the case header, the bell's words added here). Part 3s comes first.
 
 ## Build discoveries
