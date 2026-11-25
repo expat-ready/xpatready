@@ -685,9 +685,10 @@ SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., 
 # P-822 (founder, 25 Nov): pr-suites green on the exact head before the label; only "success" counts
 MUT="$MUT"'
 P822 judge|product/tools/queue-gate.sh|s/^  suitesok "\$head" .. return 1/  true/|check-queue-gate.sh
-P822 only|product/tools/queue-gate.sh|s/case "\$st \$co" in "completed success")/case "completed success" in "completed success")/|check-queue-gate.sh
-P822 own run|product/tools/queue-gate.sh|s/pr-suites.yml pull_request" \] .. continue$/pr-suites.yml pull_request" ] \&\& true/|check-queue-gate.sh
+P822 only|product/tools/queue-gate.sh|s/    if \[ "\$st \$co" = "completed success" \]; then/    if true; then/|check-queue-gate.sh
+P822 own run|product/tools/queue-gate.sh|s/^    \[ "\$ok" = true \] .. continue/    true/|check-queue-gate.sh
 P822 proof|product/tools/queue-gate.sh|s/if \[ "\${RELABEL:-}" = 1 \]; then suitesok/if false; then suitesok/|check-queue-gate.sh
+P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.conclusion .. "")\(.\) <<< "\$r")" = "completed success" \] \&\& { suites_state=success/{ suites_state=success/|check-queue-gate.sh
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/\[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \] \&\& exit 0/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'

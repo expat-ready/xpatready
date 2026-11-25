@@ -55,7 +55,8 @@ jobs:
           st=0; out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$main") || st=$?
           if [ "$st" != 0 ]; then echo "::warning title=pr-suites::pr-base.sh merge exit $st (1: does not merge onto main $main or refused; 2: could not run): no suite ran"; echo verdict=fail >> "$GITHUB_OUTPUT"; exit 0; fi
           range=$(tail -1 <<< "$out")
-          kind=$(bash "$P/tools/change-kind.sh" "$range") || kind=unknown
+          st=0; kind=$(bash "$P/tools/change-kind.sh" "$range") || st=$?
+          if [ "$st" != 0 ]; then echo "::warning title=pr-suites::change-kind.sh exit $st: no suite ran"; echo verdict=fail >> "$GITHUB_OUTPUT"; exit 0; fi   # breaker M2: a crash is red, never "nothing to run"
           if [ "$kind" != code ]; then echo "**pr-suites:** change kind \"$kind\": no suite to run." >> "$GITHUB_STEP_SUMMARY"; echo verdict=none >> "$GITHUB_OUTPUT"; exit 0; fi
           st=0; plan=$(bash "$P/tools/pr-suites-plan.sh" "$range") || st=$?
           if [ "$st" != 0 ]; then echo "::warning title=pr-suites::pr-suites-plan.sh exit $st: no suite ran ($plan)"; echo verdict=fail >> "$GITHUB_OUTPUT"; exit 0; fi
@@ -129,10 +130,11 @@ jobs:
           [ "$SETUP" = success ] && [ "$OUTCOME" = success ] && exit 0
           echo "::error title=pr-suites::part ${{ matrix.shard }} of $N: set-up $SETUP, suites ${OUTCOME:-not run}"; exit 1
   pr-suites:
-    # The one check the queue gate reads (P-822). always(): it runs, and is green, when the plan picked no suite, so a PR
-    # with nothing to test never shows "skipped" (queue-gate.sh counts only "success"). Never on a draft or a batch.
+    # The one check the queue gate reads (P-822). !cancelled(): it runs, and is green, when the plan picked no suite, so a
+    # PR with nothing to test never shows "skipped" (queue-gate.sh counts only "success"); a run cancelled by a newer push
+    # leaves no check on its old head (review m4). Never on a draft or a batch.
     needs: [plan, parts]
-    if: ${{ always() && !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    if: ${{ !cancelled() && !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

@@ -60,10 +60,10 @@ ps = p.get("steps", [])[1:]; ss = s.get("steps", [])[1:]
 out.append("one_verdict_step" if ps and ss and all(x.get("continue-on-error") is True for x in ps + ss[:-1]) and "continue-on-error" not in ss[-1]
   and "verdict" in ss[-1].get("name", "") and ss[-1].get("if") == "always()" and 'SETUP" = success' in ss[-1]["run"] and 'OUTCOME" = success' in ss[-1]["run"] else "verdict_step_shape")
 v = j.get("pr-suites", {}); vr = str((v.get("steps") or [{}])[0].get("run", "")); vc = str(v.get("if", ""))
-out.append("summary_job" if v.get("needs") == ["plan", "parts"] and "always()" in vc and "draft" in vc and "mergify/" in vc and v.get("permissions") == {}
+out.append("summary_job" if v.get("needs") == ["plan", "parts"] and "!cancelled()" in vc and "always()" not in vc and "draft" in vc and "mergify/" in vc and v.get("permissions") == {}
   and '"success none skipped")' in vr and '"success run success")' in vr and vr.rstrip().endswith("exit 1") and vr.count("exit 0") == 2 else "summary_job_shape")
 pl = str(ps[0].get("run", "")) if ps else ""
-out.append("plan_verdict" if pl.count("verdict=fail") == 2 and "verdict=none" in pl and "verdict=%s" in pl and p.get("outputs", {}).get("verdict") else "plan_verdict_missing")
+out.append("plan_verdict" if pl.count("verdict=fail") == 3 and "change-kind.sh" in pl and "|| kind=unknown" not in pl and "verdict=none" in pl and "verdict=%s" in pl and p.get("outputs", {}).get("verdict") else "plan_verdict_missing")
 out.append("quarantine_read" if "pr-suites-quarantine.txt" in str(run[0]["run"] if (run := [x for x in ss if "run-suites.sh" in str(x.get("run", ""))]) else "") and "SUITES_QUARANTINE_AUTO" in str(run[0]["run"]) else "quarantine_missing")
 run = [x for x in ss if "run-suites.sh" in str(x.get("run", ""))]
 out.append("changed" if run and "--changed" in run[0]["run"] and "--modules" in run[0]["run"] and run[0].get("timeout-minutes") and "setup.outcome == 'success'" in str(run[0].get("if")) else "suites-step")
@@ -79,8 +79,8 @@ ok "its own workflow: ci.yml (job \"ci\", the one required check, and its concur
 ok "a newer push supersedes the PR's older run; a merge-queue batch is never cancelled (SPD-2 item 5)" "$(grep -qw supersedes-pr-not-batch <<< "$w" && echo 1)" "$w"
 ok "drafts and Mergify's batch PRs run nothing" "$(grep -qw no-draft-no-batch <<< "$w" && echo 1)" "$w"
 ok "every step after checkout is continue-on-error but each part's last, \"verdict\" (always(), red unless set-up and suites succeeded; P-822)" "$(grep -qw one_verdict_step <<< "$w" && echo 1)" "$w"
-ok "job pr-suites: after plan and parts, always() but never on a draft or a batch, no token; green only for no suite picked or every part green, else red (P-822)" "$(grep -qw summary_job <<< "$w" && echo 1)" "$w"
-ok "the plan says its verdict: fail when no test merge or the picker failed, none when nothing to run, run otherwise (P-822)" "$(grep -qw plan_verdict <<< "$w" && echo 1)" "$w"
+ok "job pr-suites: after plan and parts, !cancelled() (a cancelled run leaves no check) but never on a draft or a batch, no token; green only for no suite picked or every part green, else red (P-822)" "$(grep -qw summary_job <<< "$w" && echo 1)" "$w"
+ok "the plan says its verdict: fail when no test merge, change-kind.sh or the picker failed (breaker M2), none when nothing to run, run otherwise (P-822)" "$(grep -qw plan_verdict <<< "$w" && echo 1)" "$w"
 ok "the suites step reads pr-suites-quarantine.txt into SUITES_QUARANTINE_AUTO (P-822)" "$(grep -qw quarantine_read <<< "$w" && echo 1)" "$w"
 # P-822: the job's own script, run with each plan and parts result: green only for nothing picked or every part green
 python3 -I -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["jobs"]["pr-suites"]["steps"][0]["run"])' "$Y" > "$T/verdict.sh" 2>/dev/null || : > "$T/verdict.sh"
