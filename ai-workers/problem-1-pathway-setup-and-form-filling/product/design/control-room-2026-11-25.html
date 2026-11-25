@@ -64,10 +64,96 @@ svg .lbl{fill:var(--fg);font-size:12px}
 <div class="wrap">
 
 <header style="display:flex;flex-direction:column;gap:8px">
-  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 4 · 25 Nov 2026, 08:25 IST</div>
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 5 · 25 Nov 2026, 11:50 IST (v4)</div>
   <h1>Where we are, how the machine works, and what we fix today</h1>
   <p class="lede">Every number below comes from GitHub, <span class="mono">origin/main</span> or a measured report (<span class="mono">design/why-targets-missed-2026-11-24.md</span>, 72-hour window to 24 Nov 22:23 IST). Where a figure is an estimate it says so.</p>
 </header>
+
+<section>
+  <div class="eyebrow">v4 · Lead 5 · 25 Nov 11:50 IST · founder ask A385: the whole plan, on plan or not, hourly plan, monitoring, operating system first</div>
+  <h2>The 48-hour plan, 25 Nov 12:00 to 27 Nov 12:00 IST</h2>
+  <div class="kpis">
+    <div class="kpi"><span class="n">62/101</span><span class="s">Works now (R1.86 queued in #3630)</span></div>
+    <div class="kpi"><span class="n">52</span><span class="s">PRs merged since 00:00 IST</span></div>
+    <div class="kpi"><span class="n">41</span><span class="s">cloud lanes: 17 running, 24 idle (claude.ai sidebar, 11:2x)</span></div>
+    <div class="kpi"><span class="n">45%</span><span class="s">weekly use at 11:12 (26% at 07:33, 37% at 10:47)</span></div>
+  </div>
+
+  <h3>Are we on plan? Honest answer</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Line of the plan</th><th>Where it is</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>Product: the Partials for 70–75 by 26 Nov (R1.13, R1.86, R1.87, R1.85, R1.10, R1.29, R1.58, R1.56, R1.55, R1.76)</td><td>Every row has a lane and an open PR. R1.29 (#3527), R1.34 (#3637) and R1.45 (#3645) are in the merge queue. R1.13 and R1.86 have not reached Works by their 12:00 and 13:00 times yet.</td><td><span class="pill warn">70 likely, 75 at risk</span></td></tr>
+      <tr><td>Operating system first (P-827): pipeline queue ahead of product</td><td>#3643 read and labelled 11:4x; it lands in the pipeline queue next</td><td><span class="pill ok">on plan</span></td></tr>
+      <tr><td>P-822, pr-suites before the label (by 14:00)</td><td>#3632 approved, but its own ci and fast checks are red</td><td><span class="pill warn">late risk</span></td></tr>
+      <tr><td>P-823, auto-label after a fresh Approve (by 15:00)</td><td>#3661 still draft, behind #3632</td><td><span class="pill warn">late risk</span></td></tr>
+      <tr><td>One OS list worked in order (P-828)</td><td>#3651 (os-backlog.md, 67 items in 4 tiers) approved and labelled 11:3x; OS-PM told to work Tier 1 in order</td><td><span class="pill ok">on plan</span></td></tr>
+      <tr><td>Accounts (P-821)</td><td>Closed 11:04: Stripe, AWS, BoldSign, Google, Zoom, WhatsApp open; key check passed; GitHub Stripe secret set. Staging must redeploy before the app sees the new keys.</td><td><span class="pill ok">done, 1 step owed</span></td></tr>
+      <tr><td>Budget (P-826: never a limit; prepare the switch)</td><td>4.6%/h average since 07:33; 8%/h in the last half hour. 90% falls between about 15:30 and 21:00 IST.</td><td><span class="pill warn">switch today</span></td></tr>
+    </tbody></table></div>
+
+  <h3>Gaps I found, the fix, and how a machine keeps it fixed</h3>
+  <p class="lede">Each gap becomes an item on one list (<span class="mono">design/os-backlog.md</span>, OS-PM works it in order) or a Lead item in STATE "Owed". Nothing lives only in a chat.</p>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Gap (evidence)</th><th>Fix now</th><th>Enforcer, so it never recurs</th><th>List item</th></tr></thead>
+    <tbody>
+      <tr><td><b>G1 The Lead is the bottleneck.</b> At 11:2x, 7 lanes waited on a Lead answer: R1.79 round 3, R1.52, R1.107 and R1.60 shapes, R1.112 blocked from posting, OS-PM rulings, the #3643 read.</td><td>All 7 answered by 11:45 (PR comments, plus typing into the sessions)</td><td>ENF-778a E-a (#3667): a Lead turn cannot end while a question waits over 20 min. OS-27: lane questions become queue items with an ACT line.</td><td>OS-09, OS-27 (Tier 1 and 2)</td></tr>
+      <tr><td><b>G2 Idle lanes are invisible in GitHub.</b> 24 idle in the claude.ai sidebar; the Mac session list shows none of them.</td><td>Each check reads every lane's last message in the built-in browser (one script, about 90 s)</td><td>OS-49: a merge posts the next step to the waiting lane. New OS-68: the sidebar sweep becomes a lead-watch step that prints one ACT per lane idle over 30 min.</td><td>OS-49, OS-68 (new)</td></tr>
+      <tr><td><b>G3 Finished lanes are not archived</b> (R1.104, R1.93, R1.86, R1.69, old R1.58, qa 10, qa 11): they hide the ones that are waiting</td><td>Archive each one after checking its work is pushed, at the 12:03 check</td><td>New OS-69: lead-watch ACT for a lane whose PR merged over 1 h ago and is not archived</td><td>OS-69 (new)</td></tr>
+      <tr><td><b>G4 Cloud lanes refused on gh comments</b> (R1.112 stalled; R1.60 worked around it with the GitHub connector)</td><td>Told R1.112 to use the connector</td><td>New OS-70: the brief template and brief-check.sh carry "post through the GitHub connector when gh is refused"</td><td>OS-70 (new)</td></tr>
+      <tr><td><b>G5 Enforcement PRs red with nobody on them</b> (#3632 ci/fast, #3623 pr-rules)</td><td>OS-3 and the #3623 lane told at 12:03; I relabel each on green</td><td>OS-22 plus flow-watch 4b: a labelled or approved pipeline PR with a red check is an ACT every check</td><td>OS-22</td></tr>
+      <tr><td><b>G6 The burn forecast moved</b> (19:30 forecast this morning, now 15:30–21:00)</td><td>Switch prepared at 80%: STATE and RESUME pushed, lanes pushed, the time told to you</td><td>OS-23 and OS-55: over 3%/h at two checks in a row is an ACT, and an alert fires at 85%</td><td>OS-23, OS-55</td></tr>
+      <tr><td><b>G7 Product rulings block rows</b>: R1.61 (trust request or card invoice), R1.52 (who may send as the firm mailbox), R1.107 (the five streams, P-607(9))</td><td>Asked to you one at a time, recommendation first, starting now</td><td>STATE "Waiting on the founder" line, plus OS-18 (an ACT every check while it is open)</td><td>OS-18</td></tr>
+      <tr><td><b>G8 New account values not live on staging</b> (no deploy from CI, PF-8c)</td><td>The Lead finds how staging deploys and restarts the ECS service at the 12:33 check</td><td>New OS-71: a deploy job after a secret change (PF-8c row)</td><td>OS-71 (new)</td></tr>
+    </tbody></table></div>
+
+  <h3>Operating system go-live, in order (enforcement lands before product, P-827)</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>#</th><th>What goes live</th><th>PR / owner</th><th>Expect (IST)</th><th>How we know it works</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Pipeline queue ahead of product (P-827)</td><td>#3643 · OS-1</td><td class="num">25 Nov 12:30</td><td>check-queue-rules.py green on main; the next pipeline PR merges ahead of a product batch</td></tr>
+      <tr><td>2</td><td>Cloud setup stops on a failed step</td><td>#3623</td><td class="num">13:00</td><td>its test shows a failing step exits 1</td></tr>
+      <tr><td>3</td><td>pr-suites green before the label (P-822)</td><td>#3632 · OS-3</td><td class="num">14:30</td><td>queue-gate refuses a red head; red batches fall from 33% toward 20% within 24 h</td></tr>
+      <tr><td>4</td><td>Auto-label money, additive-migration and route PRs after a fresh Approve (P-823)</td><td>#3661 · OS-3</td><td class="num">16:00</td><td>Lead-read holds go from about 70 a day toward 0</td></tr>
+      <tr><td>5</td><td>OS backlog on main (P-828)</td><td>#3651 · OS-PM</td><td class="num">12:30</td><td>check-docs green; OS-PM posts each item's PR on #3651</td></tr>
+      <tr><td>6</td><td>Auto-requeue and full run on ask</td><td>OS-05, OS-06 · OS-PM</td><td class="num">20:00</td><td>a dequeued PR comes back without a Lead step</td></tr>
+      <tr><td>7</td><td>No Lead turn ends with a question waiting; founder-click guard</td><td>#3667, #3665 · OS-3</td><td class="num">26 Nov 10:00</td><td>hook tests exit 0; questions older than 20 min: 0</td></tr>
+      <tr><td>8</td><td>A merge wakes the lane that waits on it</td><td>OS-49 · OS-PM</td><td class="num">26 Nov 13:00</td><td>lane idle minutes measured for 24 h</td></tr>
+      <tr><td>9</td><td>The Lead runs main's tools</td><td>#3506 (conflicting) · OS-PM</td><td class="num">26 Nov 15:00</td><td>lead-watch prints its tools' sha = origin/main</td></tr>
+      <tr><td>10</td><td>Only fresh branches, records PR in one script, one-page Lead start, report by script</td><td>OS-14, 15, 16, 25 · OS-PM</td><td class="num">26 Nov 22:00</td><td>start read under 40k tokens; the report prints itself</td></tr>
+      <tr><td>11</td><td>Report-only checks graduate to blocking, one at a time, each on its false-block count</td><td>OS-13 · Lead decides each</td><td class="num">27 Nov</td><td>each PR shows its false-block count over 48 h</td></tr>
+    </tbody></table></div>
+
+  <h3>Hour by hour</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>IST</th><th>Operating system</th><th>Product (Works target)</th><th>You</th></tr></thead>
+    <tbody>
+      <tr><td class="num">25 Nov 12–14</td><td>#3643, #3651 land; #3623 and #3632 fixed</td><td>R1.29, R1.34, R1.45 merge; R1.13 and R1.86 proved → <b>64</b></td><td>3 rulings, one at a time</td></tr>
+      <tr><td class="num">14–17</td><td>P-822 live; P-823 ready; switch prepared at 80%</td><td>R1.10 A2, R1.87 part 3 → <b>65</b></td><td>account switch when told</td></tr>
+      <tr><td class="num">17–22</td><td>P-823 live; OS-05/06</td><td>R1.85 2a, R1.58 3a, R1.56 w1 → <b>66–67</b></td><td>—</td></tr>
+      <tr><td class="num">22–07</td><td>checks every 30 min; queue never empty</td><td>overnight merges; qa proves each row as its last part lands → <b>68</b></td><td>—</td></tr>
+      <tr><td class="num">26 Nov 07–12</td><td>ENF-778a live; morning report 07:03</td><td>R1.10, R1.87, R1.85 Works → <b>70</b></td><td>morning report</td></tr>
+      <tr><td class="num">12–18</td><td>OS-49 and #3506 live</td><td>R1.58, R1.29, R1.56, R1.55 → <b>73</b></td><td>—</td></tr>
+      <tr><td class="num">18–22</td><td>OS-14/15/16/25</td><td>R1.76; stretch R1.54, R1.105 → <b>74–75</b></td><td>—</td></tr>
+      <tr><td class="num">27 Nov 07–12</td><td>OS-13 graduation starts</td><td>R1.3 and the first Not-built rows (R1.34, R1.45, R1.75, R1.64) → <b>77–79</b></td><td>morning report</td></tr>
+    </tbody></table></div>
+
+  <h3>How I monitor (every check at :03 and :33, and an hourly line to you)</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Step</th><th>What I read, and where</th><th>What I do</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>main's ci, qa Blockers (GitHub)</td><td>a red main is fixed first</td></tr>
+      <tr><td>2</td><td>pipeline PRs first (P-827): Approve on the head, checks</td><td>read and label, or send it back to its lane</td></tr>
+      <tr><td>3</td><td>every lane in the claude.ai sidebar: "Show more" until it is gone, then each idle lane's last message (built-in browser)</td><td>answer, type the next step, confirm the bubble; archive finished lanes</td></tr>
+      <tr><td>4</td><td>"Question for the tech lead" on every open PR</td><td>answer within the check; product rulings go to you, one at a time</td></tr>
+      <tr><td>5</td><td>merge queue and dequeues (Mergify)</td><td>re-run the one red part; the queue is never empty</td></tr>
+      <tr><td>6</td><td>each row's expected time on this page</td><td>a late row gets a named recovery in the report</td></tr>
+      <tr><td>7</td><td>weekly use and burn rate; context of every Mac session</td><td>switch at 85–90%; hand over at the context line</td></tr>
+      <tr><td>8</td><td>STATE pushed</td><td>always resumable (P-557)</td></tr>
+    </tbody></table></div>
+</section>
+
+
 
 <section>
   <div class="eyebrow">Update 10:3x IST · founder ask: 70–75 proven by tomorrow from the 19 Partials</div>
