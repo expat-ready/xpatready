@@ -7,12 +7,13 @@ import type { Response } from "express";
 import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { TrustReads } from "./reads.ts";
 import { TrustMoney } from "./service.ts";
+import { PreparedRequests } from "./prepared.ts";
 
 type R = { platform?: StaffContext };
 
 @Controller("api/front-office/money/trust")
 export class TrustController {
-  constructor(@Inject(TrustMoney) private readonly money: TrustMoney, @Inject(TrustReads) private readonly reads: TrustReads) {}
+  constructor(@Inject(TrustMoney) private readonly money: TrustMoney, @Inject(TrustReads) private readonly reads: TrustReads, @Inject(PreparedRequests) private readonly prepared: PreparedRequests) {}
 
   @Get("answer") @AnyStaff("any staff member reads the trust answer and who last changed it: AG-6-59 r8")
   answer(@Req() r: R) { return this.money.answer(staffOf(r)); }
@@ -22,6 +23,17 @@ export class TrustController {
 
   @Post("requests") @PermissionKeys("agent/payment:record")
   createRequest(@Req() r: R, @Body() b: unknown) { return this.money.createRequest(staffOf(r), b); }
+
+  /** R1.60 a2: the deposit requests signed retainers prepared (Ask me first), and what a person does with one
+   *  (AG-6-61 §8: send, edit, cancel with agent/payment:record; Don't send is the cancel route). */
+  @Get("requests") @PermissionKeys("agent/payment:record")
+  preparedList(@Req() r: R, @Query() q: unknown) { return this.prepared.list(staffOf(r), q); }
+
+  @Post("requests/:id/send") @HttpCode(200) @PermissionKeys("agent/payment:record")
+  send(@Req() r: R, @Param("id") id: string) { return this.prepared.send(staffOf(r), id); }
+
+  @Put("requests/:id/amount") @PermissionKeys("agent/payment:record")
+  editAmount(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.prepared.editAmount(staffOf(r), id, b); }
 
   @Post("requests/:id/cancel") @HttpCode(200) @PermissionKeys("agent/payment:record")
   cancel(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.money.cancel(staffOf(r), id, b); }

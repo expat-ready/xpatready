@@ -236,7 +236,7 @@ try {
       && /estimated_tax_check/.test(dbRule(`update money_trust_request set estimated_tax_minor = 5 where id = '${staff7.id}'`)));
 
   ok("R1.60 B4 fail (break a1 m5): the database never deletes a prepared request, so its version stays held (B4)",
-    /never deleted/.test(dbRule(`delete from money_trust_request where id = '${q1}'`)) && count("money_trust_request", `id = '${q1}'`) === 1);
+    /of a signed retainer is never deleted/.test(dbRule(`delete from money_trust_request where id = '${q1}'`)) && count("money_trust_request", `id = '${q1}'`) === 1);
   ok("R1.60 B4 pass: #3033's unsent request may still be deleted, and FO-7ts's version rules are unchanged (an unsent request's version may change)",
     dbRule(`begin; delete from money_trust_request where id = '${staff7.id}'; rollback`) === "ok"
       && dbRule(`begin; update money_trust_request set retainer_version_id = gen_random_uuid() where id = '${staff7.id}'; rollback`) === "ok");

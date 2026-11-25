@@ -39,11 +39,12 @@ export class TrustReads {
           (select coalesce(sum(p.amount_minor), 0) from money_payment p where p.firm_id = q.firm_id and p.trust_request_id = q.id)::text as paid
         from money_trust_request q where q.firm_id = ${f}::uuid and q.id = ${rid}::uuid and ${seen(scope, "q")}`;
       if (!r) return notFound("trust request");
-      const paid = Number(r.paid), extra = paid - r.amount;
+      // R1.60 a2 (review a1 m5): a deposit request asks for its deposit with the estimated tax, so Paid counts both.
+      const asked = r.amount + (r.tax ?? 0), paid = Number(r.paid), extra = paid - asked;
       // R1.60 a1: a deposit request prepared on signing is "Prepared" until a person sends it, never #3033's "Waiting" (B6).
-      const status = r.cancelled ? "Cancelled" : !r.sent ? (r.prepared ? "Prepared" : "Waiting") : paid >= r.amount ? "Paid" : paid > 0 ? "Part paid" : "Sent";
+      const status = r.cancelled ? "Cancelled" : !r.sent ? (r.prepared ? "Prepared" : "Waiting") : paid >= asked ? "Paid" : paid > 0 ? "Part paid" : "Sent";
       return { id: rid, number: r.number, status, amountMinor: r.amount, currency: r.currency, paidMinor: paid, purpose: r.purpose, personId: r.personId, companyId: r.companyId, caseId: r.caseId,
-        ...(r.prepared ? { estimatedTaxMinor: r.tax, retainerVersionId: r.version } : {}),
+        ...(r.prepared ? { estimatedTaxMinor: r.tax, totalMinor: asked, retainerVersionId: r.version } : {}),
         ...(extra > 0 ? { extraNote: `${r.currency} ${MONEY(extra)} more than requested` } : {}) };
     });
   }

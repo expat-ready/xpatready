@@ -21,7 +21,8 @@ import { NOTIFICATION_PORT } from "../platform/notifications/store.ts";
 import { logPort } from "../platform/observability/log.ts";
 import { PgMoneyVisibility } from "../client-money/visibility-adapter.ts";
 import { DEPOSIT_LISTENER, prepareDepositOnSigning } from "../client-money/trust/on-signed.ts";
-import { onRetainerSigned } from "../front-office/retainers/signed-hooks.ts";
+import { onRetainerSigned, PgRetainerVersionSigned } from "../front-office/retainers/signed-hooks.ts";
+import { PreparedRequests } from "../client-money/trust/prepared.ts";
 import type { MailPort } from "../../../ports/mail.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
@@ -60,6 +61,8 @@ export class DepositOnSigning implements OnModuleInit, OnModuleDestroy {
 
 export default { controllers: [TrustController, TrustToMoveController], providers: [
   { provide: TrustMoney, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new TrustMoney(db, auditEvent, { now: () => new Date(c.now()) }, mail ?? null, scopeOf(db)), inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] },
+  { provide: PreparedRequests, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new PreparedRequests(db, auditEvent, { now: () => new Date(c.now()) }, mail ?? null, scopeOf(db), new PgRetainerVersionSigned(db)),
+    inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] },
   { provide: TrustReads, useFactory: (db: Db) => new TrustReads(db, scopeOf(db)), inject: [Db] },
   { provide: TrustToMove, useFactory: (db: Db, c: PlatformClock) => new TrustToMove(db, auditEvent, { now: () => new Date(c.now()) }, scopeOf(db)), inject: [Db, PlatformClock] },
   TrustToMoveJobs, DepositOnSigning] } satisfies Feature;

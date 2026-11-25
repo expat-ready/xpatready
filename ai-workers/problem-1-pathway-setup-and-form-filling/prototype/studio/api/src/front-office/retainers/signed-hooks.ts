@@ -6,7 +6,9 @@
 // registers the deposit request's listener at start (features/client-money-trust.ts).
 import { Prisma } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
-import { RetainerSigned, type RetainerSignedHook } from "../../../../ports/retainer-signed.ts";
+import { RetainerSigned, type RetainerSignedHook, type RetainerVersionSignedPort } from "../../../../ports/retainer-signed.ts";
+import type { PrismaClient } from "@prisma/client";
+import { firmScope } from "../../platform/firm-scope.ts";
 import { logPort } from "../../platform/observability/log.ts";
 import type { Tx } from "../sales/common.ts";
 
@@ -40,5 +42,19 @@ export async function retainerSigned(tx: Tx, audit: AuditPort<Tx>, firmId: strin
         summary: `Signed; ${name} did not run and is not tried again by itself: a person makes what it would have made (no catch-up yet)`,
         detail: { retainerId: signed.retainerId, retainerVersionId: signed.retainerVersionId, listener: name, fault: code }, before: null, after: { listener: name, fault: code } });
     }
+  }
+}
+
+/** R1.60 a2, gap G5: RetainerVersionSignedPort's adapter. A version is signed while it is its retainer's current one and
+ *  the retainer is SIGNED or SIGNED_OFFLINE (a later version, a withdraw or AG-05's undo makes it false). Reads the
+ *  retainers module's own tables in the caller's firm scope; another firm's id is not found, so false. */
+export class PgRetainerVersionSigned implements RetainerVersionSignedPort {
+  constructor(private readonly db: PrismaClient) {}
+  async versionSigned(firmId: string, retainerVersionId: string): Promise<boolean> {
+    if (!/^[0-9a-f-]{36}$/i.test(retainerVersionId)) return false;
+    const f = firmScope(firmId).firmId;
+    const [r] = await this.db.$queryRaw<{ signed: boolean }[]>`select (r.status::text in ('SIGNED', 'SIGNED_OFFLINE') and r.current_version = v.n) as signed
+      from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id where v.firm_id = ${f}::uuid and v.id = ${retainerVersionId.toLowerCase()}::uuid`;
+    return r?.signed === true;
   }
 }
