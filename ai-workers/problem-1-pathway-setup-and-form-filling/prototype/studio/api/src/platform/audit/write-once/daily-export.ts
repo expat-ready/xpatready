@@ -65,7 +65,7 @@ export class AuditChainExport {
     } else {
       const rows: Row[] = [];
       for (let after = last; ;) {
-        const page = await this.d.db.$queryRaw<Row[]>`${LINES} where chain_key = ${k} and seq > ${after} order by seq limit ${this.d.page ?? 1000}`;
+        const page = await this.d.db.$queryRaw<Row[]>`${LINES} where chain_key = ${k} and seq > ${after} order by audit_event.seq limit ${this.d.page ?? 1000}`;
         rows.push(...page);
         if (page.length < (this.d.page ?? 1000)) break;
         after = BigInt(page[page.length - 1]!.seq);

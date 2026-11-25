@@ -89,7 +89,9 @@ try {
   const C = "00000000-0000-4000-8000-0000000a1c0c";   // a firm id with no firm row: audit_event.firm_id has no foreign key
   const headOf = (f: string) => Number(sql(`select coalesce(max(seq), 0) from audit_event where chain_key = '${f}'`));
   const a0 = headOf(A);   // the Sample firms' own lines come first
-  add(A, 6); add(B, 4); add(C, 4); add(null, 3); add(null, 2, DEMO);
+  const D = "00000000-0000-4000-8000-0000000a1c0d";   // a long chain (break Blocker: seq sorted as text broke every chain of 10+ lines)
+  add(A, 6); add(B, 4); add(C, 4); add(null, 3); add(null, 2, DEMO); add(D, 25);
+  const F = "00000000-0000-4000-8000-0000000a1c0f"; add(F, 12);   // review Major: a removed tail
   const signIn = async (actorId: string, firmKey: string) => { const r = await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, actorId, secondStep: true }) }); return ((await r.json()) as { token: string }).token; };
   const tR = await signIn("user-R", R.firm.key), tO = await signIn("user-O", O.firm.key), tS = await signIn("user-S", S.firm.key);
   const aHead = headOf(A);   // signing in writes lines too
@@ -101,6 +103,9 @@ try {
   ok("AUD-1c DW10 pass: the feature registers the 30-minute check on the job runner; a run of it writes one heartbeat and every chain is INTACT",
     first >= 1 && beats() - runs0 === first && Number(sql(`select count(*) from aud_chain_check where status = 'INTACT'`)) === Number(sql(`select count(distinct chain_key) from audit_event`)), { first, beats: beats() - runs0 });
   ok("AUD-1c DW10 fail: no deep (weekly) pass ran on a Wednesday half hour", !jobs.jobs.some((j) => j.name === CHAIN_DEEP_QUEUE && j.status === "done"));
+  const long1 = await v.pass("incremental"), long2 = await v.pass("full"), dRow = (await v.all()).find((i) => i.chainKey === D);
+  ok("AUD-1c DW6 fail (break Blocker): a clean chain of 25 lines is no break, in the 30-minute and the weekly pass (lines read in number order, not text order)",
+    !long1.findings.length && !long2.findings.length && dRow?.status === "INTACT" && dRow.verifiedSeq === "25", [long1.findings, long2.findings, dRow]);
   const intactA = await call(base, "/api/platform/audit/integrity", tR);
   ok("AUD-1c DW7 pass: the Owner's integrity read answers the firm's own chain: INTACT, checked, verified to its head",
     intactA.status === 200 && intactA.body.status === "INTACT" && intactA.body.verifiedSeq === String(aHead) && typeof intactA.body.lastCheckedAt === "string", intactA.body);
@@ -112,7 +117,7 @@ try {
   add(B, 2);
   const bHead = headOf(B);
   const more = await v.pass("incremental"), full = await v.pass("full"), all = Number(sql(`select count(*) from audit_event`));
-  ok("AUD-1c DW8 fail: two new lines on firm B are read (chains + 2), and the weekly pass reads every line from seq 1", more.linesRead === chains + 2 && full.linesRead === all, { more: more.linesRead, full: full.linesRead, all });
+  ok("AUD-1c DW8 fail: two new lines on firm B are read (chains + 2), and the weekly pass reads every line from seq 1 (plus each firm and platform chain's verified place)", more.linesRead === chains + 2 && full.linesRead === all + chains - 1, { more: more.linesRead, full: full.linesRead, all });
 
   // ------------------------------------------------------------------- DW6: a changed line, a removed line
   const raised0 = alerts.raised.length;
@@ -129,14 +134,21 @@ try {
   const tail = await v.pass("incremental"), fB = tail.findings.find((f) => f.chainKey === B);
   ok("AUD-1c DW6 pass: the newest verified line removed is found by the 30-minute run (the verified place is missing)", fB?.why === "missing" && fB.fromSeq === String(bHead) && fB.toSeq === String(bHead), tail.findings);
 
+  owner(`delete from audit_event where chain_key = '${F}' and seq > 9`);
+  const t1 = await v.pass("full"), t2 = await v.pass("incremental"), t3 = await v.pass("full"), fF = (await v.all()).find((i) => i.chainKey === F);
+  ok("AUD-1c DW6 pass (review Major): the newest 3 lines removed are found by the weekly pass too, as the range 10-12, and the chain stays BROKEN on the next passes (never INTACT at a lower seq)",
+    t1.findings.find((y) => y.chainKey === F)?.why === "missing" && t1.findings.find((y) => y.chainKey === F)?.fromSeq === "10" && fF?.status === "BROKEN" && fF.failingFromSeq === "10" && fF.failingToSeq === "12" && fF.verifiedSeq === "12"
+      && [t2, t3].every((p) => p.findings.some((y) => y.chainKey === F)), [t1.findings, fF]);
+
   // ------------------------------------------------------------------- DW7: firm walls
   const readA = await call(base, "/api/platform/audit/integrity", tR), readB = await call(base, "/api/platform/audit/integrity", tS);
   ok("AUD-1c DW7 pass: firm A's Owner reads BROKEN with the range from the changed line to the head, after a 30-minute run too",
     readA.body.status === "BROKEN" && readA.body.failingFromSeq === String(a0 + 3) && readA.body.failingToSeq === String(aHead), readA.body);
   const platform = await v.all();
   ok("AUD-1c DW7 fail: firm A's break never marks another chain; the platform chain and every other unbroken chain stay INTACT",
-    platform.filter((i) => i.status === "BROKEN").map((i) => i.chainKey).sort().join() === [A, B, C].sort().join() && platform.find((i) => i.chainKey === "platform")?.status === "INTACT", platform);
+    platform.filter((i) => i.status === "BROKEN").map((i) => i.chainKey).sort().join() === [A, B, C, F].sort().join() && platform.find((i) => i.chainKey === "platform")?.status === "INTACT", platform);
   add(B, 1);   // firm B's own new line after its break: still B's chain only
+  await v.pass("incremental"); await v.pass("full");
   const readB2 = await call(base, "/api/platform/audit/integrity", tS);
   ok("AUD-1c DW7 pass: firm B's token gets firm B's chain only (its own range, never A's)", readB.status === 200 && readB.body.status === "BROKEN" && readB.body.failingFromSeq === String(bHead) && readB2.body.failingFromSeq === String(bHead) && readB2.body.status === "BROKEN", [readB.body, readB2.body]);
 
@@ -144,7 +156,7 @@ try {
   const mine = alerts.raised.slice(raised0);
   const text = JSON.stringify(mine);
   ok("AUD-1c DW9 pass: each alert carries ids and the range only (rule, firm, chain, from, to): no summary, no detail, no actor",
-    mine.length === 3 && mine.every((a) => a.kind === "audit_chain_break" && Object.keys(a.detail).every((k) => ["rule", "firmId", "entity", "entityKey", "fromSeq", "toSeq"].includes(k)))
+    mine.length === 4 && mine.every((a) => a.kind === "audit_chain_break" && Object.keys(a.detail).every((k) => ["rule", "firmId", "entity", "entityKey", "fromSeq", "toSeq"].includes(k)))
       && !/private|Sample line|rewritten|system:aud1cv/.test(text), mine);
   const before = alerts.raised.length; await v.pass("full"); await v.pass("incremental");
   ok("AUD-1c DW9 fail: the same breaks found again by two more passes raise no new alert", alerts.raised.length === before, alerts.raised.slice(before));
@@ -155,6 +167,16 @@ try {
   const afterReset = await v.pass("incremental"), demoState = (await v.all()).find((i) => i.chainKey === demoKey);
   ok("AUD-1c DW6 fail: the demo reset's restart of a sample chain is not a break (re-read from seq 1, INTACT at its restart line)",
     !afterReset.findings.some((f) => f.chainKey === demoKey) && demoState?.status === "INTACT" && demoState.verifiedSeq === "1", [afterReset.findings, demoState]);
+
+  // ------------------------------------------------------------------- break M3: one bad check row stops nothing
+  sql(`insert into aud_chain_check (chain_key, verified_seq) values ('0 not a chain', 5)`);
+  const m3b = beats(), m3a = alerts.raised.length;
+  owner(`update audit_event set summary = 'changed during M3' where chain_key = '${D}' and seq = 4`);
+  let m3threw = false; try { await v.pass("full"); } catch { m3threw = true; }
+  const dState = (await v.all()).find((i) => i.chainKey === D);
+  ok("AUD-1c DW10 fail (break M3): a check row whose key is no chain's fails the pass (no heartbeat), yet every other chain is checked: firm D's new break is found and raised",
+    m3threw && beats() === m3b && dState?.status === "BROKEN" && dState.failingFromSeq === "4" && alerts.raised.length === m3a + 1, { m3threw, dState, alerts: alerts.raised.slice(m3a) });
+  sql(`delete from aud_chain_check where chain_key = '0 not a chain'`);
 
   // ------------------------------------------------------------------- DW10: heartbeat and the key
   const beat0 = beats();

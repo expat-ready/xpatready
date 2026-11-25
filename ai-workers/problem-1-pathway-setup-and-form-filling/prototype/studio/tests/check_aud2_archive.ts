@@ -77,7 +77,8 @@ try {
   const WS = sql(`insert into workspace (id, key, label) values (gen_random_uuid(), 'aud2-check', 'AUD-2 check lines') returning id`).split("\n")[0];
   const DEMO = sql(`insert into workspace (id, key, label) values (gen_random_uuid(), 'demo', 'Demo (check)') on conflict (key) do update set label = excluded.label returning id`).split("\n")[0];
   const add = (firm: string | null, n: number, ws = WS) => { for (let i = 0; i < n; i++) sql(`insert into audit_event (id, workspace_id, actor, action, entity, summary, detail, firm_id) values (gen_random_uuid(), '${ws}', 'system:aud2', 'check.line', 'aud2', 'Sample line ${i}', '{"n": 1.0, "k": "v"}'::jsonb, ${firm ? `'${firm}'` : "null"})`); };
-  add(A, 5); add(B, 3); add(null, 2); add(null, 2, DEMO);
+  const E = "00000000-0000-4000-8000-0000000a2a05";   // a chain of 12 lines, read 2 at a time (break Blocker of part 2: seq sorted as text)
+  add(A, 5); add(B, 3); add(null, 2); add(null, 2, DEMO); add(E, 12);
   const c = clockAt(Date.parse("2026-11-25T06:20:00Z"));
   const store = fakeAuditArchive(c.now) as AuditArchivePort & { failPut: boolean };
   const x = new AuditChainExport({ db, archive: store, now: c.now, page: 2 });
@@ -85,7 +86,9 @@ try {
   const file = async (k: string) => (await store.get(k))!.bytes.toString("utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, string | null>);
   const fa = await file(`audit/${A}/2026-11-25-1-5.jsonl`), fb = await file(`audit/${B}/2026-11-25-1-3.jsonl`);
   ok("AUD-2 DW3 pass: a day's export holds every line of each firm's and the platform's chain once, in seq order, each with its hashes, and one anchor per chain",
-    day1.exports.length === 3 && fa.map((l) => l.seq).join() === "1,2,3,4,5" && fb.length === 3 && keys1.filter((k) => k.includes("/anchors/")).length === 3 && fa.every((l) => /^[0-9a-f]{64}$/.test(l.entryHash ?? "")), keys1);
+    day1.exports.length === 4 && fa.map((l) => l.seq).join() === "1,2,3,4,5" && fb.length === 3 && keys1.filter((k) => k.includes("/anchors/")).length === 4 && fa.every((l) => /^[0-9a-f]{64}$/.test(l.entryHash ?? "")), keys1);
+  const fe = await file(`audit/${E}/2026-11-25-1-12.jsonl`);
+  ok("AUD-2 DW3 pass: a chain of 12 lines, read in pages of 2, is one file 1-12 in number order (never 1, 10, 11, 12, 2 …)", fe.map((l) => l.seq).join() === "1,2,3,4,5,6,7,8,9,10,11,12", fe.map((l) => l.seq));
   ok("AUD-2 DW3 fail: the demo's sample: chain is not archived (the reset restarts it by design)", !keys1.some((k) => k.startsWith("audit/sample")), keys1);
   ok("AUD-2 DW4 pass: firm A's file holds only firm A's chain; firm B's only B's", fa.every((l) => l.firmId === A && l.chainKey === A) && fb.every((l) => l.firmId === B), [fa.map((l) => l.firmId), fb.map((l) => l.firmId)]);
   const line3 = fa[2]!, rebuilt = entryHash(Buffer.from(fa[1]!.entryHash!, "hex"), { chainKey: A, seq: line3.seq!, id: line3.id!, at: line3.at!, workspaceId: line3.workspaceId!, firmId: line3.firmId, caseId: line3.caseId, combinationId: line3.combinationId, actor: line3.actor!, actorType: line3.actorType!, action: line3.action!, entity: line3.entity!, entityKey: line3.entityKey, summary: line3.summary!, correlationId: line3.correlationId, supportSessionId: line3.supportSessionId, detail: line3.detail });
@@ -112,15 +115,17 @@ try {
   // An owner rewrites firm A's line 7 (the exported head) and recomputes its hash, so the chain itself verifies again.
   const row = (await db.$queryRaw<{ id: string; at: string; prev: Uint8Array; detail: string | null }[]>`select id::text id, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at, prev_hash prev, detail::text detail from audit_event where chain_key = ${A} and seq = 7`)[0]!;
   const forged = entryHash(Buffer.from(row.prev), { chainKey: A, seq: "7", id: row.id, at: row.at, workspaceId: WS, firmId: A, caseId: null, combinationId: null, actor: "system:aud2", actorType: "SYSTEM", action: "check.line", entity: "aud2", entityKey: null, summary: "Rewritten line (Sample)", correlationId: null, supportSessionId: null, detail: row.detail });
-  sql(`begin; alter table audit_event disable trigger aud_event_no_change; update audit_event set summary = 'Rewritten line (Sample)', entry_hash = '\\x${forged.toString("hex")}' where chain_key = '${A}' and seq = 7; alter table audit_event enable trigger aud_event_no_change; commit;`);
+  sql(`begin; alter table audit_event disable trigger aud_event_no_change; update audit_event set summary = 'Rewritten line (Sample)', entry_hash = '\\x${forged.toString("hex")}' where chain_key = '${A}' and seq = 7; alter table audit_event enable trigger aud_event_no_change;
+       update aud_chain_check set verified_hash = '\\x${forged.toString("hex")}' where chain_key = '${A}'; commit;`);   // and moves the checker's own record (xr_app may write it: part 1's breaker minor 5)
   const noAnchor = await new AuditChainVerifier({ db, alerts: fakeAlerts(), now: c.now }).pass("full");
   const withAnchor = await v.pass("full"), f = withAnchor.findings.find((y) => y.chainKey === A);
-  ok("AUD-2 DW7 fail: without the archive the rewritten, re-hashed line passes the chain check (why the export exists)", !noAnchor.findings.some((y) => y.chainKey === A), noAnchor.findings);
+  ok("AUD-2 DW7 fail: without the archive the rewritten, re-hashed line, with the checker's own record moved to match, passes the chain check (why the export exists)", !noAnchor.findings.some((y) => y.chainKey === A), noAnchor.findings);
   ok("AUD-2 DW8 pass: with it, the checker reports firm A at the anchor's seq 7 as an anchor mismatch, and one alert with ids only",
     f?.why === "anchor" && f.fromSeq === "7" && alerts.raised.length === 1 && alerts.raised[0]!.detail.entityKey === A && !/Rewritten|Sample line/.test(JSON.stringify(alerts.raised)), [withAnchor.findings, alerts.raised]);
-  sql(`begin; alter table audit_event disable trigger aud_event_no_change; delete from audit_event where chain_key = '${B}' and seq = 3; alter table audit_event enable trigger aud_event_no_change; commit;`);
+  sql(`begin; alter table audit_event disable trigger aud_event_no_change; delete from audit_event where chain_key = '${B}' and seq = 3; alter table audit_event enable trigger aud_event_no_change;
+       update aud_chain_check c set verified_seq = 2, verified_hash = e.entry_hash from audit_event e where c.chain_key = '${B}' and e.chain_key = '${B}' and e.seq = 2; commit;`);
   const tail = await v.pass("full"), fB = tail.findings.find((y) => y.chainKey === B);
-  ok("AUD-2 DW8 fail: firm B's newest exported line removed (the chain alone still verifies 1-2) is found against its anchor; firm B's break never marks the platform chain",
+  ok("AUD-2 DW8 fail: firm B's newest exported line removed and the checker's record moved back to seq 2 (the chain alone still verifies 1-2) is found against its anchor; firm B's break never marks the platform chain",
     fB?.why === "anchor" && fB.fromSeq === "3" && !tail.findings.some((y) => y.chainKey === "platform"), tail.findings);
 } finally {
   await db.$disconnect();
