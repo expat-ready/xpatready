@@ -1,0 +1,29 @@
+// AUD-3b (R1.87; SA-2-16, SA-2-17, SA-2-18, SA-11-11; P-607 (4); BACKLOG AUD-3b, amendment 2: its own area file):
+// a support session of ExpatReady's own staff into one firm. Part 1: read-only sessions only (CHANGE waits on the
+// firm's "Allow support to make changes" setting, a later part). Our own register (PF-12's OWN list): forced row-level
+// security, no policy; the only ways in are the definers of migration 20261125060000_shared__aud3b_support_session.
+// The firm and the staff member are other areas' records: checked at insert, never a relation.
+
+enum PlatSupportSessionMode {
+  READ
+  CHANGE
+}
+
+model PlatSupportSession {
+  id        String                 @id @default(uuid()) @db.Uuid
+  firmId    String                 @map("firm_id") @db.Uuid
+  /// plat_system_staff.id of the ExpatReady staff member (PF-4s).
+  staffId   String                 @map("staff_id") @db.Uuid
+  /// The reason or ticket reference (SA-2-16), at most 200 characters (it is carried on each line of the session).
+  reason    String
+  mode      PlatSupportSessionMode @default(READ)
+  /// The database's time (trigger); ends_at is always 60 minutes later (SA-2-18) and is never moved.
+  startedAt DateTime               @default(now()) @map("started_at") @db.Timestamptz
+  endsAt    DateTime               @map("ends_at") @db.Timestamptz
+  endedAt   DateTime?              @map("ended_at") @db.Timestamptz
+  endReason String?                @map("end_reason")
+
+  @@index([staffId, endsAt])
+  @@index([firmId, startedAt])
+  @@map("plat_support_session")
+}
