@@ -1,0 +1,3 @@
+# Lanes that run the verify skill (OS-72 trial, P-717 (b)): one lane name per line, as `product/tools/lane.sh whoami`
+# prints it (screens, forms, runtime, evidence). The Lead names the trial lane; deleting a line, or this file, turns
+# verify off for that lane. Empty: verify is off everywhere.
