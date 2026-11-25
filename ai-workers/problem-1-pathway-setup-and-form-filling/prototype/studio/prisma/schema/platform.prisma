@@ -128,6 +128,9 @@ model PlatformFirm {
   platImportMappings     PlatImportMapping[]
   platImportAttestations PlatImportAttestation[]
 
+  // back-relation slot: tasks (PF-29a)
+  platTasks PlatTask[] // platform-tasks.prisma
+
   @@map("platform_firm")
 }
 
