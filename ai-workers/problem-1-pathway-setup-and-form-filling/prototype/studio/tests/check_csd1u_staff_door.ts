@@ -53,8 +53,7 @@ try {
   const v0 = await view();
   const person = v0?.people?.[0]?.subject as string, lineType = v0?.people?.[0]?.lines?.[0]?.document?.key as string;
   ok("CS-D1u setup: the Visitor visa is released; a Sample case of sample-firm with a person and a checklist line", !!VV && !!caseId && !!person && !!lineType, { VV, caseId, status: opened.status });
-  const signIn = async (actor: string, firmKey = "sample-firm") => {
-    const email = sql(`select email from platform_staff where actor_id = '${actor}'`);
+  const signIn = async (actor: string, firmKey = "sample-firm", email = sql(`select email from platform_staff where actor_id = '${actor}'`)) => {
     const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, email, secondStep: true }) });
     return ((await r.json().catch(() => ({}))) as { token?: string }).token ?? "";
   };
@@ -93,7 +92,7 @@ try {
   const d1 = sql(`select id || '|' || current || '|' || sha256 || '|' || uploaded_by || '|' || coalesce(checklist_line_id::text, 'none') || '|' || path || '|' || media_type || '|' || file_name from case_document where subject_id = '${person}' and document_type = 'letter_of_invitation' order by uploaded_at desc limit 1`).split("|");
   const onDisk = d1[5] ? join(STUDIO, "var", `isolated-${NAME}`, "workspaces", process.env.STUDIO_WORKSPACE_KEY?.trim() || "demo", d1[5]) : "";
   ok("CS-D1u DW1 pass: one case_document version, current, with no checklist line, the stored bytes' sha256, uploaded by the case user the sign-in is linked to; the file on disk is the original",
-    docRows() === before.docs + 1 && d1[1] === "t" && d1[2] === sha(bytes1) && d1[3] === OFFICER && d1[4] === "none" && d1[6] === "application/pdf" && d1[7] === "invitation.pdf" && !!onDisk && existsSync(onDisk) && sha(readFileSync(onDisk)) === sha(bytes1), d1);
+    docRows() === before.docs + 1 && d1[1] === "true" && d1[2] === sha(bytes1) && d1[3] === OFFICER && d1[4] === "none" && d1[6] === "application/pdf" && d1[7] === "invitation.pdf" && !!onDisk && existsSync(onDisk) && sha(readFileSync(onDisk)) === sha(bytes1), d1);
   const staffId = sql(`select id from platform_staff where actor_id = '${OFFICER}'`);
   ok("CS-D1u DW1 pass: one audit line \"uploaded\" for the document, naming the signed-in staff member (staff:<id>) and no checklist line",
     sql(`select count(*) || '|' || max(actor) || '|' || max(summary) from audit_event where action = 'uploaded' and entity = 'case document' and entity_key = '${d1[0]}'`).startsWith(`1|staff:${staffId}|Case officer uploaded Letter of invitation (Sample)`), sql(`select actor || ' ' || summary from audit_event where entity_key = '${d1[0]}'`));
@@ -116,8 +115,8 @@ try {
   const ro = await create(tReadOnly, bytes1.length);
   ok("CS-D1u DW3 fail: a staff member of the firm whose only role is Read only (no agent/document:create) → 404 at creation, nothing staged",
     !!tReadOnly && ro.status === 404 && !idOf(ro), { signedIn: !!tReadOnly, status: ro.status });
-  rawSql(`update platform_staff set actor_id = null where id = '${rep2}'; update platform_role_grant set ended_at = null, ended_by = null, end_reason = null where staff_id = '${rep2}' and role <> 'READ_ONLY'; update platform_role_grant set ended_at = now() where staff_id = '${rep2}' and role = 'READ_ONLY'`);
-  const tUnlinked = await signIn(REP2);
+  rawSql(`update platform_staff set actor_id = null where id = '${rep2}'; update platform_role_grant set ended_at = null, ended_by = null, end_reason = null where staff_id = '${rep2}' and role <> 'READ_ONLY'; update platform_role_grant set ended_at = now(), ended_by = 'CS-D1u test (Sample)', end_reason = 'Sample: roles back' where staff_id = '${rep2}' and role = 'READ_ONLY'`);
+  const tUnlinked = await signIn(REP2, "sample-firm", sql(`select email from platform_staff where id = '${rep2}'`));
   const unlinked = tUnlinked ? await create(tUnlinked, bytes1.length) : null;
   ok("CS-D1u DW3 fail: a sign-in with the upload right but linked to no case user → 404 at creation", unlinked?.status === 404, unlinked?.status);
   rawSql(`update platform_staff set actor_id = '${REP2}' where id = '${rep2}'`);
@@ -155,7 +154,7 @@ try {
   const bytes2 = pdf("dw7"), u2 = await send(tOfficer, bytes2, { filename: "invitation-2.pdf" });
   const versions = rawSql(`select current || '|' || (superseded_at is not null) || '|' || sha256 from case_document where subject_id = '${person}' and document_type = 'letter_of_invitation' order by uploaded_at`).split("\n");
   ok("CS-D1u DW7 pass: a second upload of the type is the one current version; the earlier is kept as history (not current, superseded)",
-    u2.p?.status === 204 && versions.length === 2 && versions[0] === `f|t|${sha(bytes1)}` && versions[1] === `t|f|${sha(bytes2)}`, versions);
+    u2.p?.status === 204 && versions.length === 2 && versions[0] === `false|true|${sha(bytes1)}` && versions[1] === `true|false|${sha(bytes2)}`, versions);
   ok("CS-D1u DW7 fail: never two current versions of one type for one person", Number(sql(`select count(*) from case_document where subject_id = '${person}' and document_type = 'letter_of_invitation' and current`)) === 1);
 
   // ------------------------------------------------------- DW8: the multipart route stays; the checklist read lists them
