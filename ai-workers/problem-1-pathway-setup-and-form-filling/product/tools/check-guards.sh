@@ -36,6 +36,7 @@ TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-after-read-owed.sh"   # P-823: the Lead's after-reads owed
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
@@ -692,6 +693,18 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/\[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \] \&\& exit 0/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
+MUT="$MUT"'
+P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
+P823 words|product/tools/queue-gate.sh|s/if (\$w . length) > 0 then "a migration/if false then "a migration/|check-queue-gate.sh
+P823 edit|product/tools/queue-gate.sh|s/elif \$x.status != "added" then/elif false then/|check-queue-gate.sh
+P823 schema|product/tools/queue-gate.sh|s/any(\$l\[\]; startswith("-"))/false/|check-queue-gate.sh
+P823 owed|product/tools/queue-gate.sh|s/^  afterread; }/  true; }/|check-queue-gate.sh
+P823 draw|product/tools/queue-gate.sh|s/elif \[ \$((PR % 3)) = 0 \]; then/elif false; then/|check-queue-gate.sh
+P823 public|product/tools/queue-gate.sh|s/\&\& opens "\$f" \&\&/\&\& false \&\&/|check-queue-gate.sh
+P823 list|product/tools/lead-read-paths.txt|s/^# --- read-after money.*/# moved/|check-queue-gate.sh
+P823 overdue|product/tools/after-read-owed.sh|s/ min overdue"; rc=1/ min overdue"; rc=0/|check-after-read-owed.sh
+P823 read line|product/tools/after-read-owed.sh|s/grep -qx "\$head"; then/grep -q .; then/|check-after-read-owed.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
