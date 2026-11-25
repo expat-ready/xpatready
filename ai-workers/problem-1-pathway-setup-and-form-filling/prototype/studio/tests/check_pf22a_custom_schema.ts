@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261125090000_pf22a_custom_fields";
+const NEW = "20261125130000_shared__pf22a_custom_fields";
 const TABLES = ["plat_custom_field", "plat_custom_value", "plat_saved_view"];
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -130,7 +130,7 @@ try {
     // type, options, good values, bad values
     ["TEXT", [], ["Met at the fair", " padded is kept "], ["", "   ", "\t\n", "\u00a0", "\u200b", "\u3000", 5, "x".repeat(501), true]],
     ["LONG_TEXT", [], ["A longer note"], ["x".repeat(5001), ["a"]]],
-    ["NUMBER", [], [42, -1.5, 0, 0.1], ["42", true, 1e16]],
+    ["NUMBER", [], [42, -1.5, 0, 0.1, Math.PI, 0.1 + 0.2, 1 / 3, 123456789012345.6], ["42", true, 1e16]],
     ["DATE", [], ["2026-11-25", "2024-02-29"], ["tomorrow", "2026-02-30", "2025-02-29", "25/11/2026", "2026-11-25T10:00:00Z", 20261125]],
     ["MULTI_SELECT", ["Red", "Blue"], [["Red"], ["Red", "Blue"]], [[], ["Green"], ["Red", "Red"], "Red", [1]]],
     ["CHECKBOX", [], [true, false], ["true", 1, null]],
@@ -203,12 +203,13 @@ try {
   // ------------------------------------------------------------------------------- review and break round 1
   const rawValue = (fieldId: string, v: string) => `insert into plat_custom_value (id, firm_id, field_id, entity_kind, entity_id, value, updated_by, updated_at)
      values (gen_random_uuid(), '${firmA}', '${fieldId}', 'fo_prospect', gen_random_uuid(), '${v}'::jsonb, '${sA}', now())`;
-  ok("PF-22a break m4 fail: a NUMBER a JSON reader cannot get back unchanged is refused (1e-400, 0.1234567890123456789, 999999999999999.9)",
-    ["1e-400", "0.1234567890123456789", "999999999999999.9"].every((n) => refused(rawValue(typeFields.NUMBER, n), /does not fit its field's type \(NUMBER\)/)));
+  ok("PF-22a break m4 fail: a NUMBER a JSON reader cannot get back unchanged is refused (1e-400, 0.1234567890123456789, 1.00000000000000001)",
+    ["1e-400", "0.1234567890123456789", "1.00000000000000001"].every((n) => refused(rawValue(typeFields.NUMBER, n), /does not fit its field's type \(NUMBER\)/)));
   ok("PF-22a break m1 fail: a label or a choice padded or made only of Unicode spaces is refused",
     refused(field(uuid(), firmA, sA, "lbl3", "TEXT").replace("'Label lbl3'", "E'\\tTabbed'"), /plat_custom_field_shape/)
     && refused(field(uuid(), firmA, sA, "lbl4", "TEXT").replace("'Label lbl4'", "'　'"), /plat_custom_field_shape/)
-    && refused(field(uuid(), firmA, sA, "opt_tab", "SELECT", ["\tYes", "No"]), /plat_custom_field_options/));
+    && refused(field(uuid(), firmA, sA, "opt_tab", "SELECT", ["\tYes", "No"]), /plat_custom_field_options/)
+    && refused(field(uuid(), firmA, sA, "lbl_nel", "TEXT").replace("'Label lbl_nel'", "U&'Yes\\0085'"), /plat_custom_field_shape/));   // break round 2 n2: U+0085 under pg_c_utf8
   ok("PF-22a break m2 fail: choices that differ only by case or spelling (NFC) are one choice: refused",
     refused(field(uuid(), firmA, sA, "opt_case", "SELECT", ["Élan", "élan"]), /plat_custom_field_options/)
     && refused(field(uuid(), firmA, sA, "opt_nfc", "SELECT", ["café", "café"]), /plat_custom_field_options/));
@@ -251,7 +252,7 @@ try {
       const kept = refused(`delete from plat_custom_value where field_id = '${fDate}' and entity_id = '${e}'`, /archived/);
       sql(`update plat_custom_field set archived_at = null where id = '${fDate}'`); sql(`delete from plat_custom_value where field_id = '${fDate}' and entity_id = '${e}'`);
       return kept && sql(`select count(*) from plat_custom_value where entity_id = '${e}'`) === "0"; })());
-  ok("PF-22a break m6 (d) / review m1 fail: a view's filter over 16 KB, its sort over 2 KB, more than 50 columns, a column twice, or a change of its id, firm or created time is refused",
+  ok("PF-22a break m6 (d) / review m1 fail: a view's filter over 16,384 characters, its sort over 2,048, more than 50 columns, a column twice, or a change of its id, firm or created time is refused",
     refused(view(uuid(), firmA, sA, sA, { filter: { big: "x".repeat(16_400) } }), /plat_saved_view_shape/)
     && refused(`update plat_saved_view set sort = '${j({ by: "x".repeat(2100) })}' where id = '${vS}'`, /plat_saved_view_shape/)
     && refused(view(uuid(), firmA, sA, sA, { columns: Array.from({ length: 51 }, (_, i) => `c${i}`) }), /plat_saved_view_(shape|columns)/)

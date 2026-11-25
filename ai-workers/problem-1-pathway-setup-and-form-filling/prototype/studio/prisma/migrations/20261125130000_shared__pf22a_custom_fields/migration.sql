@@ -15,7 +15,7 @@
 --     day, SELECT one option, MULTI_SELECT 1+ distinct options, CHECKBOX true or false, EMAIL, PHONE and URL their plain
 --     shapes); its entity kind is its field's; a value of an archived field is not written, changed or deleted (kept
 --     until un-archived); its id, firm, field, kind and record never change. A cleared value is a deleted row.
---   * plat_saved_view: name 1-80 characters, list kind a name, filter a JSON object of at most 16 KB, columns a list of at
+--   * plat_saved_view: name 1-80 characters, list kind a name, filter a JSON object of at most 16,384 characters as text, columns a list of at
 --     most 50 distinct names, sort null or an object of at most 2 KB; its firm, list kind, creator and created time never change. owner_staff_id null = shared.
 --   * Staff keys are the pair (firm_id, staff_id) → platform_staff(firm_id, id) (PF-3's rule); a value's field is the
 --     (firm_id, field_id) pair, so nothing of firm A names anything of firm B.
@@ -128,9 +128,10 @@ ALTER TABLE "plat_saved_view" ADD CONSTRAINT "plat_saved_view_firm_id_created_by
 
 
 -- The shapes (no table read; all but pf_custom_value_ok are immutable and used in checks). "Blank" counts every Unicode space, not only ASCII ones
--- (break m1): a tab, a no-break space, a zero-width space or an ideographic space is no text.
+-- (break m1): a tab, a no-break space, a zero-width space or an ideographic space is no text. [[:space:]] is read under
+-- pg_c_utf8 (break round 2 n2), so the answer is the same on any cluster collation.
 CREATE FUNCTION pf_custom_trim(s text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = pg_catalog AS $fn$
-  SELECT regexp_replace(s, '^[[:space:]\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+|[[:space:]\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+$', '', 'g') $fn$;
+  SELECT regexp_replace(s COLLATE pg_c_utf8, '^[[:space:]\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+|[[:space:]\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+$', '', 'g') $fn$;
 
 CREATE FUNCTION pf_custom_name_ok(n text, max_len int) RETURNS boolean LANGUAGE sql IMMUTABLE PARALLEL SAFE
   SET search_path = pg_catalog AS $fn$ SELECT n ~ '^[a-z][a-z0-9_.]*$' AND length(n) <= max_len $fn$;
@@ -155,7 +156,7 @@ END $fn$;
 
 -- STABLE, not IMMUTABLE (review m4): the date cast and to_char are STABLE; only the triggers call it, never a check.
 CREATE FUNCTION pf_custom_value_ok(t "PlatCustomFieldType", o jsonb, v jsonb) RETURNS boolean LANGUAGE plpgsql STABLE PARALLEL SAFE
-  SET search_path = pg_catalog, public AS $fn$
+  SET search_path = pg_catalog, public SET extra_float_digits = 1 AS $fn$
 DECLARE s text; d date; n int; x numeric;
 BEGIN
   IF v IS NULL THEN RETURN false; END IF;
@@ -163,7 +164,8 @@ BEGIN
   IF t = 'NUMBER' THEN
     IF jsonb_typeof(v) <> 'number' THEN RETURN false; END IF;
     -- A number a JSON reader gets back unchanged (break m4): finite, below 1e15, and equal to its double-precision reading.
-    BEGIN x := (v #>> '{}')::numeric; RETURN abs(x) < 1e15 AND x = ((v #>> '{}')::float8)::numeric; EXCEPTION WHEN others THEN RETURN false; END;
+    -- (break round 2 n3: through float8's shortest exact text, so a 17-digit number JS writes, such as 3.141592653589793, is kept)
+    BEGIN x := (v #>> '{}')::numeric; RETURN abs(x) < 1e15 AND x = ((v #>> '{}')::float8::text)::numeric; EXCEPTION WHEN others THEN RETURN false; END;
   END IF;
   IF t = 'MULTI_SELECT' THEN
     IF jsonb_typeof(v) <> 'array' THEN RETURN false; END IF;
@@ -205,7 +207,7 @@ ALTER TABLE "plat_custom_field"
   ADD CONSTRAINT "plat_custom_field_options" CHECK (pf_custom_options_ok("type", "options"));
 ALTER TABLE "plat_custom_value"
   ADD CONSTRAINT "plat_custom_value_kind" CHECK (pf_custom_name_ok("entity_kind", 64));
--- A view's filter at most 16 KB and its sort 2 KB as text; its columns distinct names (break m6 (d)).
+-- A view's filter at most 16,384 characters and its sort 2,048 as text (break round 2 n5: characters, not bytes); its columns distinct names (break m6 (d)).
 ALTER TABLE "plat_saved_view"
   ADD CONSTRAINT "plat_saved_view_shape" CHECK (
     pf_custom_name_ok("list_kind", 64) AND pf_custom_label_ok("name", 80)
