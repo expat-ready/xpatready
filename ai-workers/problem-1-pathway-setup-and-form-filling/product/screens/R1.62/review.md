@@ -82,3 +82,26 @@ The web build fails in this sandbox (`pdfjs-data` plugin, MODULE_NOT_FOUND), so 
 Not checked: Cognito, a full `tsc` (out of memory), the CI suites beyond those listed, and a real person's walk (D17, D20).
 
 Reviewer: Approve 2e8acf6987ce2c3cbef01ec730a4afb741b81855
+
+## Round 2 (diff-only): `2e8acf698..fd4bc940b`
+Reviewer, 25 Nov. Asked for f03d188f5; the builder then pushed fd4bc940b (CodeQL: `normalEmail`'s edge regex became a character scan), so this verdict is for **fd4bc940ba802e4eae05ca1cb648f29074f64391**. Runs at fd4bc940b from `prototype/`: `check_pf4p_client_identity.ts` 60 passed, exit 0; `check_pf12_walls.ts` 110 passed, exit 0 (both also at f03d188f5); `check_pf0p_ports.ts` (migrate diff included) 127 passed at f03d188f5.
+* **Accounts kept (m4 / breaker m8): right.** The delete is refused for the app role in its own firm and for the owner. TRUNCATE is refused for the owner too, even with CASCADE (`xr_app` has no TRUNCATE grant). No foreign key or reset script cascades into the table. The rollback still drops the table, then the function.
+* **Definer triggers: safe.** Both are `prosecdef`, owned by `xr_wall_reader`, with `search_path=pg_catalog, public, pg_temp`, and `xr_app` holds no EXECUTE. Probed as `xr_app` in firm A on a scratch database (dropped afterwards):
+  - its own person: inserted. Firm B's person: refused by the person trigger. A row naming firm B: refused first by `0_pf12_firm_first`;
+  - an update still passes, and a `pg_temp.fo_person` look-alike holding firm B's person under firm A is ignored (refused);
+  - the function compares `p.firm_id = NEW.firm_id` itself, so reading as the wall reader leaks nothing. This now meets PF-12's guard rule; the round-1 head could not have passed it (SECURITY INVOKER), and I did not run it then.
+* **Email check (m2): works in ARE.** The `\uXXXX` escapes inside the bracket are read as characters, not letters: `u0afeb27@b` is accepted. NFD, a no-break space, U+2007, U+202F, U+200B, U+FEFF, a tab and U+0085 are refused. `IS NFC NORMALIZED` holds. The scan in fd4bc940b equals the old regex on every code point (0 mismatches, at both ends and inside) and is linear (250,000 spaces in 5 ms).
+* **`/api/portal` in INPUT_PATHS: changes no existing door.** The only routes under `/api/portal` are this PR's. Express matches at segment boundaries; the SNS exception and the hooks are untouched. The 2 MB test gets 413.
+* **Race-time refusal (breaker m5): right.** The row's own status gives its words, and the refused line is written in the same transaction (it commits). `!row` can no longer happen now that a delete is refused.
+* **Sign-out (m5): right.** `max(now, authTime, last_sign_in_at)` under the row lock already taken, and the guard ends a session at `<=`. Mutation test: reverting the line gives 1 FAIL.
+* **Closed firm (m1): the test bites.** With both FIRM_CLOSED lines removed, 1 FAIL (the main copy, reverted; tree clean).
+* **Titles (m6): right.** Only the title changes; `type` and `code` stay. "Portal closed" is used for a closed firm.
+
+**New Minor r2-m1 (Should, not blocking).** All this project's databases use the C collation. In C, `lower()` changes ASCII only, and `[[:space:]]` covers ASCII only. So the check still accepts `josÉ@…` (upper-case non-ASCII), and U+3000, U+2000-U+200A, U+2028/9, U+1680 and U+205F anywhere in the email, including at either end. `normalEmail` lower-cases the first and trims the second at the ends, so a row written by SQL with them can never be matched (round-1 m2's class, narrower). The migration comment's "no space of any kind" claims more than it does.
+Fix: put the scan's whole `EDGE_SPACE` set into the check's bracket. For case, compare with `lower("email" COLLATE pg_c_utf8)` (PostgreSQL 17+; Unicode simple case mapping), or reword the comment to "ASCII case".
+
+Journey score: the round-1 score, 9.5/10 (`journey-test-reviewer-2026-11-25.md`), stands. This diff changes no screen or journey, and its API paths are covered by the suite above.
+
+**Verdict: Approve** (Ship) for fd4bc940ba802e4eae05ca1cb648f29074f64391. No open Blocker or Major; r2-m1 can go with part 2.
+
+Reviewer: Approve fd4bc940ba802e4eae05ca1cb648f29074f64391
