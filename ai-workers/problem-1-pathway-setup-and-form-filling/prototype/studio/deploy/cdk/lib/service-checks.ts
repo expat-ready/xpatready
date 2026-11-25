@@ -1,7 +1,7 @@
 // PF-8b's checks over a synthesized template: pure functions returning plain-words findings (empty = pass), run on the
 // real stacks (must pass) and on broken copies (must fail) by test/service.test.ts, as PF-8a's checks.ts does.
 import type { Template } from "./checks.ts";
-import { CERT_ARN_PATTERN, CHALLENGE_MINUTES, NO_DOMAIN, SIGN_IN_ACTIONS, importedSecretName } from "./service.ts";
+import { CERT_ARN_PATTERN, CHALLENGE_MINUTES, NO_DOMAIN, SIGN_IN_ACTIONS, importedSecretName, templateStage } from "./service.ts";
 export { SIGN_IN_ACTIONS };
 
 type Res = { Type: string; Properties?: Record<string, unknown> };
@@ -14,10 +14,10 @@ const json = (v: unknown) => JSON.stringify(v ?? null);
 const refId = (v: unknown) => { const o = v as { Ref?: string; "Fn::GetAtt"?: [string, string] } | undefined; return o?.Ref ?? o?.["Fn::GetAtt"]?.[0]; };
 const containers = (r: Res) => arr(r.Properties?.ContainerDefinitions) as Container[];
 const env = (c: Container) => new Map((c.Environment ?? []).map((e) => [e.Name, e.Value]));
-const secretName = (t: Template, v: unknown) => { const id = refId(v); const r = id ? t.Resources?.[id] : undefined; return r?.Type === "AWS::SecretsManager::Secret" ? String(r.Properties?.Name ?? `(generated ${id})`) : importedSecretName(v); }; // R1.43 part 0: or one of STAGE_SECRETS, imported by name
+const secretName = (t: Template, v: unknown) => { const id = refId(v); const r = id ? t.Resources?.[id] : undefined; return r?.Type === "AWS::SecretsManager::Secret" ? String(r.Properties?.Name ?? `(generated ${id})`) : importedSecretName(v, templateStage(t)); }; // R1.43 part 0: or one of its own stage's STAGE_SECRETS, imported by name
 // A value that looks like a credential, wherever it sits in a plain value; a dynamic reference ({{resolve:…}}, what
 // unsafeUnwrap() writes) puts the secret's value into the resource in plain text, so it counts too (break M-1).
-const CREDENTIAL = /(?:^|[^A-Za-z])(sk|rk)_(test|live)_|whsec_|postgres(ql)?:\/\/[^\s/]*:[^\s/@]+@|-----BEGIN|AKIA[0-9A-Z]{16}|\{\{resolve:(secretsmanager|ssm-secure):/;
+const CREDENTIAL = /(?:^|[^A-Za-z])(sk|rk)_(test|live)_|whsec_|postgres(ql)?:\/\/[^\s/]*:[^\s/@]+@|-----BEGIN|AKIA[0-9A-Z]{16}|GOCSPX-|\{\{resolve:(secretsmanager|ssm-secure):/;
 /** Does an IAM Action value allow reading a secret's value (exact, secretsmanager:*, a Get* glob, or *)? (break M-2) */
 const covers = (action: unknown, ...wanted: string[]) => arr(Array.isArray(action) ? action : [action]).some((a) => typeof a === "string"
   && wanted.some((w) => new RegExp(`^${a.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i").test(w))); // IAM globs (re-break n2)
@@ -71,6 +71,9 @@ export function taskSettingFindings(t: Template, settings: { name: string; secre
   if (e.has("PLATFORM_SAMPLE_SEED") || s.has("PLATFORM_SAMPLE_SEED")) out.push("PLATFORM_SAMPLE_SEED is set: no Sample firms on AWS");
   if (e.get("PLATFORM_IDENTITY") !== "cognito") out.push(`PLATFORM_IDENTITY is ${json(e.get("PLATFORM_IDENTITY"))}, not "cognito"`);
   for (const x of settings) if (x.required && !e.has(x.name) && !s.has(x.name)) out.push(`${x.name}: required by PF-24's loader, not supplied`);
+  // R1.43 part 0 (break F2): the Google client is a pair, both or neither, as the loader takes it
+  const pair = ["PLATFORM_GOOGLE_CLIENT_ID", "PLATFORM_GOOGLE_CLIENT_SECRET"], has = (n: string) => e.has(n) || s.has(n);
+  if (pair.some(has)) for (const n of pair) if (!has(n)) out.push(`${n}: missing, half of the Google client pair (PF-24's loader would refuse to start)`);
   for (const name of [...settings.filter((x) => x.secret).map((x) => x.name), "APP_DATABASE_URL"]) {
     if (e.has(name)) out.push(`${name}: a secret given as a plain environment value`);
     if (s.has(name) && !secretName(t, s.get(name))) out.push(`${name}: not a Secrets Manager secret of this stack (${json(s.get(name))})`);
@@ -99,13 +102,13 @@ export function taskSettingFindings(t: Template, settings: { name: string; secre
  *  a secret's resource policy, an action glob); the stack's key lets nothing but the account root (IAM) decrypt outside
  *  Secrets Manager (break M-2: that key also encrypts the database, the buckets and the images). */
 export function secretReadFindings(t: Template): string[] {
-  const out: string[] = [];
+  const out: string[] = [], stage = templateStage(t); // R1.43 part 0: an imported secret only of this stack's own stage
   type St = { Effect?: string; Action?: unknown; Resource?: unknown; Principal?: unknown; Condition?: unknown };
   const grants: { role: string; res: string[]; from: string }[] = [];
   const add = (roles: unknown[], doc: unknown, from: string) => {
     for (const st of arr(g(doc, "Statement")) as St[] & { NotAction?: unknown }[]) if (st.Effect !== "Deny" && (st as { NotAction?: unknown }).NotAction !== undefined) out.push(`${from}: an Allow with NotAction (unreadable; re-break n2)`);
     for (const st of arr(g(doc, "Statement")) as St[]) if (st.Effect !== "Deny" && readsSecret(st.Action))
-      for (const role of roles.map((r) => refId(r) ?? json(r))) grants.push({ role, res: arr(Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((x) => refId(x) ?? importedSecretName(x, true) ?? json(x)), from });
+      for (const role of roles.map((r) => refId(r) ?? json(r))) grants.push({ role, res: arr(Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((x) => refId(x) ?? importedSecretName(x, stage, true) ?? json(x)), from });
   };
   const holders = (p: Res) => [...arr(p.Properties?.Roles), ...arr(p.Properties?.Users).map((u) => `user ${json(u)}`), ...arr(p.Properties?.Groups).map((x) => `group ${json(x)}`)]; // re-break RM-2
   for (const [id, p] of [...all(t, "AWS::IAM::Policy"), ...all(t, "AWS::IAM::ManagedPolicy")]) add(holders(p), p.Properties?.PolicyDocument, id);
@@ -118,7 +121,7 @@ export function secretReadFindings(t: Template): string[] {
   const execs = new Map<string, Set<string>>();
   for (const [id, td] of all(t, "AWS::ECS::TaskDefinition")) {
     const exec = refId(td.Properties?.ExecutionRoleArn);
-    const wanted = new Set(containers(td).flatMap((c) => (c.Secrets ?? []).map((x) => refId(x.ValueFrom) ?? importedSecretName(x.ValueFrom) ?? json(x.ValueFrom))));
+    const wanted = new Set(containers(td).flatMap((c) => (c.Secrets ?? []).map((x) => refId(x.ValueFrom) ?? importedSecretName(x.ValueFrom, stage) ?? json(x.ValueFrom))));
     if (!exec) { if (wanted.size) out.push(`${id}: secrets but no execution role`); continue; }
     execs.set(exec, wanted);
     const trust = g(t.Resources?.[exec], "Properties", "AssumeRolePolicyDocument");

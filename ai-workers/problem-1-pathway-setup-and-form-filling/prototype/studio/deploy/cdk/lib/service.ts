@@ -46,13 +46,27 @@ export const POOLS = ["staff", "own-staff", "clients"] as const;
  *  so it is a plain setting. */
 export const STAGE_SECRETS: Record<Stage, readonly string[]> = { staging: ["PLATFORM_GOOGLE_CLIENT_SECRET"], production: [] };
 /** The one form an imported secret may take in a template, for the estate's guards (checks.ts, service-checks.ts): this
- *  account's and this region's ARN of a name in STAGE_SECRETS, exactly as formatArn writes it; `wildcard` is the form
- *  IAM's grant takes (Secrets Manager adds six random characters to every secret's ARN). Anything else is undefined. */
-export function importedSecretName(v: unknown, wildcard = false): string | undefined {
+ *  account's and this region's ARN of a name in STAGE_SECRETS of the checked stack's own `stage` (review M1 = break F1:
+ *  never another stage's), exactly as formatArn writes it; `wildcard` is the form IAM's grant takes (Secrets Manager adds
+ *  six random characters to every secret's ARN). No stage, or anything else, is undefined. */
+export function importedSecretName(v: unknown, stage: Stage | undefined, wildcard = false): string | undefined {
+  if (!stage) return undefined;
   const at = (name: string) => JSON.stringify({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":secretsmanager:ca-central-1:", { Ref: "AWS::AccountId" }, `:secret:${name}${wildcard ? "-??????" : ""}`]] });
   const got = JSON.stringify(v ?? null);
-  for (const [stage, names] of Object.entries(STAGE_SECRETS)) for (const n of names) if (got === at(`xr/${stage}/${n}`)) return `xr/${stage}/${n}`;
+  for (const n of STAGE_SECRETS[stage]) if (got === at(`xr/${stage}/${n}`)) return `xr/${stage}/${n}`;
   return undefined;
+}
+/** A synthesized stack's stage, read from the names of the secrets it creates (`xr/<stage>/…`); a secret with no name is
+ *  skipped (RDS names the database's admin password). Two stages, a name outside that form, or none: undefined, and then
+ *  nothing imported is accepted (review M1 = break F1). */
+export function templateStage(t: { Resources?: Record<string, { Type: string; Properties?: Record<string, unknown> }> }): Stage | undefined {
+  const seen = new Set<string>();
+  for (const r of Object.values(t.Resources ?? {})) if (r.Type === "AWS::SecretsManager::Secret" && r.Properties?.Name !== undefined) {
+    const m = /^xr\/(staging|production)\//.exec(String(r.Properties.Name));
+    if (!m) return undefined;
+    seen.add(m[1]);
+  }
+  return seen.size === 1 ? ([...seen][0] as Stage) : undefined;
 }
 export const GOOGLE_CLIENT_ID: Record<Stage, string | null> = { staging: "944392513043-74l9f3bhl99tkiv4e3nt24tf3qfomfj1.apps.googleusercontent.com", production: null };
 /** PF-4bs (concept screens/PF-4bs r3 §4; Lead 23, 24 Nov): the only Cognito actions the app may call, each with its caller,
