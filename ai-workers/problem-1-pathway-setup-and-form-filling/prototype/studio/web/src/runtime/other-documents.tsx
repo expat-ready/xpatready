@@ -40,7 +40,7 @@ export function OtherDocuments({ caseId, subject, label, docs, kinds, nameOf }: 
       <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-hidden accept="application/pdf,image/jpeg,image/png" data-other-upload-input
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) start(f); }} />
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        {kinds.map((k) => <Button key={k.key} size="sm" variant="secondary" disabled={busy} data-other-upload={k.key}
+        {kinds.map((k) => <Button key={k.key} size="sm" variant="secondary" className="h-auto min-h-8 max-w-full shrink whitespace-normal py-1 text-left" disabled={busy} data-other-upload={k.key}
           onClick={() => { kind.current = k; if (!staffToken()) { setAsked(true); return; } input.current?.click(); }}>Add {k.name} for {label}…</Button>)}
         {state ? <span role="status" className={`text-xs ${state.phase === "failed" ? "sr-only" : "text-text-muted"}`} data-upload-words={state.phase}>{state.phase === "done" ? `${state.kind}: uploaded` : `${state.kind}: ${state.words}`}</span> : null}
         {state?.phase === "failed" ? <p role="alert" className="text-xs text-text-danger" data-upload-refused>{state.words}</p> : null}
