@@ -21,7 +21,8 @@ const Id = z.string().min(1).max(200);
 const Key = z.string().min(1).max(200);
 
 /** One release a person can be assessed against: the newest released version of a combination that has rules. */
-export const AssessableRelease = z.strictObject({ combination_id: Id, name: z.string().min(1).max(500), release_id: Id, version: z.number().int().min(1), content_hash: z.string().min(1).max(200) });
+/** AS-2a (P-650 (2)): `assessment_only` is true for a release used only to assess a person (no form; no case opens). */
+export const AssessableRelease = z.strictObject({ combination_id: Id, name: z.string().min(1).max(500), release_id: Id, version: z.number().int().min(1), content_hash: z.string().min(1).max(200), assessment_only: z.boolean() });
 export type AssessableRelease = z.infer<typeof AssessableRelease>;
 
 /** One fact a release's gates (and, from AS-1s, its grids) read, for one role: its canonical answer key, the question's
@@ -56,12 +57,24 @@ export type ScoreLine = z.infer<typeof ScoreLine>;
 export const GridScore = z.strictObject({ grid: Key, total: z.number(), lines: z.array(ScoreLine) });
 export type GridScore = z.infer<typeof GridScore>;
 
+/** AS-2a (R1.107, AGENTS rule 4, P-170): where a rule comes from: the official page (URL, section, the words quoted,
+ *  the day it was read), or the label Sample. Null: the release gives none (a rule saved before AS-2a). */
+export const RuleSource = z.union([
+  z.strictObject({ url: z.string().url().max(500), section: z.string().min(1).max(200), quote: z.string().min(1).max(2000), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  z.strictObject({ sample: z.literal(true) }),
+]);
+export type RuleSource = z.infer<typeof RuleSource>;
+/** AS-2a: one line per rule the assessment read, in the release's order, met or not, with its source: so "eligible"
+ *  shows the rules it rests on, and "not eligible" the rule that failed and where it comes from (BR-6, AG-3-13). */
+export const RuleLine = z.strictObject({ role: EligibilityRole, ref: Key, words: z.string().min(1).max(2000), state: z.enum(["met", "not_met", "not_answered"]), source: RuleSource.nullable() });
+export type RuleLine = z.infer<typeof RuleLine>;
+
 /** Which rules gave the result: the release and its fingerprint, stored with the result (FO-15b, CS-106c). */
 export const RulesVersion = z.strictObject({ release_id: Id, content_hash: z.string().min(1).max(200) });
 export type RulesVersion = z.infer<typeof RulesVersion>;
 
 export const EligibilityResult = z.strictObject({
-  outcome: EligibilityOutcome, reasons: z.array(EligibilityReason), missing_facts: z.array(MissingFact),
+  outcome: EligibilityOutcome, reasons: z.array(EligibilityReason), missing_facts: z.array(MissingFact), rules: z.array(RuleLine),
   scores: z.array(GridScore), rules_version: RulesVersion, disclaimer: z.string().min(1).max(4000),
 });
 export type EligibilityResult = z.infer<typeof EligibilityResult>;
