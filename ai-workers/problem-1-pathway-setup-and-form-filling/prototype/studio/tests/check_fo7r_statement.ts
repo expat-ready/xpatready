@@ -122,15 +122,14 @@ try {
   const inv4 = await make(40000); await issue(inv4);
   const ap = await call(tA, "POST", "/front-office/money/trust/applications", { invoiceId: inv4, amountMinor: 25000 });
   const inv5 = await make(30000); await issue(inv5);
-  // credit kept from another payment, then applied to inv5 (FO-7ts part 2's ledger; no route on main: written by SQL, triggers off)
-  sql(`set session_replication_role = replica; insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, payment_id, created_by) values ('${A}', '${PA}', 'KEPT', 12000, 'CAD', 1, 12000, '${p2.id}', 'seed:FO-7r');
-    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) values ('${A}', '${PA}', 'APPLIED', -5000, 'CAD', 2, 7000, '${inv5}', 'seed:FO-7r')`);
-  const usd = await make(500000, PA, "USD"); await issue(usd); await pay(usd, 200000);
+  const usd = await make(500000, PA, "USD"); await issue(usd);
+  // received yesterday, recorded today after the issue: stored at yesterday 00:00 UTC, before the invoice's issue time (review m1)
+  const pUsd = await call(tA, "POST", `${M}/${usd}/payments`, { method: "BANK_TRANSFER", amountMinor: 200000, reference: "BT-USD", receivedOn: dayOf(new Date(Date.now() - 86_400_000)), idempotencyKey: "fo7r-pay-usd" });
   const draft = await make(99900);
   const other = await make(77700, PA2); await issue(other);
   const bInv = await make(55500, PB, "CAD", tB); await issue(bInv, undefined, tB);
   ok("setup: payments, a credit note, a trust deposit, a refund, trust applied and the other clients' invoices are recorded through the real routes",
-    !!p1?.id && cn.status === 201 && dep.status === 201 && rf.status === 201 && ap.status === 201 && !!draft && !!other && !!bInv, { rf: rf.body, cn: cn.status, dep: dep.status, ap: ap.body });
+    !!p1?.id && cn.status === 201 && dep.status === 201 && rf.status === 201 && ap.status === 201 && pUsd.status === 201 && !!draft && !!other && !!bInv, { rf: rf.body, cn: cn.status, dep: dep.status, ap: ap.body, pUsd: pUsd.body });
 
   // ---------------------------------------------------------------------------------------------------- S1, S2
   const today = dayOf(new Date());
@@ -139,32 +138,72 @@ try {
   const ledger = (cur: string) => views.filter((v) => v.currency === cur).reduce((s, v) => s + v.totalMinor - v.creditedMinor - v.writtenOffMinor - v.paidMinor, 0);
   const all = await walk(allStmt, PA), closing = (acct: string, cur: string) => all.accounts.find((a: any) => a.account === acct && a.currency === cur)?.closingMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   ok(`FO-7r S1 pass: the closing INVOICES balance per currency equals Σ (total − credited − written off − paid) of invoiceFacts (CAD ${ledger("CAD")}, USD ${ledger("USD")})`,
-    closing("INVOICES", "CAD") === ledger("CAD") && closing("INVOICES", "USD") === ledger("USD") && ledger("CAD") === 265550 - 100000 - 10000 + (100000 - 100000 + 30000) + 0 + (40000 - 25000) + (30000 - 5000), { accounts: all.accounts, ledger: [ledger("CAD"), ledger("USD")] });
+    closing("INVOICES", "CAD") === ledger("CAD") && closing("INVOICES", "USD") === ledger("USD") && ledger("CAD") === 265550 - 100000 - 10000 + (100000 - 100000 + 30000) + 0 + (40000 - 25000) + 30000, { accounts: all.accounts, ledger: [ledger("CAD"), ledger("USD")] });
   const chained = (lines: any[]) => { const last = new Map<string, number>(); return lines.every((l) => { const k = `${l.account}|${l.currency}`, prev = last.get(k) ?? 0; last.set(k, l.balanceAfterMinor); return l.balanceAfterMinor === prev + l.amountMinor; }); };   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   ok("FO-7r S1 pass: each line's running balance is the one before it plus its amount, and the last line's equals the closing balance", chained(all.items)
     && ["CAD", "USD"].every((c) => all.items.filter((l: any) => l.account === "INVOICES" && l.currency === c).at(-1)?.balanceAfterMinor === closing("INVOICES", c)), all.items);   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
-  ok("FO-7r S1 fail: one line's amount changed by a cent breaks the chain (the check catches a wrong running balance)", !chained(all.items.map((l: any, i: number) => (i === 2 ? { ...l, amountMinor: l.amountMinor + 1 } : l))));   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   const kinds = new Set(all.items.filter((l: any) => l.account === "INVOICES").map((l: any) => l.kind));   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
-  ok("FO-7r S1 pass: the lines name each fact: invoice, payment, credit note, refund, write-off, paid from trust, credit applied", ["INVOICE", "PAYMENT", "CREDIT_NOTE", "REFUND", "WRITE_OFF", "PAID_FROM_TRUST", "CREDIT_APPLIED"].every((k) => kinds.has(k)), [...kinds]);
+  ok("FO-7r S1 pass: the lines name each fact: invoice, payment, credit note, refund, write-off, paid from trust (S9 has the other four)", ["INVOICE", "PAYMENT", "CREDIT_NOTE", "REFUND", "WRITE_OFF", "PAID_FROM_TRUST"].every((k) => kinds.has(k)), [...kinds]);
+  // review m1: a payment recorded with today's date is stored at 00:00 UTC, before the invoice issued later today; it still
+  // follows its invoice (each fact is dated no earlier than its invoice's issue)
+  const firstOf = (lines: any[]) => lines.filter((l) => l.account === "INVOICES").every((l, i, xs) => l.kind === "INVOICE" || xs.slice(0, i).some((p) => p.kind === "INVOICE" && p.invoiceId === l.invoiceId));   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  const stored = sql(`select count(*) from money_payment p join money_invoice i on i.id = p.invoice_id where i.person_id = '${PA}' and p.received_at < i.issued_at`);
+  ok(`FO-7r S1 pass: each fact follows its own invoice's line, though ${stored} payment(s) are stored before their invoice's issue time`, Number(stored) > 0 && firstOf(all.items), all.items.map((l: any) => l.kind));   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok("FO-7r S1 fail: the same check on the lines in reverse order fails", !firstOf([...all.items].reverse()));
   ok("FO-7r S6 fail: a draft, another client's invoice and another firm's never appear", !all.items.some((l: any) => [draft, other, bInv].includes(l.invoiceId)));   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   ok("FO-7r S2 pass: one account row per currency (CAD and USD apart), and no field adds them", all.accounts.filter((a: any) => a.account === "INVOICES").map((a: any) => a.currency).join() === "CAD,USD"   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
     && !Object.keys(all).some((k) => /total|sum/i.test(k)));
   ok("FO-7r S2 fail: the USD invoice's lines are never in the CAD running balance", all.items.filter((l: any) => l.currency === "CAD").every((l: any) => l.invoiceId !== usd));   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  // S1 fail, on the code: a payment recorded on another client's invoice moves that client's closing balance by exactly
+  // its amount and leaves this client's as it was
+  const before2 = await walk(allStmt, PA2); await pay(other, 7700, tA, "CASH"); const after2 = await walk(allStmt, PA2), againA = await walk(allStmt, PA);
+  const cl = (st: any) => st.accounts.find((a: any) => a.account === "INVOICES" && a.currency === "CAD")?.closingMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok("FO-7r S1 fail: a payment on another client's invoice changes that client's closing by −77.00 and not this client's", cl(after2) === cl(before2) - 7700 && cl(againA) === cl(all) && cl(all) === ledger("CAD"), { before2: cl(before2), after2: cl(after2), a: cl(againA) });
 
   // ---------------------------------------------------------------------------------------------------- S4, S5
   const sum = await inA(() => allSum.summary(ctxR, "person", PA)), cad = sum.totals.find((t) => t.currency === "CAD")!, usdT = sum.totals.find((t) => t.currency === "USD")!;
   const listDue = (await inA(() => allInv.list(ctxR, { partyKind: "PERSON", partyId: PA, pageSize: "200" }))).items.filter((r) => r.currency === "CAD").reduce((s, r) => s + r.dueMinor, 0);
   ok("FO-7r S4 pass: CAD billed, paid, paid from trust, credited, written off, refunded and credit as seeded; owed equals the invoice list's due",
-    cad.billedMinor === 265550 + 100000 + 50000 + 40000 + 30000 && cad.paidMinor === 100000 + 70000 + 25000 + 5000 && cad.paidFromTrustMinor === 25000 && cad.creditedMinor === 10000
-    && cad.writtenOffMinor === 50000 && cad.refundedMinor === 30000 && cad.creditMinor === 7000 && cad.owedMinor === listDue && cad.owedMinor === 155550 + 30000 + 15000 + 25000, { cad, listDue });
+    cad.billedMinor === 265550 + 100000 + 50000 + 40000 + 30000 && cad.paidMinor === 100000 + 70000 + 25000 && cad.paidFromTrustMinor === 25000 && cad.creditedMinor === 10000
+    && cad.writtenOffMinor === 50000 && cad.refundedMinor === 30000 && cad.creditMinor === 0 && cad.owedMinor === listDue && cad.owedMinor === 155550 + 30000 + 15000 + 30000, { cad, listDue });
   ok("FO-7r S4 pass: the oldest overdue invoice (due 2026-01-05) gives its days; unbilled is null, never a guessed zero",
     cad.oldestOverdueDays === Math.round((Date.parse(today) - Date.parse("2026-01-05")) / 86_400_000) && cad.unbilledMinor === null && usdT.oldestOverdueDays === null, cad);
   ok("FO-7r S2 pass: the summary has a CAD and a USD row, USD billed 5,000.00, paid 2,000.00, owed 3,000.00", sum.totals.length === 2 && usdT.billedMinor === 500000 && usdT.paidMinor === 200000 && usdT.owedMinor === 300000, sum.totals);
-  ok("FO-7r S4 fail: closing balance and owed differ exactly where money paid beyond the bill sits (here none: the refund left CAD 300.00 owed)", closing("INVOICES", "CAD") === cad.owedMinor + 0, { closing: closing("INVOICES", "CAD"), owed: cad.owedMinor });
+  ok("FO-7r S4 pass: nothing was paid beyond the bill here, so the closing balance equals owed", closing("INVOICES", "CAD") === cad.owedMinor, { closing: closing("INVOICES", "CAD"), owed: cad.owedMinor });
   const bal = await call(tA, "GET", `/front-office/money/trust/balances?personId=${PA}`);
   const trustCad = bal.body?.totals?.find((t: any) => t.currency === "CAD")?.amountMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   ok("FO-7r S5 pass: the TRUST account's closing and the summary's trust equal the trust reads' balance (CAD 1,250.00)", trustCad === 125000 && closing("TRUST", "CAD") === trustCad && cad.trustMinor === trustCad
     && all.items.filter((l: any) => l.account === "TRUST").map((l: any) => l.kind).join() === "DEPOSIT,WITHDRAWAL_TO_INVOICE", { trustCad, accounts: all.accounts });   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+
+  // ---------------------------------------------------------------------------------------------------- S9
+  // Every other fact, written with the database's own triggers and checks on (review M2): an overpayment kept as credit
+  // (FO-7b's real route), credit applied and its reversal (FO-7ts part 2's ledger rows; no route on main), and credit
+  // notes on a trust-paid invoice that move part back to trust (its trigger writes the CORRECTION) or refund part to the
+  // client (OVERPAID_REFUND). Each closing equals invoiceFacts; owed equals the invoice list's due; closing = owed − the
+  // overpayment kept as credit (the shape's rule).
+  const PC = person(A, "c");
+  await call(tA, "POST", "/front-office/money/trust/deposits", { personId: PC, method: "E_TRANSFER", amountMinor: 100000, currency: "CAD", reference: "ET-C", idempotencyKey: "fo7r-dep-c" });
+  const x = await make(60000, PC); await issue(x); const wx = await call(tA, "POST", "/front-office/money/trust/applications", { invoiceId: x, amountMinor: 60000 });
+  const W = sql(`select id from money_trust_entry where invoice_id = '${x}' and kind = 'WITHDRAWAL_TO_INVOICE'`);
+  // the trust money moves to operating first (FO-7t's To move route): only moved money takes an overpaid choice
+  const moved = await call(tA, "POST", "/front-office/money/trust/to-move/batches", { currency: "CAD", direction: "TRUST_TO_OPERATING", transferDate: dayOf(new Date()), lines: [{ sourceEntryId: W, amountMinor: 60000 }] });
+  sql(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, reason, overpaid_choice, overpaid_minor, overpaid_entry_id, created_by) values ('${A}', '${x}', 20000, 'CAD', 'Back to trust (Sample)', 'OVERPAID_TO_TRUST', 20000, '${W}', 'seed:FO-7r')`);
+  sql(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, reason, overpaid_choice, overpaid_minor, overpaid_entry_id, created_by) values ('${A}', '${x}', 5000, 'CAD', 'Refunded to the client (Sample)', 'OVERPAID_REFUND', 5000, '${W}', 'seed:FO-7r')`);
+  const y = await make(10000, PC); await issue(y); const py = await pay(y, 15000, tA, "CASH");
+  const keep = await call(tA, "POST", `/front-office/money/payments/${py.id}/extra`, { choice: "KEEP_AS_CREDIT" });
+  const z = await make(8000, PC); await issue(z);
+  const ap1 = sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${A}', '${PC}', 'APPLIED', -3000, 'CAD', '${z}', 'seed:FO-7r') returning id`);
+  sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, reverses_entry_id, reason, created_by) values ('${A}', '${PC}', 'REVERSED', 1000, 'CAD', '${ap1}', 'Applied too much (Sample)', 'seed:FO-7r')`);
+  const sc = await walk(allStmt, PC), sumC = await inA(() => allSum.summary(ctxR, "person", PC)), cC = sumC.totals[0]!;
+  const vC = await factsOf([x, y, z]), ledgerC = vC.reduce((s, v) => s + v.totalMinor - v.creditedMinor - v.writtenOffMinor - v.paidMinor, 0);
+  const dueC = (await inA(() => allInv.list(ctxR, { partyKind: "PERSON", partyId: PC, pageSize: "200" }))).items.reduce((s, r) => s + r.dueMinor, 0);
+  const kindsC = new Set(sc.items.map((l: any) => l.kind)), closingC = sc.accounts.find((a: any) => a.account === "INVOICES")?.closingMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok("setup S9: the trust payment, both credit notes, the overpayment kept as credit and the credit rows are accepted by the database's checks", wx.status === 201 && moved.status === 201 && keep.status === 201 && !!ap1, { wx: wx.body, moved: moved.body, keep: keep.body });
+  ok("FO-7r S9 pass: the corrected trust payment, the money returned from trust, credit applied and its reversal each show as a line", ["PAID_FROM_TRUST", "PAID_FROM_TRUST_CORRECTED", "RETURNED_FROM_TRUST", "CREDIT_APPLIED", "CREDIT_APPLIED_REVERSED", "CREDIT_NOTE", "PAYMENT"].every((k) => kindsC.has(k)), [...kindsC]);
+  ok(`FO-7r S9 pass: with every fact, the closing balance equals Σ invoiceFacts (CAD ${ledgerC}) and owed equals the invoice list's due (CAD ${dueC})`, closingC === ledgerC && cC.owedMinor === dueC && chained(sc.items), { closingC, ledgerC, owed: cC.owedMinor, dueC });
+  ok("FO-7r S9 pass: closing = owed − the CAD 50.00 paid beyond the bill and kept as credit; the summary's credit is CAD 30.00 (50.00 kept, 30.00 applied, 10.00 back)", closingC === cC.owedMinor - 5000 && cC.creditMinor === 5000 - 3000 + 1000, { closingC, owed: cC.owedMinor, credit: cC.creditMinor });
+  ok("FO-7r S9 fail: the same equation without the kept overpayment fails (closing is not owed)", closingC !== cC.owedMinor);
+  ok("FO-7r S9 pass: paid from trust is what trust paid less what came back (600.00 − 200.00 − 50.00 = 350.00), as FACTS_LATERAL counts it", cC.paidFromTrustMinor === 35000 && vC[0]!.paidMinor === 35000, { trust: cC.paidFromTrustMinor, factsPaid: vC[0]!.paidMinor });
 
   // ---------------------------------------------------------------------------------------------------- S3
   const yesterday = dayOf(new Date(Date.now() - 86_400_000)), tomorrow = dayOf(new Date(Date.now() + 86_400_000));
@@ -217,13 +256,19 @@ try {
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency)
       select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PBULK}';
     insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by)
-      select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'bulk-' || i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}' and i.number like 'BULK-%5'; analyze`);
+      select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'bulk-' || i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}' and i.number like 'BULK-%5';
+    -- other clients' facts in the same firm (review M1: an OR join cost grew with the firm's credit entries): 3,000 invoices
+    -- of another client, each with credit applied and a trust withdrawal (performance rows: written with triggers off)
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PA2}', 'OTHER-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 3000) g;
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'APPLIED', -100, 'CAD', 1000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'OTHER-%';
+    insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'WITHDRAWAL_TO_INVOICE', -100, 'CAD', 1000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'OTHER-%';
+    analyze`);
   await inA(() => allStmt.statement(ctxR, "person", PBULK, {}));   // warm
   let t0 = performance.now(); const bs = await inA(() => allStmt.statement(ctxR, "person", PBULK, {})); const msS = Math.round(performance.now() - t0);
   t0 = performance.now(); const bsum = await inA(() => allSum.summary(ctxR, "person", PBULK)); const msSum = Math.round(performance.now() - t0);
-  ok(`FO-7r S8 pass: 10,000 invoices: the statement's page 1 (50 lines) in ${msS} ms and the summary in ${msSum} ms, both within 300 ms`, msS < 300 && msSum < 300 && bs.items.length === 50 && !!bs.next
+  ok(`FO-7r S8 pass: 10,000 invoices (and 3,000 of another client's with credit and trust rows): the statement's page 1 (50 lines) in ${msS} ms and the summary in ${msSum} ms, both within 300 ms`, msS < 300 && msSum < 300 && bs.items.length === 50 && !!bs.next
     && bsum.totals[0]!.billedMinor === 10_000_000 && bsum.totals[0]!.paidMinor === 1000 * 400 && bs.accounts[0]!.closingMinor === 10_000_000 - 400_000, { msS, msSum, closing: bs.accounts, billed: bsum.totals });
-  ok("FO-7r S8 fail: a time past 300 ms fails the same comparison", !(301 < 300));
+  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && bs.accounts[0]!.lines === 11000, { pageSize: bs.pageSize, n: bs.items.length });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
 } finally {

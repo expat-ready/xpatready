@@ -53,7 +53,13 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
   return Prisma.sql`with inv as materialized (select i.id, i.case_id, i.currency, i.number, i.issued_at, i.due_date, coalesce(t.total, 0) as total from money_invoice i
         left join lateral (select sum(x.amount_minor::bigint + x.tax_minor) as total from money_invoice_line x where x.firm_id = i.firm_id and x.invoice_id = i.id) t on true
       where i.firm_id = ${f}::uuid and ${partyCol(p, "i")} = ${p.id}::uuid and i.issued_at is not null and ${scopeSql(scope)} ${onCase("i")}),
-    l (acct, currency, k, o, id, inv, at, kind, reference, invoice_id, case_id, amount) as (
+    -- credit applied to one of these invoices: money_invoice_credit's "e.invoice_id = inv or p.invoice_id = inv", as two
+    -- plain joins the database can hash (an OR join loops over every credit entry of the firm: review M1), the second
+    -- only where the payment's invoice is another one (so an entry naming one invoice both ways counts once, as the OR does)
+    ca as materialized (select e.id, e.created_at, e.amount_minor, e.invoice_id as inv from money_credit_entry e join inv on inv.id = e.invoice_id where e.firm_id = ${f}::uuid and e.kind = 'APPLIED'
+      union all select e.id, e.created_at, e.amount_minor, p.invoice_id from money_credit_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id join inv on inv.id = p.invoice_id
+        where e.firm_id = ${f}::uuid and e.kind = 'APPLIED' and e.invoice_id is distinct from p.invoice_id),
+    f0 (acct, currency, k, o, id, inv, at, kind, reference, invoice_id, case_id, amount) as (
       select 0, i.currency::text, i.issued_at, 1, i.id, i.id, i.issued_at, 'INVOICE', i.number, i.id, i.case_id, i.total::bigint from inv i
       union all select 0, i.currency::text, p.received_at, 2, p.id, i.id, p.received_at, 'PAYMENT', coalesce(p.reference, i.number), i.id, i.case_id, -p.amount_minor::bigint
         from money_payment p join inv i on i.id = p.invoice_id where p.firm_id = ${f}::uuid and p.received_into = 'OPERATING'
@@ -66,14 +72,18 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
       union all select 0, i.currency::text, c.created_at, 6, c.id, i.id, c.created_at, 'RETURNED_FROM_TRUST', coalesce(c.number, i.number), i.id, i.case_id, coalesce(c.overpaid_minor, 0)::bigint
         from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid and c.overpaid_choice = 'OVERPAID_REFUND'
       union all select 0, i.currency::text, e.created_at, 7, e.id, i.id, e.created_at, 'CREDIT_APPLIED', i.number, i.id, i.case_id, e.amount_minor::bigint
-        from money_credit_entry e left join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id join inv i on (i.id = e.invoice_id or i.id = p.invoice_id) where e.firm_id = ${f}::uuid and e.kind = 'APPLIED'
+        from ca e join inv i on i.id = e.inv
       union all select 0, i.currency::text, r.created_at, 8, r.id, i.id, r.created_at, 'CREDIT_APPLIED_REVERSED', i.number, i.id, i.case_id, r.amount_minor::bigint
-        from money_credit_entry r join money_credit_entry e on e.firm_id = r.firm_id and e.id = r.reverses_entry_id left join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
-          join inv i on (i.id = e.invoice_id or i.id = p.invoice_id) where r.firm_id = ${f}::uuid and e.kind = 'APPLIED'
+        from money_credit_entry r join ca e on e.id = r.reverses_entry_id join inv i on i.id = e.inv where r.firm_id = ${f}::uuid
       union all select 0, i.currency::text, c.created_at, 9, c.id, i.id, c.created_at, 'CREDIT_NOTE', coalesce(c.number, i.number), i.id, i.case_id, -c.amount_minor::bigint
         from money_credit_note c join inv i on i.id = c.invoice_id where c.firm_id = ${f}::uuid
       union all select 0, i.currency::text, w.created_at, 10, w.id, i.id, w.created_at, 'WRITE_OFF', i.number, i.id, i.case_id, -w.amount_minor::bigint
         from money_write_off w join inv i on i.id = w.invoice_id where w.firm_id = ${f}::uuid
+    ),
+    -- a fact dated before its invoice was issued (a payment recorded with its real day, stored at 00:00 UTC; credit applied
+    -- to the draft) counts from the issue: it never sorts before the invoice, nor falls in a period before it (review m1, m2)
+    l as (select f0.acct, f0.currency, greatest(f0.k, inv.issued_at) as k, f0.o, f0.id, f0.inv, greatest(f0.at, inv.issued_at) as at, f0.kind, f0.reference, f0.invoice_id, f0.case_id, f0.amount
+        from f0 join inv on inv.id = f0.inv
       ${trust})`;
 }
 /** ledgerCtes plus `run`: each line with its running balance per account and currency. */

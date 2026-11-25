@@ -4,7 +4,9 @@
 // no source on main, so `unbilledMinor` is null ("Not tracked yet", Lead 4), never a guessed zero.
 // Every figure is summed in the database from the statement's own INVOICES lines (statement.ts ledgerCtes), per invoice
 // in FACTS_LATERAL's terms (status-sql.ts: the invoice list's and status's own; tests/check_fo7r_statement.ts S4 holds
-// owed equal to the invoice list's due), over the client's issued invoices the caller may see (C5). Currencies are never added:
+// owed equal to the invoice list's due), over the client's issued invoices the caller may see (C5). "Refunded" is money
+// refunded of payments on those invoices (FACTS_LATERAL's `refunded`); a refund out of trust is a TRUST line, a credit
+// refund a change in credit. Currencies are never added:
 // each row is one currency. Trust figures only while trust shows (AG-6-59 rules 5-6). Reads only.
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
