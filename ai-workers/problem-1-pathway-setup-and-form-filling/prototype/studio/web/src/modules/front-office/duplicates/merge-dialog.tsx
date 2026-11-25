@@ -14,13 +14,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Dialog, Notice } from "@/components/ui/controls";
 import { Loading } from "../sales/loading";
 import { staffApi, StaffApiError } from "../sales/session";
-import { FIELD_LABEL, fieldWhy, Merged, MERGE_FAILED, MERGE_UNKNOWN, Preview, STALE_WORDS, type FieldPick, type ReviewPair } from "./review-contract";
+import { CASE_SIDE_LINE, FIELD_LABEL, fieldWhy, Merged, MERGE_FAILED, MERGE_UNKNOWN, Preview, STALE_WORDS, type FieldPick, type ReviewPair } from "./review-contract";
 
 type Step = 1 | 2 | 3;
 const shown = (v: unknown) => (v === null || v === undefined || v === "" ? "Not given" : String(v));
 const STEPS = ["Choose what to keep", "What moves", "Confirm"] as const;
 /** "a, b and c" (review r1 minor). */
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+/** The preview's money warning, in the server's own words (review.ts MONEY_LINE; its case line is CASE_SIDE_LINE). */
+const MONEY_WORDS = "This person has invoices, payments, trust money or a tax setting; their records cannot be merged here yet. Nothing was merged.";
 
 export function MergeDialog({ pair, onClose, onMerged, onRefresh, returnFocus }: { pair: ReviewPair | null; onClose: () => void; onMerged: (survivorName: string, mergeRef: string) => void; onRefresh: () => void; returnFocus?: () => HTMLElement | null }) {
   const [survivor, setSurvivor] = React.useState<string>(""), [step, setStep] = React.useState<Step>(1);
@@ -62,6 +64,15 @@ export function MergeDialog({ pair, onClose, onMerged, onRefresh, returnFocus }:
   const loserName = p ? who(p.loserId) : "", survivorName = p ? who(p.survivorId) : "";
   const moves = p ? [p.moves.leads && `${p.moves.leads} lead${p.moves.leads === 1 ? "" : "s"}`, p.moves.notes && `${p.moves.notes} note${p.moves.notes === 1 ? "" : "s"}`, p.moves.calls && `${p.moves.calls} call${p.moves.calls === 1 ? "" : "s"}`, p.moves.bookings && `${p.moves.bookings} booking${p.moves.bookings === 1 ? "" : "s"}`].filter(Boolean) as string[] : [];
   const blocked = !!p && (p.needsCaseSide || p.hasMoney);
+  // One sentence once (batch 45594684150; review r1 on #3754): a refusal re-reads the list, which refetches this preview.
+  // The refetched preview then says the same sentence, as its warning (money, case) or as its own refusal (decided, kept
+  // separate, merged away, not listed). The warning stands and the refusal's copy is not shown again; a preview refused in
+  // the refusal's words is not shown again either (and offers no Try again that cannot succeed). Only a preview that read
+  // well counts as said: a failed refetch keeps the last data, which is not drawn (review r1 m2).
+  const warned = preview.isSuccess ? [p?.hasMoney ? MONEY_WORDS : null, p?.needsCaseSide ? CASE_SIDE_LINE : null] : [];
+  const shownError = error && !warned.includes(error.text) ? error : null;
+  const previewWords = preview.isError ? (preview.error instanceof StaffApiError ? preview.error.message : "Could not load both records.") : null;
+  const previewSaid = !!error && previewWords === error.text;
   const footer = <>
     <Button variant="ghost" disabled={merge.isPending} onClick={onClose}>Cancel</Button>
     {step > 1 ? <Button variant="outline" disabled={merge.isPending} onClick={() => go((step - 1) as Step)}>Back</Button> : null}
@@ -76,12 +87,12 @@ export function MergeDialog({ pair, onClose, onMerged, onRefresh, returnFocus }:
       <div data-merge-dialog data-step={step} className="flex flex-col gap-4 text-sm">
         <h3 ref={heading} tabIndex={-1} data-step-heading className="font-medium outline-none">Step {step} of 3: {STEPS[step - 1]}</h3>
         <p className="sr-only" aria-live="polite">{moved.current ? `Step ${step} of 3: ${STEPS[step - 1]}` : ""}</p>
-        {error ? <Notice tone="danger" title={error.text} action={error.stale ? <Button variant="outline" size="sm" onClick={reload}>Reload</Button> : undefined} /> : null}
+        {shownError ? <Notice tone="danger" title={shownError.text} action={shownError.stale ? <Button variant="outline" size="sm" onClick={reload}>Reload</Button> : undefined} /> : null}
         {preview.isPending ? <Loading label="Loading both records" rows={3} />
-          : preview.isError ? <Notice tone="danger" title={preview.error instanceof StaffApiError ? preview.error.message : "Could not load both records."} action={<Button variant="outline" size="sm" onClick={() => void preview.refetch()}>Try again</Button>} />
+          : preview.isError ? previewSaid ? null : <Notice tone="danger" title={preview.error instanceof StaffApiError ? preview.error.message : "Could not load both records."} action={<Button variant="outline" size="sm" onClick={() => void preview.refetch()}>Try again</Button>} />
             : <>
-              {p!.hasMoney ? <Notice tone="warn" title="This person has invoices, payments, trust money or a tax setting; their records cannot be merged here yet. Nothing was merged." /> : null}
-              {p!.needsCaseSide ? <Notice tone="warn" title="This person has a case; merge them from the client record." /> : null}
+              {p!.hasMoney ? <Notice tone="warn" title={MONEY_WORDS} /> : null}
+              {p!.needsCaseSide ? <Notice tone="warn" title={CASE_SIDE_LINE} /> : null}
               {step === 1 ? <fieldset className="flex min-w-0 flex-col gap-3">
                 <legend className="sr-only">Choose what to keep</legend>
                 <div role="radiogroup" aria-label="Which record stays" className="flex flex-wrap gap-4">
