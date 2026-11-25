@@ -119,7 +119,8 @@ function DetailBody() {
       <Section id="history" title="History">
         {!history.length ? <p className="text-sm text-text-muted">A draft: nothing has happened to it yet.</p> : <ol className="flex flex-col gap-1 text-sm" data-history>{history.map((h, i) => <li key={i}><span className="text-text-muted">{day(h.at)}</span> · {h.text}</li>)}</ol>}
       </Section>
-      {acts.has("RECORD_PAYMENT") && inv.number ? <RecordPaymentPanel open={paying} onOpenChange={setPaying} invoiceId={inv.id} number={inv.number} currency={c} dueMinor={inv.dueMinor} party={billToWord(d.billTo)} returnFocus={() => (payOpener.current?.isConnected ? payOpener.current : heading.current)} /> : null}
+      {/* kept while open: a payment that settles the invoice drops RECORD_PAYMENT, and the panel still shows its answer and the extra choice */}
+      {(acts.has("RECORD_PAYMENT") || paying) && inv.number ? <RecordPaymentPanel open={paying} onOpenChange={setPaying} invoiceId={inv.id} number={inv.number} currency={c} dueMinor={inv.dueMinor} party={billToWord(d.billTo)} returnFocus={() => (payOpener.current?.isConnected ? payOpener.current : heading.current)} /> : null}
       {acts.has("CREDIT_NOTE") && inv.number ? <CreditNotePanel open={crediting} onOpenChange={setCrediting} invoiceId={inv.id} number={inv.number} currency={c} creditableMinor={d.creditableMinor} returnFocus={() => (opener.current?.isConnected ? opener.current : heading.current)} /> : null}
     </div>
   );
