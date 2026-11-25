@@ -122,7 +122,7 @@ for f in "$S/web/src/runtime/fees.tsx" "$S/api/src/rounds.ts" "$PR3/screens/R1.5
 done
 for f in "$PR3/screens/R1.58/payment-shot.png" "$PR3/qa/reports/2026-11-19-fees/invoice-run.txt" "$PR3/qa/reports/2026-11-19-fees/ledger.jpg" "$S/web/screens/fee-form.png"; do
   files 7 "$S/api/src/form.ts" "$f"; run label 7
-  ok "label: $f is a screenshot, or an image or .txt under product/: no Lead read for it (B206 part 3)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+  ok "label: $f is a screenshot, or an image or .txt under product/: no Lead read for it, and no after-read either (B206 part 3, P-823)" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q 'after-read' <<< "$log" && echo 1)" "$out / $log"
 done
 nofull; prj 7 $HEAD1 false records; files 7 "$PR3/qa/reports/2026-11-19-fees/README.md" "$PR3/qa/BUGS.md"; run label 7
 ok "label: a records-only PR (records label and records-only.sh) with a fees-named report: no Lead read, no after-read either (B206 part 3)" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q 'after-read' <<< "$log" && echo 1)" "$out / $log"
