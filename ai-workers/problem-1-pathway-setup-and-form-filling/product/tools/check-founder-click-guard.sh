@@ -79,6 +79,11 @@ for m in 'I can close the stale issues and archive both sessions if you agree.' 
 for m in 'Do you want me to? Otherwise close all of the stale PRs.' 'If not, merge #12.' 'Do not hesitate to merge #12 please.' \
          'No need to wait - dispatch the nightly workflow by hand please.' 'If you do not mind, close #3601 for me.'; do
   r=$(stop lead "$m"); ok "refused (#3665 review 5): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I can wait while you close #3601 and archive the lane yourself.' 'Do you want me to look at it first or will you merge #12?' \
+         'I can wait if you archive both sessions yourself.' 'Shall I explain why you have to dispatch the nightly workflow by hand?'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 6, an ask after an offer): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'Never click Convert to draft yourself; I handle it.' "You don't have to label the PR; Mergify does it."; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 6): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")
 ok "the Python program inside the bash single quotes has no ' (one would end it, and every check would pass silently)" "$([ "$q" = 0 ] && echo 1)" "$q line(s) with '"
 r=$(stop lead 'Nothing for you to do: I will close #3601 myself.'); ok "passes (#3665 review 4): nothing for you to do" "$([ "$r" = pass ] && echo 1)" "got $r"
