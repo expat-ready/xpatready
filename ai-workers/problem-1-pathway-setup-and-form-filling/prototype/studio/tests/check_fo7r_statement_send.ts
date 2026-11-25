@@ -215,6 +215,8 @@ try {
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PSTALE}', 'STALE-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 1500) g;
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PSTALE}';
     insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'stale-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PSTALE}'`);   // no analyze
+  const ts = performance.now(), staleSum = await call(tA, "GET", `/front-office/money/parties/person/${PSTALE}/summary`), msSum = Math.round(performance.now() - ts);
+  console.log(`  (stale statistics: the summary alone ${msSum} ms, ${staleSum.status})`);
   const t0 = performance.now(), stale = await call(tA, "GET", `/front-office/money/parties/person/${PSTALE}/statement.pdf`), msStale = Math.round(performance.now() - t0);
   ok(`FO-7r break R2-M1 pass: 3,000 lines on statistics that lag them print in ${msStale} ms (round 2: 800 lines took 8.5 s and a 500)`, stale.status === 200 && msStale < 3000 && pdfText(stale.bytes).includes(`Closing balance: CAD ${SIGNED(1500 * 600)}`), { status: stale.status, msStale });
   ok("FO-7r break R2-M1 fail: a time past 3 s fails the same comparison", !(3001 < 3000));

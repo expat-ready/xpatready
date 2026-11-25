@@ -44,13 +44,18 @@ function add(a: Figures, b: Figures): Figures {
 /** The per-case, per-currency invoice figures' SQL (exported for the plan check). */
 export function summarySql(f: string, party: Party, scope: MoneyScope, today: string): Prisma.Sql {
   return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false)},
-        per as (select inv.id, inv.case_id, inv.currency, inv.due_date, inv.total,
+        -- each invoice's facts summed once from the lines (materialized), then joined to the invoices by id: a join of the
+        -- invoices straight onto the lines' union re-ran the union per invoice when statistics lagged (break round 2 M1)
+        agg as materialized (select l.inv,
             coalesce(-sum(l.amount) filter (where l.kind = 'CREDIT_NOTE'), 0) as credited, coalesce(-sum(l.amount) filter (where l.kind = 'WRITE_OFF'), 0) as written,
             coalesce(-sum(l.amount) filter (where l.kind = 'PAYMENT'), 0) as operating, coalesce(sum(l.amount) filter (where l.kind = 'REFUND'), 0) as refunded,
             greatest(coalesce(-sum(l.amount) filter (where l.kind in ('PAID_FROM_TRUST', 'PAID_FROM_TRUST_CORRECTED', 'RETURNED_FROM_TRUST')), 0), 0) as trust,
             coalesce(-sum(l.amount) filter (where l.kind in ('CREDIT_APPLIED', 'CREDIT_APPLIED_REVERSED')), 0) as applied,
             coalesce(sum(l.amount) filter (where l.kind in ('KEPT_AS_CREDIT', 'KEPT_AS_CREDIT_REVERSED')), 0) as kept
-          from inv left join l on l.inv = inv.id and l.acct = 0 group by inv.id, inv.case_id, inv.currency, inv.due_date, inv.total),
+          from l where l.acct = 0 group by l.inv),
+        per as (select inv.id, inv.case_id, inv.currency, inv.due_date, inv.total, coalesce(a.credited, 0) as credited, coalesce(a.written, 0) as written,
+            coalesce(a.operating, 0) as operating, coalesce(a.refunded, 0) as refunded, coalesce(a.trust, 0) as trust, coalesce(a.applied, 0) as applied, coalesce(a.kept, 0) as kept
+          from inv left join agg a on a.inv = inv.id),
         -- FACTS_LATERAL's paid (with credit applied) for due and extra, as facts.ts: due = open − paid, extra = paid − open − kept
         net as (select per.*, per.total - per.credited - per.written - (per.operating - per.refunded + per.trust + per.applied) as open_left from per),
         due as (select net.*, greatest(0, net.open_left) as owed, greatest(0, -net.open_left - net.kept) as waiting from net)
