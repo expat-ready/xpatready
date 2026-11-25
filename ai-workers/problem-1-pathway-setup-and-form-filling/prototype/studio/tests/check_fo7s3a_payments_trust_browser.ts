@@ -16,7 +16,7 @@
 //   K keyboard only, axe-core 0 serious (WCAG 2.2 A/AA) on the panel, the list and the detail, 375/1024/1440 px no sideways scroll.
 // Sample firm and Sample figures only; re-runnable (each run makes its own invoices). US$0, no model call; live AI off.
 // Screenshots (deviceScaleFactor 1) in product/screens/fo-7s-money/build/. Run from prototype/:
-//   zsh studio/tools/isolated.sh fo7s3a 4752 start AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh fo7s3a 4752 stop' EXIT && tsx studio/tests/check_fo7s3a_payments_trust_browser.ts 4752 xr_studio_fo7s3a
+//   zsh studio/tools/isolated.sh fo7s3a 4752 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_fo7s3a_payments_trust_browser.ts 4752 xr_studio_fo7s3a
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
