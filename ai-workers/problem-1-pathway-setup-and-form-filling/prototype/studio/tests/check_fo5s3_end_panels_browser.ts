@@ -180,6 +180,43 @@ try {
     (await r.getByRole("button", { name: /^Withdraw/ }).count()) === 0 && (await r.getByRole("button", { name: /signed offline/i }).count()) === 0);
   await shot(r, "fo5s3-signed-offline-1440");
 
+  // ------------------------------------------------------------------------------- review round 1 B1/M1: a colleague's edit meanwhile
+  const e = await sentRetainer("Eda");
+  await open(r, e.id);
+  await r.getByRole("button", { name: "Signed offline" }).click();
+  const oe = r.getByRole("dialog", { name: "Record as signed on paper" }); await oe.waitFor();
+  await oe.getByLabel("Signed PDF").setInputFiles(PDF);
+  await oe.getByLabel("Reason").fill("Signed v1 at the office (Sample)");
+  const edit = await call(tok.R, "PATCH", `/front-office/retainers/${e.id}`, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: "175000", when: "ON_SIGNING" }] });
+  await oe.getByRole("button", { name: "Record as signed on paper" }).click();
+  await oe.locator("[role=alert], [data-tone=danger]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await r.waitForTimeout(1_500);   // the page re-reads the retainer (version 2) behind the panel
+  const kept = { reason: await oe.getByLabel("Reason").inputValue(), file: await oe.getByLabel("Signed PDF").evaluate((x) => (x as HTMLInputElement).files?.length ?? 0), says: await oe.innerText() };
+  const confirmOff = await oe.getByRole("button", { name: "Record as signed on paper" }).isDisabled();
+  ok("R1.55 FO-5s3 review B1 fail: a colleague's edit meanwhile → the server's 409 is shown in its words, the file and the reason are kept, the panel says it changed and its confirm button is off; nothing is filed",
+    edit.status === 200 && /newer version|changed/i.test(kept.says) && kept.reason === "Signed v1 at the office (Sample)" && kept.file === 1 && confirmOff && kept.says.includes("changed meanwhile")
+      && (await row(e.id)).status === "DRAFT", { edit: edit.status, kept, confirmOff, status: (await row(e.id)).status });
+  await shot(r, "fo5s3-offline-stale-1440");
+  await oe.getByRole("button", { name: "Cancel" }).click();
+  // A consultation agreement never makes a client (review M1): the panel and the toast say only what happens.
+  const up2 = new FormData(); up2.set("name", `Consultation agreement ${run}`); up2.set("kind", "CONSULTATION"); up2.set("file", new Blob([await (await fetch(`${BASE}/api/front-office/retainer-templates/starter`, { headers: { authorization: `Bearer ${tok.R}` } })).arrayBuffer()]), "starter.docx");
+  const ctpl = await call(tok.R, "POST", "/front-office/retainer-templates", up2);
+  const cp = prospect("Con");
+  await call(tok.R, "POST", "/front-office/conflict-checks", { requestId: crypto.randomUUID(), prospectId: cp.id, result: "NO_CONFLICT" });
+  const cd = await call(tok.R, "POST", `/front-office/prospects/${cp.id}/retainers`, { kind: "CONSULTATION", templateId: ctpl.body.id, fees: [{ label: "Consultation", amountMinor: 20000, when: "ON_SIGNING" }] });
+  await open(r, cd.body.id);
+  await r.getByRole("button", { name: "Signed offline" }).click();
+  const oc = r.getByRole("dialog", { name: "Record as signed on paper" }); await oc.waitFor();
+  const says = await oc.locator("[data-offline-says]").innerText();
+  await oc.getByLabel("Signed PDF").setInputFiles(PDF); await oc.getByLabel("Reason").fill("Signed at the consult (Sample)");
+  await oc.getByRole("button", { name: "Record as signed on paper" }).click();
+  await oc.waitFor({ state: "detached", timeout: 15_000 });
+  await r.locator("[data-retainer-status]", { hasText: "Signed on paper" }).waitFor({ timeout: 15_000 });
+  const body = await r.locator("body").innerText();
+  const cstage = sql(`select s.kind::text from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${cp.id}'`);
+  ok("R1.55 FO-5s3 review M1 pass: on a consultation agreement the panel says nothing about becoming a client, and the toast says only \"Recorded as signed on paper.\" (the prospect is not Won)",
+    ctpl.status === 201 && cd.status === 201 && !/a client/.test(says) && body.includes("Recorded as signed on paper.") && !/is now a client/.test(body) && cstage !== "WON", { says, cstage, tpl: ctpl.status, d: cd.status });
+
   // ------------------------------------------------------------------------------- 375, 1024, 1440: no sideways scroll
   const d = await sentRetainer("Dan");
   for (const w of [375, 1024, 1440]) {
