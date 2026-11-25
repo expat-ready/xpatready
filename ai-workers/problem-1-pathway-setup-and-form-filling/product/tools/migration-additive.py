@@ -44,7 +44,7 @@ def statements(sql):
             return None, "a U& string or name"
         prev = sql[i - 1] if i else " "
         if c == "'" or (c in "eE" and sql[i + 1:i + 2] == "'" and not (prev.isalnum() or prev in "_$\"")):
-            esc = c in "eE"; i += 2 if esc else 1
+            esc = c in "eE"; i += 2 if esc else 1; start = i
             while True:
                 if i >= n:
                     return None, "an unclosed string"
@@ -55,14 +55,14 @@ def statements(sql):
                         i += 2; continue
                     i += 1; break
                 i += 1
-            cur.append("''"); continue
+            cur.append("''" if i - start <= 1 else "'x'"); continue   # an empty string stays visible (review 4 m1)
         if c == '"':
             j = sql.find('"', i + 1)
             while j >= 0 and sql[j + 1:j + 2] == '"':
                 j = sql.find('"', j + 2)
             if j < 0:
                 return None, "an unclosed quoted name"
-            cur.append('"' + sql[i + 1:j].replace('""', "\x01") + '"'); i = j + 1; continue   # kept exactly (review 3 M4)
+            cur.append('"h' + sql[i + 1:j].encode().hex() + '"'); i = j + 1; continue   # kept exactly, hex: no later step can merge or read into a name (review 3 M4, review 4 M1)
         if c == ";":
             out.append("".join(cur)); cur = []; i += 1; continue
         cur.append(c); i += 1
@@ -85,6 +85,24 @@ def calls(s):
     return None
 
 
+REF = r"(REFERENCES|ON|INTO|TABLE( IF NOT EXISTS)?|EXISTS|INDEX|COLUMN|TYPE|SEQUENCE|CONSTRAINT|KEY|ADD COLUMN|ADD)"
+BUILTIN = {"text", "integer", "int", "int4", "int8", "bigint", "smallint", "boolean", "bool", "jsonb", "json", "timestamp",
+           "timestamptz", "date", "uuid", "numeric", "decimal", "double", "real", "varchar", "char", "bytea", "interval", "time"}
+
+
+def dots(s):
+    """Review 4 B1: "User".audit (attribute notation) runs audit(row) with no "(": any . outside a table reference, and a
+    cast to anything but a built-in type, is refused."""
+    t = re.sub(r"\b" + REF + r" " + NAME, " REF ", s, flags=I)   # a table or column reference may be schema-qualified
+    t = re.sub(r"\d\.\d", "0", t)
+    if "." in t:
+        return "a . outside a table reference"
+    for m in re.finditer(r"::\s*(\"?)([A-Za-z_]\w*)", t):
+        if m.group(1) or m.group(2).lower() not in BUILTIN:
+            return "a cast to a non-built-in type"
+    return None
+
+
 def judge(patch):
     added = []
     for l in patch.replace("\r", "").split("\n"):
@@ -104,19 +122,19 @@ def judge(patch):
             created.add(key(m.group(1) + (m.group(2) or "")))
     for s in sts:
         u, ok = s.upper(), False
-        if NEVER.search(s) or calls(s):
+        if NEVER.search(s) or calls(s) or dots(s):
             return "no: " + s[:80]
         if re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I):
             ok = not TABLE_BAD.search(s[s.index("("):])
-        elif re.match(r"^CREATE (UNIQUE )?INDEX\b", s, I) or re.match(r"^CREATE SEQUENCE\b", s, I) \
-                or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE (IF NOT EXISTS )?'' ?$", s + " ", I) \
-                or (re.match(r"^COMMENT ON\b", s, I) and not re.search(r"\bIS NULL$", s, I)):
+        elif re.match(r"^CREATE (UNIQUE )?INDEX\b", s, I) or (re.match(r"^CREATE SEQUENCE\b", s, I) and not re.search(r"\bOWNED BY\b", s, I)) \
+                or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE (IF NOT EXISTS )?'x' ?$", s + " ", I) \
+                or (re.match(r"^COMMENT ON\b", s, I) and not re.search(r"\bIS (NULL|'')$", s, I)):
             ok = True
         elif re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + r" ADD\b", s, I):
             t = re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME, s, I)
             new = key(t.group(3) + (t.group(4) or "")) in created   # a table this migration creates has no rows to cascade
             rest = re.sub(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + " ", "", s, flags=I)
-            ok = (new or not re.search(r"\bON DELETE (CASCADE|SET)\b", rest, I)) and \
+            ok = (new or not re.search(r"\bON (DELETE|UPDATE) (CASCADE|SET)\b", rest, I)) and not re.search(r"\bNOT VALID\b", rest, I) and \
                 not ALTER_BAD.search(re.sub(r"\bON (UPDATE|DELETE) (SET (NULL|DEFAULT)|NO ACTION)\b", "", rest, flags=I))   # an FK onto existing rows never cascades a delete (review 3 M5)
         else:   # CREATE TRIGGER is never additive: its function may be any existing one (review 3 B3)
             m = re.match(r"^INSERT INTO " + NAME + r"( \([^()]*\))? VALUES ", s, I)

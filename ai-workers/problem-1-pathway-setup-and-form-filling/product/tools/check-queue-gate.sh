@@ -620,6 +620,13 @@ a trigger on a new table calling an existing function|CREATE TABLE "Log" ("id" I
 two names that differ only in a dash|CREATE TABLE "_Role-ToUser" ("A" INTEGER); INSERT INTO "_Role_ToUser" ("A") VALUES (1);
 a cascading FK onto existing rows|ALTER TABLE "Child" ADD CONSTRAINT "c_fk" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE;
 a comment wiped|COMMENT ON TABLE "User" IS NULL;
+attribute notation runs a function|ALTER TABLE "User" ADD CONSTRAINT "c" CHECK ("User".audit > 0);
+attribute notation in an insert|CREATE TABLE "New" ("id" INT); INSERT INTO "New" VALUES (('(1,a,1)'::"User").audit);
+two names that differ only in spaces|CREATE TABLE "Audit  Log" ("id" INT); INSERT INTO "Audit Log" VALUES (7);
+a comment emptied|COMMENT ON TABLE "User" IS '';
+ON UPDATE CASCADE onto existing rows|ALTER TABLE "Post" ADD CONSTRAINT "p_fk" FOREIGN KEY ("u") REFERENCES "User"("id") ON UPDATE CASCADE;
+a NOT VALID check|ALTER TABLE "User" ADD CONSTRAINT "pos" CHECK ("n" > 0) NOT VALID;
+a sequence owned by an existing column|CREATE SEQUENCE "s" OWNED BY "User"."id";
 SQL
 )
 while IFS='|' read -r what sql; do [ -n "$what" ] || continue
@@ -631,7 +638,7 @@ ALLF=$(cat <<'SQL'
 +CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "p" TEXT REFERENCES "p"("id") ON DELETE CASCADE, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
 +ALTER TYPE "Kind" ADD VALUE IF NOT EXISTS 'd';
 +CREATE TYPE "Kind" AS ENUM ('a', 'b');
-+ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
++ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 +CREATE UNIQUE INDEX "i" ON "case"("kind");
 +ALTER TYPE "Kind" ADD VALUE 'c';
 +COMMENT ON TABLE "case" IS 'it''s ok -- a dash; DROP in a string';
