@@ -244,10 +244,36 @@ try {
     e8.done.applied === true && sql(`select status from fo_retainer where id = '${r8}'`) === "SIGNED" && count("module_event", `subject_id = '${e8.q}' and type = 'signing.completed'`) === 1
       && reqFor(r8) !== "" && count("audit_event", `action = 'retainer.signed_listener_held' and entity_key = '${r8}'`) === 1, e8.done);
 
+  // ------------------------------------------------------------- review a1 m3: a malformed call is held, never undoes the signing
+  const before9 = count("money_trust_request");
+  await db.$transaction((tx) => retainerSigned(tx, auditEvent, A, { ...facts1, retainerVersionId: "not-a-uuid" } as RetainerSigned));
+  ok("R1.60 a1 pass (review m3): a call the port's schema refuses is held in its savepoint (one held line), and the transaction still commits",
+    count("money_trust_request") === before9 && count("audit_event", `action = 'retainer.signed_listener_held' and entity_key = '${r1}'`) === 1);
+
+  // ------------------------------------------------------------- R4: a firm not registered for tax adds no estimated tax
+  sql(`update money_payment_settings set tax_registered = false where firm_id = '${A}'`);
+  const p10 = await prospect("Gil"), r10 = await draft(p10);
+  await svc.signedOffline(R, r10, { expectedVersion: "1", reason: "Signed at the office" }, pdf("r160 untaxed"));
+  ok("R1.60 R4 pass: a firm not registered for tax prepares the deposit row with 0 estimated tax", sql(`select amount_minor || ':' || estimated_tax_minor from money_trust_request where id = '${reqFor(r10)}'`) === "100000:0");
+  ok("R1.60 R4 fail: the registered firm's request (case 1) carried 13 %, not 0", sql(`select estimated_tax_minor from money_trust_request where id = '${q1}'`) === "13000");
+  sql(`update money_payment_settings set tax_registered = true where firm_id = '${A}'`);
+
   // ------------------------------------------------------------- case 15: no invoice anywhere, and none in the code path
   ok("R1.60 case 15 pass (R1): after every case, no money_invoice row exists beyond the ones before", count("money_invoice") === invoices0);
   const src = readFileSync(join(STUDIO, "api", "src", "client-money", "trust", "on-signed.ts"), "utf8");
   ok("R1.60 case 15 pass (R1): the listener's code names no invoice table or service", !/money_invoice|moneyInvoice|InvoiceDrafts|InvoiceMoney/.test(src.replace(/^\/\/.*$/gm, "")));
+
+  // ------------------------------------------------------------- review a1 M1: the recorded rollback, then forward again
+  const migDir = join(MIG, "20261125060000_client-money__r160_trust_request_prepared");
+  const cols = () => sql(`select coalesce(string_agg(column_name, ',' order by column_name), '') from information_schema.columns where table_name = 'money_trust_request' and column_name in ('prepared_at', 'estimated_tax_minor')`);
+  ok("R1.60 a1 M1 fail: before the rollback both columns are there", cols() === "estimated_tax_minor,prepared_at");
+  execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-1", "-f", join(migDir, "rollback.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  ok("R1.60 a1 M1 pass: rollback.sql drops both columns and puts back fo7ts's function as a definer owned by xr_wall_reader",
+    cols() === "" && sql(`select (prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader' and pg_get_functiondef(oid) not like '%prepared_at%')::text from pg_proc where proname = 'money_trust_request_write'`) === "true");
+  const after = await staffTrust.createRequest(R, { personId: p1.personId, amountMinor: 3000, currency: "CAD", purpose: "After the rollback (Sample)" }) as { id: string };
+  ok("R1.60 a1 M1 pass: after the rollback #3033's request still saves (the old function), and the prepared request's row is kept", typeof after.id === "string" && sql(`select count(*) from money_trust_request where id = '${q1}'`) === "1");
+  execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-1", "-f", join(migDir, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  ok("R1.60 a1 M1 pass: the migration applies again after its rollback (expand once more)", cols() === "estimated_tax_minor,prepared_at");
 } catch (e) {
   fail++;
   console.log(`FAIL  R1.60 a1: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);

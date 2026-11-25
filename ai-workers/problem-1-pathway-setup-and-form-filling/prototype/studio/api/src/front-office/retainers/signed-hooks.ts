@@ -25,19 +25,19 @@ export async function signedFees(tx: Tx, firmId: string, versionId: string): Pro
   return rows.map((f) => ({ label: f.label, amountMinor: f.amountMinor === null ? null : String(f.amountMinor), currency: f.currency, when: f.when }));
 }
 
-/** Runs every listener, each in its own savepoint. `signed` is checked first: a malformed one is a fault of ours. */
+/** Runs every listener, each in its own savepoint. `signed` is checked inside it (review a1 m3): a malformed one is a
+ *  fault of ours, held like any other, and never undoes the signature. */
 export async function retainerSigned(tx: Tx, audit: AuditPort<Tx>, firmId: string, signed: RetainerSigned): Promise<void> {
-  const s = RetainerSigned.parse(signed);
   for (const [name, hook] of hooks) {
     await tx.$executeRaw`savepoint retainer_signed_listener`;
-    try { await hook(tx, firmId, s); await tx.$executeRaw`release savepoint retainer_signed_listener`; }
+    try { await hook(tx, firmId, RetainerSigned.parse(signed)); await tx.$executeRaw`release savepoint retainer_signed_listener`; }
     catch (e) {
       await tx.$executeRaw`rollback to savepoint retainer_signed_listener`;
       const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : String((e as { name?: unknown })?.name ?? "Error").slice(0, 60);
       logPort.error("retainer_signed_listener_failed", e, { listener: name });
-      await audit.record(tx, { firmId, actor: s.actor, action: "retainer.signed_listener_held", entity: "fo_retainer", entityKey: s.retainerId,
-        summary: `Signed; ${name} did not run (it is tried again by its own catch-up, or by a person)`,
-        detail: { retainerId: s.retainerId, retainerVersionId: s.retainerVersionId, listener: name, fault: code }, before: null, after: { listener: name, fault: code } });
+      await audit.record(tx, { firmId, actor: signed.actor, action: "retainer.signed_listener_held", entity: "fo_retainer", entityKey: signed.retainerId,
+        summary: `Signed; ${name} did not run and is not tried again by itself: a person makes what it would have made (no catch-up yet)`,
+        detail: { retainerId: signed.retainerId, retainerVersionId: signed.retainerVersionId, listener: name, fault: code }, before: null, after: { listener: name, fault: code } });
     }
   }
 }

@@ -8,7 +8,8 @@
 --   * A prepared request names its retainer version (the one-per-version index of 20261118200000 holds B4).
 -- Additive: two nullable columns, two checks, and money_trust_request_write() again with the two columns in its rules
 -- (a cancelled request never changes; the prepared time is the database's; the tax goes with the amount once money is
--- recorded). Legal reading: Unconfirmed: no counsel. Tax figures: Sample; Unconfirmed: no accountant.
+-- recorded). Rollback: rollback.sql beside this file (by hand; it restores 20261118200000's function, then drops the
+-- checks and the columns). Legal reading: Unconfirmed: no counsel. Tax figures: Sample; Unconfirmed: no accountant.
 ALTER TABLE "money_trust_request" ADD COLUMN "prepared_at" TIMESTAMPTZ, ADD COLUMN "estimated_tax_minor" INTEGER;
 ALTER TABLE "money_trust_request"
   ADD CONSTRAINT "money_trust_request_prepared_check" CHECK ("prepared_at" IS NULL OR ("retainer_version_id" IS NOT NULL AND "estimated_tax_minor" IS NOT NULL)),
