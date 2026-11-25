@@ -10,7 +10,8 @@ import { unauthorized } from "../identity/keys.ts";
 export const PORTAL_ACCESS = "platform:portal-access";
 export type PortalAccess = { kind: "client"; why: string } | { kind: "sign-in"; why: string };
 
-/** The paths the client guard owns, in any letter case (Express routes ignore case). */
+/** The paths the client guard owns, in any letter case its routes are reached by (Express routes ignore case; an
+ *  all-capitals path that matches no route falls to the web app's page and reads nothing: PF-4pc's known gap). */
 export const PORTAL_PATH = /^\/api\/portal(\/|$)/i;
 
 export const PortalClient = (why: string) => SetMetadata(PORTAL_ACCESS, { kind: "client", why } satisfies PortalAccess);
@@ -23,5 +24,6 @@ export const clientOf = (req: { portalClient?: ClientContext }): ClientContext =
   return req.portalClient;
 };
 
-/** The actor word of a client on audit lines: AUD-1a's trigger reads `person:<party id>` as CLIENT (AG-15-38). */
+/** The actor word of a client on audit lines: `person:<fo_person id>` (the case side's `person:` words name its own
+ *  party ids; both are CLIENT to AUD-1a's trigger, AG-15-38). */
 export const clientActorWord = (personId: string) => `person:${personId}`;

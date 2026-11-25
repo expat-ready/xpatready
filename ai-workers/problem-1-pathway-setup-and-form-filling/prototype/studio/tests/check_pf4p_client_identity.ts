@@ -234,6 +234,25 @@ try {
   ok("PF-4p DW6 pass (PF-12): the app role as firm A reads firm A's accounts only", sql(`select set_config('app.firm_id', '${FA}', false); select count(*) from platform_client_account`, "xr_app").split("\n").pop() === "3");
   ok("PF-4p DW6 pass: the guard's lookup gives an account's firm id and nothing else; an unknown id gives null", sql(`select platform_client_account_firm('${UC}')`, "xr_app") === FB && sql(`select coalesce(platform_client_account_firm(gen_random_uuid())::text, 'null')`, "xr_app") === "null");
 
+  // ------------------------------------------------------------------------------------------------ round 1 Minors
+  ok("PF-4p DW6 fail (breaker m8): a client account cannot be deleted, not even by the app role in its own firm", refusedBySql(`select set_config('app.firm_id', '${FA}', false); delete from platform_client_account where id = '${US}'`, /never deleted/, "xr_app") && refusedBySql(`truncate platform_client_account cascade`, /never deleted/));
+  ok("PF-4p DW6 fail (breaker m2): an email in NFD form (a second spelling of one NFC email) is refused", refusedBySql(`update platform_client_account set email = normalize('jose\u0301@example.test', NFD) where id = '${US}'`, /email_ok/));
+  ok("PF-4p DW6 fail (breaker m2): an email holding a no-break space is refused", refusedBySql(`update platform_client_account set email = 'client.s@example.test' || chr(160) where id = '${US}'`, /email_ok/));
+  ok("PF-4p DW6 pass: an NFC email with an accent is stored", sql(`update platform_client_account set email = normalize('josé@example.test', NFC) where id = '${US}' returning 1`) === "1");
+  sql(`update platform_client_account set email = 'client.s@example.test' where id = '${US}'`);
+  const big = await call(A.base, "POST", "/api/portal/session/local", { body: { firmKey: "sample-firm", email: "x".repeat(2_000_000) } });
+  ok("PF-4p fail (breaker m3): a 2 MB body at the portal door is refused as too large (413), as at the staff door", big.status === 413, big.status);
+  const s1 = await signIn("sample-firm", "client.a@example.test"), s2 = await signIn("sample-firm", "client.a@example.test");   // two sessions, the second dated after the first
+  const ended = await call(A.base, "POST", "/api/portal/session/end", { token: String(s1.body.token), body: {} });
+  ok("PF-4p DW3 fail (review m5): sign-out from the older session also ends a newer one", ended.status === 200 && (await call(A.base, "GET", "/api/portal/me", { token: String(s2.body.token) })).status === 401);
+  ok("PF-4p pass (review m6): a paused client reads a plain title, not \"Sign in again\"", sus.body.title === "Access paused", sus.body);
+  const live = String((await signIn("sample-solo", "client.c@example.test")).body.token);
+  sql(`update platform_firm set status = 'DELETED' where id = '${FB}'`);
+  const closedMe = await call(A.base, "GET", "/api/portal/me", { token: live }), closedIn = await signIn("sample-solo", "client.c@example.test");
+  ok("PF-4p fail (review m1): a closed firm's client: the live session and a new sign-in are each 401 FIRM_CLOSED", closedMe.status === 401 && closedMe.body.code === "FIRM_CLOSED" && closedIn.status === 401 && closedIn.body.code === "FIRM_CLOSED", [closedMe.body, closedIn.body]);
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${FB}'`);
+  ok("PF-4p pass (review m1): the firm active again, its client signs in", (await signIn("sample-solo", "client.c@example.test")).status === 200);
+
   // ------------------------------------------------------------------------------------------------ PF-27 pending
   console.log(`PENDING  PF-4p SA-2-35: a held or locked firm's client reads status and own documents only — PF-27's firmAllows is not on main; the stub allows all (${await firmAllows(FA, "portal.upload")}). PF-27 turns this line into its test.`);
 } finally {

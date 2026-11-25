@@ -4,7 +4,8 @@
 -- is changed.
 --   * platform_client_account: one per (firm, person) and one per (firm, email); the person is the firm's own fo_person
 --     (trigger pf4p_client_person_ok: an account can never name another firm's person, and its person never changes). The email is
---     stored lower case and trimmed (a check). Never deleted: a revoked account is kept (AG-15-6).
+--     stored lower case, NFC, with no space or control character (a check). Never deleted: a revoked account is kept
+--     (AG-15-6; delete and truncate refused by trigger pf4p_client_account_kept).
 --   * platform_client_invitation: (firm_id, account_id) → the account; the token's SHA-256 only (64 lower-case hex),
 --     expiring after its creation; used and voided at most once each (the code writes them, part 2).
 --   * platform_client_account_firm(account): the client guard's one narrow lookup (as PF-12b part 2's doors): an account
@@ -24,7 +25,8 @@ CREATE TABLE "platform_client_account" (
     "sessions_ended_at" TIMESTAMPTZ,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "platform_client_account_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "platform_client_account_email_ok" CHECK ("email" = lower(btrim("email")) AND "email" ~ '^[^@\s]+@[^@\s]+$' AND length("email") <= 320)
+    -- Lower case, NFC, no space of any kind (a no-break space included) and no control character: one email, one spelling.
+    CONSTRAINT "platform_client_account_email_ok" CHECK ("email" = lower("email") AND "email" IS NFC NORMALIZED AND "email" !~ '[[:space:][:cntrl:]\u00a0\u2007\u202f\u200b\ufeff]' AND "email" ~ '^[^@]+@[^@]+$' AND length("email") <= 320)
 );
 CREATE UNIQUE INDEX "platform_client_account_firm_id_id_key" ON "platform_client_account"("firm_id", "id");
 CREATE UNIQUE INDEX "platform_client_account_firm_id_person_id_key" ON "platform_client_account"("firm_id", "person_id");
@@ -32,7 +34,9 @@ CREATE UNIQUE INDEX "platform_client_account_firm_id_email_key" ON "platform_cli
 -- The person is the firm's own fo_person, and never changes. A trigger, not a foreign key: a key into fo_person needs a
 -- Prisma relation and a back-relation line in front-office-sales.prisma (another owner's file), and a key in SQL only
 -- would be dropped by `prisma migrate diff` (check_pf0p_ports). fo_person rows are never deleted (FO-9b merges keep a
--- tombstone), so checking at insert holds. SECURITY INVOKER: it reads fo_person as the writer's firm under PF-12's wall.
+-- tombstone), so checking at insert holds (deleting an fo_person is the
+-- front-office area's rule; an account outliving its person reads with no name: listed on PR #3647, breaker m1). Owned by xr_wall_reader (PF-12's rule for trigger functions; below), it checks the
+-- person row's firm itself.
 CREATE FUNCTION pf4p_client_person_ok() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
   IF TG_OP = 'UPDATE' AND (NEW.person_id IS DISTINCT FROM OLD.person_id OR NEW.firm_id IS DISTINCT FROM OLD.firm_id) THEN
@@ -44,6 +48,14 @@ BEGIN
   RETURN NEW;
 END $fn$;
 CREATE TRIGGER "pf4p_client_person_ok" BEFORE INSERT OR UPDATE ON "platform_client_account" FOR EACH ROW EXECUTE FUNCTION pf4p_client_person_ok();
+-- An account is never deleted: a revoked one is kept (AG-15-6). DELETE and TRUNCATE are refused (breaker m8).
+CREATE FUNCTION pf4p_client_account_kept() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  RAISE EXCEPTION 'platform_client_account_kept: a client account is never deleted; revoke it instead' USING ERRCODE = 'check_violation';
+END $fn$;
+CREATE TRIGGER "pf4p_client_account_kept" BEFORE DELETE ON "platform_client_account" FOR EACH ROW EXECUTE FUNCTION pf4p_client_account_kept();
+CREATE TRIGGER "pf4p_client_account_no_truncate" BEFORE TRUNCATE ON "platform_client_account" FOR EACH STATEMENT EXECUTE FUNCTION pf4p_client_account_kept();
+REVOKE ALL ON FUNCTION pf4p_client_account_kept() FROM PUBLIC;
 REVOKE ALL ON FUNCTION pf4p_client_person_ok() FROM PUBLIC;
 
 CREATE TABLE "platform_client_invitation" (
@@ -80,6 +92,11 @@ CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "platform_client_i
 -- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public.
 GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION platform_client_account_firm(uuid) OWNER TO xr_wall_reader;
+-- PF-12's rule for a firm table's trigger functions: they run as xr_wall_reader (tests/check_pf12_walls.ts).
+ALTER FUNCTION pf4p_client_person_ok() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION pf4p_client_person_ok() OWNER TO xr_wall_reader;
+ALTER FUNCTION pf4p_client_account_kept() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION pf4p_client_account_kept() OWNER TO xr_wall_reader;
 REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 REVOKE ALL ON FUNCTION platform_client_account_firm(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION platform_client_account_firm(uuid) TO xr_app, xr_staff_bypass;

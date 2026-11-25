@@ -43,12 +43,13 @@ export function clientIdentityPortFromConfig(clock: PlatformClock): IdentityPort
 
 /** An account's status as the words a client reads (401 at sign-in and at every request). */
 function refuseStatus(status: string): never {
-  if (status === "SUSPENDED") return unauthorized(PAUSED, "CLIENT_PAUSED");
-  if (status === "REVOKED") return unauthorized(ENDED, "CLIENT_REVOKED");
-  return unauthorized("This portal account is not active yet. Open the invitation your firm sent you.", "CLIENT_NOT_ACTIVE");
+  if (status === "SUSPENDED") return problem(401, "Access paused", PAUSED, { code: "CLIENT_PAUSED" });
+  if (status === "REVOKED") return problem(401, "Account closed", ENDED, { code: "CLIENT_REVOKED" });
+  return problem(401, "Not active yet", "This portal account is not active yet. Open the invitation your firm sent you.", { code: "CLIENT_NOT_ACTIVE" });
 }
 
-const normalEmail = (v: string) => v.normalize("NFC").trim().toLowerCase();
+/** The email as stored: NFC, lower case, no space of any kind at either end (the database check refuses any inside). */
+const normalEmail = (v: string) => v.normalize("NFC").replace(/^[\s\u00a0\u2007\u202f\u200b\ufeff]+|[\s\u00a0\u2007\u202f\u200b\ufeff]+$/g, "").toLowerCase();
 
 @Injectable()
 export class ClientIdentity {
@@ -96,23 +97,28 @@ export class ClientIdentity {
       await this.db.$transaction((tx) => this.line(tx, a, "platform.client.sign_in_refused", `a client's sign-in was refused (account ${a.status.toLowerCase().replace(/_/g, " ")})`, { status: a.status }, null, null));
       return refuseStatus(a.status);
     }
-    const authMs = await this.db.$transaction(async (tx) => {
+    const out = await this.db.$transaction(async (tx) => {
       const [row] = await tx.$queryRaw<{ last: Date | null; ended: Date | null; status: string }[]>`select last_sign_in_at as last, sessions_ended_at as ended, status::text as status from platform_client_account where id = ${a.id}::uuid and firm_id = ${firm.id}::uuid for update`;
-      if (!row || row.status !== "ACTIVE") return null;   // suspended or revoked while signing in
+      if (!row) return { refused: "REVOKED" };
+      if (row.status !== "ACTIVE") {   // suspended or revoked while signing in: its own words and its refused line (breaker m5)
+        await this.line(tx, a, "platform.client.sign_in_refused", `a client's sign-in was refused (account ${row.status.toLowerCase().replace(/_/g, " ")})`, { status: row.status }, null, null);
+        return { refused: row.status };
+      }
       const at = Math.max(this.clock.now(), (row.last?.getTime() ?? 0) + 1, (row.ended?.getTime() ?? 0) + 1);
       await tx.platClientAccount.update({ where: { id: a.id }, data: { lastSignInAt: new Date(at) } });
       await this.line(tx, a, "platform.client.sign_in", "a client signed in to the portal (local stand-in)", { via: "local stand-in" }, { lastSignInAt: row.last?.toISOString() ?? null }, { lastSignInAt: new Date(at).toISOString() });
-      return at;
+      return { at };
     });
-    if (authMs === null) return refuseStatus("SUSPENDED");
-    return { token: (this.port as ClientLocalIdentity).issue(a.id, { authTimeMs: authMs }), tokenType: "Bearer", expiresIn: CLIENT_LOCAL_TTL_SECONDS, firmKey: firm.key };
+    if ("refused" in out) return refuseStatus(out.refused);
+    return { token: (this.port as ClientLocalIdentity).issue(a.id, { authTimeMs: out.at }), tokenType: "Bearer", expiresIn: CLIENT_LOCAL_TTL_SECONDS, firmKey: firm.key };
   }
 
   /** Sign out: every session of this account signed in until now ends (POST /api/portal/session/end). */
   async signOut(c: ClientContext) {
     await this.db.$transaction(async (tx) => {
-      const [row] = await tx.$queryRaw<{ ended: Date | null }[]>`select sessions_ended_at as ended from platform_client_account where id = ${c.accountId}::uuid and firm_id = ${c.firmId}::uuid for update`;
-      const at = new Date(Math.max(this.clock.now(), c.authTime * 1000));
+      const [row] = await tx.$queryRaw<{ ended: Date | null; last: Date | null }[]>`select sessions_ended_at as ended, last_sign_in_at as last from platform_client_account where id = ${c.accountId}::uuid and firm_id = ${c.firmId}::uuid for update`;
+      // At or after the newest sign-in too, so a session that started in this same millisecond ends as well (review m5).
+      const at = new Date(Math.max(this.clock.now(), c.authTime * 1000, row?.last?.getTime() ?? 0));
       await tx.platClientAccount.update({ where: { id: c.accountId }, data: { sessionsEndedAt: at } });
       await this.line(tx, { id: c.accountId, firmId: c.firmId, personId: c.personId }, "platform.client.sign_out", "a client signed out of the portal", {}, { sessionsEndedAt: row?.ended?.toISOString() ?? null }, { sessionsEndedAt: at.toISOString() });
     });
