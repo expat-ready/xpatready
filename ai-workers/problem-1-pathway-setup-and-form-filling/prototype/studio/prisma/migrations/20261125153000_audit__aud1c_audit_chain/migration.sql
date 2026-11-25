@@ -44,8 +44,10 @@ CREATE FUNCTION aud_event_canonical(e "audit_event") RETURNS text
     || aud_chain_field(e."support_session_id"::text) || aud_chain_field(e."detail"::text) $fn$;
 
 -- The chain a line belongs to (rule above). Reads the workspace row, so callers run as xr_wall_reader.
+-- SECURITY DEFINER (owned by xr_wall_reader, below): platform_firm forces row-level security, and on RDS the migrating
+-- user has no BYPASSRLS, so the back-fill must read it as the reader does, as the trigger does (review of d57cf86, m1).
 CREATE FUNCTION aud_chain_key_of(workspace_id uuid, firm_id uuid) RETURNS text
-  LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT CASE
     WHEN (NOT EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = workspace_id)
           AND (firm_id IS NULL OR EXISTS (SELECT 1 FROM "platform_firm" f WHERE f."id" = firm_id AND f."key" IN ('sample-firm', 'sample-solo'))))
