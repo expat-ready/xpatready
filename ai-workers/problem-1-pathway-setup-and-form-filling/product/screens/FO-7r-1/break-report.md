@@ -69,3 +69,30 @@ The suite gives 29/29 on this head. One Blocker (a 500 within the claimed budget
   * Forged, extra-key, out-of-range, float, `__proto__` and 8 KB cursors all give 422 `after`.
 * **Periods.** Payments at 23:59:59.999999Z and 00:00:00Z on day edges fall on the right day. In 5 windows, opening + lines = closing, and the first line minus its amount = opening.
 * **Bad input.** 45 probes: arrays, repeated keys, `from[]`, null bytes, 10,000-character and Arabic-digit dates, the years 1999 and 3000, an empty or Ω `caseId`, `pageSize` of "", 1e2, −1, 0, 201 or 999999, an empty or garbage `after`. Each gives 422 naming the field, or 404 for kind/id; never a 500. POST, PUT and DELETE give 404.
+
+## Round 2 (3f88a5d304c8172d572a49cc940c60630883526d)
+
+Diff-only re-break of `432fba2..3f88a5d`, unpacked with `git archive` and run with the same harness (triggers on, ephemeral port, databases dropped).
+
+**Verdict: Changes** — round 1's Blocker 1, Major 1 and Minor 1 are fixed. Major 2 holds only for the check's mix.
+
+**R2-Major 1. A 10,000-invoice client is still over 300 ms in a big firm or with dense credit**
+* **Cause:** each branch reads the firm's whole table for its kind, so the cost grows with the firm (a one-invoice client in the same firm: 12-37 ms).
+* **Steps:** client BULK, 10,000 issued invoices, each with a payment, a credit note and a trust withdrawal, plus 1,000 corrections; trust shows. Route, median of 7:
+  * this mix alone: statement 258 ms, within budget;
+  * every invoice also has applied credit: 327 ms;
+  * plus 50,000 other invoices, 50,000 credit entries and 66,000 trust entries in the firm: 449 ms, summary 318 ms;
+  * round 1's B8 mix: 481 ms (service: page 2 491 ms, C5-scoped 516 ms; round 1 took 140 s, then a 500). Expected within 300 ms; no 500 anywhere now.
+
+**R2-Minor 1. Payments dated before the issue lose their order**
+* Payments received 31 Mar, 1 Apr 00:00, 1 Apr 23:59 and 2 Apr on an invoice issued today all move to the issue time (as intended), then sort by random id: −8000, −2000, −4000, −1000. Expected: received order. The balances are still right.
+
+**Fixed and checked:**
+* **Kept credit.** Closing = owed − waiting in every case:
+  * kept then applied: **5000**, with paid 15000; kept then refunded: **0**; kept only: 0, credit 5000;
+  * the application reversed: 10000; the keep reversed: −5000 (waiting 5000);
+  * 50 kept, 30 applied then reversed, 20 applied, 10 refunded: 12000 = owed, credit 2000;
+  * 30 kept and 20 refunded: 0. One more cent of refund is refused. Credit applied to a draft shows from its issue.
+* **Budget:** 2,000 credit entries on other clients: route 328 ms (round 1: 9 s and a 500). **Summary query:** `?foo=1` and `?from=` give 422 naming the field.
+
+**Still held:** trust 35000 = owed = list due, and 90000 = the trust reads; company, currencies, walls, C5 and paging; day edges with an invoice issued 1 Mar (7 windows); 45 input probes, never a 500. Round 1's Minor 2 is accepted as a stated limit of keyset paging.
