@@ -44,7 +44,6 @@ const call = async (base: string, method: string, path: string, o: { token?: str
   return { status: r.status, body, text };
 };
 
-// ------------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
@@ -122,8 +121,6 @@ try {
     insert into platform_client_account (id, firm_id, person_id, email, status) values
       ('${UA}', '${FA}', '${PA}', 'client.a@example.test', 'ACTIVE'), ('${UB}', '${FA}', '${PB}', 'client.b@example.test', 'ACTIVE'),
       ('${UC}', '${FB}', '${PC}', 'client.c@example.test', 'ACTIVE'), ('${US}', '${FA}', '${PS}', 'client.s@example.test', 'SUSPENDED');`);
-
-  // ------------------------------------------------------------------------------------------------ start-up rules
   ok("PF-4p pass: the feature registers the routes, the client guard (APP_GUARD) and its own port",
     feature.controllers.includes(PortalController) && (feature.providers as unknown[]).some((p) => (p as { provide?: unknown }).provide === APP_GUARD) && (feature.providers as unknown[]).some((p) => (p as { provide?: unknown }).provide === CLIENT_IDENTITY_PORT));
   ok("PF-4p DW5 fail: a route under /api/portal with no client access stops the start-up, naming it (deny by default)",
@@ -134,12 +131,9 @@ try {
     await throwsLike(async () => { const a = await makeApp({ extra: [MixedController] }); apps.push(a.app); }, (e) => /never also declares.*MixedController\.thing/.test(String(e))));
   ok("PF-4p fail: one port for staff and clients is refused (two planes, P-584 (4))",
     await throwsLike(() => new ClientIdentity({} as never, firmLocal, clock, firmLocal), (e) => /two ports/.test(String(e))));
-
   const A = await makeApp(); apps.push(A.app);
   const signIn = (firmKey: string, email: string) => call(A.base, "POST", "/api/portal/session/local", { body: { firmKey, email } });
   const lineCount = (accountId: string, action: string) => Number(sql(`select count(*) from audit_event where entity = 'platform_client_account' and entity_key = '${accountId}' and action = '${action}'`));
-
-  // ------------------------------------------------------------------------------------------------ sign-in, me
   const sA = await signIn("sample-firm", " Client.A@example.test ");
   ok("PF-4p pass: an ACTIVE client signs in on the local stand-in (email in any case and spacing)", sA.status === 200 && typeof sA.body.token === "string", sA.body);
   const tA = sA.body.token as string, tB = (await signIn("sample-firm", "client.b@example.test")).body.token as string, tC = (await signIn("sample-solo", "client.c@example.test")).body.token as string;
@@ -149,8 +143,6 @@ try {
   ok("PF-4p pass: /api/portal/me names the client and their firm", me.status === 200 && me.body.accountId === UA && me.body.name === "Client A" && me.body.firm.key === "sample-firm", me.body);
   const unknown = await signIn("sample-firm", "nobody@example.test"), wrongFirm = await signIn("sample-solo", "client.a@example.test");
   ok("PF-4p fail: an unknown email, and a real client's email at another firm, are the same 401", unknown.status === 401 && wrongFirm.status === 401 && unknown.text === wrongFirm.text, [unknown.body, wrongFirm.body]);
-
-  // ------------------------------------------------------------------------------------------------ DW1 the planes
   const staff = (await call(A.base, "POST", "/api/platform/session/local", { body: { firmKey: "sample-firm", actorId: "user-R", secondStep: true } })).body.token as string;
   const staffMe = await call(A.base, "GET", "/api/platform/me", { token: staff });
   ok("PF-4p DW1 pass: the firm's staff token still reads /api/platform/me", staffMe.status === 200, staffMe.body);
@@ -168,8 +160,6 @@ try {
     await throwsLike(() => firmLocal.verify(tA), () => true) && await throwsLike(() => clientLocal.verify(staff), () => true));
   const ghost = clientLocal.issue(randomUUID(), { authTimeMs: clock.now() });
   ok("PF-4p DW1 fail: a client stand-in token naming an account no firm has → 401", (await call(A.base, "GET", "/api/portal/me", { token: ghost })).status === 401);
-
-  // ------------------------------------------------------------------------------------------------ DW2 own cases only
   const list = await call(A.base, "GET", "/api/portal/cases", { token: tA });
   const ids = (list.body as { caseId: string }[]).map?.((c) => c.caseId) ?? [];
   ok("PF-4p DW2 pass: Client A's list holds exactly their two cases, newest first", list.status === 200 && ids.join() === [A2, A1].join(), list.body);
@@ -189,8 +179,6 @@ try {
   ok("PF-4p DW2 pass: Client B sees only their case; Client C (firm B) only theirs", (listB.body as any[]).map((c) => c.caseId).join() === B1 && (listC.body as any[]).map((c) => c.caseId).join() === C1, [listB.body, listC.body]);
   const ownC = await call(A.base, "GET", `/api/portal/cases/${A1}`, { token: tC });
   ok("PF-4p DW2 fail: firm B's client asking for firm A's case → 404", ownC.status === 404, ownC.body);
-
-  // ------------------------------------------------------------------------------------------------ DW3 sessions
   const sus = await signIn("sample-firm", "client.s@example.test");
   ok("PF-4p DW3 fail: a suspended account cannot sign in; it is told plainly to contact the firm", sus.status === 401 && sus.body.code === "CLIENT_PAUSED" && /paused/.test(sus.body.detail), sus.body);
   sql(`update platform_client_account set status = 'SUSPENDED' where id = '${UB}'`);
@@ -206,22 +194,16 @@ try {
   clock.t += 3601 * 1000;
   ok("PF-4p DW3 fail: a token past its hour → 401 (session ended)", (await call(A.base, "GET", "/api/portal/me", { token: tAgain })).status === 401);
   clock.t = Date.now();
-
-  // ------------------------------------------------------------------------------------------------ DW4 audit lines
   const typed = sql(`select string_agg(distinct actor_type::text || ' ' || actor, ',') from audit_event where entity = 'platform_client_account' and entity_key = '${UA}' and action = 'platform.client.sign_in'`);
   ok("PF-4p DW4 pass: each of Client A's two sign-ins wrote one line, typed CLIENT, actor person:<their party id>", lineCount(UA, "platform.client.sign_in") === 2 && typed === `CLIENT person:${PA}`, typed);
   ok("PF-4p DW4 pass: the sign-out wrote one line", lineCount(UA, "platform.client.sign_out") === 1);
   ok("PF-4p DW4 fail: the suspended account's refused sign-in wrote one refused line and no sign-in line", lineCount(US, "platform.client.sign_in_refused") === 1 && lineCount(US, "platform.client.sign_in") === 0);
   ok("PF-4p DW4 pass: no line holds an email address", sql(`select count(*) from audit_event where entity = 'platform_client_account' and (detail::text ~ '@' or summary ~ '@')`) === "0");
-
-  // ------------------------------------------------------------------------------------------------ the door's switches
   const off = await makeApp({ clientPort: { via: "cognito", verify: async () => { throw new Error("no"); } } }); apps.push(off.app);
   const offSignIn = await call(off.base, "POST", "/api/portal/session/local", { body: { firmKey: "sample-firm", email: "client.a@example.test" } });
   ok("PF-4p fail: the local door is closed when the client port is not the stand-in (403, nothing issued)", offSignIn.status === 403 && offSignIn.body.code === "LOCAL_SIGN_IN_OFF", offSignIn.body);
   const extra = await call(A.base, "POST", "/api/portal/session/local", { body: { firmKey: "sample-firm", email: "client.a@example.test", password: "x" } });
   ok("PF-4p fail: an unknown field at the door is a field error naming it (PF-28's one input rule)", extra.status === 422 && /password/.test(JSON.stringify(extra.body)), extra.body);
-
-  // ------------------------------------------------------------------------------------------------ DW6 the schema
   ok("PF-4p DW6 fail: a second account for the same person in a firm is refused", refusedBySql(`insert into platform_client_account (id, firm_id, person_id, email) values (gen_random_uuid(), '${FA}', '${PA}', 'other@example.test')`, /firm_id_person_id/));
   ok("PF-4p DW6 fail: a second account with the same email in a firm is refused", refusedBySql(`set session_replication_role = replica; insert into fo_person (id, firm_id, created_by, updated_at) values ('${PE}', '${FA}', 'seed:pf4p', now()); set session_replication_role = origin; insert into platform_client_account (id, firm_id, person_id, email) values (gen_random_uuid(), '${FA}', '${PE}', 'client.a@example.test')`, /firm_id_email/));
   ok("PF-4p DW6 fail: an email in capitals or with spaces is refused by the database", refusedBySql(`update platform_client_account set email = 'Client.A@example.test' where id = '${UA}'`, /email_ok/));
@@ -233,8 +215,6 @@ try {
   ok("PF-4p DW6 fail (PF-12): the app role with no firm reads no account and no invitation", sql(`select (select count(*) from platform_client_account) + (select count(*) from platform_client_invitation)`, "xr_app") === "0");
   ok("PF-4p DW6 pass (PF-12): the app role as firm A reads firm A's accounts only", sql(`select set_config('app.firm_id', '${FA}', false); select count(*) from platform_client_account`, "xr_app").split("\n").pop() === "3");
   ok("PF-4p DW6 pass: the guard's lookup gives an account's firm id and nothing else; an unknown id gives null", sql(`select platform_client_account_firm('${UC}')`, "xr_app") === FB && sql(`select coalesce(platform_client_account_firm(gen_random_uuid())::text, 'null')`, "xr_app") === "null");
-
-  // ------------------------------------------------------------------------------------------------ round 1 Minors
   ok("PF-4p DW6 fail (breaker m8): a client account cannot be deleted, not even by the app role in its own firm", refusedBySql(`select set_config('app.firm_id', '${FA}', false); delete from platform_client_account where id = '${US}'`, /never deleted/, "xr_app") && refusedBySql(`truncate platform_client_account cascade`, /never deleted/));
   ok("PF-4p DW6 fail (breaker m2): an email in NFD form (a second spelling of one NFC email) is refused", refusedBySql(`update platform_client_account set email = normalize('jose\u0301@example.test', NFD) where id = '${US}'`, /email_ok/));
   ok("PF-4p DW6 fail (breaker m2): an email holding a no-break space is refused", refusedBySql(`update platform_client_account set email = 'client.s@example.test' || chr(160) where id = '${US}'`, /email_ok/));
@@ -252,8 +232,6 @@ try {
   ok("PF-4p fail (review m1): a closed firm's client: the live session and a new sign-in are each 401 FIRM_CLOSED", closedMe.status === 401 && closedMe.body.code === "FIRM_CLOSED" && closedIn.status === 401 && closedIn.body.code === "FIRM_CLOSED", [closedMe.body, closedIn.body]);
   sql(`update platform_firm set status = 'ACTIVE' where id = '${FB}'`);
   ok("PF-4p pass (review m1): the firm active again, its client signs in", (await signIn("sample-solo", "client.c@example.test")).status === 200);
-
-  // ------------------------------------------------------------------------------------------------ PF-27 pending
   console.log(`PENDING  PF-4p SA-2-35: a held or locked firm's client reads status and own documents only — PF-27's firmAllows is not on main; the stub allows all (${await firmAllows(FA, "portal.upload")}). PF-27 turns this line into its test.`);
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);

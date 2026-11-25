@@ -20,7 +20,6 @@ const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).f
 const bearerOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; return typeof a === "string" ? /^Bearer\s+(\S+)$/i.exec(a.trim())?.[1] : undefined; };
 
 export type PortalRoute = { name: string; method: string; path: string; access: PortalAccess | undefined; otherPlane: boolean };
-
 /** Every route of these controllers that is under /api/portal or declares portal access, with what it declares. */
 export function portalRoutes(controllers: unknown[], reflector: Reflector): PortalRoute[] {
   const out: PortalRoute[] = [];
@@ -42,7 +41,6 @@ export function portalRoutes(controllers: unknown[], reflector: Reflector): Port
   }
   return out;
 }
-
 /** The start-up rules (default deny; the three planes never mix). */
 export function assertPortalRoutesDeclared(routes: PortalRoute[]) {
   const say = (r: PortalRoute) => `${r.name} (${r.method} ${r.path})`;
@@ -53,9 +51,7 @@ export function assertPortalRoutesDeclared(routes: PortalRoute[]) {
   const mixed = routes.filter((r) => r.otherPlane).map(say);
   if (mixed.length) throw new Error(`A route under /api/portal never also declares a firm's or our own staff's access: ${mixed.join(", ")}`);
 }
-
 type Req = { method: string; path?: string; url?: string; headers: Record<string, string | string[] | undefined>; portalClient?: ClientContext };
-
 @Injectable()
 export class ClientGuard implements CanActivate, OnModuleInit {
   constructor(@Inject(Reflector) private readonly reflector: Reflector, @Inject(ModulesContainer) private readonly modules: ModulesContainer, @Inject(ClientIdentity) private readonly identity: ClientIdentity) {}

@@ -1,7 +1,6 @@
 -- PF-4p part 1 (R1.62, map row 62; P-584 (4); AG-15-3, AG-15-38; schema file prisma/schema/platform-client-identity.prisma,
 -- owner Lead B (platform), built by the screens lane): clients' own sign-in accounts and their invitations. Additive: one
--- enum, two new tables, their keys, checks, one definer lookup and PF-12's wall on both. No existing table, row or function
--- is changed.
+-- enum, two new tables, their keys, checks, triggers, one definer lookup and PF-12's wall on both; nothing existing changes.
 --   * platform_client_account: one per (firm, person) and one per (firm, email); the person is the firm's own fo_person
 --     (trigger pf4p_client_person_ok: an account can never name another firm's person, and its person never changes). The email is
 --     stored lower case, NFC, with no space or control character (a check). Never deleted: a revoked account is kept
@@ -10,11 +9,9 @@
 --     expiring after its creation; used and voided at most once each (the code writes them, part 2).
 --   * platform_client_account_firm(account): the client guard's one narrow lookup (as PF-12b part 2's doors): an account
 --     id → its firm id, nothing else; the rest of the request then runs as that firm under PF-12's wall.
---   * PF-12's wall on both (forced policy naming the session's firm; the firm-first gate).
--- New, empty tables: no data statement runs. Rollback: rollback.sql in this folder.
-
+--   * PF-12's wall on both (forced policy naming the session's firm; the firm-first gate). New, empty tables: no data
+--     statement runs. Rollback: rollback.sql in this folder.
 CREATE TYPE "PlatClientAccountStatus" AS ENUM ('NOT_INVITED', 'PENDING_ACTIVATION', 'ACTIVE', 'SUSPENDED', 'REVOKED');
-
 CREATE TABLE "platform_client_account" (
     "id" UUID NOT NULL,
     "firm_id" UUID NOT NULL,
@@ -57,7 +54,6 @@ CREATE TRIGGER "pf4p_client_account_kept" BEFORE DELETE ON "platform_client_acco
 CREATE TRIGGER "pf4p_client_account_no_truncate" BEFORE TRUNCATE ON "platform_client_account" FOR EACH STATEMENT EXECUTE FUNCTION pf4p_client_account_kept();
 REVOKE ALL ON FUNCTION pf4p_client_account_kept() FROM PUBLIC;
 REVOKE ALL ON FUNCTION pf4p_client_person_ok() FROM PUBLIC;
-
 CREATE TABLE "platform_client_invitation" (
     "id" UUID NOT NULL,
     "firm_id" UUID NOT NULL,
@@ -75,12 +71,10 @@ CREATE TABLE "platform_client_invitation" (
 CREATE UNIQUE INDEX "platform_client_invitation_token_hash_key" ON "platform_client_invitation"("token_hash");
 CREATE INDEX "platform_client_invitation_firm_id_account_id_idx" ON "platform_client_invitation"("firm_id", "account_id");
 ALTER TABLE "platform_client_invitation" ADD CONSTRAINT "platform_client_invitation_firm_id_account_id_fkey" FOREIGN KEY ("firm_id", "account_id") REFERENCES "platform_client_account"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- The client guard's door: an account id → its firm (firm id only; an unknown id is null). As PF-12b part 2's lookups.
 CREATE FUNCTION platform_client_account_firm(account uuid) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT a.firm_id FROM platform_client_account a WHERE a.id = $1 $fn$;
-
 -- PF-12's wall (forced policy naming the session's firm; the firm-first gate).
 ALTER TABLE "platform_client_account" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "platform_client_account" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
@@ -88,7 +82,6 @@ ALTER TABLE "platform_client_invitation" ENABLE ROW LEVEL SECURITY, FORCE ROW LE
 CREATE POLICY "pf12_firm" ON "platform_client_invitation" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "platform_client_account" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "platform_client_invitation" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
-
 -- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public.
 GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION platform_client_account_firm(uuid) OWNER TO xr_wall_reader;

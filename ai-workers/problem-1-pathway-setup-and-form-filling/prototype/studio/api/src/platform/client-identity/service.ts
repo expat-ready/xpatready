@@ -32,7 +32,6 @@ const UNKNOWN = "No client portal account signs in with that firm and email.";
 export const PAUSED = "Your access to the portal is paused. Contact your firm.";
 const ENDED = "This portal account is closed. Contact your firm.";
 const FIRM_CLOSED = "This firm's portal is closed. Sign-in is no longer possible.";
-
 /** The port this server's configuration names: the stand-in with PLATFORM_IDENTITY=local; otherwise one that refuses every
  *  client token, saying so (the client Cognito pool is not wired yet). */
 export function clientIdentityPortFromConfig(clock: PlatformClock): IdentityPort {
@@ -40,17 +39,14 @@ export function clientIdentityPortFromConfig(clock: PlatformClock): IdentityPort
   if (c.via === "local") return new ClientLocalIdentity(c.localSecret ? c.localSecret.reveal() : null, () => clock.now());
   return { via: "cognito", async verify() { throw new IdentityRefused("Client sign-in is not set up on this server yet.", "SIGN_IN_NOT_SET_UP"); } };
 }
-
 /** An account's status as the words a client reads (401 at sign-in and at every request). */
 function refuseStatus(status: string): never {
   if (status === "SUSPENDED") return problem(401, "Access paused", PAUSED, { code: "CLIENT_PAUSED" });
   if (status === "REVOKED") return problem(401, "Account closed", ENDED, { code: "CLIENT_REVOKED" });
   return problem(401, "Not active yet", "This portal account is not active yet. Open the invitation your firm sent you.", { code: "CLIENT_NOT_ACTIVE" });
 }
-
 /** The email as stored: NFC, lower case, no space of any kind at either end (the database check refuses any inside). */
 const normalEmail = (v: string) => v.normalize("NFC").replace(/^[\s\u00a0\u2007\u202f\u200b\ufeff]+|[\s\u00a0\u2007\u202f\u200b\ufeff]+$/g, "").toLowerCase();
-
 @Injectable()
 export class ClientIdentity {
   constructor(@Inject(Db) private readonly db: Db, @Inject(CLIENT_IDENTITY_PORT) readonly port: IdentityPort, @Inject(PlatformClock) private readonly clock: PlatformClock,
@@ -161,6 +157,5 @@ export class ClientIdentity {
     return auditEvent.record(tx, { firmId: a.firmId, actor: clientActorWord(a.personId), action, entity: "platform_client_account", entityKey: a.id, summary, detail: { accountId: a.id, ...detail }, before, after });
   }
 }
-
 type CaseRow = { id: string; caseNumber: string; createdAt: Date; closedAt: Date | null; combination: { label: string }; stages: { clientName: string }[] };
 const view = (r: CaseRow) => ({ caseId: r.id, caseNumber: r.caseNumber, title: r.combination.label, stage: r.stages[0]?.clientName ?? null, open: !r.closedAt, openedAt: r.createdAt.toISOString(), closedAt: r.closedAt?.toISOString() ?? null });
