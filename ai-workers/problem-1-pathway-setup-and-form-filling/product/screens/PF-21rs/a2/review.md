@@ -120,3 +120,25 @@ Reviewer: Block 074eaaae3afd0041a7b41b50d86e87c97e08507d
 Reviewer: Block c9cd9ef38ab705a0b400f069b1443b1e7bc0259a
 
 **Verdict: Block** (commit `c9cd9ef38ab705a0b400f069b1443b1e7bc0259a`). To fix: the new Major (the stale Edit retry). The rest of round 1's Major and Minors are fixed except Minor 5's refusal focus, Minor 7 and the crumb, which stay Minor as listed in the PR.
+
+## Round 3 (PR #3579, head `155d6722d6d32c5499abb6b08d42a8a6e270f902`; diff `89c0c9010..155d6722d` only, the round-2 fix; the current verdict)
+**Ran (copy `rsrev` on :4437, stopped after):** `check_pf21rs_browser.ts` **39/39** twice (screenshots restored with `git checkout`); `tsc -p web --noEmit` exit 0; my own probes in Chromium.
+**Re-checked:**
+* **Round 2's Major: fixed.** I repeated the round-2 probe on a breach naming X, with another tab adding Y and a containment.
+  * Save gives the stale words on the page, Edit closes, focus returns to "Edit the record", and the DB keeps 2 firms and the other containment. The form cannot be saved again.
+  * Reopening shows both firms and the other containment. Saving my root cause keeps Y and the containment.
+  * The check's M1 line now reopens Edit and reads the latest words.
+* **Focus after a refusal: fixed.** A Decide with no Why puts the focus on the Why box. A Send with no reason puts it on the reason box (`ChangeDialog` focuses the first `[aria-invalid]`). This closes the open half of round 1's issue 5.
+* **Dialog titles wrap** (`controls.tsx:92`). "Send the notice to <108-character name>?" fits at 400 px, with no sideways scroll in the dialog or the page and axe 0 serious with the dialog open. This is a shared change; it adds one class and nothing else.
+
+**New, Minor (Should): a narrow race remains** (`breach-page.tsx:87-89`, `record-breach.tsx:80`). I slowed the breach read to 1.5 s and reopened Edit at once after the stale close.
+* The form filled from the old breach (1 firm).
+* Once the reload landed, Save passed the guard, because it compares against `one.data`, now fresh. The DB lost Y.
+* This needs a slow answer and a reopen within it. The browser guard also has the same check-then-PATCH gap, which only the PATCH version asked of the tech lead on #3538 closes.
+* Fix (one of): pass the breach as it was when the dialog opened to `before()`, or keep "Edit the record" disabled while the breach is being read again.
+
+**Still open, Minor, as listed in the PR:** round 1's issue 7 (keyboard Decide → Send and 409-row test lines) and the "A breach" crumb.
+
+Reviewer: Approve 155d6722d6d32c5499abb6b08d42a8a6e270f902
+
+**Verdict: Approve** (commit `155d6722d6d32c5499abb6b08d42a8a6e270f902`). No Blocker or Major is open. The new race Minor, issue 7 and the crumb stay Minor, for the PR or the row.
