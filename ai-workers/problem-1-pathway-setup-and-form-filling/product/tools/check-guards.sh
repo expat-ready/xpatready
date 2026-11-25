@@ -684,9 +684,13 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
-# OS-18 (P-530): the 🔴 Waiting on the founder line; the row turns its ACT into a plain line.
+# OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'
-OS18 act|product/tools/lead-watch.sh|s/^elif \[ -n "\$fw" \]; then ACT "founder wait:/elif [ -n "$fw" ]; then say "founder wait:/|check-founder-wait.sh'
+OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
+OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if waited >= WAIT_MIN:/|check-founder-wait.sh
+OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
+OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
+OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
