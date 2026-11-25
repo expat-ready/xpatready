@@ -27,6 +27,7 @@
 // Audit lines name the case by its short id, the document type and the facts, never a value or a reason (STANDARDS §5).
 import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post, Query, Res, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
 import type { Response } from "express";
+import type { Prisma } from "@prisma/client";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -45,6 +46,7 @@ import { actorOf, Audit, CaseRead, Db, fail, PROTOTYPE, VAR, WORKSPACE_KEY, type
 import { aiLive } from "./sources.ts";
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { sameValue } from "./document-values.ts";
+import { CASE_KINDS } from "./documents/case-kinds.ts";
 export { sameValue };
 
 type H = string | undefined;
@@ -59,12 +61,8 @@ export type Reader = (typeof READERS)[number];
 /** What a read value became at Confirm & use (read_value.state). */
 export type ReadState = "proposed" | "used" | "agreed" | "conflict" | "not_asked";
 
-/** Document kinds a person may upload with no checklist line (a case-level document), each with its reader and the facts
- *  it can give. Sample until the immigration expert confirms (ASSUMPTIONS; P-133: Sample documents only). */
-export const CASE_KINDS: Record<string, { name: string; reader: Reader; supplies: readonly string[] }> = {
-  letter_of_invitation: { name: "Letter of invitation (Sample)", reader: "ai_vision",
-    supplies: ["case.visit_contact_name", "case.visit_contact_relationship", "case.visit_contact_address_in_canada", "case.intended_stay_from", "case.intended_stay_to"] },
-};
+/** Document kinds a person may upload with no checklist line (documents/case-kinds.ts, CS-D1u). */
+export { CASE_KINDS };
 
 /** A passport whose holder is someone else (the absent parent's copy on a minor's line): its coded lines are never read
  *  as the line's person's (resolver rule R11); a person reads it. */
@@ -279,6 +277,16 @@ export class CaseDocuments {
 
   /** POST /runtime/cases/:id/documents: one file with no checklist line, the person's (the officer or the case's client). */
   async upload(actor: Actor, caseId: string, files: Upload[] | undefined, body: unknown) {
+    const t = await this.caseUploadTarget(actor, caseId, body);
+    const f = (files ?? []).filter((x) => x.buffer);
+    if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
+    const checked = await checkedCaseFile(f[0]);   // CS-D1t (R1.67): PF-F4's one check, before anything is written
+    return this.db.$transaction((tx) => this.storeVersion(tx, t, f[0].buffer!, checked, actor));
+  }
+
+  /** CS-D1u: who may store a document with no checklist line, for whom and of which type, checked before any byte is
+   *  read (the multipart route, and the STAFF upload door at the rail's creation, documents/staff-door.ts). */
+  async caseUploadTarget(actor: Actor, caseId: string, body: unknown) {
     const c = await this.r.reach(actor, caseId, "answer");
     const b = parse(CaseUpload, body);
     const who = this.person(c, b.subjectId);
@@ -287,24 +295,27 @@ export class CaseDocuments {
     // Break M5: a document the release lists goes on its checklist line (its own rules: Not applicable, requested, sets);
     // only a kind with no line (a letter of invitation, Sample) is uploaded here.
     if (!CASE_KINDS[b.documentType]) fail(this.typesOf(c).some((t) => t.key === b.documentType) ? `${this.typeName(c, b.documentType)} has its own line on the person's checklist: upload it there. Nothing was stored.` : `"${b.documentType}" is not a document that can be added without a checklist line. Nothing was stored.`, HttpStatus.UNPROCESSABLE_ENTITY);
-    const f = (files ?? []).filter((x) => x.buffer);
-    if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
-    const bytes = f[0].buffer!, checked = await checkedCaseFile(f[0]);   // CS-D1t (R1.67): PF-F4's one check, before anything is written
+    return { c, who, documentType: b.documentType };
+  }
+
+  /** CS-D1u: one version of a document with no checklist line, in the caller's transaction (the multipart route's own, or
+   *  the rail's finish, with the stored file's bytes): one current per person and type, the earlier kept as history, and
+   *  the audit line. `by` is the audit actor (a signed-in staff member's `staff:<id>`, J-72), else the simulated person. */
+  async storeVersion(tx: Prisma.TransactionClient, t: Awaited<ReturnType<CaseDocuments["caseUploadTarget"]>>, bytes: Uint8Array, checked: Awaited<ReturnType<typeof checkedCaseFile>>, actor: Actor, by: string = actor.id) {
+    const { c, who, documentType } = t;
     const docId = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
     const rel = join("people", who.subjectId, "documents", `${docId}.${checked.extension}`), abs = join(DOCS(), rel);
     const now = new Date();
     try {
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
-      await this.db.$transaction(async (tx) => {
-        // One current file per person and type (case_document_one_current): the earlier one is kept as history.
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-document|${who.subjectId}|${b.documentType}`}))`;
-        await tx.caseDocument.updateMany({ where: { subjectId: who.subjectId, documentType: b.documentType, current: true }, data: { current: false, supersededAt: now } });
-        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: who.subjectId, documentType: b.documentType, checklistLineId: null, fileName: checked.name,
-          mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
-      });
+      // One current file per person and type (case_document_one_current): the earlier one is kept as history.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-document|${who.subjectId}|${documentType}`}))`;
+      await tx.caseDocument.updateMany({ where: { subjectId: who.subjectId, documentType, current: true }, data: { current: false, supersededAt: now } });
+      await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: who.subjectId, documentType, checklistLineId: null, fileName: checked.name,
+        mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
+      await new Audit(tx as unknown as Db).log(c.workspaceId, by, "uploaded", "case document", docId, `${actor.name} uploaded ${this.typeName(c, documentType)} for the ${who.role.replace(/_/g, " ")} on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes; no checklist line${checked.flagWords})`);
     } catch (e) { rmSync(abs, { force: true }); throw e; }
-    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${this.typeName(c, b.documentType)} for the ${who.role.replace(/_/g, " ")} on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes; no checklist line${checked.flagWords})`);
-    return { document: { id: docId, subject: who.subjectId, document_type: b.documentType, document_name: this.typeName(c, b.documentType), current: true, file_name: checked.name,
+    return { document: { id: docId, subject: who.subjectId, document_type: documentType, document_name: this.typeName(c, documentType), current: true, file_name: checked.name,
       media_type: checked.mediaType, size_bytes: bytes.length, sha256, uploaded_by: actor.id, uploaded_at: now.toISOString() } };
   }
 

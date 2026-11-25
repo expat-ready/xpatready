@@ -25,6 +25,7 @@ import { checkValue, knownOf } from "../../engine/runtime/case.ts";
 import { actorOf, Audit, CaseRead, Db, fail, PY, STUDIO, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { caseName, releaseLabel } from "../../contracts/runtime.ts";
+import { CASE_KINDS } from "./documents/case-kinds.ts";
 import { checkFile, KINDS, NOTHING_STORED, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
 import { flagsOf, translationLines, type DocFlags, type TranslationLine } from "./case-document-flags.ts"; // CS-D7
 import type { SnapTypeDefaults } from "../../engine/snapshot.ts";
@@ -220,9 +221,13 @@ export class CaseChecklists {
       // CS-D7 (3): one "Translation + translator's affidavit" line per current document that needs one, worked out on read.
       const off = new Set(rows.filter((x) => x.subjectId === p.subject && (x.state === "not_applicable" || x.state === "waived")).map((x) => x.documentType)); // break m3
       const translations: TranslationLine[] = translationLines(docs.filter((x) => x.subjectId === p.subject && !off.has(x.documentType)), (k) => { const t = types.find((y) => y.key === k); return t ? { name: t.name, defaults: t.defaults } : undefined; }, d.today);
-      return { ...p, lines, translations, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
+      // CS-D1u: the person's documents with no checklist line (a letter of invitation, Sample), newest first.
+      const other_documents = docs.filter((x) => x.subjectId === p.subject && !x.checklistLineId && CASE_KINDS[x.documentType]).reverse()
+        .map((x) => ({ ...docsOf(p.subject, x.documentType).find((y) => y.id === x.id)!, document_type: x.documentType, document_name: CASE_KINDS[x.documentType].name }));
+      return { ...p, lines, translations, other_documents, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
     });
-    return { ...d, people };
+    // CS-D1u: the kinds staff may add with no checklist line (the upload door's, documents/case-kinds.ts).
+    return { ...d, people, case_kinds: Object.entries(CASE_KINDS).map(([key, k]) => ({ key, name: k.name })) };
   }
 
   /** The stored line by its id on a case this person may reach, and the line as the checklist now shows it. A line the
