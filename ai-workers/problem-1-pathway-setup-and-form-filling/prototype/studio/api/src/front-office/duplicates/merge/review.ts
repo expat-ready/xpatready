@@ -188,7 +188,7 @@ const systemCtx = (firmId: string, firmKey = ""): StaffContext => ({ staffId: "0
 
 /** P-574 (2): merges an OPEN pair by itself when it is safe (the newer record into the older), once. `arrival`
  *  (part 2b, the arrival job, the one production caller; break B1 and M1 on #3527): the newer record is an unchecked
- *  arrival, so the record on file keeps its values (the newcomer fills only an empty name, language or zone), a second
+ *  arrival, so the record on file keeps its values (the newcomer fills only an empty language or zone), a second
  *  contact key that differs refuses (CONTACT_CONFLICT), a newcomer's email or phone the record lacks refuses
  *  (NEW_CONTACT), and a
  *  merge that would copy a live consent refuses (CONSENT). Without it, part 2's model (pair-model.md) as it was. */
@@ -210,7 +210,11 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   // Part 2b (break B1 on #3527): one key matches, but the other differs on both records (two emails on one phone, two
   // phones on one email): not shown to be one person, so a person decides (To review).
   const [S, L] = people;
-  if (opts.arrival && ((S.email && L.email && S.email.toLowerCase() !== L.email.toLowerCase()) || (S.phoneE164 && L.phoneE164 && S.phoneE164 !== L.phoneE164))) return { refused: ["CONTACT_CONFLICT"] };
+  // Two phones differ by E.164 when both are readable, else by their typed digits (part 2b follow-ups, review m-r3-4,
+  // break R3-m2: an unreadable phone never escapes the check).
+  const digits = (v: string | null) => (v ?? "").replace(/\D/g, "");
+  const phonesDiffer = S.phoneE164 && L.phoneE164 ? S.phoneE164 !== L.phoneE164 : !!(S.phone && L.phone) && digits(S.phone) !== digits(L.phone);
+  if (opts.arrival && ((S.email && L.email && S.email.toLowerCase() !== L.email.toLowerCase()) || phonesDiffer)) return { refused: ["CONTACT_CONFLICT"] };
   // Round 2 (break R2-B1, review B1-r on #3527): an unchecked arrival never adds an email or phone to the record on file
   // (a stranger's address would get the person's mail); a newcomer that brings one waits on To review for a person.
   if (opts.arrival && ((L.email && !S.email) || (L.phoneE164 && !S.phoneE164) || (L.phone && !S.phone))) return { refused: ["NEW_CONTACT"] };
@@ -218,7 +222,10 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   // so it never overwrites a person's name, email or phone by itself).
   const val = (r: typeof S, f: string) => (r as unknown as Record<string, unknown>)[f];
   const empty = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
-  const choices = opts.arrival ? Object.fromEntries(MERGE_FIELDS.PERSON.map((f) => [f, empty(val(S, f)) && !empty(val(L, f)) ? "LOSER" : "SURVIVOR"])) as Record<string, FieldPick> : undefined;
+  // An unchecked arrival never sets a name either, not even an empty one (part 2b follow-ups, review m-r3-3, break R3-m1:
+  // a stranger's last name on the person's record); only an empty language or time zone is filled.
+  const NAMES: readonly string[] = ["givenNames", "familyName"];
+  const choices = opts.arrival ? Object.fromEntries(MERGE_FIELDS.PERSON.map((f) => [f, !NAMES.includes(f) && empty(val(S, f)) && !empty(val(L, f)) ? "LOSER" : "SURVIVOR"])) as Record<string, FieldPick> : undefined;
   await tx.$executeRaw`savepoint fo_dup_auto`;
   const { merge_ref } = await mergeRecords(tx, systemCtx(firmId), { kind: "PERSON", survivor_fo_id: S.id, loser_fo_id: L.id, ...(choices ? { choices } : {}), reason: "Merged by itself: exact match, no case, document or money (P-574 (2))." }, ports, { automatic: true });
   // A merge that copies a live consent cannot be undone (part 1: consent rows are never removed), and an arrival's
