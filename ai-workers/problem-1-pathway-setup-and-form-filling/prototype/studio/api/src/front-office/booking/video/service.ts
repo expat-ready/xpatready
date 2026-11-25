@@ -45,7 +45,10 @@ const MAX = 2048;
  *  link is ASCII; an international host is pasted as its xn-- form): no white space, control, invisible or
  *  direction-changing character, none of " < > \ ^ ` { | }, no user or password, so a link can neither break a calendar
  *  file or an email nor show one address and open another (breaker m1). The database checks the same (fo_video_link_ok). */
-const SHAPE = /^https:\/\/[!#-;=?-\[\]_a-z~]+$/;
+/** The printable ASCII characters allowed after "https://", named one by one (CodeQL: a range such as ?-[ hid @, A-Z
+ *  and [ inside it): everything from ! to ~ except space and " < > \\ ^ ` { | }. */
+export const LINK_CHARS = "!#$%&'()*+,-./0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyz~";
+const SHAPE = /^https:\/\/[!#$%&'()*+,\-./0-9:;=?@A-Z[\]_a-z~]+$/;
 export function linkOk(s: string): boolean {
   if (s.length > MAX || !SHAPE.test(s)) return false;
   try {

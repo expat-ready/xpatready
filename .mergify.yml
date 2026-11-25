@@ -235,6 +235,11 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-signing.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-signing__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-video:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-video.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-video__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-governance:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/governance.prisma"
@@ -368,6 +373,7 @@ scopes:
     mig-front-office-retainers: 1
     mig-front-office-sales: 1
     mig-front-office-signing: 1
+    mig-front-office-video: 1
     mig-governance: 1
     mig-library: 1
     mig-pathways: 1

@@ -60,7 +60,7 @@ const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { Booking, BOOKING_PORTS } = await import("../api/src/front-office/booking/public.controller.ts");
 const { BookingStaffController } = await import("../api/src/front-office/booking/staff.controller.ts");
 const { MyVideo, MyVideoController } = await import("../api/src/front-office/booking/video/controller.ts");
-const { linkFor, VIDEO_WORDS } = await import("../api/src/front-office/booking/video/service.ts");
+const { LINK_CHARS, linkFor, linkOk, VIDEO_WORDS } = await import("../api/src/front-office/booking/video/service.ts");
 const { wallToUtc } = await import("../api/src/front-office/booking/slots.ts");
 const { copyFirmHoursTo } = await import("../api/src/front-office/booking-seed.ts");
 const feature = (await import("../api/src/features/front-office-video.ts")).default;
@@ -111,6 +111,9 @@ try {
   };
   const videoOf = (bookingId: string) => db.foBookingVideo.findFirst({ where: { bookingId } });
   const mailsOf = (bookingId: string, to = "lee@client.example") => mail.inbox(to).filter((m) => m.attachments?.some((a) => new TextDecoder().decode(a.bytes).includes(bookingId)));
+  /** The links in a text, compared whole (CodeQL: never a URL found by substring). */
+  const linksIn = (text: string) => text.match(/https:\/\/[^\s"<>]+/g)?.map((l) => l.replace(/[.,;:)]+$/, "")) ?? [];
+  const hasLink = (text: string | undefined, link: string) => !!text && linksIn(text).includes(link);
   const ics = (m: { attachments?: { bytes: Uint8Array }[] }) => new TextDecoder().decode(m.attachments![0].bytes).replace(/\r\n /g, "");
   const prefRows = () => db.foVideoPref.count();
   ok("FO-3v set-up: the feature file registers the Video routes (My account → Video's panel is part 1b, DW7)", feature.controllers?.includes(MyVideoController));
@@ -131,6 +134,11 @@ try {
   const saved = await me("PUT", CO, { myMeetingLink: LINK });
   ok("FO-3v DW1 pass: https://zoom.us/j/1234567890 is saved and the choice is pre-set to My meeting link (rule 3); exactly 2,048 characters is saved",
     saved.status === 200 && saved.body.myMeetingLink === LINK && saved.body.sourceChoice === "MY_LINK" && saved.body.sources.join() === "MY_LINK" && saved2048.status === 200 && saved2048.body.myMeetingLink === exact, [saved, saved2048.status]);
+  // CodeQL (Lead 25): the shape names each character; every printable ASCII character is taken or refused as listed.
+  const allowed = new Set(LINK_CHARS), shapeWrong: string[] = [];
+  for (let c = 0x21; c <= 0x7e; c++) { const ch = String.fromCharCode(c); if (linkOk(`https://zoom.us/j/1${ch}2`) !== allowed.has(ch)) shapeWrong.push(ch); }
+  ok("FO-3v DW1 pass/fail: the narrowed shape takes each listed character and refuses \" < > \\ ^ ` { | } (no range hides one)",
+    shapeWrong.length === 0 && [..."\"<>\\^`{|}"].every((ch) => !allowed.has(ch)) && allowed.size === 0x7e - 0x21 + 1 - 9 && linkOk(LINK) && linkOk(LINK2) && linkOk("https://teams.microsoft.com/l/meetup-join/19%3a1@thread.v2/0?context=%7b%7d"), shapeWrong);
   let dbRefused = false;
   try { await db.$executeRawUnsafe(`INSERT INTO fo_video_pref (firm_id, staff_id, my_meeting_link) VALUES ('${A.id}', '${OWNER.id}', 'http://zoom.us/j/1')`); } catch { dbRefused = true; }
   ok("FO-3v DW1 fail: the database refuses a non-https link written past the API (fo_video_link_ok)", dbRefused && (await prefRows()) === 2);
@@ -174,16 +182,16 @@ try {
   const v1 = await book(TV.id, "2026-10-27 09:00", CO.id);
   const v1Mail = mailsOf(v1.id), v1Host = mailsOf(v1.id, "officer@staff.example");
   ok("FO-3v DW2 pass: a Video booking with the host's My meeting link carries it in the confirmation email and the .ics LOCATION (the person's and the host's invite)",
-    h2.status === 200 && v1Mail.length === 1 && v1Mail[0].text.includes(LINK) && ics(v1Mail[0]).includes(`LOCATION:${LINK}`) && ics(v1Host[0]).includes(`LOCATION:${LINK}`)
+    h2.status === 200 && v1Mail.length === 1 && hasLink(v1Mail[0].text, LINK) && ics(v1Mail[0]).includes(`LOCATION:${LINK}`) && ics(v1Host[0]).includes(`LOCATION:${LINK}`)
       && (await videoOf(v1.id))?.meetingLink === LINK && (await videoOf(v1.id))?.provider === "MY_LINK", [v1Mail.map((m) => m.text), (await videoOf(v1.id))]);
   ok("FO-3v DW2 fail: the type's own meetingLink is no source (never in the email or the .ics)", !JSON.stringify(mail.sent).includes("type.example") && !ics(v1Mail[0]).includes("type.example"));
   const p1 = await book(TV.id, "2026-10-27 10:00", CO.id, "PHONE");
   const p1Mail = mailsOf(p1.id);
-  ok("FO-3v DW2 fail: a Phone booking carries no link (no row, not in the email, no LOCATION)", p1Mail.length === 1 && !p1Mail[0].text.includes(LINK) && !ics(p1Mail[0]).includes("LOCATION:") && !(await videoOf(p1.id)), p1Mail.map((m) => m.text));
+  ok("FO-3v DW2 fail: a Phone booking carries no link (no row, not in the email, no LOCATION)", p1Mail.length === 1 && !hasLink(p1Mail[0].text, LINK) && !ics(p1Mail[0]).includes("LOCATION:") && !(await videoOf(p1.id)), p1Mail.map((m) => m.text));
   await clock.set(at("2026-10-27 08:01"));   // the 1-hour reminder of v1 (09:00) is due
   await jobs.runDue();
   const reminder = mail.inbox("lee@client.example").find((m) => m.templateKey === "booking.reminder_1h" && m.text.includes("Video call"));
-  ok("FO-3v DW2 pass: the reminder reads the booking's link", !!reminder && reminder.text.includes(LINK), reminder?.text);
+  ok("FO-3v DW2 pass: the reminder reads the booking's link", hasLink(reminder?.text, LINK), reminder?.text);
   await clock.set(at("2026-10-26 08:00"));
 
   // ------------------------------------------------------------------------------------------- DW3: no source at all
@@ -204,7 +212,7 @@ try {
   await jobs.runDue();
   const after = mailsOf(v1.id), movedMails = after.slice(seqBefore).filter((m) => m.templateKey === "booking.moved");
   ok("FO-3v DW5 pass: a reschedule keeps the link and re-sends the invite once, with it", moved.status === 200 && movedMails.length === 1 && ics(movedMails[0]).includes(`LOCATION:${LINK}`)
-    && movedMails[0].text.includes(LINK) && (await videoOf(v1.id))?.meetingLink === LINK, [moved.status, movedMails.map((m) => m.text)]);
+    && hasLink(movedMails[0].text, LINK) && (await videoOf(v1.id))?.meetingLink === LINK, [moved.status, movedMails.map((m) => m.text)]);
   const cancelled = await go("POST", `/${v1.id}/cancel`, OWNER);
   await jobs.runDue();
   const cMail = mailsOf(v1.id).find((m) => m.templateKey === "booking.cancelled");
@@ -215,7 +223,7 @@ try {
   await jobs.runDue();
   const pairMoved = mailsOf(pair.id).filter((m) => m.templateKey === "booking.moved");
   ok("FO-3v DW5 pass: a new host gets the new host's link (the row, the moved email and its invite)", toH2.status === 200 && toH2.body.staffId === H2.id && (await videoOf(pair.id))?.meetingLink === LINK2
-    && pairMoved.length === 1 && ics(pairMoved[0]).includes(`LOCATION:${LINK2}`) && !pairMoved[0].text.includes(LINK), [toH2, await videoOf(pair.id)]);
+    && pairMoved.length === 1 && ics(pairMoved[0]).includes(`LOCATION:${LINK2}`) && !hasLink(pairMoved[0].text, LINK), [toH2, await videoOf(pair.id)]);
   ok("FO-3v DW5 fail: a move with the same host writes no new link line (one 'video link set' per host change)",
     audit.entries.filter((e) => e.action === "booking.video_link_set" && (e.detail as { bookingId?: string }).bookingId === v1.id).length === 1
       && audit.entries.filter((e) => e.action === "booking.video_link_set" && (e.detail as { bookingId?: string }).bookingId === pair.id).length === 2);
