@@ -37,7 +37,7 @@ export class EligibilityGates {
   }
 
   private view(e: StoredEligibility | null): EligibilityGatesView {
-    return { gates: e?.gates ?? [], judgement: e?.judgement ?? [], disclaimer: e?.disclaimer ?? null, version: e?.version ?? 0, savedBy: nameOf(e?.by), savedAt: e?.at ?? null };
+    return { gates: e?.gates ?? [], judgement: e?.judgement ?? [], disclaimer: e?.disclaimer ?? null, assessmentOnly: e?.assessment_only === true, version: e?.version ?? 0, savedBy: nameOf(e?.by), savedAt: e?.at ?? null };
   }
 
   /** GET: the draft's gates, and what the newest release carries. */
@@ -60,7 +60,9 @@ export class EligibilityGates {
       this.db.canonicalField.findMany({ where: { workspaceId: c.workspaceId }, select: { canonicalFieldKey: true, valueType: true, status: true } }),
       this.db.derivedField.findMany({ where: { workspaceId: c.workspaceId }, select: { derivedKey: true } }),
     ]);
-    const checked = checkGates(b, new Map(fields.filter((f) => f.status !== "RETIRED").map((f) => [f.canonicalFieldKey, f.valueType])), new Set(derived.map((d) => d.derivedKey)));
+    // AS-2a, break B4 on 6f71259ea: a save that leaves the flag out keeps it as stored; only false (or true) changes it.
+    const stored = (c.eligibility as StoredEligibility | null)?.assessment_only === true;
+    const checked = checkGates({ ...b, assessmentOnly: b.assessmentOnly === undefined || b.assessmentOnly === null ? stored : b.assessmentOnly }, new Map(fields.filter((f) => f.status !== "RETIRED").map((f) => [f.canonicalFieldKey, f.valueType])), new Set(derived.map((d) => d.derivedKey)));
     // Re-review minor 1: the question's name, not its key.
     const words = new Map((await this.db.canonicalField.findMany({ where: { workspaceId: c.workspaceId }, select: { canonicalFieldKey: true, label: true } })).filter((f) => f.label).map((f) => [f.canonicalFieldKey, `"${f.label}"`]));
     const empty = b.gates.flatMap((g, i) => emptyValues(g.condition).map((f) => ({ field: `gates.${i}.condition`, message: `The rule compares ${words.get(f) ?? f} with an empty value, which no answer meets: give the value, or choose "is answered".` })));
@@ -71,7 +73,7 @@ export class EligibilityGates {
     // BR-3: the first save needs no version; every later one names the version it read (checked after the fields, so
     // a refusal on a field is said first).
     if (before ? b.version !== current : b.version !== undefined && b.version !== 0) this.stale(before);
-    const next: StoredEligibility = { gates: checked.gates, judgement: checked.judgement, disclaimer: checked.disclaimer, version: current + 1, by: actor.id, at: new Date().toISOString() };
+    const next: StoredEligibility = { gates: checked.gates, judgement: checked.judgement, disclaimer: checked.disclaimer, version: current + 1, by: actor.id, at: new Date().toISOString(), ...(checked.assessment_only ? { assessment_only: true as const } : {}) };
     // The version is checked again in the write itself, so two saves at once cannot both pass.
     const done = await this.db.$executeRaw(Prisma.sql`UPDATE "combination" SET "eligibility" = ${JSON.stringify(next)}::jsonb WHERE "id" = ${id}::uuid AND COALESCE(("eligibility"->>'version')::int, 0) = ${current}`);
     if (!done) this.stale((await this.combination(id)).eligibility as StoredEligibility | null);
