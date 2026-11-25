@@ -13,6 +13,7 @@
 // Not here: the client's timeline (AG-13-33), @mentions; see the PR.
 import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { caseOf as caseNamedBy, firmMayRead } from "../case-feed.ts";
 import { Db } from "../core.ts";
 import { problem, type StaffContext } from "../platform/identity/keys.ts";
@@ -47,10 +48,18 @@ const usOf = (day: string, end: boolean) => {
 };
 
 type Filter = { cursor: Key | null; kinds: TimelineKind[]; author: string | null; from: bigint | null; to: bigint | null };
-function filterOf(q: unknown): Filter {
-  const o = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
-  for (const k of Object.keys(o)) if (!["cursor", "kinds", "author", "from", "to"].includes(k)) invalid(k, "Only cursor, kinds, author, from and to.");
-  const one = (k: string) => { const v = o[k]; if (v === undefined || v === "") return null; if (typeof v !== "string") return invalid(k, "Give it once."); return v; };
+/** The query, read through zod (STANDARDS §6, CS-V1): each filter at most once, as text; nothing else. */
+const once = z.string({ message: "Give it once." }).optional();
+export const TimelineQuery = z.strictObject({ cursor: once, kinds: once, author: once, from: once, to: once }, { message: "Only cursor, kinds, author, from and to." });
+/** A zod parse, its first issue a 400 naming the field (as service.ts's `parsed`). */
+function parsed<S extends z.ZodType>(schema: S, q: unknown): z.infer<S> {
+  const r = schema.safeParse(q && typeof q === "object" && !Array.isArray(q) ? q : {});
+  if (r.success) return r.data;
+  const i = r.error.issues[0];
+  return invalid(String(i.path[0] ?? (i as { keys?: string[] }).keys?.[0] ?? "query"), i.message);
+}
+function filterOf(o: z.infer<typeof TimelineQuery>): Filter {
+  const one = (k: string) => { const v = o[k]; return v === undefined || v === "" ? null : v; };
   const kindsText = one("kinds");
   const kinds = kindsText ? kindsText.split(",").map((k) => k.trim().toUpperCase()) : [...TIMELINE_KINDS];
   if (!kinds.length || kinds.some((k) => !(TIMELINE_KINDS as readonly string[]).includes(k))) invalid("kinds", `One or more of ${TIMELINE_KINDS.join(", ")}, comma-separated.`);
@@ -109,7 +118,7 @@ export class CaseTimeline {
 
   /** GET /api/runtime/cases/:id/timeline (agent/case:show): one page, newest first, and the cursor of the next. */
   async read(ctx: StaffContext, caseId: string, q: unknown) {
-    const f = filterOf(q);
+    const f = filterOf(parsed(TimelineQuery, q));
     const c = await this.notes.subjectFor(ctx, "case", caseId);
     let actors: string[] = [];
     if (f.author) {
