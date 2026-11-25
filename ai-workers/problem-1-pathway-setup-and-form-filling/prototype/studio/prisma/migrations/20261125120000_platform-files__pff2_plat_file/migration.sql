@@ -8,7 +8,7 @@
 -- Stamp: 20261125120000, re-stamped from 20261124060000 (25 Nov, on #3277: main's newest is 20261124170000 and an open PR
 --   holds 20261125113000; Lead 28 asked for a re-stamp past them), earlier from 20261124040000 by Lead 23; pure renames, the SQL unchanged.
 -- Rollback (in this order): DROP TABLE "plat_file"; DROP FUNCTION plat_file_write(); DROP TYPE "PlatFileScanState"; delete this
---   folder's row (20261125120000_pff2_plat_file) from _prisma_migrations.
+--   folder's row (20261125120000_platform-files__pff2_plat_file) from _prisma_migrations.
 -- Prisma's DDL, then the rules.
 CREATE TYPE "PlatFileScanState" AS ENUM ('SCANNING', 'SCAN_PENDING', 'CLEAN', 'QUARANTINED');
 CREATE TABLE "plat_file" (
