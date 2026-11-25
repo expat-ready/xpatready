@@ -33,7 +33,7 @@ const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
 const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { TaskHosts } = await import("../api/src/platform/tasks/hosts.ts");
-const { dueInstant } = await import("../api/src/platform/tasks/service.ts");
+const { dueInstant, Tasks } = await import("../api/src/platform/tasks/service.ts");
 type Feat = { controllers?: unknown[]; providers?: unknown[] };
 const feature = async (f: string) => (await import(`../api/src/features/${f}.ts`)).default as Feat;
 
@@ -188,6 +188,50 @@ try {
   nest.get(TaskHosts).register("case", async () => { throw new Error("boom"); });
   const broken = await call("POST", "/api/platform/tasks", OWNER, { host: { type: "case", id: randomUUID() }, title: "x" });
   ok("TK8 fail: a host that throws sees nothing (404, never a 500)", broken.status === 404, broken.status);
+
+  // ---------------------------------------------------------------- TK9 review round 1 (M1-M3) and break round 1 (M1, M2, m1-m8)
+  const t9 = async (who: string, extra: Record<string, unknown> = {}) => (await call("POST", "/api/platform/tasks", who, onLead({ title: "Round one", ...extra }))).body;
+  const long9 = await call("POST", "/api/platform/tasks", OFF, onLead({ description: "d".repeat(4500) }));
+  const line9 = (await q<{ detail: Record<string, unknown> }>("select detail from audit_event where entity = 'plat_task' and entity_key = $1", [long9.body.id]))[0];
+  ok("TK9 pass (break M1): details of 4,500 characters are kept whole (201); the audit line counts them and holds a cut copy",
+    long9.status === 201 && (await row(long9.body.id))!.description.length === 4500 && JSON.stringify(line9?.detail ?? {}).includes("\"descriptionChars_after\":4500"), [long9.status, line9]);
+  const P = await person("Sample Leaver", "CASE_OFFICER"), r9 = await t9(OWNER, { assigneeStaffId: P });
+  await call("POST", `/api/platform/tasks/${r9.id}/complete`, P, { version: 1 });
+  await q("update platform_staff set status = 'DEACTIVATED' where id = $1", [P]);
+  const back9 = await call("POST", `/api/platform/tasks/${r9.id}/reopen`, OWNER, { version: 2 }), take9 = await call("POST", `/api/platform/tasks/${r9.id}/take`, OFF);
+  ok("TK9 pass (break M2, review M3): reopening a task whose assignee was deactivated makes it Unassigned, and Take it then works; TK9 fail: it never stays with the deactivated person",
+    back9.status === 200 && back9.body.assignee === null && take9.status === 200 && take9.body.assignee?.id === OFF, [back9.body, take9.status]);
+  SEEN.delete(LEAD);
+  const hid9 = await call("GET", `/api/platform/tasks/${take9.body.id}`, OFF), done9 = await call("POST", `/api/platform/tasks/${take9.body.id}/complete`, OFF, { version: 4 });
+  SEEN.add(LEAD);
+  ok("TK9 pass (review M1, M2): a Restricted task names no host type; its assignee may still mark it Done", hid9.body.host === "RESTRICTED" && hid9.body.hostType === null && done9.status === 200, [hid9.body.hostType, done9.status]);
+  const c9 = await t9(OWNER, { assigneeStaffId: OFF });
+  const billCancel = await call("POST", `/api/platform/tasks/${c9.id}/cancel`, BILLING, { version: 1, reason: "No" }), byOwner = await call("POST", `/api/platform/tasks/${c9.id}/complete`, OWNER, { version: 1 });
+  const billReopen = await call("POST", `/api/platform/tasks/${c9.id}/reopen`, BILLING, { version: 2 }), closedAssign = await call("POST", `/api/platform/tasks/${c9.id}/assign`, OWNER, { version: 2, assigneeStaffId: OWNER });
+  ok("TK9 fail (review M2): Billing (view.all, no edit) cannot cancel or reopen (403); a closed task cannot be assigned (409); TK9 pass: the Owner (edit, not the assignee) marks it Done",
+    billCancel.status === 403 && billReopen.status === 403 && closedAssign.status === 409 && byOwner.status === 200, [billCancel.status, billReopen.status, closedAssign.status, byOwner.status]);
+  const tasks9 = nest.get(Tasks), offCtx = { staffId: OWNER, firmId: FA, firmKey: "sample-firm", roles: [], keys: ["agent/task:view.own"], duties: [], authTime: 0, via: "local" as const };
+  let noAll = 0; try { await tasks9.get(offCtx, c9.id); } catch (e) { noAll = (e as { status?: number }).status ?? 0; }
+  const solo9 = await t9(OWNER), offTake = await call("POST", `/api/platform/tasks/${solo9.id}/take`, OFF);
+  ok("TK9 fail (review M2): without view.all, someone else's task is 404; TK9 pass: a Case Officer (view.all with edit, no assign) takes an Unassigned task alone", noAll === 404 && offTake.status === 200, [noAll, offTake.status]);
+  const before9 = (await q<{ detail: Record<string, unknown> }>("select detail from audit_event where entity_key = $1 and action = 'plat.task.take'", [solo9.id]))[0]?.detail ?? {};
+  ok("TK9 (break m5): Take it's audit line has no assignee before and the taker after", before9.assignee_after === OFF && !("title_before" in before9), before9);
+  const stale9 = await call("PATCH", `/api/platform/tasks/${solo9.id}`, READER, { version: 1, title: "x" }), same9 = await call("PATCH", `/api/platform/tasks/${solo9.id}`, OFF, { version: 2 });
+  const again9 = await call("POST", `/api/platform/tasks/${solo9.id}/assign`, OWNER, { version: 2, assigneeStaffId: OFF });
+  ok("TK9 fail (break m6): Read-only with a stale version is 403, not 409; TK9 pass (break m7): an edit of nothing and a reassign to the same person change nothing (version stays 2)",
+    stale9.status === 403 && same9.status === 200 && again9.status === 200 && (await row(solo9.id))!.version === 2, [stale9.status, same9.status, again9.status]);
+  const NOROLE = (await q<{ id: string }>("insert into platform_staff (id, firm_id, email, display_name, actor_id, status, updated_at) values (gen_random_uuid(), $1, 'norole@tk1.example.com', 'Sample No Role', 'tk1-norole', 'ACTIVE', now()) returning id", [FA]))[0]!.id;
+  const toNoRole = await call("POST", "/api/platform/tasks", OWNER, onLead({ assigneeStaffId: NOROLE }));
+  ok("TK9 fail (break m8): a person whose roles give no task key cannot be made assignee (422)", toNoRole.status === 422, toNoRole.body);
+  const oldZone = await call("POST", "/api/platform/tasks", OFF, onLead({ due: { date: "2026-11-25", zone: "US/Pacific-New" } })), lower = await call("POST", "/api/platform/tasks", OFF, onLead({ due: { date: "2026-11-25", zone: "america/toronto" } }));
+  nest.get(TaskHosts).register("case_client", async (_r, refs) => new Map(refs.map((x) => [`${x.id}|${x.contextType ?? ""}|${x.contextId ?? ""}`, { label: "Client B Sample", url: "/clients/x", typeLabel: "Individual", zone: "Mars/Olympus" }])));
+  const badHostZone = await call("POST", "/api/platform/tasks", OWNER, { host: { type: "case_client", id: randomUUID() }, title: "x", due: { date: "2026-11-25" } });
+  ok("TK9 fail (break m1, m2): a retired zone is 422; TK9 pass: 'america/toronto' is stored as America/Toronto, and a host's unknown zone falls back to the person's (201, never a 500)",
+    oldZone.status === 422 && lower.body.dueZone === "America/Toronto" && badHostZone.status === 201 && badHostZone.body.dueZone !== "Mars/Olympus", [oldZone.status, lower.body.dueZone, badHostZone.status, badHostZone.body.dueZone]);
+  const persian = await call("POST", "/api/platform/tasks", OFF, onLead({ title: "می‌خواهم تماس بگیرم" })), sep = await call("POST", "/api/platform/tasks", OFF, onLead({ title: "Call now" })), filler = await call("POST", "/api/platform/tasks", OFF, onLead({ title: "ㅤㅤ" }));
+  const firmCtx = await call("POST", "/api/platform/tasks", OWNER, { host: { type: "firm", contextType: "LEAD", contextId: LEAD }, title: "x" });
+  ok("TK9 pass (break m3): a Persian title with ZWNJ is kept; TK9 fail: a line separator and a title of fillers only are 422; a firm task with a context is 422 (break m4)",
+    persian.status === 201 && sep.status === 422 && filler.status === 422 && firmCtx.status === 422, [persian.status, sep.status, filler.status, firmCtx.status]);
 } catch (e) {
   fail++;
   process.stderr.write(`FAIL  TK1: the check crashed — ${e instanceof Error ? e.stack ?? e.message : String(e)}\n`);

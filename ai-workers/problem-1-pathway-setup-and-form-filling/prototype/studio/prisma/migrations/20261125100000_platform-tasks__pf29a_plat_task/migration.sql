@@ -1,14 +1,8 @@
--- PF-29a (R1.75; BACKLOG PF-29a; concept screens/tk-tasks/concept.md r2.1, approved by Lead 5; shape screens/tk-tasks/shape-r175.md
--- part p1; AG-13-1, -2, -5, -8, -62; BR-19; schema file prisma/schema/platform-tasks.prisma): the firm's tasks. Additive only:
--- one new table; no existing row, table or column changes.
---   * new: plat_task, one row per task, on a host a module registers (fo_person, case, case_client, firm).
---   * firm_id → platform_firm(id), RESTRICT both ways (platform.prisma gets one back-relation line). The assignee is a staff
---     member of the same firm, checked by a trigger (as fo_lead's owner; Prisma cannot say an optional composite key).
---   * a task is never deleted by the app (archived_at instead); its firm, host, context, maker and source key never change;
---     each change adds one to version (the counter a change names; a stale one is the service's 409).
---   * every function is plat_task_ (area prefix plat_, rows rev 15.2).
--- Rollback (in this order): DROP TABLE "plat_task"; DROP FUNCTION plat_task_write(); DROP FUNCTION plat_task_assignee_in_firm();
---   delete this folder's row from _prisma_migrations.
+-- PF-29a (R1.75 part p1; concept screens/tk-tasks/concept.md r2.1; AG-13-1, -2, -5, -8, -62; BR-19): the firm's tasks.
+-- Additive only: one new table plat_task (no existing row, table or column changes); platform.prisma gets one back-relation
+-- line. The assignee is checked by a same-firm trigger (as fo_lead's owner: Prisma cannot say an optional composite key);
+-- never deleted by the app; firm, host, context, maker and source key never change; each change moves version on by one.
+-- Rollback: DROP TABLE "plat_task"; DROP FUNCTION plat_task_write(), plat_task_assignee_in_firm(); delete the _prisma_migrations row.
 -- Prisma's DDL (prisma migrate diff), then the rules.
 CREATE TABLE "plat_task" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),

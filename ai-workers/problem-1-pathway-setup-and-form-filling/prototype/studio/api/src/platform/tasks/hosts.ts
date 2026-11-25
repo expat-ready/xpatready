@@ -1,10 +1,7 @@
-// PF-29b (R1.75; concept screens/tk-tasks/concept.md r2.1 BR-1, BR-3; AG-13-67; BR-21): the task hosts. A task sits on a
-// record a module owns (a person on the front office, a case, a case client) or on the firm itself. The module that owns a
-// host type registers it here at start-up (as modules register their notification labeller, notifications/labels.ts), so
-// the task area imports no module's tables or rules: the host says, for a reader and some ids, which ones the reader may
-// see now by its own view rule, and for those its words, page, type label and office zone. An id it leaves out is one
-// the reader may not see: the task then shows as "Restricted" to its assignee or maker, and is absent for anyone else.
-// A host that throws sees nothing (logged by host type only), so a task list never fails because one module did.
+// PF-29b (R1.75; concept r2.1 BR-1, BR-3; AG-13-67): the task hosts. The module that owns a record type (a front-office
+// person, a case, a case client; the firm is built in) registers it at start-up, as notification labellers do: for a reader
+// and some ids it returns the ones the reader may see now, with words, page, type label and office zone. One it leaves out
+// is "Restricted" to the task's assignee or maker and absent for others; a host that throws sees nothing (logged).
 import { Injectable, Logger } from "@nestjs/common";
 import type { StaffContext } from "../identity/keys.ts";
 
