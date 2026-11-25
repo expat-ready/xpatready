@@ -20,6 +20,7 @@ import { TRUST_EVENT, TrustAppliedPayload, TrustRefundedPayload } from "../../..
 import { problem } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound } from "../invoices/drafts.ts";
 import { invoiceFacts, type Facts } from "../invoices/facts.ts";
+import { liveParty, type SeenParties } from "../live-party.ts";
 import { trustShows } from "../reads/common.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -72,7 +73,7 @@ async function held(tx: Tx, firmId: string, p: PartyRef, currency: string, caseI
 }
 
 export type ApplyArgs = { firmId: string; by: string; today: string; invoiceId: string; amountMinor: number; unclearedAcknowledged?: boolean; duplicateOf?: string; atIssue?: boolean;
-  pick?: { caseId?: string | null; personId?: string; companyId?: string; reason: string }; payer?: PartyRef };
+  pick?: { caseId?: string | null; personId?: string; companyId?: string; reason: string }; payer?: PartyRef; seen?: SeenParties };
 export type Applied = { entryId: string; invoiceId: string; amountMinor: number; currency: string; after: Facts };
 
 /** Pay from trust: one WITHDRAWAL_TO_INVOICE on the payer's ledger, inside the caller's transaction (the route's, or FO-7b's
@@ -85,6 +86,7 @@ export async function applyTrust(tx: Tx, audit: AuditPort<Tx>, a: ApplyArgs): Pr
   const payer: PartyRef = a.payer ?? own;
   const caseId = a.pick && a.pick.caseId !== undefined ? a.pick.caseId : inv.case_id;
   for (const p of [...new Set([partyId(own), partyId(payer)])].sort()) await tx.$executeRaw`select money_trust_lock(${a.firmId}::uuid, ${p}::uuid, ${inv.currency}::"MoneyCurrency")`;
+  for (const p of [...new Set([partyId(own), partyId(payer)])].sort()) await liveParty(tx, a.firmId, p, a.seen);   // FO-9b part 2m, under both locks
   const [row] = await tx.$queryRaw<{ issued: boolean; number: string | null; person_id: string | null; company_id: string | null; case_id: string | null }[]>`
     select issued_at is not null as issued, number, person_id::text, company_id::text, case_id::text from money_invoice where firm_id = ${a.firmId}::uuid and id = ${a.invoiceId}::uuid for update`;
   const not = a.atIssue ? " The invoice was not issued." : " Nothing was paid from trust.";   // review m5: at issue, say the issue rolled back
@@ -123,13 +125,15 @@ export async function applyTrust(tx: Tx, audit: AuditPort<Tx>, a: ApplyArgs): Pr
   return { entryId: e.id, invoiceId: a.invoiceId, amountMinor: a.amountMinor, currency: cur, after };
 }
 
-export type RefundArgs = { firmId: string; by: string; today: string; holder: PartyRef; caseId: string | null; r: z.infer<typeof RefundIn>; payee: { personId?: string; companyId?: string; name?: string; reason?: string } | null };
+export type RefundArgs = { firmId: string; by: string; today: string; holder: PartyRef; caseId: string | null; r: z.infer<typeof RefundIn>; payee: { personId?: string; companyId?: string; name?: string; reason?: string } | null; seen?: SeenParties };
 
 /** A refund to the client: one REFUND_TO_CLIENT on the payer's ledger, never more than the payer holds on that case. */
 export async function refundTrust(tx: Tx, audit: AuditPort<Tx>, a: RefundArgs) {
   const { r } = a, cur = r.currency, refundedOn = r.refundedOn ?? a.today;
   if (refundedOn > a.today) badField("refundedOn", "A refund is recorded once it is made: the date can't be in the future. Nothing was saved.");
   await tx.$executeRaw`select money_trust_lock(${a.firmId}::uuid, ${partyId(a.holder)}::uuid, ${cur}::"MoneyCurrency")`;
+  await liveParty(tx, a.firmId, partyId(a.holder), a.seen);   // FO-9b part 2m: the payer, under its lock
+  await liveParty(tx, a.firmId, a.payee?.personId ?? a.payee?.companyId, a.seen);   // and a payee on file: never a merged-away one
   const h = await held(tx, a.firmId, a.holder, cur, a.caseId);
   if (r.amountMinor > h.available) refuse("NOT_AVAILABLE", `Only ${cur} ${MONEY(h.available)} is available.`, { availableMinor: h.available });
   // Break m2: never dated before this case's money came in (the database checks the party's first money, any case; the
