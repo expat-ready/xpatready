@@ -28,7 +28,8 @@
 //      A field the answer calls "must be a number / a list / ..." is not a string field and is not counted; a route
 //      whose fields are all of that kind is listed as having no string field, not counted as passed. Path keys that
 //      are strings (firm key, slug, token, kind) are sent at 600 characters: 404 (or 410 for a token) or a field error,
-//      never 2xx or 500. W3 schema: a body or query that reaches no zod parse FAILS that line, named; one that reaches a
+//      never 2xx or 500. W3 schema: a body or query that reaches no zod parse FAILS that line, named (the SNS notice door,
+//      read only after a signature over its raw text, is a NOTE while the allow-list's signature-first line stands); one that reaches a
 //      schema this walk cannot take apart (built at run time) is named in a NOTE, with what is still probed (a body's
 //      required fields, a query's required keys); W3 run-time schemas FAILS if their count grows past the reviewed 19.
 //      Every field is probed, no cap. A field probe answered 429 is left unjudged (NOT TESTED) only on the sign-up door,
@@ -384,6 +385,11 @@ try {
     "POST /api/platform/session/callback code": ["POST /api/platform/session/callback missing", 401],
   };
   const byDesign = (probe: string, status: number) => { const w = W3_BY_DESIGN[probe]; return !!w && excepted.has(w[0]) && status === w[1]; };
+  // R1.10 A2 (as ruled on #3487's hand-over): a door whose body is read only after a signature over its raw text reaches its
+  // schema through a value this walk cannot follow; it is excused from W3 schema only while the allow-list's own line for
+  // that route, saying the signature comes first, stands (exact route; named in a NOTE, never counted as passed).
+  const W3_SCHEMA_BY_DESIGN: Record<string, string> = { "POST /api/public/messages/ses-notices": "POST /api/public/messages/ses-notices missing" };
+  const schemaExcused: string[] = [];
   const auditAt = sql(`select now()::text`);
   for (const d of all) {
     if (d.keys && !d.keys.every((k) => keysR.has(k))) { notTested.push(`${d.method} ${d.path} (keys ${d.keys.join(", ")})`); continue; }
@@ -411,7 +417,7 @@ try {
       // One field of the wrong type at a time: each declared field and each required one, sent alone as an object.
       const decl = declared.get(route)?.body ?? null, fields = [...new Set([...(decl ?? []), ...required])];   // every field, no cap
       const how = declared.get(route)?.bodyHow ?? "unparsed";
-      if (how === "unparsed") unparsed.push(route); else if (how === "unread") unread.push(route);
+      if (how === "unparsed") { if (W3_SCHEMA_BY_DESIGN[route] && excepted.has(W3_SCHEMA_BY_DESIGN[route])) schemaExcused.push(route); else unparsed.push(route); } else if (how === "unread") unread.push(route);
       for (const f of [...fields]) {
         let t = await ask(method, fill(d.path), { token, body: JSON.stringify({ [f]: { pf28: 1 } }) }); probed[area]++;
         // A field that is itself an object (the answer names "<f>.<inner>") gets a number as its wrong type instead.
@@ -480,6 +486,7 @@ try {
   if (multipart.length) console.log(`NOTE  J-10 W2/W3: multipart file parts (required, refused in a JSON body as not a field), not probed as JSON fields: ${multipart.join(", ")}`);
   if (overLong.length) console.log(`  over-long, every field not as ruled: ${overLong.join(" | ")}`);
   if (unparsed.length) console.log(`  input reaching no zod parse: ${unparsed.join(" | ")}`);
+  if (schemaExcused.length) console.log(`NOTE  J-10 W3 schema: by design, read after a signature over the raw text (the allow-list's line stands): ${schemaExcused.join(", ")}`);
   if (unread.length) console.log(`NOTE  J-10 W3: ${unread.length} inputs reach a zod parse whose fields this walk cannot take apart (a schema built at run time, e.g. Object.fromEntries); probed: a body's required fields (named by its missing probe), a query's required keys (named when it is sent empty): ${unread.join(", ")}`);
   ok(`J-10 W3 run-time schemas: at most ${RUNTIME_SCHEMAS} inputs (the reviewed count, 22 Nov) reach a schema this walk cannot take apart; more means a new one came in unread`, unread.length <= RUNTIME_SCHEMAS, unread.length);
   ok(`J-10 W3: every string field (body, query, path key) sent at its over-long length answers a field error naming it, or 404 for a path key — ${overLongTried} fields tried; ${noString.length} routes with a body declare no string field (listed, not counted as passed: ${noString.slice(0, 15).join(", ")})`, overLongTried > 0 && overLong.length === 0, overLong.slice(0, 15));

@@ -1,0 +1,235 @@
+# R1.52 part 1 (PF-19m mailbox tables): independent review
+
+PR #3653 · reviewed head **ca2e17127b1830b458544077e39ec7c31705ab43** · reviewer agent (fresh context; did not build it) · 25 Nov 2026.
+Scope: BACKLOG row PF-19m (Done when), P-600 (parallel schema rows), PF-12 walls, the PF-18n/PF-19a pattern, shape `screens/R1.52/shape.md`
+and Lead 5's approval (PR comments 11:17 and 11:22 IST). Requirements: AG-10-3, -4, -9, -12, -62, -69, AG-16-18, SA-11-37.
+This is not a screen. D8–D15, D17, D20 and the BIC-01–20 scorecard are N/A (no page, no route). No server was started, so no port was
+used (never :4400). The journey test is in `journey-test-reviewer-2026-11-25.md`, score **8.1/10, pass**.
+
+## Verdict
+**Ship after fixes (Changes) for ca2e171.** It has one Blocker, B1. The builder pushed **4e2c002** during this review, and that commit
+fixes B1. I read its 3-line diff against ca2e171 (folder rename, one test constant, one schema comment), ran the PF-19m test on it
+(35/35) and ran the SPD-2 guard on it (PASS). No Blocker or Major is open at 4e2c002. My Approve covers **4e2c002 only**; the label must
+not go on ca2e171.
+
+## What I ran (my own scratch copies: `git archive` of the head plus scratch databases `xr_studio_pf19m_*_<pid>` and `xr_studio_rv_pf19m`)
+* `check_pf19m_mailbox_schema.ts` at ca2e171: **35 passed, 0 failed**. At 4e2c002: 35/35.
+* Full `prisma migrate diff` (DB → schema) after every migration on a demo-data copy: **"No difference detected"**, so there is no drift.
+* `check_pf12_walls.ts` at ca2e171: the database guards pass, including "every firm table's policy names the session's firm" and "trigger
+  functions run as xr_wall_reader". Five lines fail only in my partial extract (missing `prototype/p2/ledger.ts`, P2022 on a shared Prisma
+  client). Those five start the API and are not database rules; the builder reports 110/110 in the full tree.
+* `migration-slots.py check origin/main..<head>`: ca2e171 REFUSED (B1); 4e2c002 PASS. `graph.mjs --check`: exit 0.
+* **Mutation runs (is each rule's test honest?):** with the one-main index removed, DW1 fails. With the credential check removed, DW3 fails.
+  With the msg_email policy removed, DW4 fails. With the email trigger removed, DW5 fails. With the one-live-address index removed, DW1
+  fails. With `AND NOT "is_main"` removed, **35/35 still pass** (m8).
+* **Break-it probes as `xr_app` with the firm set** (`scratchpad/probe/probe.sh`). With no firm set, reads return 0 rows and writes get
+  42501. TRUNCATE gets 42501. The purge cascade to msg_unmatched works under the walls. Firm B updates nothing of firm A's. Disconnecting
+  the main mailbox while it is still main gets 23514. The scenarios in m1–m7 are the ones that were accepted.
+
+## What held
+* **P-600:** (a) the tables are its own and the schema file is the one the row names; the one line in platform.prisma is in the
+  PF-19a back-relation slot, following the PF-18n precedent. (b) Additive only; the test proves it alters no other table and drops nothing.
+  (c) Both functions and both triggers are `msg_`; the shared first gate is reused. (d) Stamp 20261125060000 is later than main's newest,
+  20261124170000. (e) The Lead's read is pending.
+* **Done when, each with a pass and a fail case:** a second main address gets 23505; the same provider id in one mailbox gets 23505;
+  there is no token-like column and a raw token gets 23514; firm B reads none of firm A's mailboxes or email; the migration runs on empty
+  and demo-data copies with demo rows unchanged.
+* Firm and cross-firm safety: composite keys `(firm_id, mailbox_id)`, `(firm_id, owner_staff_id)` and `(firm_id, email_id)` stop
+  cross-firm references (23503). firm_id is first in every index. The forced policy and first gate are on all four tables. The definers
+  run as xr_wall_reader with search_path pinned, as in PF-18n.
+* The credential check matches `ports/secret-box.ts:28 SealedSecret` and the real `sb1.v<n>.<iv>.<tag>.<ct>` format of aes-gcm.ts:8.
+  `last_error_code` holds a code, never the provider's words (SA-11-37). Subjects and bodies never appear in a check or an error message.
+
+## Findings
+**Blocker**
+* **B1 (Must). The migration folder has no area (SPD-2, on main since 63f5cc913).** `prisma/migrations/20261125060000_pf19m_mailboxes/`.
+  Failing scenario: `python3 product/tools/migration-slots.py check origin/main..ca2e171` prints `REFUSED … its name carries no area`
+  and exits 1. This is the ci "fast" job's check, so ca2e171 cannot merge. Fix: `git mv` to `20261125060000_platform-messages__pf19m_mailboxes`.
+  **Done in 4e2c002** (guard PASS, test 35/35). Also, `pr-rules` was red at ca2e171 ("MISSING: no Done when" in the PR body); it is green at 4e2c002.
+
+**Major:** none.
+
+**Minor** (Should, each one a gap a later part will hit)
+* **m1. Disconnect-and-purge race (AG-10-4).** migration.sql:176-190: `msg_email_write` fires only BEFORE UPDATE OR DELETE, and
+  `msg_mailbox_write` (161-173) still lets `sync_cursor` and `last_checked_at` change on a DISCONNECTED row. Scenario: the 5-minute sync job is mid-run, a
+  disconnect purges, then the job inserts `late1` into the DISCONNECTED mailbox. The insert is accepted, so unfiled personal data is
+  stored again after the promised purge. Fix: a BEFORE INSERT on msg_email that refuses a DISCONNECTED mailbox, and freeze the cursor
+  once DISCONNECTED. If not done here, PF-19mc's purge test must cover the race.
+* **m2. "A filed email is kept" holds only within one statement.** Un-filing all five columns and then deleting removes a filed email
+  (probe P8). That path is probably intended (un-file per SA-11-39; the PF-21d eraser), but the header (line 8) and the PR body say "kept"
+  without it. Fix: say so in the header, so PF-19mi/PF-21d rely on it knowingly.
+* **m3. Unmatched can disagree with its email.** An OPEN `msg_unmatched` row on a filed email is accepted (P9), and nothing ties LINKED
+  to the email being filed. Fix: a check in `msg_email_write`, or a pass/fail test in PF-19mi.
+* **m4. Personal-mailbox privacy is app-only (AG-10-69; AG16-89 (1): from a personal mailbox, unknown senders "are never stored").**
+  The walls are firm-wide: every staff session of the firm can read every unfiled personal-mailbox email and Unmatched row. Fix: none
+  needed in part 1, but the schema header should name the rule and its owner (PF-19mi), and PF-19mi needs a failing case (a colleague
+  reads another person's unfiled mail and gets nothing).
+* **m5. Address and actor checks are weaker than the same file family's.** Lines 139 and 158 use `^[^@\s]+@[^@\s]+$` (accepts `a@b`,
+  a trailing dot, non-ASCII), whereas PF-19a uses `msg_address_ok('EMAIL', …)`, the form the consent gate looks up. `to_addresses` and
+  `cc_addresses` are not lower-cased (P11: `{Info@A.Example}` accepted) while `from_address` is. `connected_by`, `resolved_by` and
+  `created_by` have no `msg_actor_ok` check. Scenario: a send-as-mailbox consent lookup (part 5), or the matcher on a learned link,
+  misses on a case or format difference. Fix: reuse `msg_address_ok` on the mailbox address and the address link, lower-case the to/cc
+  arrays, and use `msg_actor_ok` on the actor columns.
+* **m6. `fake1.` values pass the credential check (line 143).** A fake-sealed value is the plaintext token in base64url
+  (`ports/secret-box.ts:109`); P10 was accepted. This matches the port, but "no raw token in this table" is only a shape guarantee.
+  Note it in the header.
+* **m7. The main address cannot be swapped in one statement.** `UPDATE … SET is_main = (id = B)` gets 23505 on the non-deferrable
+  partial index (P6), and two concurrent "first connect" requests race in the same way. PF-19mc must unset and then set inside one transaction, and
+  map 23505 to a plain message. No change is needed here; name it in the hand-over.
+* **m8. Test gaps.** The DISCONNECTED-is-never-main rule (line 144) has no failing case: the mutation leaves 35/35. The DW4 write
+  refusal asserts only `!== ""` (test:120-121), so any error passes; assert 42501. The purge cascade (test:138) runs only as the
+  superuser; I checked it as xr_app (P3) and it holds.
+* **m9. Records (P-557).** `shape.md` still says "for the tech lead's approval" and still has part 2 building the OAuth helper and the
+  Q4 recommendation "any staff". Lead 5's (a)–(c), the founder's Q4 ruling (Owner and Admin only) and "Q1–Q3 later" exist only in PR
+  comments. Fix: an "Approved" block in shape.md.
+* **m10. `REVOKE TRUNCATE … FROM xr_data` (line 191) does nothing.** xr_data never had TRUNCATE (PF-12 lines 172-175). The owner can
+  still TRUNCATE msg_email, which defeats "filed is kept". PF-19a's kept tables use `*_no_truncate` triggers (pf19a lines 375-398).
+  Fix: add `msg_mailbox_no_truncate` and `msg_email_no_truncate`, or remove the line.
+
+## Dimensions (1–5; the rest N/A, as above)
+D1 requirement fit 4: every Done-when line holds; AG-10-3 registry validation and AG-10-69 visibility are left to later parts (m4).
+D2 data integrity 4: duplicates, cross-firm references and half filings are refused; m1, m3 and m5 are open.
+D3 reuse 4: reuses PF-12's gate, policy and roles and SecretBoxPort's format; it does not reuse `msg_address_ok` or `msg_actor_ok` (m5).
+D5 stability 4: the migration is idempotent on copies and DISCONNECTED is final with reconnect as a new row; m7 is open.
+D6 governance 4: requirement ids, a rollback block and a header per rule are present; m9 is open.
+D16 testability 4: each Done-when line has a pass and a fail case, and the mutations fail as they should, except m8.
+D18 provenance 5: every rule cites its source. D19 N/A: this is part 1 of 8.
+
+## Could not check
+The Lead's read of the migration diff (P-600 (e)). The full CI run (draft PR: `ci` was skipped). RDS non-superuser behaviour.
+PF-12 lines that start the API (my partial extract). An intended user's walk (D17 and D20 stay with the founder).
+
+Reviewer: Changes ca2e17127b1830b458544077e39ec7c31705ab43
+Reviewer: Approve 4e2c0028fabb0915b619b6d0f9f500afe2e96c67 (B1 fixed; only Minor findings open)
+
+## Round 2 (14c4b73)
+Diff-only re-review of `ca2e171..14c4b73` at head **14c4b737dd9c8f67d45cac6b3c1e8caa35208fb4**, by a fresh reviewer agent, 25 Nov 2026.
+It covers the migration (renamed to `20261125060000_platform-messages__pf19m_mailboxes`), the test, the schema comment and `shape.md`,
+checked against the reasons in the PR comment "Reviewer: Block ca2e171…". My own `git archive 14c4b73` copy (the migration's sha256 is
+`ae030e57…`, the same as the commit's). Postgres 127.0.0.1:54329 with my own scratch database `xr_studio_rv2_pf19m` (now dropped). The
+RDS cluster ran on 15631. No server started; :4400 was never used. Probes: `scratchpad/probe2/` (`race.sh`, `deadlock.sh`).
+
+**What I ran:** `check_pf19m_mailbox_schema.ts` **44/44**. `check_pf8b_f4_migrations.ts` **9/9**. `tools/rds-shape-check.sh` **all passed**
+(every migration applies as a non-superuser admin). `migration-slots.py check origin/main..14c4b73` **PASS**. Mutations: with the
+"delete only from a DISCONNECTED mailbox" rule removed, 3 tests fail; with the OPEN-entry check removed, 1 fails; with the share lock
+removed, **44/44 still pass** (r2-m1).
+
+**Round-1 findings, each checked**
+* Breaker B1 (RDS): **fixed.** The F4 pairing is in place, and the RDS-shaped run applies every migration.
+* Breaker M1 and reviewer m2 (a filed email rewritten or removed): **fixed.** Un-filing and deleting a filed email in one transaction now
+  gets 23514. A filed email cannot be deleted from any mailbox, nor un-filed in a DISCONNECTED one.
+* Breaker M2 and reviewer m1 (the purge race): **fixed.** Two sessions as xr_app, both orders (`race.sh`). Sync first: the disconnect
+  waits on the share lock, then the purge removes the late email (0 left). Disconnect first: the sync's insert waits, then gets 23514.
+  The cursor and last check are frozen once DISCONNECTED.
+* Breaker m1 and reviewer m6 (credential): **fixed.** The `sb1` form now matches aes-gcm.ts:46-50 exactly (16-character iv, 22-character
+  tag, length ≤ 12000 covers MAX_PLAIN 8192). Keeping `fake1.` is a sound choice: the running app never uses that box (secret-box.ts:104).
+* Breaker m2: **fixed** (the live mailbox's Unmatched email stays). Breaker m3 and reviewer m5 (addresses): **fixed** with `msg_address_ok`,
+  and to, cc and via are lower case. Leaving `%@gmail.com` in is sound: it is a valid address, and matching is by equality.
+* Breaker m4 and reviewer m3 (Unmatched): the size limit is **fixed**. The open-entry rule is **half fixed** (r2-m2).
+* Reviewer m4 and m7: **named in the header** with their owners (PF-19mi, PF-19mc). That is sound for part 1.
+* Reviewer m8: **fixed.** There is a failing case for "a DISCONNECTED mailbox is never main", and the firm-B write must get exactly 42501.
+  Reviewer m9: **fixed** (the Approved block is in shape.md). Reviewer m10: **fixed** (`*_no_truncate`, 23001).
+* Reviewer m5 (actor columns): **changed, not reused.** The new pattern is narrower than `msg_actor_ok` (r2-m3).
+
+**New findings**
+* **R2-M1 (Major, Must). Move and Un-file of a filed email are refused once its mailbox is DISCONNECTED.** migration.sql:212-214:
+  `IF st = 'DISCONNECTED'` refuses every UPDATE, including the filing columns. AG-10-83 says a filed email "SHALL offer **Move** and
+  **Un-file**", and this item's own part 4 builds them (shape.md:39, SA-11-39). Scenario: a staff member leaves, their mailbox is
+  disconnected, and an email of theirs filed to the wrong client can never be moved. As xr_app, firm A, a filed email in a DISCONNECTED
+  mailbox: `update msg_email set filed_kind='fo-client', filed_id=…, filed_by='STAFF', filed_rule=null` gets 23514 "a disconnected mailbox
+  takes no email and changes none", and the un-file gets the same. Round 1 asked only that no email enter and no sync state move; this
+  freeze goes further. Fix: in a DISCONNECTED mailbox, refuse INSERT but allow an UPDATE that changes only the filing (the content check
+  below it still applies). An un-filed email there is then purgeable, so the app's un-file purges it. Add a pass case (a move in a
+  disconnected mailbox) beside the existing late-insert fail case.
+
+**Minor** (Should)
+* **r2-m1. Two syncs of one mailbox deadlock** (`deadlock.sh`). Each inserts an email, taking FOR SHARE on the mailbox (line 202). Each
+  then updates `sync_cursor`. The result is `ERROR: deadlock detected … while locking tuple (0,1) in relation "msg_mailbox"` (40P01) for
+  one of them. The old foreign key's KEY SHARE never conflicted with that update. The lock is needed for M2. Fix: name it in the header
+  for PF-19mi: one sync per mailbox at a time, or lock the mailbox row first (FOR NO KEY UPDATE) and then insert, and retry on 40P01.
+  The lock also has no failing case: with it removed, 44/44 still pass.
+* **r2-m2. "An OPEN Unmatched entry is for an unfiled email" holds only when the entry is written.** Insert the email, insert an OPEN
+  entry, then file the email: accepted, and the row reads OPEN and filed. Fix: in `msg_email_write`, refuse filing while an OPEN entry
+  exists, or have the header say "when the entry is written" and give PF-19mi a failing case.
+* **r2-m3. The "by" pattern (lines 160, 174, 178) leaves out `seed:` and `ourstaff:` of the shared AuditActor (ports/audit.ts:14).**
+  `connected_by` or `created_by` = `'seed:PF-19m'` gets 23514. The Sample loaders use `seed:<row>` (seed-sample-firms.ts:31), and PF-19mi's
+  Sample sync will need it. Fix: add `seed:[A-Za-z0-9-]{1,40}`, or use `msg_actor_ok` with a length limit.
+* **r2-m4. The erasure note (header lines 18-19) cannot work as written.** A function owned by xr_wall_reader still fires `msg_email_write`.
+  My probe (a definer owned by the reader, with DELETE granted) got 23514 "a filed email is kept". Fix: reword it so part 4 or PF-21d
+  replaces `msg_email_write`'s DELETE branch (and the DISCONNECTED freeze) to admit the eraser, gated on the job's claim
+  (`plat_data_request.erasing_since`, pf21d_erasure).
+* Nit n1. The TRUNCATE message reads "msg_email is write-once: TRUNCATE refused" (msg_write_once). The table is not write-once. A
+  `msg_mailbox_` function of its own would say it plainly.
+* Nit n2. The cursor shape (line 159) fits Gmail and IMAP only. MICROSOFT is in the enum but deferred (P-621). Say in the header that it
+  widens the check.
+
+Dimensions changed since round 1: D2 4 (r2-m2 open), D5 3 (R2-M1, r2-m1), D6 4 (r2-m4), D16 4 (r2-m1 has no failing case). The others
+are unchanged. Journey test round 2: **8.1/10, pass** (`journey-test-reviewer-2026-11-25.md`, Round 2).
+Could not check: the Lead's read (P-600 (e)), the full CI run, and an intended user's walk (D17 and D20 stay with the founder).
+
+**Verdict: Block** for 14c4b73 (Ship after fixes): the label must not go on this commit. To fix: R2-M1. The Minors r2-m1 to r2-m4 should
+be fixed here or named in the hand-over.
+
+Reviewer: Changes 14c4b737dd9c8f67d45cac6b3c1e8caa35208fb4
+
+## Round 3 (9a4a104)
+Diff-only re-review of `14c4b73..9a4a104` at head **9a4a104f77aa4cbfb9320826fcf5562e76b31f71** ("Lead allows round 3"), by a fresh
+reviewer agent, 25 Nov 2026. Covers the migration, `wasFiled` in platform-messages.prisma, and the test. My own `git archive 9a4a104`
+copy (migration sha256 `8961b571…`), node_modules from the main checkout, Postgres 127.0.0.1:54329, scratch database
+`xr_studio_rv3_pf19m` (now dropped). No server; :4400 never used. Probes: `scratchpad/r3probe/` (`setup.sh`, `base.sql`, `mut.py`).
+
+**What I ran:** `check_pf19m_mailbox_schema.ts` **52/52**. `check_pf8b_f4_migrations.ts` **9/9**. Mutations (rule removed, then the
+test re-run): no lock, or FOR KEY SHARE → the two r2-m1 lines fail. FOR SHARE (round 2's lock) → the suite **hangs** (r3-m4). `was_filed`
+not carried on UPDATE → n1 fails. The OPEN-entry filing check removed → r2-m2 fails. The depth guard removed → n5 fails.
+
+**Round-2 items, each checked**
+* **R2-M1: fixed.** As xr_app, a filed email in a DISCONNECTED mailbox is moved, then un-filed (test lines 154-156). The content check
+  still applies there. A new email is still refused.
+* **r2-m1 and breaker n3: fixed.** Two real connections: the second sync waits, both move the cursor, and there is no 40P01. A disconnect
+  waits for a sync that is mid-run. Filing no longer locks the mailbox, so n3(b) (disconnect against filing) has no cycle left. The test fails
+  without the lock, but it hangs on FOR SHARE (r3-m4).
+* **r2-m2: fixed for one session** (filing waits for the entry to be resolved). Two sessions can still get past it (r3-m5).
+* **r2-m3 and breaker n6: fixed.** Every actor string in `api/src` matches, including `seed:PF-3`, `ourstaff:<id>`,
+  `system:platform.billing.exit_notices` and `system:unsubscribe:<x>`. A 150-character token segment is refused.
+* **r2-m4 and breaker n4: fixed.** The header gives erasure to PF-21d's own branch. Move and Un-file now work in a disconnected mailbox.
+* **n1: fixed** (`msg_mailbox_no_truncate` names the table). **n2: fixed** (the header says Microsoft widens the cursor check).
+* **Breaker n1: fixed.** The app cannot write `was_filed`. On INSERT, `true` is replaced by the trigger's value. On UPDATE, `false` after a
+  filing comes back `true`, and `true` on an unfiled email comes back `false`. The trigger has no bypass for xr_app. But it adds r3-m1.
+* **Breaker n2: assigned** to part 3 in the header, with a failing case due there. **n5: fixed**, but the depth guard can be faked (r3-m2).
+  **n7: fixed.** The longest seal of 8192 UTF-16 units is about 32,800 characters, under the 48000 cap.
+
+**New findings.** No Blocker and no Major.
+* **r3-m1 (Minor, Should; for part 3). An un-filed email makes the shape's purge statement fail.** migration.sql:226, test:151. Shape.md
+  part 3 says "purges unfiled stored email", and the test's own purge is `delete … where filed_id is null`. If one email in the mailbox was
+  filed and then un-filed (AG-10-83 "Un-file returns it to Unmatched"), that whole statement gets 23514. Nothing is purged, so the
+  disconnect fails (probe 2: e2 and e4 kept until `and not was_filed` is added). Such an email is also kept for good after the disconnect.
+  That is a narrowing of "purges unfiled" that the header states but shape.md does not. Fix: write the purge predicate
+  `filed_id is null and not was_filed` into the header and the test's purge. Record the retention choice in shape.md, or move it to the
+  Lead or the founder if it should be decided there.
+* **r3-m2 (Minor). `pg_trigger_depth()` can be faked by xr_app** (line 253). xr_app has TEMP on the database. In one transaction:
+  `create temp table t(x int)`, a `pg_temp.f()` trigger function that runs `delete from msg_unmatched where id = <OPEN>`, an AFTER INSERT
+  trigger, then `insert into t values (1)`. The OPEN entry is gone, and the same delete run directly gets 23514. Fix, tested in my copy:
+  refuse while the email still exists (`OLD.state = 'OPEN' AND EXISTS (SELECT 1 FROM msg_email e WHERE e.firm_id = OLD.firm_id AND
+  e.id = OLD.email_id)`). The wrapped delete is then refused, and the purge's cascade still removes the entry.
+* **r3-m3 (Minor; for part 4). The new rules block Un-file's return to Unmatched.** The key is unique on `(firm_id, email_id)`, and
+  "a resolved entry never re-opens" (line 259). So for an email linked from Unmatched and then un-filed, a new OPEN entry gets 23505 and
+  re-opening gets 23514. Only deleting the LINKED entry and inserting a new one works, and that loses who linked it. Fix: allow
+  LINKED/DISMISSED → OPEN when the email is unfiled, or name the route for PF-19mi.
+* **r3-m4 (Minor). The lock test hangs instead of failing on a FOR SHARE regression** (test:169). With the lock at FOR SHARE, b's insert does
+  not wait. a's cursor update then waits on b's lock while b waits in the script. I saw it stuck for 9 minutes and stopped it by hand. Fix:
+  `set lock_timeout = '10s'` on a and b, so a regression shows a FAIL line (55P03).
+* **r3-m5 (Minor; for part 4). Write skew on "OPEN means unfiled".** Session 1 inserts an OPEN entry for E and waits. Session 2 files E and
+  commits. Then session 1 commits. The result is `OPEN|filed`. Fix: in `msg_unmatched_write`, `SELECT … FROM msg_email … FOR SHARE` before
+  the check. Or name it for PF-19mi (the sync writes an email and its entry in one transaction).
+* Nit n1. The header (line 23) and the test title (line 221) say "an id without dots". The pattern allows up to three dots, and the test
+  passes `system:platform.mailbox-sync`. Nit n2. The UPDATE branch reads the mailbox status but uses it only for DELETE.
+
+Dimensions since round 2: D2 4 (r3-m3, r3-m5), D5 4 (R2-M1 and r2-m1 closed; r3-m1 open), D6 4 (r3-m1 is not named), D16 4 (r3-m4).
+The others are unchanged. Journey test round 3: **8.1/10, pass** (`journey-test-reviewer-2026-11-25.md`, Round 3).
+Could not check: the Lead's read (P-600 (e)), the full CI run, `rds-shape-check.sh` (not re-run; the lock needs the same UPDATE grant
+FOR SHARE did, and xr_app inserts work locally), and an intended user's walk (D17 and D20 stay with the founder).
+
+**Verdict: Approve** for 9a4a104 (Ship): no open Blocker or Major. Before part 3 starts, r3-m1 should be fixed or named in the hand-over.
+r3-m2 to r3-m5 should be fixed here or named for their parts.
+
+Reviewer: Approve 9a4a104f77aa4cbfb9320826fcf5562e76b31f71
