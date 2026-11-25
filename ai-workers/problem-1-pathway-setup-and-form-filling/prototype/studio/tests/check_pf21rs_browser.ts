@@ -84,6 +84,8 @@ const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql
 const nameA = sql(`select operating_name from platform_firm where id = '${A}'`), nameB = sql(`select operating_name from platform_firm where id = '${B}'`);
 const tOwner = await ourToken(OWNER);
 const ownerId = sql(`select id from plat_system_staff where email = '${OWNER}'`);
+  sql(`with s as (insert into plat_system_staff (id, email, display_name) values (gen_random_uuid(), '${AUDITOR}', 'Auditor (Sample)') on conflict (email) do update set display_name = excluded.display_name returning id)
+       insert into plat_system_role_grant (id, staff_id, role_code) select gen_random_uuid(), id, 'platform-auditor' from s where not exists (select 1 from plat_system_role_grant g where g.staff_id = s.id) returning staff_id`);
 try {
   // ---------------------------------------------------------------------------------------- A1-1 the list
   // Two breaches by the API: one naming A and B, decided "Notify firms" (Notices owed, 0 of 2); one under investigation.
@@ -148,11 +150,11 @@ try {
   await p1.screenshot({ path: join(SHOTS, "a1-02-record-dialog-1440.png") });
   const t0 = Date.now();
   await dlg.getByRole("button", { name: "Record the breach" }).dblclick();
-  const done = await seen(p1, "[data-recorded]", 15_000);
-  await dlg.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
-  await p1.waitForTimeout(200); closedFocus.push(await onRecordButton());
-  ok("PF-21rs A1-2 fail (break B1, WCAG 2.4.3): closing the dialog by Escape, Cancel or a record puts the focus back on \"Record a breach\", never on the page",
-    closedFocus.length === 3 && closedFocus.every(Boolean), closedFocus);
+  // A2: after the record the new breach's own page opens with its next step (board §2).
+  const done = await seen(p1, "[data-done]", 15_000);
+  const opened = new URL(p1.url()).pathname, doneWords = await p1.locator("[data-done]").innerText().catch(() => "");
+  ok("PF-21rs A1-2 fail (break B1, WCAG 2.4.3): closing the dialog by Escape or Cancel puts the focus back on \"Record a breach\", never on the page",
+    closedFocus.length === 2 && closedFocus.every(Boolean), closedFocus);
   const stored = sql(`select status || '|' || array_to_string(affected_firms, ',') || '|' || array_to_string(data_categories, ',') || '|' || containment || '|' || opened_by || '|' || floor(extract(epoch from discovered_at)) from plat_breach where description = '${desc.replace(/'/g, "''")}'`).split("|");
   const many = sql(`select count(*) from plat_breach where description = '${desc.replace(/'/g, "''")}'`);
   ok("PF-21rs A1-2 pass (BR-1): the breach is stored as written: RECORDED, firm A, the two categories, the containment, opened by our staff member, discovered now (the box's own minute)",
@@ -162,13 +164,16 @@ try {
   const line = sql(`select count(*) from plat_system_audit where route = '/api/system/register/breaches' and outcome::text = 'ALLOWED' and staff_id = '${ownerId}' and reason = 'Sample: recording the incident (PF-21rs A1 ${run})'`);
   ok("PF-21rs A1-2 pass (BR-7): the guard's audit line carries the person's own reason", line === "1", line);
   const newId = sql(`select id from plat_breach where description = '${desc.replace(/'/g, "''")}'`);
+  ok("PF-21rs A2 pass (board §2): after the record the breach's own page opens: \"Recorded. Next: decide whether firms are told.\", status Decision owed",
+    opened === `/system/privacy/breaches/${newId}` && doneWords === "Recorded. Next: decide whether firms are told." && (await p1.locator("[data-breach-status]").innerText()).includes("Decision owed"), { opened, doneWords });
+  await p1.getByRole("link", { name: "Breaches" }).first().click(); await heading(p1).waitFor({ timeout: 15_000 });
   const freshRow = p1.locator(`[data-breach-row="${newId}"]`);
   await freshRow.waitFor({ timeout: 10_000 }).catch(() => undefined);
   // Discovered "now" (the box's minute): first unless an earlier run recorded one in the same minute, so the API's order decides.
   const orderNow = await p1.locator("[data-breach-row]").evaluateAll((els) => els.map((e) => e.getAttribute("data-breach-row")));
   const apiNow = (await api(tOwner, BREACHES)).body.breaches.map((b: { id: string }) => b.id);
   ok("PF-21rs A1-2 pass: the list shows it in the API's place (newest discovered first) with firm A, \"Decision owed\" and the next step in words",
-    JSON.stringify(orderNow) === JSON.stringify(apiNow) && apiNow.indexOf(newId) >= 0 && apiNow.indexOf(newId) <= 1 && (await freshRow.innerText().catch(() => "")).includes("Decision owed") && (await freshRow.innerText().catch(() => "")).includes(nameA) && (await p1.locator("[data-recorded]").innerText()) === COPY.recorded, { at: apiNow.indexOf(newId), newId });
+    JSON.stringify(orderNow) === JSON.stringify(apiNow) && apiNow.indexOf(newId) >= 0 && (await freshRow.innerText().catch(() => "")).includes("Decision owed") && (await freshRow.innerText().catch(() => "")).includes(nameA), { at: apiNow.indexOf(newId), newId });
   await p1.screenshot({ path: join(SHOTS, "a1-03-recorded-1440.png"), fullPage: true });
 
   // A lost answer (review m1, break m1): the server records it, the page sees a 502; the person edits and tries again.
@@ -188,6 +193,115 @@ try {
   ok("PF-21rs A1-2 fail (review m1): an answer lost after the server recorded it, then an edited retry → plain words that it may be recorded already, the breach listed, nothing recorded twice",
     said === COPY.maybeRecorded && sql(`select count(*) from plat_breach where description like 'Sample: a lost answer (PF-21rs A1 ${run})%'`) === "1" && (await p1.locator(`[data-breach-row="${lostId}"]`).count()) === 1, { said, lostId });
 
+  // ---------------------------------------------------------------------------------------- A2: one breach (row W4; j_86 W6)
+  // Three Sample firms of this run, each with an active Owner (firm X also an Admin): X and Y named, Z never.
+  const firm = (label: string) => {
+    const key = `pf21rs-${label}-${run}`, name = `Sample Notice Firm ${label} ${run}`;
+    const fid = sql(`insert into platform_firm (id, key, operating_name, country_code, contact_email, status, updated_at) values (gen_random_uuid(), '${key}', '${name}', 'CA', 'contact.${key}@example.com', 'ACTIVE', now()) returning id`);
+    for (const [who, role] of label === "x" ? [["owner", "OWNER"], ["admin", "ADMIN"]] : [["owner", "OWNER"]]) {
+      const sid = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${fid}', '${who}.${key}@example.com', 'Sample ${who}', 'ACTIVE', now()) returning id`);
+      sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${fid}', '${sid}', '${role}', 'seed:PF-21rs')`);
+    }
+    return { id: fid, name };
+  };
+  const X = firm("x"), Y = firm("y"), Z = firm("z");
+  const w4 = await api(tOwner, BREACHES, "POST", { reason: "Sample: W4 seed", discoveredAt: ago(2), description: `Sample: a shared link exposed two firms' files (PF-21rs W4 ${run}).`, affectedFirms: [X.id, Y.id], dataCategories: ["identity_documents"] }, { "idempotency-key": `pf21rs-w4-${run}` });
+  const bp = `/system/privacy/breaches/${w4.body?.id}`;
+  await p1.goto(`${BASE}${bp}`); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 });
+  const sendX = p1.getByRole("button", { name: `Send notice to ${X.name}` }), sendY = p1.getByRole("button", { name: `Send notice to ${Y.name}` });
+  ok("PF-21rs A2 fail (BR-2): undecided, the page names \"Decide\" as the next step and offers no send (\"Record the decision first\")",
+    (await p1.locator("[data-next-step]").innerText()) === "Next: decide whether the affected firms are told." && (await sendX.count()) === 0 && (await p1.getByText("Not sent: Record the decision first.").count()) === 2);
+  await p1.getByRole("button", { name: "Decide" }).click();
+  const dd = p1.getByRole("dialog", { name: "Decide whether firms are told" }); await dd.waitFor();
+  await dd.getByRole("button", { name: "Record the decision" }).click();
+  await dd.locator("[role=alert]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const ddErr = await dd.locator("[role=alert]").allInnerTexts().catch(() => []);
+  await dd.getByRole("radio", { name: "Notify the affected firms" }).check(); await dd.getByLabel("Why").fill("Sample: identity documents may have been seen.");
+  await dd.getByLabel("Reason for the audit line").fill("Sample: deciding (PF-21rs W4)"); await dd.getByRole("button", { name: "Record the decision" }).click();
+  await sendX.waitFor({ timeout: 15_000 }).catch(() => undefined);
+  ok("PF-21rs A2 fail/pass (BR-7): Decide with nothing chosen → the API's refusals in the dialog, nothing stored; then Notify firms with why → stored with who, and a send offered per firm",
+    ddErr.length > 0 && sql(`select decision || '|' || decision_reason || '|' || decided_by from plat_breach where id = '${w4.body?.id}'`) === `NOTIFY_FIRMS|Sample: identity documents may have been seen.|staff:${ownerId}` && (await sendX.count()) === 1 && (await sendY.count()) === 1, ddErr);
+  const sendOne = async (btn: typeof sendX, why: string) => { await btn.click(); const sd = p1.getByRole("dialog", { name: /^Send the notice to/ }); await sd.waitFor(); await sd.getByLabel("Reason for the audit line").fill(why); await sd.getByRole("button", { name: "Send the notice" }).click(); await sd.waitFor({ state: "hidden", timeout: 20_000 }); };
+  await sendOne(sendX, "Sample: notifying X (PF-21rs W4)");
+  const rowX = p1.locator(`[data-notice-row="${X.id}"]`); await rowX.locator("time").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const apiOne = (await api(tOwner, `${BREACHES}/${w4.body?.id}`)).body, nX = apiOne.notices?.find((n: { firmId: string }) => n.firmId === X.id);
+  const dbX = sql(`select to_char(sent_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') from plat_breach_notice where breach_id = '${w4.body?.id}' and firm_id = '${X.id}'`);
+  await rowX.getByText("Words sent").click();
+  const xTime = await rowX.locator("time").getAttribute("datetime").catch(() => null), xSubject = await rowX.locator("[data-notice-subject]").innerText().catch(() => ""), xWords = await rowX.locator("[data-notice-words]").innerText().catch(() => "");
+  ok("PF-21rs A2 pass (row W4, j_86 W6, QA-757): firm X's row shows its sent time (<time datetime> = plat_breach_notice), 2 people, the subject and the words exactly as sent; no send left for X",
+    !!nX && xTime === dbX && xTime === nX.sentAt && xSubject === nX.subject && !!nX.text && xWords === nX.text && xWords.includes(X.name) && (await rowX.innerText()).includes("2 people") && (await sendX.count()) === 0 && (await sendY.count()) === 1, { xTime, dbX, xSubject });
+  const again = await api(tOwner, `${BREACHES}/${w4.body?.id}/notices`, "POST", { reason: "Sample: a second send", firmId: X.id });
+  await p1.reload(); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 });
+  ok("PF-21rs A2 fail (BR-3): a second send to firm X by the API → 409 ALREADY_NOTIFIED; the page still shows one notice to X and no send button for it",
+    again.status === 409 && again.body?.code === "ALREADY_NOTIFIED" && sql(`select count(*) from plat_breach_notice where breach_id = '${w4.body?.id}' and firm_id = '${X.id}'`) === "1" && (await sendX.count()) === 0, again.status);
+  await sendOne(sendY, "Sample: notifying Y (PF-21rs W4)");
+  await p1.locator(`[data-notice-row="${Y.id}"] time`).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const page4 = (await p1.locator("main").innerText()).replace(/\s+/g, " ");
+  ok("PF-21rs A2 pass (row W4): both firms notified, one notice each; firm Z never listed; no send button left; the status Recorded and the decision fixed",
+    sql(`select count(*) from plat_breach_notice where breach_id = '${w4.body?.id}'`) === "2" && !page4.includes(Z.name) && (await p1.getByRole("button", { name: /^Send notice to/ }).count()) === 0
+      && (await p1.locator("[data-breach-status]").innerText()).includes("Recorded") && page4.includes(COPY.decisionFixed) && (await p1.getByRole("button", { name: /decision|Decide/ }).count()) === 0, page4.slice(0, 160));
+  const hist = await p1.getByRole("list", { name: "History" }).innerText();
+  ok("PF-21rs A2 pass: History lists Recorded, the decision (Not decided → Notify firms) and each notice by firm, each by our staff member's name",
+    /Recorded/.test(hist) && hist.includes("Decision: Not decided → Notify firms") && hist.includes(`Notice sent to ${X.name}`) && hist.includes(`Notice sent to ${Y.name}`) && hist.includes("Platform Owner (Sample)"), hist.slice(0, 300));
+  await p1.screenshot({ path: join(SHOTS, "a2-01-breach-notices-1440.png"), fullPage: true });
+  // Break M1: a stale page never overwrites: the breach changes by the API while the dialog is open; Save stores nothing.
+  await p1.getByRole("button", { name: "Edit the record" }).click();
+  const st = p1.getByRole("dialog", { name: "Edit the record" }); await st.waitFor();
+  const other = await api(tOwner, `${BREACHES}/${w4.body?.id}`, "PATCH", { reason: "Sample: another tab", rootCause: "Sample: changed in another tab" });
+  await st.getByLabel("Root cause").fill("Sample: this tab's stale words"); await st.getByLabel("Reason for the audit line").fill("Sample: stale");
+  await st.getByRole("button", { name: "Save the changes" }).click();
+  await st.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  const staleSaid = await p1.locator("[data-done]").innerText({ timeout: 10_000 }).catch(() => "");
+  const closed = !(await st.isVisible());
+  // Round 2 (M1): the stale form is gone, so it cannot be saved again; Edit opens on the latest words.
+  await p1.getByRole("button", { name: "Edit the record" }).click(); await st.waitFor();
+  const fresh = await st.getByLabel("Root cause").inputValue();
+  await st.getByRole("button", { name: "Cancel" }).click(); await st.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs A2 fail (break M1, round 2): a breach changed elsewhere while Edit is open → nothing saved, Edit closes and the page says so; Edit opens again on the latest words",
+    other.status === 200 && closed && staleSaid === COPY.stale && fresh === "Sample: changed in another tab" && sql(`select root_cause from plat_breach where id = '${w4.body?.id}'`) === "Sample: changed in another tab", { status: other.status, closed, staleSaid, fresh });
+  // Edit the record: a change of containment is stored and listed; a notified firm cannot be removed.
+  await p1.getByRole("button", { name: "Edit the record" }).click();
+  const ed = p1.getByRole("dialog", { name: "Edit the record" }); await ed.waitFor();
+  const noRemove = (await ed.getByRole("button", { name: `Remove ${X.name}` }).count()) === 0;
+  await ed.getByLabel("Containment").fill("Sample: the link was revoked."); await ed.getByLabel("Reason for the audit line").fill("Sample: containment known");
+  await ed.getByRole("button", { name: "Save the changes" }).click(); await ed.waitFor({ state: "hidden", timeout: 15_000 }).catch(() => undefined);
+  await p1.getByText("Sample: the link was revoked.").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs A2 pass (BR-3): Edit the record stores only the change (containment) and History says so; a notified firm offers no Remove",
+    noRemove && sql(`select containment from plat_breach where id = '${w4.body?.id}'`) === "Sample: the link was revoked." && (await p1.getByRole("list", { name: "History" }).innerText()).includes("Changed: containment"), { noRemove });
+  // A draft from an alert: Confirm the record, with the description firms will read.
+  const draft = await api(tOwner, `${BREACHES}/from-alert`, "POST", { reason: "Sample: draft", alert: { kind: "audit_chain_break", detail: { rule: "BR-5" }, raisedAt: ago(1) } }, { "idempotency-key": `pf21rs-d-${run}` });
+  await p1.goto(`${BASE}/system/privacy/breaches/${draft.body?.id}`); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 });
+  const draftNoSend = (await p1.getByRole("button", { name: "Decide" }).count()) === 0 && (await p1.locator("[data-breach-status]").innerText()).includes("Draft");
+  await p1.getByRole("button", { name: "Confirm the record" }).click();
+  const cd = p1.getByRole("dialog", { name: "Confirm the record" }); await cd.waitFor();
+  const alertWords = await cd.locator("[data-draft-words]").innerText();
+  const boxStart = await cd.getByLabel("What happened").inputValue();
+  await cd.getByLabel("What happened").fill(alertWords); await cd.getByLabel("Reason for the audit line").fill("Sample: confirming");
+  await cd.getByRole("button", { name: "Confirm the record" }).click();
+  const sameErr = await cd.locator("[data-field=description] ~ [role=alert]").innerText({ timeout: 5000 }).catch(() => "");
+  ok("PF-21rs A2 fail (break M2): Confirm starts with an empty description, shows the alert's words apart, and refuses them as the firms' words; still a draft",
+    boxStart === "" && alertWords.startsWith("Draft from an alert") && sameErr === COPY.draftSame && sql(`select status from plat_breach where id = '${draft.body?.id}'`) === "DRAFT", { boxStart, sameErr });
+  await cd.getByLabel("What happened").fill(`Sample: the activity log did not verify (PF-21rs draft ${run}).`); await cd.getByLabel("Reason for the audit line").fill("Sample: confirming");
+  await cd.getByRole("button", { name: "Confirm the record" }).click(); await cd.waitFor({ state: "hidden", timeout: 15_000 }).catch(() => undefined);
+  await p1.getByText("Decision owed").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs A2 pass/fail: a draft from an alert offers no Decide; Confirm the record with the firms' description makes it RECORDED, Decision owed",
+    draft.status === 201 && draftNoSend && sql(`select status from plat_breach where id = '${draft.body?.id}'`) === "RECORDED" && (await p1.locator("[data-breach-status]").innerText()).includes("Decision owed"), { draftNoSend });
+  // The walls on the breach page: the Auditor reads with no change button; Support reads the API's words.
+  const pa2 = await signedIn(await ourToken(AUDITOR)); await pa2.goto(`${BASE}${bp}`); await pa2.locator("[data-breach-status]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  ok("PF-21rs A2 W5 (c): the Auditor reads the breach, its notices and words, with no Edit, Decide or Send",
+    (await pa2.locator("[data-notice-subject]").count()) === 2 && (await pa2.getByRole("button", { name: /Edit the record|Decide|Send notice/ }).count()) === 0 && (await pa2.locator("[data-read-only]").count()) === 1);
+  await pa2.context().close();
+  const ps2 = await signedIn(await ourToken(SUPPORT)); await ps2.goto(`${BASE}${bp}`);
+  const noKey2 = await ps2.locator("[data-breach-error]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-21rs A2 W5 (c, BR-8): Support on the breach page reads the API's 403 words, no breach data", /system\/breach:read|Platform Owner and Auditor/i.test(noKey2) && !(await ps2.locator("body").innerText()).includes(X.name), noKey2);
+  await ps2.context().close();
+  const a2widths: Record<number, { axe: string[]; sideways: boolean }> = {};
+  for (const w of [1440, 1024, 400]) { await p1.setViewportSize({ width: w, height: 900 }); await p1.goto(`${BASE}${bp}`); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+    for (const sm of await p1.locator("details summary").all()) await sm.click();   // break M3: the words open, as a person reads them
+    a2widths[w] = { axe: await serious(p1), sideways: await p1.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth > 1) }; }
+  await p1.setViewportSize({ width: 1440, height: 900 });
+  ok("PF-21rs A2 W6 (break M3): the breach page at 1440, 1024 and 400 px with every \"Words sent\" open: axe-core 0 serious, no sideways page scroll", Object.values(a2widths).every((x) => !x.axe.length && !x.sideways), a2widths);
+
   // ---------------------------------------------------------------------------------------- W5 the walls (A1's page)
   const firmEmail = sql(`select email from platform_staff where actor_id = 'user-R'`);
   const tFirm = (await api(null, "/platform/session/local", "POST", { firmKey: "sample-firm", email: firmEmail, secondStep: true })).body?.token as string;
@@ -205,8 +319,6 @@ try {
     cardShown && (await p5.locator("[data-breach-row]").count()) === 0 && !(await p5.locator("body").innerText()).includes(String(two.body?.description ?? "-")) && firmRefused.length > 0
       && (await p5.evaluate((k) => sessionStorage.getItem(k), SESSION_KEY)) === null, firmRefused);
   await c5.close();
-  sql(`with s as (insert into plat_system_staff (id, email, display_name) values (gen_random_uuid(), '${AUDITOR}', 'Auditor (Sample)') on conflict (email) do update set display_name = excluded.display_name returning id)
-       insert into plat_system_role_grant (id, staff_id, role_code) select gen_random_uuid(), id, 'platform-auditor' from s where not exists (select 1 from plat_system_role_grant g where g.staff_id = s.id) returning staff_id`);
   const pa = await signedIn(await ourToken(AUDITOR)); await pa.goto(`${BASE}/system/privacy/breaches`);
   const audRows = await pa.locator(`[data-breach-row="${id2}"]`).waitFor({ timeout: 15_000 }).then(() => true, () => false);
   ok("PF-21rs W5 pass (c): the Auditor reads the register: the rows, the read-only line, no \"Record a breach\"",
@@ -219,7 +331,7 @@ try {
   await ps.context().close();
 
   // ---------------------------------------------------------------------------------------- W6 keyboard, axe, widths
-  await p1.reload(); await heading(p1).waitFor({ timeout: 15_000 });
+  await p1.goto(`${BASE}/system/privacy/breaches`); await heading(p1).waitFor({ timeout: 15_000 });
   const kdesc = `Sample: a laptop with a staff session was lost (PF-21rs keyboard ${run}).`;
   await p1.getByRole("button", { name: "Record a breach" }).focus(); await p1.keyboard.press("Enter");
   await dlg.waitFor();
@@ -235,13 +347,13 @@ try {
   reached.push(await tabTo(p1, "[data-field=reason]")); await p1.keyboard.type("Sample: recorded by keyboard");
   const axeDialog = await serious(p1);
   await p1.keyboard.press("Enter");                                                       // Enter in the reason box submits
-  await seen(p1, `[data-recorded]`);
+  await seen(p1, `[data-done]`);
   const kStored = sql(`select array_to_string(affected_firms, ',') || '|' || array_to_string(data_categories, ',') from plat_breach where description = '${kdesc.replace(/'/g, "''")}'`);
   ok("PF-21rs W6 pass: keyboard only: Enter on \"Record a breach\" opens the dialog on its first field; Tab, typing, Enter on \"Add <firm>\", Space on a category and Enter record it",
     firstFocus === "datetime-local" && reached.every(Boolean) && backInSearch && kStored === `${B}|sign_in_credentials`, { firstFocus, reached, backInSearch, kStored });
   const widths: Record<number, { axe: string[]; sideways: boolean; rendered: boolean }> = {};
   for (const w of [1440, 1024, 400]) {
-    await p1.setViewportSize({ width: w, height: 900 }); await p1.reload(); await heading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await p1.setViewportSize({ width: w, height: 900 }); await p1.goto(`${BASE}/system/privacy/breaches`); await heading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
     await p1.locator("[data-breach-row]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
     widths[w] = { rendered: (await heading(p1).count()) === 1 && (await p1.getByRole("button", { name: "Record a breach" }).count()) === 1, axe: await serious(p1), sideways: await p1.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth > 1) };
     if (w !== 1440) await p1.screenshot({ path: join(SHOTS, `a1-04-breaches-${w}.png`), fullPage: true });
