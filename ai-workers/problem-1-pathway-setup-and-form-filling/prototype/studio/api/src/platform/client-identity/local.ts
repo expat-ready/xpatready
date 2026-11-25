@@ -1,6 +1,5 @@
 // PF-4p part 1 (R1.62; P-584 (4)): the local stand-in for clients' own pool, apart from the firm staff's and our own staff's: its own key,
-// issuer and `plane: "client"` claim, so no token crosses planes. The key is derived from PLATFORM_LOCAL_SECRET with its own label (HMAC-SHA256,
-// node:crypto, tech gate entry 2); unset: random per start. Only with PLATFORM_IDENTITY=local (refused outside PLATFORM_ENVIRONMENT=local).
+// issuer and `plane: "client"` claim. Key: HMAC of PLATFORM_LOCAL_SECRET with its own label (tech gate entry 2), else random; local only.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { IdentityRefused, type IdentityPort, type VerifiedIdentity } from "../identity/port.ts";
 

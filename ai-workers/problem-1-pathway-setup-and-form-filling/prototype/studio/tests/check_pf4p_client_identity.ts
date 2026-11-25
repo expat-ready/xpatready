@@ -3,8 +3,7 @@
 // a client token on a case route → 403. DW2 own cases only; another client's or firm's case, a random and a malformed id: the same 404.
 // DW3 suspend and sign-out end sessions. DW4 each sign-in (and refused one) writes one CLIENT audit line. DW5 the start-up rules.
 // DW6 the schema (one account per person and email, email form, the firm's own person, PF-12's wall). PENDING: PF-27's firmAllows.
-// One process: a scratch database (every migration, PF-3's Sample seed) and a small Nest app of the feature's classes beside core.ts's
-// ConfigReadGuard, PF-4's guard and routes and PF-12's interceptor. No model call (US$0).
+// One process: a scratch database (every migration, PF-3's Sample seed) and a small Nest app of the feature's classes with PF-4's and PF-12's. US$0.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf4p_client_identity.ts
 import "reflect-metadata";
 import { Controller, Get, Module } from "@nestjs/common";
