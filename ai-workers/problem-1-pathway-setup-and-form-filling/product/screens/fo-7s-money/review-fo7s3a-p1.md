@@ -163,3 +163,13 @@ Fresh copy `rv7s3a` on :4761, web bundle rebuilt from the clean head. The local 
 **Not checked in round 3:** CI on c02da9d55; a real screen reader.
 
 Reviewer: Approve c02da9d558987177d3c846d3dfd18d50d209222f
+
+## Round 4 (25 Nov): `git diff f1a962afd..77787fa899c3df4d4a65f76b6f199f9eba183905`, diff only (the Lead's comment 7159369398)
+**Verdict: Ship (Approve).** No Blocker or Major is open.
+
+* **The change** is one comment line in `tests/check_fo7s3a_payments_trust_browser.ts:19`, the usage line. `&& trap '…stop' EXIT &&` is removed between `isolated.sh fo7s3a 4752 start AI_LIVE=off PLATFORM_IDENTITY=local` and `tsx studio/tests/check_fo7s3a_payments_trust_browser.ts 4752 xr_studio_fo7s3a`.
+* **Why it was broken:** `run-suites.sh:391` matches a usage line only in the form `isolated.sh <name> <port> start[ KEY=VALUE…] && (tsx|node) studio/tests/<file>…`. The old line did not match, so the runner started no copy. That fits batch #3738's shard 13 "fetch failed :4752".
+* **Confirmed:** from the solution folder, `bash product/tools/run-suites.sh --only check_fo7s3a_payments_trust_browser.ts` gave **PASS, 45/45, 24 s** on commit 77787fa89. It used the runner's own copy (prefix `screens`, slot 2, ports +11000, so not :4752 or :4400). No test copy is left running, and the rewritten screenshots are restored.
+* **Nothing else changed.** The code and the other test lines are the same as at c02da9d55, so round 3's Approve and r3-m1 (U+2800, Minor) carry over unchanged.
+
+Reviewer: Approve 77787fa899c3df4d4a65f76b6f199f9eba183905
