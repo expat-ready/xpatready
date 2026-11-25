@@ -46,7 +46,8 @@ function refuseStatus(status: string): never {
   return problem(401, "Not active yet", "This portal account is not active yet. Open the invitation your firm sent you.", { code: "CLIENT_NOT_ACTIVE" });
 }
 /** The email as stored: NFC, lower case, no space of any kind at either end (the database check refuses any inside). */
-const normalEmail = (v: string) => v.normalize("NFC").replace(/^[\s\u00a0\u2007\u202f\u200b\ufeff]+|[\s\u00a0\u2007\u202f\u200b\ufeff]+$/g, "").toLowerCase();
+const EDGE_SPACE = new Set([..." \t\n\v\f\r\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b\u2028\u2029\u202f\u205f\u3000\ufeff"]);
+const normalEmail = (v: string) => { const c = [...v.normalize("NFC")]; let i = 0, j = c.length; while (i < j && EDGE_SPACE.has(c[i])) i++; while (j > i && EDGE_SPACE.has(c[j - 1])) j--; return c.slice(i, j).join("").toLowerCase(); };   // a scan, not a regex (CodeQL: polynomial regex on input)
 @Injectable()
 export class ClientIdentity {
   constructor(@Inject(Db) private readonly db: Db, @Inject(CLIENT_IDENTITY_PORT) readonly port: IdentityPort, @Inject(PlatformClock) private readonly clock: PlatformClock,
