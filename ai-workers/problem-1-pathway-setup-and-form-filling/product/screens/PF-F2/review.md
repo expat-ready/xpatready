@@ -190,3 +190,34 @@ Head reviewed: `a2acd4caa55d547f859059aa9a785af00e9aae9e` on `claude/quirky-maye
 Verdict: Approve a2acd4caa55d547f859059aa9a785af00e9aae9e
 
 **Verdict: Approve** (head `a2acd4caa55d547f859059aa9a785af00e9aae9e`). No open Blocker or Major.
+
+## Round 6 (diff-only, e94227bf), 25 Nov 2026
+
+**Reviewed:** `git diff -M 7f6bd22e3 e94227bfc` only, which is two commits after the round 5 approval (`0f04e7af7`, `e94227bfc`). It touches 4 files, +9 −3. Head `e94227bfcfd72f778e0dbac8b790f56dc875d605` on `claude/quirky-mayer-g0iinz`, after `git fetch origin`.
+
+**1. Rename (`0f04e7af7`).** The folder moves from `20261125120000_pff2_plat_file` to `20261125120000_platform-files__pff2_plat_file`, and git sees it as a rename (similarity 98 %).
+- I compared the two blobs with every `--` comment line removed and they are identical. The SQL statements did not change. The only line that changed is the folder name in the `-- Rollback` comment.
+- `tests/check_pff2_uploads.ts:26` `NEW` and the `Tables:` line in `api/src/platform/MODULE.rows/PF-F2.md` both name the new folder.
+- `git grep pff2_plat_file e94227bfc` outside `product/screens` finds only the new name. The old folder name is gone from `studio/` and from the rest of the tree, apart from the records in `product/screens`.
+- The old folder never reached `origin/main`, which has no `pff2` migration. No database outside test copies has a `_prisma_migrations` row under the old name, so the rename is safe.
+- Both stacked branches, `runtime-pff2-head-finish` (#3640) and `runtime-pff2-client`, already carry the new folder name.
+
+**2. Merge slot (`e94227bfc`).** `.mergify.yml` gains `mig-platform-files` with its 3 includes, and `mig-platform-files: 1` under the limits. Nothing else in the file changed.
+- The scope copies `mig-platform-entitlements` and `mig-platform-import` line for line. Its includes are `prisma/schema/platform-files.prisma`, `prisma/migrations/*_platform-files__*/**` and the shared `*_shared__*/**`. It sits in alphabetical order in both lists.
+- `prisma/schema/platform-files.prisma` exists, so the first include is not dead.
+- `migration-slots.py mergify --write` on a copy of the head's `.mergify.yml` gives a byte-identical file, so the change is exactly the tool's output.
+
+**Checks (the tool lives at `ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/migration-slots.py`):**
+- `migration-slots.py check origin/main..HEAD`: PASS. It reports 1 new migration against main's newest `20261124170000` (`20261125120000_platform-files__pff2_plat_file`).
+- `migration-slots.py mergify --check .mergify.yml`: PASS, 33 area scopes, 4 barrier areas.
+- `check-mergify-scopes.sh`: PASS, 309 checks.
+- `git merge-tree --write-tree origin/main HEAD`: clean. `origin/main` was `a1a086e3d`.
+
+**Run:** on `e94227bfc` I ran `run-suites.sh --only "check_prisma_schema.ts check_pff2_uploads.ts check_pf8b_f4_migrations.ts check_pf12_walls.ts check_pf3_platform_schema.ts"`, exit 0. The suites passed with 8, 40, 9/9, 110 and 75, the counts the builder gave. The copies were `runtime_*` on ports +14000 (18430-range), with Postgres 18 on :54329, never :4400. The working tree was clean afterwards.
+
+**Findings:** none. No Blocker, no Major, no new Minor. For context, this is the first migration folder in the tree that carries an area name. Every earlier one predates P-802's `<stamp>_<area>__<name>` form, and the tool accepts them as they are.
+
+**Journey score:** not scored this round, as in rounds 3-5. The change is a rename plus a merge-queue slot, with no screen.
+**Not checked:** I did not look at CI check runs on `e94227bfc`; the only run is my local one above.
+
+Verdict: Approve e94227bfcfd72f778e0dbac8b790f56dc875d605
