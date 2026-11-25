@@ -171,3 +171,65 @@ Could not check: the Lead's read (P-600 (e)), the full CI run, and an intended u
 be fixed here or named in the hand-over.
 
 Reviewer: Changes 14c4b737dd9c8f67d45cac6b3c1e8caa35208fb4
+
+## Round 3 (9a4a104)
+Diff-only re-review of `14c4b73..9a4a104` at head **9a4a104f77aa4cbfb9320826fcf5562e76b31f71** ("Lead allows round 3"), by a fresh
+reviewer agent, 25 Nov 2026. Covers the migration, `wasFiled` in platform-messages.prisma, and the test. My own `git archive 9a4a104`
+copy (migration sha256 `8961b571…`), node_modules from the main checkout, Postgres 127.0.0.1:54329, scratch database
+`xr_studio_rv3_pf19m` (now dropped). No server; :4400 never used. Probes: `scratchpad/r3probe/` (`setup.sh`, `base.sql`, `mut.py`).
+
+**What I ran:** `check_pf19m_mailbox_schema.ts` **52/52**. `check_pf8b_f4_migrations.ts` **9/9**. Mutations (rule removed, then the
+test re-run): no lock, or FOR KEY SHARE → the two r2-m1 lines fail. FOR SHARE (round 2's lock) → the suite **hangs** (r3-m4). `was_filed`
+not carried on UPDATE → n1 fails. The OPEN-entry filing check removed → r2-m2 fails. The depth guard removed → n5 fails.
+
+**Round-2 items, each checked**
+* **R2-M1: fixed.** As xr_app, a filed email in a DISCONNECTED mailbox is moved, then un-filed (test lines 154-156). The content check
+  still applies there. A new email is still refused.
+* **r2-m1 and breaker n3: fixed.** Two real connections: the second sync waits, both move the cursor, and there is no 40P01. A disconnect
+  waits for a sync that is mid-run. Filing no longer locks the mailbox, so n3(b) (disconnect against filing) has no cycle left. The test fails
+  without the lock, but it hangs on FOR SHARE (r3-m4).
+* **r2-m2: fixed for one session** (filing waits for the entry to be resolved). Two sessions can still get past it (r3-m5).
+* **r2-m3 and breaker n6: fixed.** Every actor string in `api/src` matches, including `seed:PF-3`, `ourstaff:<id>`,
+  `system:platform.billing.exit_notices` and `system:unsubscribe:<x>`. A 150-character token segment is refused.
+* **r2-m4 and breaker n4: fixed.** The header gives erasure to PF-21d's own branch. Move and Un-file now work in a disconnected mailbox.
+* **n1: fixed** (`msg_mailbox_no_truncate` names the table). **n2: fixed** (the header says Microsoft widens the cursor check).
+* **Breaker n1: fixed.** The app cannot write `was_filed`. On INSERT, `true` is replaced by the trigger's value. On UPDATE, `false` after a
+  filing comes back `true`, and `true` on an unfiled email comes back `false`. The trigger has no bypass for xr_app. But it adds r3-m1.
+* **Breaker n2: assigned** to part 3 in the header, with a failing case due there. **n5: fixed**, but the depth guard can be faked (r3-m2).
+  **n7: fixed.** The longest seal of 8192 UTF-16 units is about 32,800 characters, under the 48000 cap.
+
+**New findings.** No Blocker and no Major.
+* **r3-m1 (Minor, Should; for part 3). An un-filed email makes the shape's purge statement fail.** migration.sql:226, test:151. Shape.md
+  part 3 says "purges unfiled stored email", and the test's own purge is `delete … where filed_id is null`. If one email in the mailbox was
+  filed and then un-filed (AG-10-83 "Un-file returns it to Unmatched"), that whole statement gets 23514. Nothing is purged, so the
+  disconnect fails (probe 2: e2 and e4 kept until `and not was_filed` is added). Such an email is also kept for good after the disconnect.
+  That is a narrowing of "purges unfiled" that the header states but shape.md does not. Fix: write the purge predicate
+  `filed_id is null and not was_filed` into the header and the test's purge. Record the retention choice in shape.md, or move it to the
+  Lead or the founder if it should be decided there.
+* **r3-m2 (Minor). `pg_trigger_depth()` can be faked by xr_app** (line 253). xr_app has TEMP on the database. In one transaction:
+  `create temp table t(x int)`, a `pg_temp.f()` trigger function that runs `delete from msg_unmatched where id = <OPEN>`, an AFTER INSERT
+  trigger, then `insert into t values (1)`. The OPEN entry is gone, and the same delete run directly gets 23514. Fix, tested in my copy:
+  refuse while the email still exists (`OLD.state = 'OPEN' AND EXISTS (SELECT 1 FROM msg_email e WHERE e.firm_id = OLD.firm_id AND
+  e.id = OLD.email_id)`). The wrapped delete is then refused, and the purge's cascade still removes the entry.
+* **r3-m3 (Minor; for part 4). The new rules block Un-file's return to Unmatched.** The key is unique on `(firm_id, email_id)`, and
+  "a resolved entry never re-opens" (line 259). So for an email linked from Unmatched and then un-filed, a new OPEN entry gets 23505 and
+  re-opening gets 23514. Only deleting the LINKED entry and inserting a new one works, and that loses who linked it. Fix: allow
+  LINKED/DISMISSED → OPEN when the email is unfiled, or name the route for PF-19mi.
+* **r3-m4 (Minor). The lock test hangs instead of failing on a FOR SHARE regression** (test:169). With the lock at FOR SHARE, b's insert does
+  not wait. a's cursor update then waits on b's lock while b waits in the script. I saw it stuck for 9 minutes and stopped it by hand. Fix:
+  `set lock_timeout = '10s'` on a and b, so a regression shows a FAIL line (55P03).
+* **r3-m5 (Minor; for part 4). Write skew on "OPEN means unfiled".** Session 1 inserts an OPEN entry for E and waits. Session 2 files E and
+  commits. Then session 1 commits. The result is `OPEN|filed`. Fix: in `msg_unmatched_write`, `SELECT … FROM msg_email … FOR SHARE` before
+  the check. Or name it for PF-19mi (the sync writes an email and its entry in one transaction).
+* Nit n1. The header (line 23) and the test title (line 221) say "an id without dots". The pattern allows up to three dots, and the test
+  passes `system:platform.mailbox-sync`. Nit n2. The UPDATE branch reads the mailbox status but uses it only for DELETE.
+
+Dimensions since round 2: D2 4 (r3-m3, r3-m5), D5 4 (R2-M1 and r2-m1 closed; r3-m1 open), D6 4 (r3-m1 is not named), D16 4 (r3-m4).
+The others are unchanged. Journey test round 3: **8.1/10, pass** (`journey-test-reviewer-2026-11-25.md`, Round 3).
+Could not check: the Lead's read (P-600 (e)), the full CI run, `rds-shape-check.sh` (not re-run; the lock needs the same UPDATE grant
+FOR SHARE did, and xr_app inserts work locally), and an intended user's walk (D17 and D20 stay with the founder).
+
+**Verdict: Approve** for 9a4a104 (Ship): no open Blocker or Major. Before part 3 starts, r3-m1 should be fixed or named in the hand-over.
+r3-m2 to r3-m5 should be fixed here or named for their parts.
+
+Reviewer: Approve 9a4a104f77aa4cbfb9320826fcf5562e76b31f71

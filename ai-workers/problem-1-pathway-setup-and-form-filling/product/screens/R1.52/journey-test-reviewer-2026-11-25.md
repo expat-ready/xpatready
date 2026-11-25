@@ -82,3 +82,32 @@ The test suite has 44 lines, 44/44 passing. The RDS-shaped run passes.
 | Trust and sources | 1 | Every rule cites its requirement; the credential has the real box's exact shape |
 
 **6.5 of 8 applicable, which is 8.1/10. Pass.** To raise it: R2-M1 first, then r2-m4 and r2-m1.
+
+## Round 3 (9a4a104f77aa4cbfb9320826fcf5562e76b31f71)
+Diff-only. Same surface (xr_app with the firm set, plus two owner connections for the lock). My own `git archive` copy and scratch
+database `xr_studio_rv3_pf19m` (dropped). No server and no port (never :4400). Changed journeys:
+* **8b, after the disconnect, an Admin moves a misfiled email, then un-files it:** both are accepted. The subject still cannot change.
+* **10b, the 5-minute job runs twice at once on one mailbox:** the second run waits, both move the cursor, and there is no 40P01.
+* **8, disconnect during a sync:** the disconnect waits, and the purge then removes the late email.
+* **8c, disconnect a mailbox where one email was filed and then un-filed:** the purge `where filed_id is null` is refused as a whole
+  (23514), so nothing is purged. Adding `and not was_filed` works (review r3-m1).
+* **4c, Un-file an email that was linked from Unmatched (AG-10-83 "returns it to Unmatched"):** a new OPEN entry gets 23505, and re-opening
+  gets 23514. Only deleting and inserting again works (review r3-m3).
+* **Break it:** an OPEN entry is deleted through a temp-table trigger (r3-m2). Two sessions leave an OPEN entry on a filed email (r3-m5). The
+  app's own `was_filed` value is always replaced by the trigger's.
+The test suite has 52 lines, 52/52 passing. F4 passes 9/9.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | Every round-2 item is closed or assigned; R2-M1 has a passing case |
+| Next step obvious | ½ | The purge predicate (r3-m1) and the Un-file route (r3-m3) are not named for parts 3 and 4 |
+| Plain words | 1 | The TRUNCATE message now names the table and says what to do instead |
+| Feedback and state | 1 | 23514, 23505, 23503, 42501 and 23001, one per rule |
+| Correct data | ½ | An OPEN entry on a filed email under two sessions (r3-m5); an OPEN entry can be dropped through a temp trigger (r3-m2) |
+| Error recovery | ½ | Move and Un-file work after a disconnect, and syncs queue; but one un-filed email stops the whole purge (r3-m1) |
+| Accessibility, Visual | N/A | No page |
+| Speed | 1 | The suite runs in about 35 s; the actor check costs about 0.1 ms a row, on low-volume columns only |
+| Trust and sources | 1 | Every rule cites AG-10, SA-11 or a review item |
+
+**6.5 of 8 applicable, which is 8.1/10. Pass.** To raise it: r3-m1 first, then r3-m3 and r3-m2.
+Could not test: a real screen reader and an intended user's unaided walk (D17 and D20 stay with the founder). There is no UI in this part.
