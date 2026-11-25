@@ -63,11 +63,17 @@ try {
   // ---------------------------------------------------------------------------------------------- fixtures (all Sample)
   const W = randomUUID();
   sql(`insert into workspace (id, key, label) values ('${W}', 'csr1-${W.slice(0, 8)}', 'CS-R1 (Sample)')`);
-  const combo = (clientType: string | null) => {
-    const p = randomUUID(), c = randomUUID();
+  // A combination hangs below its Pathway, as on real data (check_csc1_count.ts): combination → PROGRAM → Pathway, and
+  // that Pathway sits inside an outer Pathway of the other client type, so only the nearest Pathway gives the right group
+  // (review 2 N1 (a): a walk that stops at the first node, or takes the farthest Pathway, fails DW5).
+  const combo = (clientType: string) => {
+    const k = randomUUID().slice(0, 8), c = randomUUID(), other = clientType === "CORPORATE" ? "INDIVIDUAL" : "CORPORATE";
     sql(`set session_replication_role = replica;
-      insert into program_def (id, workspace_id, program_node_key, node_kind, label, client_type, created_by) values ('${p}', '${W}', 'csr1.${p.slice(0, 8)}', 'PATHWAY', 'Sample pathway', ${clientType ? qt(clientType) : "null"}, 'csr1');
-      insert into combination (id, workspace_id, program_def_id, combination_key, label, participants, created_by) values ('${c}', '${W}', '${p}', 'csr1.${c.slice(0, 8)}', 'Sample', '[]', 'csr1')`);
+      insert into program_def (id, workspace_id, program_node_key, parent_node_key, node_kind, label, client_type, created_by) values
+        ('${randomUUID()}', '${W}', 'csr1.${k}.outer', null, 'PATHWAY', 'Sample outer pathway', '${other}', 'csr1'),
+        ('${randomUUID()}', '${W}', 'csr1.${k}.pathway', 'csr1.${k}.outer', 'PATHWAY', 'Sample pathway', '${clientType}', 'csr1');
+      insert into program_def (id, workspace_id, program_node_key, parent_node_key, node_kind, label, created_by) values ('${c}', '${W}', 'csr1.${k}.program', 'csr1.${k}.pathway', 'PROGRAM', 'Sample program', 'csr1');
+      insert into combination (id, workspace_id, program_def_id, combination_key, label, participants, created_by) values ('${c}', '${W}', '${c}', 'csr1.${k}', 'Sample', '[]', 'csr1')`);
     return c;
   };
   const INDIVIDUAL = combo("INDIVIDUAL"), CORPORATE = combo("CORPORATE");
@@ -173,6 +179,12 @@ try {
   const trend = await one(OWNER, "reports.cases.new_vs_closed", { from: "2026-09-01", to: "2026-11-30" });
   ok("CS-R1 DW2 pass: new versus closed per month (Sep 1 opened; Oct 1; Nov 2 opened, 1 closed)", eq(rows(trend), [{ month: "2026-09", opened: 1, closed: 0 }, { month: "2026-10", opened: 2, closed: 0 }, { month: "2026-11", opened: 2, closed: 1 }]), trend);
   ok("CS-R1 DW5 pass: months are the firm's (Toronto): a case opened 31 Oct 23:30 there is October's, not November's", rows(trend)?.[1]?.opened === 2);
+  // review 2 N1 (b): the firm's stored zone is read, not assumed: in Kolkata the same case (09:00 on 1 Nov there) is November's
+  sql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${A}', 'platform.time_zone', '"Asia/Kolkata"', 'csr1')`);
+  const kolkata = rows(await one(OWNER, "reports.cases.new_vs_closed", { from: "2026-09-01", to: "2026-11-30" }));
+  sql(`delete from platform_firm_setting where firm_id = '${A}' and key = 'platform.time_zone'`);
+  ok("CS-R1 DW5 fail: with the firm's zone set to Asia/Kolkata, that case moves to November (Oct 1 opened, Nov 3)", kolkata?.[1]?.opened === 1 && kolkata?.[2]?.opened === 3, kolkata);
+  ok("CS-R1 DW5 pass (break m3): a start date before 1970 reads from 1970 at the door, never UNAVAILABLE", (await one(OWNER, "reports.cases.open_review_findings", { from: "0001-01-01", to: "2026-11-30" })).status === "OK");
   const mid = await one(OWNER, "reports.cases.new_vs_closed", { from: "2026-09-15", to: "2026-11-02" });
   ok("CS-R1 DW5 fail: the trend keeps to the period's own days (c3 opened 10 Sep is before 15 Sep; c5 opened 4 Nov is after 2 Nov; c2 opened 2 Nov counts: the last day is inclusive)", eq(rows(mid), [{ month: "2026-09", opened: 0, closed: 0 }, { month: "2026-10", opened: 2, closed: 0 }, { month: "2026-11", opened: 1, closed: 0 }]), mid);
   const dur = await one(OWNER, "reports.cases.stage_durations");
