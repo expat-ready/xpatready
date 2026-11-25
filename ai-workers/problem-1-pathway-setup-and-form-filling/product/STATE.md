@@ -2,11 +2,11 @@
 
 current_lead: local_b3dca92e-931b-4e47-bbf5-7bfcd6f6a69d Lead 9 · 25 Nov 17:37 IST (after Lead 8 local_89852a53, past 200k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 20:45 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
+updated: 2026-11-25 21:15 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
 
 ## Hand-over Lead 8 → Lead 9, 17:37 IST 25 Nov (Lead 8 past 200k beyond its start read, P-446; Lead 7's block and every Lead 8 check, word for word: `history/` files named STATE-2026-11-25-*lead8*)
 
-**Lead 9 check 20:37-20:45:** weekly 89%; disk 3 → 7.7 GB (removed Lead 8's pushed scratch clone (3.6 GB) and two npm caches); Lead 9 163k past its start read, Lead 10 has read RULES+STATE. Next: cloud qa for R1.29, R1.45 (founder turn); #3693; over 24 h #3479 #3219 #3217 #3194; human sample R1.24/R1.109.
+**Lead 9 check 21:07-21:15:** weekly 89%; disk 7 GB; Lead 9 170k past its start read (hand-over at 200k). #3710 requeued; #3693 read and labelled. Next: cloud qa for R1.29, R1.45 (founder turn); over 24 h #3479 #3219 #3217 #3194; human sample R1.24/R1.109; RULES.md over its 25 KB wall (move text to rules/).
 Earlier Lead 9 lines (first check; P-842 records PR #3769): `history/STATE-2026-11-25-1755-lead9-first-check.md`.
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 8's 32e9c6fc is deleted. **Standbys after you:** Lead 10 local_d682100b, Lead 11 local_fef3e227 (never archive Lead 5 or Lead 7). **Weekly 85% at 17:36, about 3%/h: 94% about 20:30 IST: push STATE and RESUME by then, tell the founder the time** (he switches at 95-96%, A386).
 **Tools (A390):** this copy's tools are about 2,940 commits stale: run main's from a scratch clone (`git clone --reference <repo> --filter=blob:none` into $TMPDIR, sparse `product/`, reset to origin/main each check, `bash tools/lead-watch.sh 30`; add allowed_domains github.com, api.github.com, *.blob.core.windows.net). #3506 (queued) makes stale tools refuse; once merged, move this copy to a fresh lead/<today> from origin/main. Rewrite `cycle-plan.json` for today and refresh the cockpit: founder-report.py prints no forecast from the 21 Nov plan.
