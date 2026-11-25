@@ -75,17 +75,21 @@ function openOnFirstField(e: Event) {
 
 /** guard: once a field in the dialog was changed, closing it by Escape, the X or the overlay asks before discarding.
  *  initialFocus: the field to start in, asked when the content mounts (else the first field). */
-export function Dialog({ open, onOpenChange, title, description, children, footer, wide, guard, initialFocus }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; guard?: boolean; initialFocus?: () => HTMLInputElement | null | undefined }) {
+export function Dialog({ open, onOpenChange, title, description, children, footer, wide, guard, initialFocus, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: React.ReactNode; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; guard?: boolean; initialFocus?: () => HTMLInputElement | null | undefined;
+  /** A dialog opened without a Radix trigger: where the focus goes when it closes (as Panel's, WCAG 2.4.3; PF-21rs A1 break B1). */
+  returnFocus?: () => HTMLElement | null | undefined }) {
   const touched = React.useRef(false), shown = useTabActive();
+  // A new opening starts untouched, however the last one closed (a Cancel button skips `change`: PF-21rs A1 review m3).
+  React.useEffect(() => { if (open) touched.current = false; }, [open]);
   const change = (o: boolean) => { if (!o && guard && touched.current && !window.confirm("Discard your unsaved changes?")) return; if (!o) touched.current = false; onOpenChange(o); };
   return (
     <DialogPrimitive.Root open={open && shown} onOpenChange={change}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
-        <DialogPrimitive.Content onOpenAutoFocus={(e) => { const el = initialFocus?.(); if (el && !el.disabled) { e.preventDefault(); el.focus(); } else openOnFirstField(e); }} className={cn("fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface-raised shadow-xl outline-none", wide ? "max-w-4xl" : "max-w-lg")}>
+        <DialogPrimitive.Content onOpenAutoFocus={(e) => { const el = initialFocus?.(); if (el && !el.disabled) { e.preventDefault(); el.focus(); } else openOnFirstField(e); }} onCloseAutoFocus={(e) => { const el = returnFocus?.(); if (el) { e.preventDefault(); el.focus(); } }} className={cn("fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface-raised shadow-xl outline-none", wide ? "max-w-4xl" : "max-w-lg")}>
           <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
             <div>
-              <DialogPrimitive.Title className="text-base font-semibold">{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="text-base font-semibold [overflow-wrap:anywhere]">{title}</DialogPrimitive.Title>
               {description ? <DialogPrimitive.Description className="mt-1 text-xs text-text-muted">{description}</DialogPrimitive.Description> : <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>}
             </div>
             <DialogPrimitive.Close className="rounded-md p-1 text-text-muted hover:bg-text/5" aria-label="Close"><X className="size-4" /></DialogPrimitive.Close>

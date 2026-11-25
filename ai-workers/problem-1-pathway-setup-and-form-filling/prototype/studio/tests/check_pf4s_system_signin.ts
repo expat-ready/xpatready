@@ -297,6 +297,10 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     // PF-17 part 2's migration (Lead 1's ruling on #3155; SA-10 §10, SA10-D8): no Appendix A row yet, Sample (Unconfirmed: SA10-X3 pending).
     ["system/support:list", "(SA10-X3 pending) See the support queue", [Own, Adm, Sup, Aud]],
     ["system/support:manage", "(SA10-X3 pending) Work the support queue", [Own, Sup]],
+    // AUD-3 part 2's migration (20261124170000_aud3_audit_log_keys; SA-11 §10, BACKLOG AUD-3 (2)): Sample role mapping,
+    // Unconfirmed against SA-07 Appendix A: list for the Owner and the read-only Auditor, export for the Owner only.
+    ["system/audit-log:list", "(Sample, Unconfirmed against Appendix A) Read a firm's access report", [Own, Aud]],
+    ["system/audit:export", "(Sample, Unconfirmed against Appendix A) Export a firm's access report as CSV", [Own]],
   ];
   const seeded = new Map(sql(`select permission_key || '=' || string_agg(role_code, ',' order by role_code) from plat_system_role_permission group by permission_key`).split("\n").map((l) => l.split("=") as [string, string]));
   const wrong = APPENDIX_A.filter(([key, , r]) => seeded.get(key) !== [...r].sort().join(","));

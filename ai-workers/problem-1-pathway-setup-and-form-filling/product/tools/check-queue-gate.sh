@@ -351,8 +351,32 @@ ok "fresh (SPD-2 item 5, m2): the head moved after it was read: failure, but no 
 prj 8 $HEAD1 false "review: approved"; rm -f "$T/fx/pr-8.after.json"
 files 8 "$S/api/src/other.ts"; run fresh 8
 ok "fresh: no merge since touches its files: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
-files 8 "$S/prisma/migrations/9_z/migration.sql"; run fresh 8
+files 8 "$S/prisma/migrations/20261115120500_cases__z/migration.sql"; run fresh 8
 ok "fresh: both add migrations (#502 after this ci started): failure and a re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && echo 1)" "$out / $log"
+# SPD-2 (P-802): only a migration of the same area re-checks. Main's #503 at 12:30 adds a client-money migration.
+( cd "$T/git" && mrg 2026-11-15T12:30:00Z 503 "$S/prisma/migrations/20261115123000_client-money__c/migration.sql" )   # in the fixture's own repository
+cirun $HEAD1 completed success 2026-11-15T12:10:00Z
+files 8 "$S/prisma/migrations/20261115130000_cases__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2): main merged another area's migration after this ci started: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
+files 8 "$S/prisma/migrations/20261115130000_client-money__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2): main merged a migration of the same area after this ci started: failure and a re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && grep -q 'same area' <<< "$out" && echo 1)" "$out / $log"
+files 8 "$S/prisma/migrations/20261115130000_shared__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2): a shared migration waits for any area's: failure" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+# SPD-2 fault 3 (Lead 4 on #3035, 23 Nov: nine open PRs add migrations that name no area): such a PR holds no
+# mig-<area> slot, and its green ci ran a ci.yml without the slot check; a re-run keeps that ci.yml (GitHub re-runs the
+# event's commit), so only a push with the printed git mv frees it. queue-fresh holds it: failure, no re-run.
+cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+files 8 "$S/prisma/migrations/20261115130000_cases__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2 fault 3): a named migration, nothing merged since its ci: success (the control)" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && echo 1)" "$out / $log"
+files 8 "$S/prisma/migrations/20261115130000_d/migration.sql"; run fresh 8
+ok "fresh (SPD-2 fault 3): a new migration that names no area: failure naming it, and no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && ! grep -q RERUN <<< "$log" && grep -q 'names no area' <<< "$out" && grep -q '20261115130000_d' <<< "$out" && echo 1)" "$out / $log"
+cirun $HEAD1 completed success 2026-11-15T13:00:00Z 3; run fresh 8
+ok "fresh (SPD-2 fault 3): 3 ci attempts do not free an unnamed migration" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+prj 8 $HEAD1 false "review: approved,queued"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z; run fresh 8
+ok "fresh (SPD-2 fault 3): a queued PR with an unnamed migration: failure (out before its batch fails)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+prj 8 $HEAD1 false "review: approved"
+files 8 "$S/prisma/migrations/2_b/migration.sql"; run fresh 8
+ok "fresh (SPD-2 fault 3): an edit to a migration already on main (a checksum repair) is not a new unnamed one: success" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/api/src/form.ts"; cirun $HEAD1 completed success 2026-11-15T11:30:00Z; run fresh 8
 ok "fresh: a ci started after the merge touching its file: success" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && echo 1)" "$out / $log"
 cirun $HEAD1 completed success 2026-11-15T10:00:00Z; prj 8 $HEAD1; run fresh 8

@@ -101,7 +101,7 @@ try {
   const breachId = typeof breach.body === "object" ? breach.body?.id : undefined;
   const p6a = count(A);
   const breachRead = breachId ? await j("GET", `/api/system/register/breaches/${breachId}`, undefined, ourTok) : { status: 0, body: null };
-  ok("R1.87 P6 (part missing: AUD-3, a breach read naming the firm; from j_86 W10): our staff's read of a breach that names firm A (200) writes one OUR_STAFF line on firm A's own trail",
+  ok("R1.87 P6 (part missing: AUD-3, a breach read naming the firm, in no PR yet (AUD-3 part 1 is merged: the read writes only a platform-trail line); from j_86 W10): our staff's read of a breach that names firm A (200) writes one OUR_STAFF line on firm A's own trail",
     breach.status === 201 && breachRead.status === 200 && count(A) === p6a + 1, { recorded: breach.status, read: breachRead.status, firmA: [p6a, count(A)] });
 
   // P5 AUD-3 part 2 (#3491, aligned by qa 10 on its head 36a32698a): our side's per-firm access report
@@ -111,7 +111,12 @@ try {
   const reads0 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'platform.system.firm_read'`));
   const rep = await j("GET", `/api/system/firms/${A}/access-report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, undefined, ourTok);
   const reads1 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'platform.system.firm_read'`));
+  // Every page of the report (50 lines a page, keyset cursor `next`), so a line is never missed past page 1 (reviewer m2, #3533).
   const repIds: string[] = Array.isArray(rep.body?.lines) ? rep.body.lines.map((l: { id: string }) => l.id) : [];
+  for (let next = rep.body?.next, n = 0; next && n < 20; n++) {
+    const more = await j("GET", `/api/system/firms/${A}/access-report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&cursor=${encodeURIComponent(next)}`, undefined, ourTok);
+    repIds.push(...(Array.isArray(more.body?.lines) ? more.body.lines.map((l: { id: string }) => l.id) : [])); next = more.body?.next;
+  }
   ok("R1.87 P5 (part missing: AUD-3 part 2): our side's access report for firm A answers (200) with firm A's OUR_STAFF lines (P1's read among them), never firm B's read, and the report's own read writes one more line on firm A's trail",
     rep.status === 200 && repIds.includes(lineId) && readB.status === 200 && !!lineB && !repIds.includes(lineB) && reads1 === reads0 + 1, { status: rep.status, n: repIds.length, hasA: repIds.includes(lineId), hasB: repIds.includes(lineB), reads: [reads0, reads1] });
   const exp0 = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'audit.exported'`));

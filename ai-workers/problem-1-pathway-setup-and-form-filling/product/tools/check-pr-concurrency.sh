@@ -167,7 +167,7 @@ for f, event in A.items():
     d, on = load(f); n += 1
     try:
         for why, ctx0, want in CASES:
-            ctx = {**ctx0, "event_name": event}; n += 1
+            ctx = {**ctx0, "event_name": event, "workflow": WF["name"]}; n += 1   # #3007 round 3 R3-1: the real name
             if not want and not any(runs(j, ctx) for j in (d.get("jobs") or {}).values()): continue   # no job runs for a batch (pr-rules)
             gs = groups(d, ctx)
             if not gs: bad.append(f"{f}: {why}: no concurrency group"); continue

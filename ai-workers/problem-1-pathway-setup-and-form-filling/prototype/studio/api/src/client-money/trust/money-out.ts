@@ -45,6 +45,7 @@ const PayeeIn = z.strictObject({ personId: id("The payee").optional(), companyId
 export const RefundIn = z.strictObject({
   personId: id("The person").optional(), companyId: id("The company").optional(), caseId: id("The case").optional(), currency: MoneyCurrency, amountMinor: amount,
   reason: words("The reason", 200), reference: words("The reference", 100), refundedOn: day.optional(), payee: PayeeIn.optional(), duplicateOf: id("The duplicate confirmed").optional(),
+  unclearedAcknowledged: z.boolean().optional(),   // FO-7t part 3, Lead 29's ruling (b): a refund of money a cheque not yet cleared covers asks first
   method: z.enum(["BANK_TRANSFER", "WIRE", "CHEQUE", "CASH", "E_TRANSFER", "OTHER"], { message: "A refund from trust is offline: bank transfer, e-Transfer, wire, cheque, cash or another method, never by card." }),
 }).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
 
@@ -64,8 +65,9 @@ async function held(tx: Tx, firmId: string, p: PartyRef, currency: string, caseI
   const [r] = await tx.$queryRaw<{ on_case: string; whole: string; uncleared: string }[]>`select
       (select coalesce(sum(e.amount_minor), 0) from money_trust_entry e where ${on} and ${here})::text as on_case,
       coalesce((select e.balance_after_minor from money_trust_entry e where ${on} order by e.seq desc limit 1), 0)::text as whole,
-      (select coalesce(sum(e.amount_minor), 0) from money_trust_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
-        where ${on} and ${here} and e.kind = 'DEPOSIT' and not p.cleared)::text as uncleared`;
+      (select coalesce(sum(greatest(0, e.amount_minor + coalesce((select sum(c.amount_minor) from money_trust_entry c where c.firm_id = e.firm_id and c.corrects_entry_id = e.id), 0))), 0)
+        from money_trust_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
+        where ${on} and ${here} and e.kind = 'DEPOSIT' and not p.cleared)::text as uncleared`;   // R4-1: only what is left of each cheque (a reversed one is none)
   return { available: Math.max(0, Math.min(Number(r.on_case), Number(r.whole))), uncleared: Number(r.uncleared) };
 }
 
@@ -142,13 +144,18 @@ export async function refundTrust(tx: Tx, audit: AuditPort<Tx>, a: RefundArgs) {
   const [dup] = await tx.$queryRaw<{ id: string }[]>`select e.id::text from money_trust_entry e where e.firm_id = ${a.firmId}::uuid and ${partyIs(a.holder)} and e.kind = 'REFUND_TO_CLIENT'
     and ${refKey(Prisma.sql`e.refund_reference`)} = ${refKey(Prisma.sql`${r.reference}`)} order by (e.currency = ${cur}::"MoneyCurrency") desc, e.seq desc limit 1`;   // seq: the order writers took this payer's lock (created_at is a transaction's start)
   if (dup && r.duplicateOf !== dup.id) refuse("DUPLICATE_REFERENCE", `A trust refund with reference ${r.reference} is already recorded for this client. Record anyway?`, { acknowledge: "duplicateOf", duplicateOf: dup.id });
+  // FO-7t part 3 (Lead 29's ruling (b) on Lead B 7's read; Lead 25 on #3442): the same question as Pay from trust, under the
+  // payer's lock: cleared money counted first; more than it covers asks until acknowledged (a warning, never a block).
+  const clearedPart = Math.max(0, h.available - h.uncleared), unclearedAsked = r.amountMinor > clearedPart;
+  if (unclearedAsked && !r.unclearedAcknowledged)
+    refuse("UNCLEARED", `${cur} ${MONEY(Math.min(h.uncleared, r.amountMinor - clearedPart))} of this is a cheque not yet cleared. Refund anyway?`, { acknowledge: "unclearedAcknowledged" });
   const e = await tx.moneyTrustEntry.create({ data: { firmId: a.firmId, personId: a.holder.personId, companyId: a.holder.companyId, caseId: a.caseId, kind: "REFUND_TO_CLIENT", amountMinor: -r.amountMinor, currency: cur, reason: r.reason,
     refundMethod: r.method, refundedOn: new Date(`${refundedOn}T00:00:00Z`), refundReference: r.reference, createdBy: a.by,
     payeePersonId: a.payee?.personId ?? null, payeeCompanyId: a.payee?.companyId ?? null, payeeName: a.payee?.name ?? null, payeeReason: a.payee?.reason ?? null }, select: { id: true, balanceAfterMinor: true } });
   const left = h.available - r.amountMinor;
   await audit.record(tx, { firmId: a.firmId, actor: a.by, action: "trust_money.refunded", entity: "money_trust_entry", entityKey: e.id,
     summary: `${cur} ${MONEY(r.amountMinor)} refunded from trust${a.payee ? " to another payee" : " to the payer"}.`,
-    detail: { entryId: e.id, amountMinor: r.amountMinor, caseId: a.caseId, payerId: partyId(a.holder), otherPayee: !!a.payee, balanceAfterMinor: e.balanceAfterMinor },
+    detail: { entryId: e.id, amountMinor: r.amountMinor, caseId: a.caseId, payerId: partyId(a.holder), otherPayee: !!a.payee, balanceAfterMinor: e.balanceAfterMinor, unclearedAcknowledged: unclearedAsked },
     before: null, after: { amountMinor: r.amountMinor, currency: cur, method: r.method, refundedOn, reference: r.reference, reason: r.reason, payeePersonId: a.payee?.personId ?? null, payeeCompanyId: a.payee?.companyId ?? null, payeeName: a.payee?.name ?? null, payeeReason: a.payee?.reason ?? null } });
   await tx.moduleEvent.create({ data: { firmId: a.firmId, type: TRUST_EVENT.TRUST_REFUNDED, subjectId: e.id, payload: TrustRefundedPayload.parse({ entryId: e.id, personId: a.holder.personId, companyId: a.holder.companyId, caseId: a.caseId, amountMinor: r.amountMinor, currency: cur }) } });
   return { entryId: e.id, amountMinor: r.amountMinor, currency: cur, balanceMinor: left };   // balanceMinor: what the payer still holds on that case (review m8)
