@@ -234,6 +234,20 @@ try {
   const tomb = await tell(PT, { text: "After the merge." }), surv = (await call(base, `/api/front-office/people/${PS}/engagement`, t)).body;
   ok("FO-14 DW18 fail: a merged-away person: tell → the one 404; both tables refuse it", tomb.status === 404 && refusedBySql(insU(PT), /not one of the firm's people/) && refusedBySql(ins(FA, PT), /not one of the firm's people/), tomb.body);
   ok("FO-14 DW18 pass: the survivor's engagement shows the tombstone's events and last update (one level)", surv.activity[0]?.kind === "UPLOAD" && typeof surv.lastUpdate === "string", surv);
+  const [P1, P2, P3] = [1, 2, 3].map((i) => person(FA, randomUUID(), `chain${i}@sample-client.example`)), u1 = await tell(P1, { text: "In the chain." });
+  await work(u1.body.id); await rec(FA, { firmId: FA, personId: P1, kind: "UPLOAD", source: "portal" }); await rec(FA, { firmId: FA, personId: P3, kind: "SIGN_IN", source: "portal" });
+  sql(`set session_replication_role = replica; update fo_person set merged_into_id = '${P2}', merged_at = now() where id = '${P1}'; update fo_person set merged_into_id = '${P3}', merged_at = now() where id = '${P2}'`);
+  const e3 = (await call(base, `/api/front-office/people/${P3}/engagement`, t)).body, e1 = (await call(base, `/api/front-office/people/${P1}/engagement`, t)).body, s3 = await new Engagement(db, pg, messages).streamFor(FA, P3);
+  ok("FO-14 DW19 fail/pass: P→S→T: T's engagement and streamFor hold P's event and sent update (the whole chain)", e3.activity.length === 2 && typeof e3.lastUpdate === "string" && s3.updates[0]?.text === "In the chain.", [e3, s3]);
+  ok("FO-14 DW19 pass: the engagement of a merged-away id is its survivor's whole tree", JSON.stringify(e1) === JSON.stringify(e3), e1);
+  const fine = await Promise.all([{ text: "می\u200cخواهم" }, { text: "👩\u200d💻" }].map((b) => tell(PC, b))), lone = await tell(PC, { text: "a\ud800b" });
+  ok("FO-14 DW20 pass/fail: ZWNJ and ZWJ (a Persian word, 👩‍💻) are accepted; a lone surrogate → 422", fine.every((r) => r.status === 201) && lone.status === 422 && lone.body.fields?.text, [fine.map((r) => r.body), lone.body]);
+  const PR = person(FA, randomUUID(), "repeat@sample-client.example"), r1 = await tell(PR, { text: "One." }, t, "fo14-r"), r1at = await work(r1.body.id) && await lastUpd(PR);
+  const r2 = await tell(PR, { text: "Two." }); await work(r2.body.id);
+  const again = await tell(PR, { text: "One." }, t, "fo14-r"), r2at = await lastUpd(PR);
+  ok("FO-14 DW21 fail: an idempotent repeat answers the first answer's lastUpdate (as of the first update's time)", again.status === 200 && again.body.lastUpdate === r1.body.lastUpdate && r2at !== r1at, [r1.body, again.body]);
+  sql(`set session_replication_role = replica; update msg_outbox set state = 'BOUNCED' where id = (select outbox_id from fo_client_update where id = '${r2.body.id}')`);
+  ok("FO-14 DW21 fail: an update SENT then BOUNCED (set by SQL: the local channel does not bounce) no longer counts", await lastUpd(PR) === r1at && r1at !== null, [r1at, await lastUpd(PR)]);
   const stream = await new Engagement(db, pg, messages).streamFor(FA, PC);
   ok("FO-14 DW16 pass/fail: streamFor returns only sent updates, newest first (NOT_SENT, queued, suppressed, held left out), and the activity", stream.updates.length === 2 && stream.updates[0].text.startsWith("yyyy") && stream.updates[1].caseId === caseC
     && stream.lastUpdate?.getTime() === stream.updates[0].at.getTime() && stream.activity[0]?.kind === "SIGN_IN", stream);

@@ -24,14 +24,19 @@ export async function recordPortalActivity(tx: Tx, input: PortalActivityRecord):
   }
 }
 
+/** The person and every record merged into it, down the whole chain (firm-scoped; at most 20 hops, as follow.ts). */
+export async function treeOf(db: Pick<PrismaClient, "$queryRaw">, firmId: string, personId: string): Promise<string[]> {
+  return (await db.$queryRaw<{ id: string }[]>`with recursive t(id, d) as (select ${personId}::uuid, 0 union select p."id", t.d + 1 from "fo_person" p
+    join t on p."merged_into_id" = t.id where p."firm_id" = ${firmId}::uuid and t.d < 20) select distinct id::text as id from t`).map((r) => r.id);
+}
+
 export class PgPortalActivity implements PortalActivityPort<Tx> {
   constructor(private readonly db: PrismaClient) {}
   record(tx: Tx, e: PortalActivityRecord) { return recordPortalActivity(tx, e); }
   async recent(firmId: string, personId: string, limit: number): Promise<PortalActivityItem[]> {
     if (typeof personId !== "string" || !UUID.test(personId)) return [];
     const take = Math.min(Math.max(Math.trunc(limit) || 1, 1), 100);
-    // The person and those merged into it (one level: a merge points a tombstone at its survivor).
-    const pid = personId.toLowerCase(), ids = [pid, ...(await this.db.foPerson.findMany({ where: firmScope(firmId, { mergedIntoId: pid }), select: { id: true } })).map((p) => p.id)];
+    const ids = await treeOf(this.db, firmId, personId.toLowerCase());
     const rows = await this.db.foPortalActivityEvent.findMany({ where: firmScope(firmId, { personId: { in: ids } }), orderBy: [{ at: "desc" }, { id: "desc" }], take, select: { kind: true, caseId: true, source: true, at: true } });
     return rows.map((r) => ({ kind: r.kind, caseId: r.caseId, source: r.source, at: r.at }));
   }
