@@ -14,7 +14,7 @@ import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { readSetting, TIME_ZONE } from "../../../platform/settings.ts";
 import { copyFirmHoursTo } from "../../booking-seed.ts";
-import { FIELD_ERROR_STATUS, parseInput } from "../../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, plainIssue } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 export type AvailabilityPorts = { audit: AuditPort<Tx>; clock: ClockPort };
@@ -65,7 +65,7 @@ const HostSet = z.strictObject({ setId: z.uuid(HOURS_WORDS.notTheirSet).transfor
 
 function parse<T extends z.ZodType>(schema: T, body: unknown, what: string): z.output<T> {
   parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
-  const r = schema.safeParse(body ?? {});
+  const r = schema.safeParse(body ?? {}, { error: plainIssue });   // PF-28 A2: zod's own words never reach a field
   if (r.success) return r.data;
   const fields: Record<string, string> = {};
   for (const i of r.error.issues) {
