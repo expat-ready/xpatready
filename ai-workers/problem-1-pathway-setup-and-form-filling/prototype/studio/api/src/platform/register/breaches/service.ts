@@ -223,7 +223,9 @@ export class Breaches {
       const w = n.recipients[0] ? await this.words.storedWords(n.firmId, n.recipients[0].outboxId) : null;
       notices.push({ ...n, subject: w?.subject ?? null, text: w?.text ?? null, wordsNote: w ? null : WORDS_UNREADABLE });
     }
-    noteFirmsRead([...b.affectedFirms, ...b.notices.map((n) => n.firmId)]);   // AUD-3 breach read (R1.87 P6): a read of each firm it names, on that firm's trail
+    // AUD-3 breach read (R1.87 P6): a read of each firm it names, one neutral line on that firm's trail (access/lines.ts),
+    // all in one transaction with the platform line; two queries per firm, about 0.3-0.6 s at 200 firms (Sample data).
+    noteFirmsRead([...b.affectedFirms, ...b.notices.map((n) => n.firmId)]);
     return { ...b, notices, events: events.map((e) => ({ seq: Number(e.seq), kind: e.kind, at: e.at.toISOString(), actor: e.actor, actorName: people.get(e.actor) ?? null, detail: e.detail })) };
   }
 

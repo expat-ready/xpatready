@@ -338,6 +338,14 @@ try {
   ok("PF-21c DW6 fail (AUD-3): the register's list (a read across firms that names no one firm's records) writes no line on any firm's trail, only its platform line",
     listed.status === 200 && sql(`select count(*) from audit_event where firm_id is not null and correlation_id = '${listed.requestId}'`) === "0"
     && sql(`select count(*) from audit_event where firm_id is null and action = 'cross_tenant.access' and correlation_id = '${listed.requestId}'`) === "1");
+  // Round 2 (reviewer M1): all or none (P-607 (3)): firm B's read line refused at the database for one call, then dropped.
+  sql(`create function pf21c_refuse() returns trigger language plpgsql as $$ begin raise exception 'pf21c test: refused'; end $$;
+       create trigger pf21c_refuse before insert on audit_event for each row when (new.action = 'platform.system.firm_read' and new.firm_id = '${firmB}'::uuid) execute function pf21c_refuse()`);
+  const refusedRead = await call(base, "GET", `/api/system/register/breaches/${id}`, { token: ownerT });
+  sql(`drop trigger pf21c_refuse on audit_event; drop function pf21c_refuse()`);
+  ok("PF-21c DW6 fail (AUD-3, fail-closed, round 2): when one named firm's read line cannot be written, the read answers 500 with no breach in it, and no line is kept: not firm A's, not the platform's",
+    refusedRead.status === 500 && !JSON.stringify(refusedRead.body).includes(one.body.description) && refusedRead.body?.notices === undefined
+    && sql(`select count(*) from audit_event where correlation_id = '${refusedRead.requestId}' and action in ('platform.system.firm_read', 'cross_tenant.access')`) === "0", { status: refusedRead.status, body: JSON.stringify(refusedRead.body).slice(0, 200) });
   const missing = await call(base, "GET", `/api/system/register/breaches/${globalThis.crypto.randomUUID()}`, { token: ownerT });
   ok("PF-21c DW6 fail (AUD-3): an unknown breach answers 404 and writes no read line on any trail",
     missing.status === 404 && sql(`select count(*) from audit_event where correlation_id = '${missing.requestId}'`) === "0", { status: missing.status });
