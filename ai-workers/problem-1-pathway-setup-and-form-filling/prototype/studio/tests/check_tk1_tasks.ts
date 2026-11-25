@@ -159,7 +159,7 @@ try {
   const toOff = await call("POST", `/api/platform/tasks/${U}/assign`, OWNER, { version: 2, assigneeStaffId: OFF });
   const unassign = await call("POST", `/api/platform/tasks/${U}/assign`, OWNER, { version: toOff.body.version, assigneeStaffId: null });   // review r2 M1: v2 when the officer won the race (a no-op)
   ok("TK5 pass: the Owner reassigns to the Case Officer, then back to Unassigned; TK5 fail: reassigning to a suspended person is 422",
-    reassign.status === 422 && toOff.status === 200 && toOff.body.assignee?.id === OFF && unassign.status === 200 && unassign.body.assignee === null && (await audits(U)).filter((x) => x === "plat.task.assign").length === 2, [reassign.status, toOff.status, unassign.status]);
+    reassign.status === 422 && toOff.status === 200 && toOff.body.assignee?.id === OFF && unassign.status === 200 && unassign.body.assignee === null && (await audits(U)).filter((x) => x === "plat.task.assign").length === (winner === OFF ? 1 : 2), [reassign.status, toOff.status, unassign.status]);
 
   // ---------------------------------------------------------------- TK6 Done, reopen, cancel (AG-13-8)
   const doneByReader = await call("POST", `/api/platform/tasks/${T}/complete`, READER, { version: 2 });
