@@ -156,17 +156,50 @@ try {
   await p.goto(`${BASE}/front-office/leads`); await p.waitForTimeout(800);
   const menu = await p.getByRole("link", { name: /People to merge/ }).count();
   await p.screenshot({ path: join(SHOTS, "w2-sales-menu-1440.png"), fullPage: true });
-  ok("R1.29 W2 (part missing: FO-9s part 2, Sales › People to merge): the Owner's Sales menu offers People to merge with the open count", await (async () => {
+  const w2 = await (async () => {
     const pr = await ctx.newPage(); await pr.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tR);
     await pr.goto(`${BASE}/front-office/leads`); await pr.waitForTimeout(1_500);
-    const n = await pr.getByRole("link", { name: /People to merge/ }).count(); await pr.close(); return n === 1;
-  })(), { caseOfficerSees: menu });
+    const link = pr.getByRole("navigation", { name: "Sales" }).getByRole("link", { name: /People to merge/ });
+    const n = await link.count(), count = (await link.locator("[data-dup-count]").innerText().catch(() => "")).trim();
+    if (n === 1) await link.click();
+    await pr.getByRole("heading", { level: 1, name: "People to merge" }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await pr.locator(`[data-dup-pair="${pair?.id ?? "none"}"]`).waitFor({ timeout: 15_000 }).catch(() => undefined);
+    const row = (await pr.locator(`[data-dup-pair="${pair?.id ?? "none"}"]`).innerText().catch(() => "")).replace(/\s+/g, " ");
+    const tab = (await pr.getByRole("tab", { name: /To review/ }).innerText().catch(() => "")).trim();
+    await pr.screenshot({ path: join(SHOTS, "w2-people-to-merge-1440.png"), fullPage: true });
+    await pr.close(); return { n, count, tab, row: row.slice(0, 200) };
+  })();
+  ok("R1.29 W2 (FO-9s part 2: Sales › People to merge): the Owner's Sales menu offers People to merge with the open count, and its To review tab shows the Lena pair with what matched and the score, by screens",
+    w2.n === 1 && !!w2.count && w2.tab === `To review (${w2.count})` && w2.row.includes(`Lena${run} Park`) && /Similar name|Same/.test(w2.row) && /\d/.test(w2.row), { ...w2, caseOfficerSees: menu });
 
   // ---------------------------------------------------------------------------- W3: merge keeps both histories
   const notesOf = (person: string) => sql(`select count(*) from fo_note n join fo_lead l on l.id = n.lead_id where l.person_id = '${person}'`);
   const L3 = LENA3 || LENA;   // no web-form record: the merge steps below fail on their own, never on a query
   const leadsBefore = Number(sql(`select count(*) from fo_lead where person_id in ('${LENA}', '${L3}')`)), notesBefore = Number(notesOf(LENA)) + (LENA3 ? Number(notesOf(LENA3)) : 0);
-  const merged = pair ? await api(tR, "POST", `/front-office/duplicates/review/${pair.id}/merge`, { survivorId: LENA, choices: {} }) : { status: 0, body: null };
+  // The guided merge by screens (FO-9s part 3): People to merge › Merge… on the Lena pair › Lena Park stays › Next ›
+  // Next › Merge 2 people (concept §4 S3; FO-9b's preview and merge routes underneath).
+  const pg = await ctx.newPage(); await pg.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tR);
+  const mergeAnswers: number[] = []; pg.on("response", (r) => { if (/\/duplicates\/review\/[^/]+\/merge$/.test(r.url())) mergeAnswers.push(r.status()); });
+  const w3 = await (async () => {
+    await pg.goto(`${BASE}/front-office/duplicates`);
+    await pg.locator(`[data-dup-pair="${pair?.id ?? "none"}"]`).getByRole("button", { name: "Merge…" }).click({ timeout: 20_000 });
+    const d = pg.getByRole("dialog");
+    await d.locator("[data-merge-field='email']").waitFor({ timeout: 15_000 });
+    await d.locator(`input[name='survivor'][value='${LENA}']`).check();   // both records are named Lena Park: by record
+    await d.locator("[data-merge-field='email']").waitFor({ timeout: 15_000 });
+    await pg.waitForTimeout(500);
+    await d.getByRole("button", { name: "Next" }).click(); const moves = await d.locator("[data-merge-moves]").innerText().catch(() => "");
+    await d.getByRole("button", { name: "Next" }).click(); const confirm = await d.locator("[data-merge-confirm]").innerText().catch(() => "");
+    await pg.screenshot({ path: join(SHOTS, "w3-merge-dialog-confirm-1440.png"), fullPage: true });
+    await d.getByRole("button", { name: "Merge 2 people" }).click();
+    await pg.locator("[data-merged-notice]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await pg.screenshot({ path: join(SHOTS, "w3-merged-1440.png"), fullPage: true });
+    return { moves: moves.replace(/\s+/g, " ").slice(0, 120), confirm, notice: await pg.locator("[data-merged-notice]").count() };
+  })().catch((e) => ({ moves: "", confirm: "", notice: 0, error: String(e).split("\n")[0] }));
+  await pg.close();
+  const merged = { status: mergeAnswers[0] ?? 0 };
+  ok("R1.29 W3 (FO-9s part 3, the guided merge dialog): People to merge › Merge… › Lena Park stays › what moves › Merge 2 people, by screens; the notice names the survivor",
+    merged.status === 200 && w3.notice === 1 && w3.confirm.includes(`into Lena${run} Park`) && /1 lead/.test(w3.moves), { ...w3, status: merged.status });
   ok("R1.29 W3 (FO-9b parts 1-2, on main: POST review/:id/merge): merging keeps Lena Park and moves her web-form record's lead and notes to her (both histories on one person)",
     merged.status === 200 && Number(sql(`select count(*) from fo_lead where person_id = '${LENA}'`)) === leadsBefore && Number(notesOf(LENA)) === notesBefore, { status: merged.status, leadsBefore, notesBefore });
   const tomb = sql(`select count(*) from information_schema.columns where table_name = 'fo_person' and column_name = 'merged_into_id'`) === "1"
@@ -226,16 +259,24 @@ try {
   // --------------------------------------------------------------------------- W5: undo from the review list
   const mergesList = await api(tR, "GET", "/front-office/duplicates/merges");
   const m = LENA3 ? (mergesList.body?.items ?? []).find((x: unknown) => JSON.stringify(x).includes(LENA3)) : undefined;
-  const undo = m ? await api(tR, "POST", `/front-office/duplicates/merges/${m.id}/undo`, {}) : { status: 0, body: null };
-  ok("R1.29 W5 (FO-9b parts 1-2, on main: GET duplicates/merges, POST merges/:id/undo): Undo merge from the Merged tab's list restores both people and their own leads",
-    undo.status === 200 && !!LENA3 && sql(`select count(*) from fo_lead where person_id = '${L3}'`) === "1" && sql(`select count(*) from fo_person where id in ('${LENA}', '${L3}') and merged_into_id is null`) === "2", { list: mergesList.status, undo: undo.status });
+  // Undo by screens (FO-9s part 2): People to merge › Merged › Undo merge on the Lena merge's row.
+  const pu = await ctx.newPage(); await pu.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tR);
+  const undoAnswers: number[] = []; pu.on("response", (r) => { if (r.url().includes("/undo") && r.request().method() === "POST") undoAnswers.push(r.status()); });
+  await pu.goto(`${BASE}/front-office/duplicates?tab=merged`);
+  const mRow = pu.locator(`[data-dup-merge="${m?.id ?? "none"}"]`);
+  await mRow.getByRole("button", { name: "Undo merge" }).click({ timeout: 15_000 }).catch(() => undefined);
+  await mRow.getByText(/^Undone/).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  await pu.screenshot({ path: join(SHOTS, "w5-undo-merge-1440.png"), fullPage: true });
+  const undone = (await mRow.getByText(/^Undone/).count()) === 1; await pu.close();
+  ok("R1.29 W5 (FO-9s part 2 over FO-9b's POST merges/:id/undo): Undo merge on People to merge's Merged tab restores both people and their own leads, by screens",
+    undone && undoAnswers[0] === 200 && !!LENA3 && sql(`select count(*) from fo_lead where person_id = '${L3}'`) === "1" && sql(`select count(*) from fo_person where id in ('${LENA}', '${L3}') and merged_into_id is null`) === "2", { list: mergesList.status, undo: undoAnswers, undone });
   const undo2 = m ? await api(tR, "POST", `/front-office/duplicates/merges/${m.id}/undo`, {}) : { status: 0, body: null };
   ok("R1.29 W5 fail (FO-9b part 1, on main): a second Undo is refused (409) in words, nothing changed", undo2.status === 409 && typeof undo2.body?.detail === "string", undo2.status);
   const pm = await ctx.newPage(); await pm.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tR);
-  await pm.goto(`${BASE}/front-office/duplicates`); await pm.waitForTimeout(1_500);
+  await pm.goto(`${BASE}/front-office/duplicates?tab=merged`); await pm.waitForTimeout(1_500);
   const tabs = await pm.getByRole("tab", { name: /To review|Merged|Kept separate/ }).count();
   await pm.screenshot({ path: join(SHOTS, "w5-people-to-merge-1440.png"), fullPage: true });
-  ok("R1.29 W5 (parts missing: FO-9s parts 2-3, People to merge and the merge dialog): the review list page has To review, Merged and Kept separate, and Undo merge on a merged pair",
+  ok("R1.29 W5 (FO-9s part 2): the review list page has To review, Merged and Kept separate, and Undo merge on a merged pair",
     tabs === 3 && (await pm.getByRole("button", { name: /Undo merge/ }).count()) >= 1, { tabs });
   await pm.close();
 
