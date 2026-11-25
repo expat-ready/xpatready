@@ -56,6 +56,7 @@ Job → **Masters** (stored once: key, label, status, version, source, where use
 
 ## 9. Performance budgets [M]
 With the sample data (P-26): catalogue first view < 1 s · filter, search, expand < 200 ms · no request per row. Scale work (400 rows, virtual scrolling, caching) is the team's.
+Every screen (founder, 25 Nov 13:04 IST, self-checking builders OS-73): Largest Contentful Paint ≤ 2.5 s and Cumulative Layout Shift ≤ 0.1, measured in the Playwright packs and in the `verify` skill. A **warning budget** until it has been clean for 24 h or 10 PR runs (P-717 (b)); the Lead then decides whether it blocks.
 
 ## 10. Solution quality [M]
 Every behaviour traces to an SA-01B requirement, a solution-page activity or a decision. Consequential choices record the alternatives and why one was picked.

@@ -2,6 +2,7 @@
 // startable check, SA-1B-90/91, BR-8), its single status (In setup · Not ready · Ready), the counts the row shows
 // (BR-10: every question any person on the row could be asked), when its sources were last checked (BR-11) and its one
 // next action (BR-13). The API calls these with snapshots it built; tests call them directly.
+import { assessmentOnlyRelease, ASSESSMENT_ONLY_WORDS } from "./eligibility/gates.ts";
 import { sharedStep, type MissingItem, type NextAction, type Status } from "../contracts/programs.ts";
 import type { Problem } from "./validate.ts";
 import type { Snapshot } from "./snapshot.ts";
@@ -60,6 +61,8 @@ export function setupActionOf(r: SetupState): NextAction | null {
  *  line, so each of them names it in the same words as the next step; the lines come in the order of those steps.
  *  A step is said once (Lead note 23 Oct): when every line has the same step, the lines carry only their causes and
  *  the screen names the step once under the list (sharedStep); a line whose step is its own still says it. */
+/** AS-2a: why no case opens on an assessment-only release (P-650 (2)). */
+export const ASSESSMENT_ONLY_CASE_WORDS = `${ASSESSMENT_ONLY_WORDS}. This release is used to assess a person; a case does not open on it.`;
 export function missingItems(s: Snapshot, participants: Participant[], problems: Problem[], setup?: SetupState): MissingItem[] {
   const out: (MissingItem & { cause: string })[] = [];
   const pending = setup ? setupActionOf(setup) : null;
@@ -67,6 +70,8 @@ export function missingItems(s: Snapshot, participants: Participant[], problems:
     const step = pending?.label ?? own;
     return { code, step, cause, text: `${cause} Next step: ${step}${pending ? "" : why}.` };
   };
+  // AS-2a (P-650 (2)): an assessment-only release is not for cases: one line says so, in place of the form lines.
+  if (assessmentOnlyRelease(s)) return [{ code: "assessment_only", step: "Assess a person", text: ASSESSMENT_ONLY_CASE_WORDS }];
   const forms = s.forms as FormLine[];
   if (!forms.length) {
     const n = setup?.sources ?? 0;
@@ -185,7 +190,9 @@ export function documentLineProblem(s: Pick<Snapshot, "forms" | "document_requir
   return [{ level: "error", where: "Release", item: "", message: DOCUMENT_LINE_WORDS, code: NO_DOCUMENT_LINE }];
 }
 /** G5 (P-248, the whole rule): what a release needs on it, a form line and a document line, each said in its own words. */
-export const releaseLineProblems = (s: Pick<Snapshot, "forms" | "document_requirements">): Problem[] => [...formLineProblem(s), ...documentLineProblem(s)];
+/** AS-2a (P-650 (2)): an assessment-only release (gates and no form) needs neither line: it assesses a person, no case
+ *  opens on it (missingItems says so). */
+export const releaseLineProblems = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }): Problem[] => (assessmentOnlyRelease(s) ? [] : [...formLineProblem(s), ...documentLineProblem(s)]);
 /** QA-180 (BR-8, P-297 (3)): the one rule Review and release (engine/validate.ts) and Open a case (missingItems, through
  *  api/src/programs.ts startableMissing) both read. A data form can be filled on a case only when its edition in use
  *  (pdfMapInUse, P-32: the newest PDF edition, the one a case fills) has form fields mapped; an Online line is read from
