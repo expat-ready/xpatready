@@ -177,12 +177,17 @@ fresh "queue-blocked.py: GitHub open PRs, their comments and labels, and the gua
 # 3. Questions for the tech lead in the window.
 # One read of every comment since the window's start, for 3 and 3b (Lead 26, 24 Nov): it was two searches and one read per PR
 # found, and a search can lag or stop at 30. Only open PRs count, as before; an unreadable answer is an ACT.
-cm=$(gh api "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --paginate -q ".[] | select(.created_at >= \"$since\") | {n: (.issue_url | split(\"/\") | last), b: .body} | @json" 2>/dev/null) || ACT "comments since $since unreadable: questions and lane reports (3, 3b) not read this check"
+cm=$(gh api "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --paginate -q ".[] | select(.created_at >= \"$since\") | {n: (.issue_url | split(\"/\") | last), b: .body, id: .id} | @json" 2>/dev/null) || ACT "comments since $since unreadable: questions and lane reports (3, 3b) not read this check"
 jq -e . >/dev/null 2>&1 <<<"${cm:-null}" || [ -z "$cm" ] || ACT "comments since $since cut short (a line of the answer is not whole): some questions and lane reports (3, 3b) may be missing this check"
 asked() { grep . <<<"$cm" | jq -r --arg re "$1" 'select((.b // "") | test($re)) | .n' 2>/dev/null | sort -un | while read -r n; do
   # dropped only when the open-PR list was read and does not hold it; an unreadable list keeps every PR
   jq -e --argjson n "$n" 'type == "array" and length > 0 and (any(.[]; .number == $n) | not)' "$STATE_DIR/prs-body.json" >/dev/null 2>&1 || echo "$n"; done; }
 for n in $(asked 'Question for the tech lead'); do ACT "#$n has a new question for the tech lead"; done
+# 3a (OS-06, design/os-backlog.md; P-439, P-731): a question that asks for the full run gets "/run full" posted once on its
+# PR (comment-run.yml starts the run and replies), so the lane does not wait for a Lead turn. LEAD_WATCH_FULL_RUN_POST=0: ACT only.
+grep . <<<"$cm" > "$STATE_DIR/comments.jsonl" 2>/dev/null || : > "$STATE_DIR/comments.jsonl"
+fa=$(python3 -I "$TOOLS/full-run-ask.py" --comments "$STATE_DIR/comments.jsonl" --prs "$STATE_DIR/prs-body.json" --state "$STATE_DIR" $([ "${LEAD_WATCH_FULL_RUN_POST:-1}" = 0 ] || echo --post) 2>&1)
+farc=$?; [ -n "$fa" ] && echo "$fa"; seen "$fa"; act=$((act + $(grep -c '^ACT' <<<"$fa"))); [ "$farc" = 0 ] || ACT "full-run ask: full-run-ask.py exit $farc ($(tail -1 <<<"$fa"))"
 fresh "GitHub: comments since the window's start on open PRs, \"Question for the tech lead\" (gh.sh)"
 # 3b. Lane reports to the Lead (A85, 15 Nov: board v61 reported "ready for Lead 54 to merge" on records PR #1796 at
 # 11:19 IST and waited 1.5 h unseen across a hand-over). Any open PR comment in the window addressed to a Lead that is
