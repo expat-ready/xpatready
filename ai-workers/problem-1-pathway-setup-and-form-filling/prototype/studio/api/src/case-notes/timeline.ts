@@ -59,7 +59,7 @@ function parsed<S extends z.ZodType>(schema: S, q: unknown): z.infer<S> {
   return invalid(String(i.path[0] ?? (i as { keys?: string[] }).keys?.[0] ?? "query"), i.message);
 }
 function filterOf(o: z.infer<typeof TimelineQuery>): Filter {
-  const one = (k: string) => { const v = o[k]; return v === undefined || v === "" ? null : v; };
+  const one = (k: keyof typeof o) => { const v = o[k]; return v === undefined || v === "" ? null : v; };
   const kindsText = one("kinds");
   const kinds = kindsText ? kindsText.split(",").map((k) => k.trim().toUpperCase()) : [...TIMELINE_KINDS];
   if (!kinds.length || kinds.some((k) => !(TIMELINE_KINDS as readonly string[]).includes(k))) invalid("kinds", `One or more of ${TIMELINE_KINDS.join(", ")}, comma-separated.`);

@@ -82,3 +82,35 @@ Also seen, not this PR's touch list: the bell's word map (`web/src/modules/platf
 **Verdict: Approve** (Ship): no open Blocker or Major. Open Minors to list on the PR: m1, m4, m5-m9. For the tech lead, not a review finding: the yes or no on challenge.md's CS-NT1 part 3b.
 
 Verdict: Approve e0f270db3e47a994ca02c17e152b12e1f8206992
+
+## Round 3 (diff only, b1af31e21..7669263d8): reviewer, 25 Nov
+Reviewed: `git diff b1af31e21 7669263d8` only. One commit, two files: `timeline.ts` (+14/-5) and `tests/check_csw3_firm_scope.ts` (+5/-2). Nothing else changed: no route, no SQL, no source, no other test, no record.
+
+**What I ran (ports 4438 and 4439 only, never :4400).** Copies `rvnt1c3` (:4438, `PLATFORM_IDENTITY=local`) and `rvcsw3` (:4439). Both were stopped afterwards and their databases dropped.
+* `check_csv1_inputs.ts 4438`: **100/100**. `check_csw3_firm_scope.ts 4439` (with `--tsconfig api/tsconfig.json`): **48/48**, census "files: 56". `check_csnt1_timeline.ts`: **36/36**. These match the builder's numbers. j_76 on :4438: **23/26**. The 3 failures are the same later parts (W5 CS-NT1t, W8 part 4, W8 FO-4 2b). There is one line fewer than in round 2 because the copy already held the configured checkpoint, so the conditional "Demo › Load" setup line did not run.
+* Rule removed, test fails: CS-V1's route finder (`tests/lib/routes.ts follows`) reads the timeline query as parsed at `CaseTimeline.read` at 7669263d8 and as **null** at b1af31e21. That null is the merge batch's red.
+* **CI's type check (`product/tools/typecheck.mjs`, api project, 12 GB heap as in ci.yml:537): FAIL, 3 new errors**, all in this diff (b1af31e21's timeline.ts has 0). The PR's `types` job was still queued when I checked, so it has not reported yet.
+
+**The census reason (check_csw3_firm_scope.ts:276-278) is true of timeline.ts.**
+* `read()` (timeline.ts:120-122): only the zod parse runs before `notes.subjectFor`, and the parse touches no table. `subjectOf` (service.ts:123-131) finds the case by `firmKey: ctx.firmKey` and checks `platformFirm.id === ctx.firmId`, so any other case is a 404. Every query after it uses `c` from that call: the author lookup (`firmId: c.firmId`, :125) and `names()` (`where: { firmId }`, :181).
+* Notes (:114): `n.firm_id = ${c.firmId}`. The `first_at` sub-select is keyed by a note_key from that filtered row.
+* Audit (:98-107): limited to `a.workspace_id = c.workspaceId`. A line is shown only if its `case_id` is this case, or if `case_id` is null and its `firm_id` is null or this firm and case-feed.ts's rule names this case. `auditFloor` (:161) has no JavaScript filter, but it returns only a key, never a line. That is unchanged from round 2.
+
+**The 400s, probed on :4438.** An unknown filter (`?limit=5`) → 400 `fields.limit` "Only cursor, kinds, author, from and to.". A repeated filter (`kinds`, `author`, `cursor` each twice) → 400 "Give it once." on that field. A bad kind, an impossible day (`from=2026-02-30`, `to=2026-13-01`), a range ending before it starts, and `cursor=abc` → 400 on the field, with the same words as before. `?kinds=` and `?cursor=` → 200 (blank still means no filter, as DW14 expects). Each 400 took 10-16 ms.
+
+**Issues**
+| # | Sev | Where | Failure scenario | Fix |
+|---|-----|-------|------------------|-----|
+| M2 | **Major (Must)** | `timeline.ts:62` (TS7053), `:64` and `:65` (TS7006) | `one = (k: string) => o[k]` indexes the zod-inferred type with a plain string. Under `strict`, `o[k]` is an implicit `any`, so `kindsText.split(",").map((k) => …)` and the `.some((k) => …)` on the next line have untyped parameters. The 3 errors are not in `typecheck-known.txt`, so CI's `types` job fails and the merge batch goes red a third time. tsx does not check types, which is why the three suites pass. | `const one = (k: keyof typeof o) => …`. I checked this one-line change in a scratch worktree: 0 errors in timeline.ts and its imports. Re-run `node product/tools/typecheck.mjs` before pushing. |
+| m10 | Minor (note) | `timeline.ts:53` | zod 4 drops a `__proto__` key without an issue. `?__proto__=1` now answers 200; b1af31e21's `Object.keys` check answered 400. Nothing is stored or shown, and every strictObject in the API behaves the same way, so this is not a leak. It is the one unknown filter that lost its 400. | None needed. If the builder wants it exact, refuse `__proto__` before the parse. |
+| m11 | Minor (Should) | `timeline.ts:55-60` against `service.ts:71-76` | This is a second copy of `parsed` in the same feature folder. It differs only in reading `keys[0]` for an unknown key; service.ts falls back to "body". | Export one helper from service.ts with the `keys[0]` fallback and use it in both files. Can wait for m1's `timeline-sources.ts` move. |
+
+Also seen, not this diff: when a request has two problems at once (an unknown key plus a repeated one), zod now names the repeated field first, where the old check named the unknown key first. Either way the answer is a 400 naming a real field.
+
+**Scores changed from round 2:** D16 Testability **3** (until M2 is fixed: the change passes its suites but fails the type check). The rest are as in round 2. BIC: unchanged (API only). Journey: **8/10, pass**, unchanged. See Round 3 in `journey-test-reviewer-2026-11-25.md`.
+
+**Could not check:** the PR's own `types` and `parts` results at 7669263d8 (queued or running when I looked). There is no screen, and D17/D20 stay with the founder.
+
+**Verdict: Block** for the `review: approved` label until M2 is fixed (Reviewer: Changes 7669263d8b4ada9c1431853d5edf9cc34d8b214b). Fix list: M2 (Must). m10 and m11 are optional, and m1, m4 and m5-m9 stay open as listed in round 2. After the fix, a round 4 on the one-line diff and a green `types` job will be enough.
+
+Verdict: Changes 7669263d8b4ada9c1431853d5edf9cc34d8b214b

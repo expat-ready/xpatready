@@ -69,3 +69,12 @@ New journeys (API, data checked in `msg_notification` and `audit_event`):
 | **Total** | 8 | **8/10** | **Pass** (no 0) |
 
 To raise it: a `case-client` labeller (m5) for next step; part 4's panel for accessibility and visual. Could not test: a screen reader, an intended user's walk (D17, D20).
+
+## Round 3 (7669263d8), reviewer, 25 Nov
+Copy `rvnt1c3` on :4438 (`isolated.sh … --ttl 30 PLATFORM_IDENTITY=local`), stopped afterwards with its database dropped. Sample data only, US$0. j_76: **23/26**. The same 3 later parts fail. The setup "Demo › Load" line did not run because the copy already held the checkpoint.
+This round re-ran journey 5 (Error) on the timeline's query only, because that is all the diff changes:
+* **Held:** an unknown filter, a repeated filter, a bad kind, an impossible day, a reversed range and a foreign cursor each give 400 naming the field, in words. A blank filter still reads as no filter (200). Each 400 took 10-16 ms.
+* **New, minor:** `?__proto__=1` now answers 200 (zod drops the key) where it was 400. Nothing is stored or shown (review m10).
+* **Not a journey failure, but it blocks the merge:** the type check fails on 3 new errors in timeline.ts (review M2). At run time nothing changes for a person, because tsx strips types.
+
+Score: unchanged at **8/10, pass** (no 0). Every criterion is as in round 2: no step a person takes changed, and the error words are the same. Could not test: a screen reader, an intended user's walk (D17, D20).
