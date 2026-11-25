@@ -14,7 +14,9 @@
 #   bash product/tools/records-pr.sh [--dry-run] [--as-of P-NNN] [--title "records: ..."]
 # Exit 0 done (or dry run printed), 1 a check failed (nothing committed), 2 refused or bad use.  Test: check-records-pr.sh.
 set -uo pipefail
-TOOLS="$(cd "$(dirname "$0")" && pwd)"; PRODUCT="$(cd "$TOOLS/.." && pwd)"
+# Physical paths (pwd -P), as git rev-parse gives: a copy reached through a symlink (the Mac's /var → /private/var)
+# would otherwise leave RULES.md outside ROOT and out of the commit (#3693 review).
+TOOLS="$(cd "$(dirname "$0")" && pwd -P)"; PRODUCT="$(cd "$TOOLS/.." && pwd -P)"
 ROOT="$(git -C "$TOOLS" rev-parse --show-toplevel)" || exit 2; cd "$ROOT" || exit 2
 gh() { ${RECORDS_GH:-bash "$TOOLS/gh.sh"} "$@"; }
 REPO="${RECORDS_REPO:-expat-ready/xpatready}"; R="$PRODUCT/RULES.md"; D="$PRODUCT/DECISIONS.md"
@@ -43,27 +45,31 @@ fi
 newest=$(grep -oE '^\| P-[0-9]+ ' "$D" 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1)
 old=$(sed -nE '1s/.*as of \*\*P-([0-9]+)\*\*.*/\1/p' "$R" 2>/dev/null)
 [ -n "$old" ] || refuse "RULES.md's first line has no 'as of **P-NNN**' (P-440)"
-line1=$(head -1 "$R"); new1="$line1"; to="$old"
+line1=$(head -1 "$R")
+[ "$(grep -o 'as of \*\*P-[0-9]*\*\*' <<<"$line1" | wc -l)" = 1 ] || refuse "RULES.md's first line names 'as of **P-n**' more than once: leave one"; new1="$line1"; to="$old"
 if [ -n "$ASOF" ]; then
   [[ "$ASOF" =~ ^P-([0-9]{1,5})$ ]] || refuse "--as-of must look like P-829, not '$ASOF'"
   to=$((10#${BASH_REMATCH[1]}))
   [ "$to" -ge "$old" ] || refuse "--as-of P-$to is below RULES.md's P-$old: the register never goes back"
+  if [ "$to" = "$old" ]; then say "note: RULES.md is already as of P-$old; its first line is left as it is"; else
   [ -n "$newest" ] && [ "$to" -gt "$newest" ] && refuse "--as-of P-$to is above DECISIONS.md's newest row, P-$newest"
   stamp="$(TZ=Asia/Kolkata date '+%-d %b %H:%M') IST"
   # only "as of **P-n**[, <time up to the next ; or )>]" changes; the rest of the line stays as the Lead wrote it
-  new1=$(printf '%s\n' "$line1" | sed -E "s/as of \*\*P-[0-9]+\*\*(, [^;)]*)?/as of **P-$to**, $stamp/")
+  new1=$(printf '%s\n' "$line1" | sed -E "s/as of \*\*P-[0-9]+\*\*([, ][^;)]*)?/as of **P-$to**, $stamp/")
   # rows between the old and the new number that RULES.md does not name, alone or inside "P-a to P-b"
   n=$((old + 1)); while [ "$n" -le "$to" ]; do
     if ! grep -qE "P-$n([^0-9]|$)" "$R" && ! grep -oE 'P-[0-9]+ (to|-) P-[0-9]+' "$R" | awk -v n="$n" '{ split($0, a, /[^0-9]+/); if (a[2] + 0 <= n && n <= a[3] + 0) f = 1 } END { exit !f }'; then
       say "warning: P-$n (DECISIONS) is not named in RULES.md: fold it in, or name it, before claiming as of P-$to"
     fi; n=$((n + 1)); done
+  fi
 fi
 lag=$(( ${newest:-$to} - to ))
 say "RULES lag: as of P-$to, DECISIONS newest P-${newest:-?}: $lag row(s) behind (at most 3, P-440)"
 [ "$new1" != "$line1" ] && say "RULES first line: $new1"
 
 # the records to commit: changed or new files under the working tree, sorted into records and the rest
-mapfile -t changed < <(git -c core.quotePath=false status --porcelain=v1 --untracked-files=all --no-renames | cut -c4- | sed 's/^"\(.*\)"$/\1/')
+# -z: names with a tab, newline or quote come through as they are (#3693 review)
+changed=(); while IFS= read -r -d '' e; do changed+=("${e:3}"); done < <(git status --porcelain=v1 -z --untracked-files=all --no-renames)
 [ "$new1" != "$line1" ] && ! printf '%s\n' "${changed[@]}" | grep -qxF "${R#$ROOT/}" && changed+=("${R#$ROOT/}")
 recs=(); left=()
 for f in "${changed[@]}"; do [ -n "$f" ] || continue
@@ -74,7 +80,9 @@ ahead=$(git rev-list --count "$BASE..HEAD")
 [ "${#recs[@]}" -gt 0 ] || [ "$ahead" -gt 0 ] || { say "nothing to do: no changed record and no commit ahead of main"; exit 0; }
 
 # the open PR from this branch, if any (one read; a failed read is said, never taken as "none")
-owner=${REPO%%/*}; prs=$(gh api "repos/$REPO/pulls?state=open&head=$owner:$BR&per_page=5" --jq '.[].number' 2>&1); prc=$?
+# the head is URL-encoded: a branch name may hold & or = (#3693 review)
+hq=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${REPO%%/*}:$BR") || refuse "could not encode the branch name"
+prs=$(gh api "repos/$REPO/pulls?state=open&head=$hq&per_page=5" --jq '.[].number' 2>&1); prc=$?
 num=$(printf '%s\n' "$prs" | grep -E '^[0-9]+$' | head -1)
 [ -z "$TITLE" ] && TITLE="records: the Lead's records, $(TZ=Asia/Kolkata date '+%-d %b %H:%M') IST"
 
@@ -96,7 +104,8 @@ say "check-docs.sh: OK"
 
 # 4. commit, push, open or update
 if [ "${#recs[@]}" -gt 0 ]; then
-  git add -- "${recs[@]}" && git commit -q -m "$TITLE" -m "records-pr.sh: ${#recs[@]} record file(s); RULES as of P-$to, lag $lag (P-440); check-docs OK." || { say "git commit failed"; exit 1; }
+  # --only: exactly these paths, whatever else the Lead had staged (a staged tool stays staged, never committed here)
+  git --literal-pathspecs add -A -- "${recs[@]}" && git --literal-pathspecs commit -q --only -m "$TITLE" -m "records-pr.sh: ${#recs[@]} record file(s); RULES as of P-$to, lag $lag (P-440); check-docs OK." -- "${recs[@]}" || { say "git commit failed"; exit 1; }
   say "committed $(git rev-parse --short HEAD): ${#recs[@]} file(s)"
 fi
 git push -q -u origin "$BR" 2>&1 | sed 's/^/  /'; [ "${PIPESTATUS[0]}" = 0 ] || { say "git push failed: the commit is local only; push again before stopping (P-557)"; exit 1; }

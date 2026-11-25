@@ -32,7 +32,7 @@ clean() { [ -z "$(git -C "$C" status --porcelain)" ] && echo 1; }
 fresh 5 7 6 7; echo "a line" >> "$Q/STATE.md"; r0=$(cat "$Q/RULES.md"); run --dry-run --as-of P-7
 ok "dry run: prints the record, the new first line, the lag and the PR it would open" "$([ "$rc" = 0 ] && has "record: $P/STATE.md" && has "record: $P/RULES.md" && has 'RULES first line: # Rule register (Lead keeps it; as of **P-7**, ' && has '0 row(s) behind' && has 'would open a PR lead/test → main' && echo 1)" "$o"
 ok "dry run: edits, commits, pushes and posts nothing" "$([ "$r0" = "$(cat "$Q/RULES.md")" ] && [ "$(git -C "$C" rev-list --count main..HEAD)" = 0 ] && [ -z "$(pushed)" ] && [ "$(posts)" = 0 ] && echo 1)" "$(cat "$T/calls")"
-echo 77 > "$T/open"; run --dry-run; ok "dry run with an open PR from the branch: would update it" "$(has 'would update #77' && grep -q 'pulls?state=open&head=expat-ready:lead/test' "$T/calls" && echo 1)" "$o"
+echo 77 > "$T/open"; run --dry-run; ok "dry run with an open PR from the branch: would update it" "$(has 'would update #77' && grep -q 'pulls?state=open&head=expat-ready%3Alead%2Ftest&per_page=5' "$T/calls" && echo 1)" "$o"
 rm -f "$T/open"; FAILGET=1 run --dry-run; ok "dry run: a failed PR read is said, not taken as none" "$([ "$rc" = 0 ] && has 'the PR read failed (HTTP 502' && ! has 'would open a PR' && echo 1)" "$o"
 
 fresh 5 7 6 7; echo "a line" >> "$Q/STATE.md"; run --as-of P-7 --title "records: test day"
@@ -65,4 +65,22 @@ fresh 5 5; echo x >> "$Q/STATE.md"; git -C "$C" remote set-url --push origin "$T
 ok "a failed push: exit 1, it says the commit is local only, no PR posted" "$([ "$rc" = 1 ] && has 'git push failed: the commit is local only' && [ "$(posts)" = 0 ] && echo 1)" "$o"
 fresh 5 5; git -C "$C" checkout -q --detach; run; ok "a detached HEAD: refused" "$([ "$rc" = 2 ] && has 'detached HEAD' && echo 1)" "$o"
 fresh 5 5; run --bogus; ok "an unknown option: usage, exit 2" "$([ "$rc" = 2 ] && has 'usage:' && echo 1)" "$o"
+# #3693 review, round 1: each defect it found has its case
+fresh 5 5; echo 'echo evil' > "$Q/tools/evil.sh"; git -C "$C" add "$Q/tools/evil.sh"; echo x >> "$Q/STATE.md"; run
+ok "a non-record the Lead already staged is never committed, and stays staged" "$([ "$rc" = 0 ] && ! git -C "$C" show --name-only HEAD | grep -q evil && git -C "$C" show --name-only HEAD | grep -qF "$P/STATE.md" && git -C "$C" diff --cached --name-only | grep -q evil && echo 1)" "$o | $(git -C "$C" show --stat HEAD | tail -3)"
+fresh 5 7 6 7; ln -s "$T" "$T/link"; echo x >> "$Q/STATE.md"; : > "$T/calls"; o=$(cd "$T/link/c" && RECORDS_GH="$T/gh" bash "$T/link/c/$P/tools/records-pr.sh" --as-of P-7 2>&1); rc=$?; rm -f "$T/link"
+ok "a copy reached through a symlink: RULES.md is still a record and is committed" "$([ "$rc" = 0 ] && has "record: $P/RULES.md" && ! has 'left out' && git -C "$C" show --name-only HEAD | grep -qF "$P/RULES.md" && [ "$(clean)" = 1 ] && echo 1)" "$o"
+fresh 5 5; mkdir -p "$Q/qa"; nm=$'tab\there "q".md'; echo x > "$Q/qa/$nm"; nl=$'new\nline.md'; echo x > "$Q/qa/$nl"; run
+ok "a name with a tab or quote is committed as it is; one with a newline fails closed (left out, not committed)" "$([ "$rc" = 0 ] && git -C "$C" ls-files -z | tr '\0' '|' | grep -qF "$P/qa/$nm|" && ! git -C "$C" ls-files -z | tr '\0' '|' | grep -qF "$P/qa/$nl|" && has 'left out' && echo 1)" "$o"
+fresh 5 7 6 7; sed -i '1s/.*/# R (as of **P-5** 24 Nov 09:00 IST; earlier: x)/' "$Q/RULES.md"; git -C "$C" commit -qam shape; run --dry-run --as-of P-7
+ok "a first line with no comma after the as-of: one time, the rest kept" "$(has 'RULES first line: # R (as of **P-7**, ' && ! has '09:00' && has 'IST; earlier: x)' && echo 1)" "$o"
+fresh 5 7 6 7; sed -i '1s/.*/# R (as of **P-5**)/' "$Q/RULES.md"; git -C "$C" commit -qam shape; run --dry-run --as-of P-7
+ok "a ')' right after the as-of is kept" "$(grep -qE 'RULES first line: # R \(as of \*\*P-7\*\*, [0-9]{1,2} [A-Z][a-z]{2} [0-9:]{5} IST\)$' <<<"$o" && echo 1)" "$o"
+fresh 5 7 6 7; sed -i '1s/.*/# R (as of **P-5**, x; was as of **P-3**)/' "$Q/RULES.md"; git -C "$C" commit -qam shape; run --dry-run --as-of P-7
+ok "two 'as of **P-n**' on the first line: refused" "$([ "$rc" = 2 ] && has 'more than once' && echo 1)" "$o"
+fresh 5 5; run --as-of P-5; ok "--as-of equal to today's number: the line is left, nothing to do" "$([ "$rc" = 0 ] && has 'already as of P-5' && has 'nothing to do' && [ "$(clean)" = 1 ] && echo 1)" "$o"
+fresh 5 5; echo x >> "$Q/STATE.md"; git -C "$C" commit -qam rec; run
+ok "commits ahead and no change in the tree: pushes and opens the PR" "$([ "$rc" = 0 ] && [ "$(pushed)" = 1 ] && [ "$(posts)" = 1 ] && echo 1)" "$o"
+fresh 5 5; git -C "$C" checkout -q -b 'lead/x&state=closed'; echo x >> "$Q/STATE.md"; run --dry-run
+ok "a branch name with & and =: encoded in the PR read" "$(grep -qF 'head=expat-ready%3Alead%2Fx%26state%3Dclosed&per_page=5' "$T/calls" && echo 1)" "$(cat "$T/calls")"
 finish
