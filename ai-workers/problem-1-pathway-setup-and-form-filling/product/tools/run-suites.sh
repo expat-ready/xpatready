@@ -27,7 +27,7 @@
 #        $SUITES_OUT/retry-bugs.md, which CI uploads and its retry-comment job posts as a PR comment). tools/flaky.mjs counts the retries
 #        (daily-numbers.sh) and quarantines a suite that passed only on retry in 2 different runs in 7 days
 #        (tools/flaky-ledger.tsv).
-# SUITES_QUARANTINE_AUTO="<suite>|<owner>|<fix by>|<runs> ..." (CI: from flaky.mjs quarantine in the kind job, the same
+# SUITES_QUARANTINE_AUTO="<suite>|<owner>|<fix by>|<runs, or p<n> for a decision row> ..." (CI: from flaky.mjs quarantine in the kind job, the same
 #        for every part): joins QUARANTINE below for this run, its row naming the owner and the fix date.
 #   --skip-green <file>   suites remembered green (P-371 (3), tools/ci-memory.mjs): "<suite><TAB><why>" lines; each is
 #        left out of this run and shown as "remembered" with its reason. Only a pull request's check passes it.
@@ -129,7 +129,7 @@ QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do
   IFS='|' read -r qn qo qd qr <<< "$e"
-  if [[ "$qn" =~ ^check_[A-Za-z0-9_.-]+\.(ts|cjs)$ && "$qo" =~ ^[a-z0-9_-]+$ && "$qd" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "${qr:--}" =~ ^[0-9,-]+$ ]]; then
+  if [[ "$qn" =~ ^check_[A-Za-z0-9_.-]+\.(ts|cjs)$ && "$qo" =~ ^[a-z0-9_-]+$ && "$qd" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "${qr:--}" =~ ^([0-9,-]+|p[0-9]+)$ ]]; then   # p<n>: by a decision row (P-822: pr-suites-quarantine.txt)
     case " $QUARANTINE " in *" $qn "*) ;; *) QUARANTINE="$QUARANTINE $qn"; AUTOQ="$AUTOQ$qn|$qo|$qd|${qr:--} ";; esac
   else echo "SUITES_QUARANTINE_AUTO: ignored the malformed entry \"$e\"" >&2; fi
 done
@@ -254,6 +254,8 @@ fi
 
 # A quarantined suite's reason: by hand (P-205), or by the B122 rule with its owner and fix date.
 qwhy() { local e; for e in $AUTOQ; do case "$e" in "$1|"*) IFS='|' read -r _ qo qd qr <<< "$e"
+  if [[ "$qr" =~ ^p([0-9]+)$ ]]; then local late=""; [[ "$(date -u +%F)" > "$qd" ]] && late="; overdue since $qd"
+    echo "quarantined in pr-suites by P-${BASH_REMATCH[1]} (passes most often only on retry): owner $qo, fix by $qd$late; the merge queue and nightly still run it"; return; fi
   echo "passed only on retry in 2+ runs in 7 days (runs ${qr//,/, }): owner $qo, back on $qd unless fixed sooner; nightly still runs it (B122)"; return;; esac; done
   echo "fails at random: nightly only until its fix merges (P-205)"; }
 rows=(); fail=0; failed=(); RETRIES=0; RETRIED=(); AGAIN=(); NORETRY=""; RF=""

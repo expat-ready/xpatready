@@ -28,6 +28,7 @@ case "$m $p" in
   "GET issues/"*/comments*) n=${p#issues/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] || { echo '[]'; exit 0; }
     if [ -f "$FX/comments-extra-$n.json" ] && [ -f "$FX/comments-$n.json" ]; then jq -s add "$FX/comments-$n.json" "$FX/comments-extra-$n.json"; else serve "comments-$n.json"; fi;;
   "GET issues?"*) [ "${pg:-1}" = 1 ] && serve issues.json || echo '[]';;
+  "GET commits/"*/check-runs?check_name=pr-suites*) s=${p#commits/}; serve "suites-${s%%/*}.json";;   # P-822
   "GET commits/"*/check-runs*) s=${p#commits/}; serve "checks-${s%%/*}.json";;
   "GET actions/runs/"*) serve "run-${p#actions/runs/}.json";;
   "POST issues/"*/labels) n=${p#issues/}; echo "LABEL ${n%%/*}" >> "$FX/log"; echo '[]';;
@@ -52,10 +53,15 @@ cmt() {  # cmt <n> <login> <association> <body>
 cirun() {  # cirun <head> <status> <conclusion> <started> [attempt] → the check "ci" and run 77
   jq -n --arg s "$2" --arg c "$3" '{check_runs: [{app: {slug: "github-actions"}, status: $s, conclusion: (if $c == "" then null else $c end),
     started_at: "2026-11-15T10:30:00Z", details_url: "https://github.test/o/r/actions/runs/77/job/1"}]}' > "$T/fx/checks-$1.json"
-  jq -n --arg t "$4" --argjson a "${5:-1}" --arg s "$2" '{id: 77, run_started_at: $t, run_attempt: $a, status: $s}' > "$T/fx/run-77.json"; }
+  jq -n --arg t "$4" --argjson a "${5:-1}" --arg s "$2" '{id: 77, run_started_at: $t, run_attempt: $a, status: $s}' > "$T/fx/run-77.json"
+  [ -n "${NOSUITES:-}" ] || suites "$1" completed success; }
+suites() {  # suites <head> <status> <conclusion> [workflow path] [event] → the check "pr-suites" on it, run 88 (P-822)
+  jq -n --arg s "$2" --arg c "$3" '{check_runs: [{app: {slug: "github-actions"}, status: $s, conclusion: (if $c == "" then null else $c end),
+    started_at: "2026-11-15T10:40:00Z", details_url: "https://github.test/o/r/actions/runs/88/job/2"}]}' > "$T/fx/suites-$1.json"
+  jq -n --arg p "${4:-.github/workflows/pr-suites.yml}" --arg e "${5:-pull_request}" '{id: 88, path: $p, event: $e}' > "$T/fx/run-88.json"; }
 run() {  # run <mode> <pr> → $out $log $r
   : > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main PR=$2 \
-    QG_POLL=0 REVIEWERS="${REV:-}" LABELED_AT="${LAT:-}" TRIGGER="${TRIG:-}" HEADS="${HEADS:-}" RELABEL="${RELABEL:-}" FAIL_FULL="${FAIL_FULL:-}" bash "$G" "$1" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+    QG_POLL=0 QG_SUITES_GATE="${SG:-}" REVIEWERS="${REV:-}" LABELED_AT="${LAT:-}" TRIGGER="${TRIG:-}" HEADS="${HEADS:-}" RELABEL="${RELABEL:-}" FAIL_FULL="${FAIL_FULL:-}" bash "$G" "$1" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 # CI-PRE: full <id> <pr> <head> <status> <conclusion> [main's commit] [branch] [event] [path] [repo] → one run of fullruns.json (newest first)
 FR='[]'; fullset() { jq -n --argjson r "$FR" '{workflow_runs: $r}' > "$T/fx/fullruns.json"; }
 full() { FR=$(jq -c --argjson id "$1" --arg t "full-run PR #$2 $3" --arg s "$4" --arg c "$5" --arg sha "${6:-$MAINSHA}" --arg b "${7:-main}" --arg e "${8:-workflow_dispatch}" --arg p "${9:-.github/workflows/ci.yml}" --arg r "${10:-o/r}" \
@@ -480,6 +486,46 @@ seq 1 3000 | sed "s|^|$S/api/src/g|; s|$|.ts|" | jq -R '{filename: .}' | jq -s .
 ok "fresh: 3,000 files shared with a merge are still a hit (round 2 m1: no grep -q in a pipe)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/api/src/form.ts"; rm -f "$T/fx/run-77.json"; run fresh 8
 ok "fresh: the ci run cannot be read: pending, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh pending" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
+
+# --- P-822 (founder, 25 Nov): pr-suites green on the exact head before the label. SG=block: the rule as it will block;
+# the default (warn, P-717 (2)) labels and says why. Only "success" counts: a PR whose plan picks no suite gets success
+# from pr-suites.yml's job "pr-suites" (it runs always()), so skipped and neutral never stand for green.
+rm -f "$T/fx/pulls.json"; prj 7 $HEAD1; files 7 "$S/api/src/form.ts"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+SG=block run label 7
+ok "P-822 block: pr-suites green on the head: labelled" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q 'Warning' <<< "$log" && echo 1)" "$out / $log"
+suites $HEAD1 completed failure; SG=block TRIG=approve run label 7
+ok "P-822 block: pr-suites red on the head: refused, and the comment says \"pr-suites is not green on <sha>\"" "$(! grep -q '^LABEL' <<< "$log" && grep -q "^COMMENT 7 .*not put on by itself: pr-suites is not green on ${HEAD1:0:9}: failure" <<< "$log" && echo 1)" "$out / $log"
+for st in completed:skipped completed:neutral completed:cancelled completed:timed_out in_progress:; do
+  suites $HEAD1 "${st%%:*}" "${st#*:}"; SG=block run label 7
+  ok "P-822 block: pr-suites \"$st\" on the head: refused (only success counts)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "$out / $log"
+done
+echo '{"check_runs": []}' > "$T/fx/suites-$HEAD1.json"; SG=block run label 7
+ok "P-822 block: no pr-suites run on the head: refused" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'no pr-suites run' <<< "$out" && echo 1)" "$out / $log"
+suites $OLD completed success; SG=block run label 7
+ok "P-822 block: pr-suites green only on an older head: refused" "$(! grep -q '^LABEL' <<< "$log" && grep -q "not green on ${HEAD1:0:9}: no pr-suites run" <<< "$out" && echo 1)" "$out / $log"
+suites $HEAD1 completed success .github/workflows/other.yml; SG=block run label 7
+ok "P-822 block: a green \"pr-suites\" from another workflow is not pr-suites.yml's: refused" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+suites $HEAD1 completed success .github/workflows/pr-suites.yml workflow_dispatch; SG=block run label 7
+ok "P-822 block: a green pr-suites run by hand (not the PR's pull_request run): refused" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+suites $HEAD1 completed success; rm -f "$T/fx/run-88.json"; SG=block run eligible 7
+ok "P-822 block: the pr-suites run cannot be read: not eligible, exit 3 (the sweep keeps the label, tries again)" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
+suites $HEAD1 completed failure; SG=block run eligible 7
+ok "P-822 block: eligible says no on a red pr-suites (the sweep takes a bot's label off)" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
+run label 7
+ok "P-822 warn (the default, P-717 (2), first 24 h): pr-suites red: labelled, and the comment warns it will refuse" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q "^COMMENT 7 .*put on: .*\*\*Warning:\*\* pr-suites is not green on ${HEAD1:0:9}: failure.*warn-only for its first 24 h" <<< "$log" && echo 1)" "$out / $log"
+ok "P-822: the switch is one line in queue-gate.sh, warn until the Lead flips it" "$([ "$(grep -c '^SUITES_GATE=' "$G")" = 1 ] && grep -qx 'SUITES_GATE="${QG_SUITES_GATE:-warn}"   # warn | block' "$G" && echo 1)" "$(grep -n '^SUITES_GATE=' "$G")"
+# a person's label (label-guard.sh asks proof with RELABEL=1): the same rule, on the head or its walk back to the Approve
+SG=block HEADS="$HEAD1" RELABEL=1 run proof 7
+ok "P-822 block proof: a label just put on with pr-suites red: exit 1 naming it" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
+suites $OLD completed success; SG=block HEADS="$HEAD1 $OLD" RELABEL=1 run proof 7
+ok "P-822 block proof: green on the approved commit a pure merge of main sits on: exit 0" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+SG=block HEADS="$HEAD1" run proof 7
+ok "P-822 proof: a push (not a new label) never takes the label off for pr-suites (a merge of main re-runs it)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+HEADS="$HEAD1" RELABEL=1 run proof 7
+ok "P-822 warn proof: a label just put on with pr-suites red is kept (warn)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+W2="$(git -C "$TOOLS" rev-parse --show-toplevel)/.github/workflows/queue-gate.yml"
+ok "P-822: queue-gate.yml wakes when pr-suites ends, as when ci ends" "$(python3 -I -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); print("ok" if set(d[True]["workflow_run"]["workflows"]) == {"ci", "pr-suites"} else "no")' "$W2" | grep -qx ok && echo 1)" "$(grep -n 'workflows:' "$W2")"
+suites $HEAD1 completed success; prj 7 $HEAD1
 
 # --- the wiring
 R=$(git -C "$TOOLS" rev-parse --show-toplevel); M="$R/.mergify.yml"; W="$R/.github/workflows/queue-gate.yml"
