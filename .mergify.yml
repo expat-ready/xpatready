@@ -295,6 +295,11 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-system.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-system__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-tasks:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-tasks.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-tasks__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-platform-web-address:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-web-address.prisma"
@@ -380,6 +385,7 @@ scopes:
     mig-platform-register: 1
     mig-platform-support: 1
     mig-platform-system: 1
+    mig-platform-tasks: 1
     mig-platform-web-address: 1
     mig-proposals: 1
     mig-review: 1
