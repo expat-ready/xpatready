@@ -166,7 +166,7 @@ try {
 
   // ------------------------------------------------------------------------------------------ DW6: no other firm, the read
   const firmCols = names.filter((n) => n.endsWith(".csv")).map((n) => { const [head, ...body] = csv(n).split("\r\n").filter(Boolean); const i = head.split(",").indexOf("firm_id"); return { n, ids: i < 0 ? [] : body.map((l) => l.split(",")[i]) }; });
-  ok("PF-11 DW6 pass: every section with a firm_id holds firm A's only, and firm B's staff and email are absent", firmCols.filter((c) => c.ids.length).length >= 4 && firmCols.every((c) => c.ids.every((id) => id === FIRM_A)) && !Object.values(zip.files).some((f) => !f.dir && f.asText().includes("sample-solo.example.com")), firmCols);
+  ok("PF-11 DW6 pass: every section with a firm_id holds firm A's only, and firm B's staff and email are absent", firmCols.filter((c) => c.ids.length).length >= 4 && firmCols.every((c) => c.ids.every((id) => id === FIRM_A)) && !Object.values(zip.files).some((f) => !f.dir && /sample-solo\.example\.com/.test(f.asText())), firmCols);
   const pg = new PgFirmExport(nestDb());
   pg.register("peek", async () => ({ module: "peek", sections: [{ key: "staff", title: "Staff", columns: [{ key: "firm_id", kind: "text" }], rows: (await withFirm(FIRM_B, () => (nestDb() as any).platformStaff.findMany())).map((s: any) => [s.firmId]) }] }));
   ok("PF-11 DW6 fail: a test exporter that reads outside its firm's scope (as firm B) fails the check", await pg.collect(FIRM_A).then(() => false, (e) => e instanceof FirmExportRefused));
