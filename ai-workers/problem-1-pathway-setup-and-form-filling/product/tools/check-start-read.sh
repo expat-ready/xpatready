@@ -36,9 +36,26 @@ ok "DECISIONS rows newer than RULES' as-of only" "$([ "$rc" = 0 ] && has 'start 
 printf '# R, no marker\n' > "$Q/RULES.md"; run; ok "rows newer than as-of with no as-of on RULES: fails" "$([ "$rc" = 1 ] && has "first line has no 'as of **P-NNN**'" && echo 1)" "$o"
 rules
 printf 'import sys\nsys.exit(3)\n' > "$T/crash.py"; cp "$Q/tools/start-read.py" "$T/keep.py"; cp "$T/crash.py" "$Q/tools/start-read.py"; table '`A.md` | all'; run
-ok "start-read.py failing with no output: check-docs fails" "$([ "$rc" = 1 ] && has 'start-read.py failed and printed nothing' && echo 1)" "$o"
+ok "start-read.py failing with no output: check-docs fails" "$([ "$rc" = 1 ] && has 'START READ: start-read.py failed (exit 3)' && echo 1)" "$o"
+printf 'print("start read: 5 tokens")\nraise SystemExit(1)\n' > "$Q/tools/start-read.py"; run
+ok "start-read.py exiting 1 with no problem line: check-docs fails" "$([ "$rc" = 1 ] && has 'START READ: start-read.py failed (exit 1)' && echo 1)" "$o"
 cp "$T/keep.py" "$Q/tools/start-read.py"
+# #3696 review, round 1: one case per finding
+printf '| # | File | Part | Why |\n|---|---|---|---|\n| 1 | `A.md` | all | w |\n| 1 | \xff | all | w |\n' > "$Q/LEAD-START.md"; run
+ok "a byte that is not UTF-8 in LEAD-START.md: no crash, said as a problem, never docs OK" "$([ "$rc" = 1 ] && ! has 'docs OK' && ! has Traceback && echo 1)" "$o"
+printf 'ab\xff\xfecd' > "$Q/bin.md"; table '`bin.md` | all'; big "$Q/A.md" 4; run
+ok "a file that is not UTF-8 counts its bytes on disk (6 bytes, 1 token)" "$([ "$rc" = 0 ] && has 'start read: 1 tokens' && echo 1)" "$o"
+table '`A.md` | all'; printf '| 8a | `A.md` | all | w |\n' >> "$Q/LEAD-START.md"; run
+ok "a row whose # cell is not a number fails, never skipped" "$([ "$rc" = 1 ] && has "the # cell must be a number, not '8a'" && echo 1)" "$o"
+printf '# C\n## Nowhere\n%s\n## Now\nnn\n```\n## Fake heading in a fence\n```\nkept\n## End\n' "$(printf 'z%.0s' $(seq 1 4000))" > "$Q/C.md"; table '`C.md` | § Now'; run
+ok "§ Now matches the heading Now, not Nowhere; a heading inside a fence does not end the section" "$([ "$rc" = 0 ] && has 'start read: 12 tokens' && echo 1)" "$o"
+rm -f "$Q/LEAD-START.md"; mkdir -p "$T/c/.claude/skills/lead"; echo x > "$T/c/.claude/skills/lead/SKILL.md"; run
+ok "the lead skill without LEAD-START.md: fails, never unmeasured in silence" "$([ "$rc" = 1 ] && has 'START READ: LEAD-START.md is missing' && echo 1)" "$o"
+rm -rf "$T/c/.claude/skills/lead"
 # the real list: every row resolves on this copy, and the total is printed
-R="$(cd "$TOOLS/../../../.." && pwd)"; o=$(python3 -I "$TOOLS/start-read.py" --product "$TOOLS/.." --root "$R" 2>&1); rc=$?
-ok "the real LEAD-START.md: every row resolves, under the fail line" "$([ "$rc" = 0 ] && has 'start read: ' && ! has 'START READ: ' && echo 1)" "$o"
+# check-guards --mutate copies product/tools only: there the real page is absent, and this case says so instead of failing
+R="$(cd "$TOOLS/../../../.." && pwd)"
+if [ -f "$TOOLS/../LEAD-START.md" ]; then o=$(python3 -I "$TOOLS/start-read.py" --product "$TOOLS/.." --root "$R" 2>&1); rc=$?
+  ok "the real LEAD-START.md: every row resolves, under the fail line" "$([ "$rc" = 0 ] && has 'start read: ' && ! has 'START READ: ' && echo 1)" "$o"
+else echo "SKIP  the real LEAD-START.md: not in this copy (the mutation harness copies product/tools only)"; fi
 finish

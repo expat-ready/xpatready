@@ -14,6 +14,8 @@ printf '#!/bin/bash\nEXEMPT=" P-735 P-734 "   # workflow rows (test)\n' > "$P/to
   echo '| P-735 | 20 Nov | **Lanes pick their own next item (founder).** |'; } > "$P/DECISIONS.md"
 printf '# Rules, as of **P-700**\n\nNo register table.\n' > "$P/RULES.md"
 head -c 13000 /dev/zero | tr '\0' 'x' | fold -w 100 >> "$P/STATE.md"; echo 'See `domain/glossary.md`.' >> "$P/STATE.md"
+cp "$TOOLS/start-read.py" "$P/tools/"   # OS-16: main's start read prints its total and fails on a row naming a missing file
+printf '| # | File | Part | Why |\n|---|---|---|---|\n| 1 | `STATE.md` | all | w |\n| 2 | `GONE.md` | all | w |\n' > "$P/LEAD-START.md"
 mkdir -p "$P/domain" "$C/$APPREL/web/src"; echo '# Glossary' > "$P/domain/glossary.md"; echo 'export const a = 1;' > "$C/$APPREL/web/src/a.ts"
 git -C "$C" add -A && git -C "$C" commit -qm main && git -C "$C" update-ref refs/remotes/origin/main HEAD
 base=$(bash "$P/tools/check-docs.sh" 2>&1)
@@ -28,6 +30,8 @@ ok "... and is warned of the Lead's records lines (not blocking)" \
   "$(jq -r '.systemMessage // ""' <<< "$out" | grep 'warning: ' | grep 'WORKFLOW LOCK: P-735' | grep -q 'RULES LAG' && echo 1)" "$out"
 # Uncommitted app work changes nothing.
 lane forms/wip; echo 'export const b = 1;' > "$C/$APPREL/web/src/b.ts"; stop
+ok "OS-16: the start-read total never blocks, and a START READ line about the Lead's page is a warning" \
+  "$(grep -q '^start read: ' <<< "$base" && jq -r '.systemMessage // ""' <<< "$out" | grep 'warning: ' | grep -q 'START READ: LEAD-START.md line 4 names GONE.md' && echo 1)" "$out"
 ok "a lane with only uncommitted app work stops too" "$([ "$blocked" = none ] && echo 1)" "$out"
 # 2. A lane that broke a records rule in a file it changed is still refused.
 lane evidence/doc; echo 'See `domain/missing-page.md`.' >> "$P/domain/glossary.md"; git -C "$C" commit -qam doc; stop

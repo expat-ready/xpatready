@@ -215,9 +215,14 @@ if m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed
 fi
 # OS-16 (P-615, P-440b): a fresh Lead's start read, the files product/LEAD-START.md lists, summed as bytes / 4. The total
 # and a WARN over 40k print here; over 70k (P-615), or a row naming a missing file or section, fails. No LEAD-START.md
-# (a throwaway test copy): nothing. Test: check-start-read.sh.
+# (a throwaway test copy) and no lead skill: nothing; the skill without the page fails. The total is of this copy's files
+# (main's STATE in CI; the Lead reads its lead/* branch's). Test: check-start-read.sh.
 if [ -f "$PH/LEAD-START.md" ]; then
-  sr=$(python3 -I "$PH/tools/start-read.py" --product "$PH" --root "$ROOT" 2>&1) || [ -n "$sr" ] || sr="START READ: start-read.py failed and printed nothing"
-  printf '%s\n' "$sr" | grep -v '^START READ: ' | grep . ; printf '%s\n' "$sr" | grep '^START READ: ' >> "$out"
+  sr=$(python3 -I "$PH/tools/start-read.py" --product "$PH" --root "$ROOT" 2>&1); src=$?
+  # a crash (exit other than 0 and 1, or 1 with no problem line) fails here, whatever it printed before (#3696 review)
+  if [ "$src" -gt 1 ] || { [ "$src" = 1 ] && ! grep -q '^START READ: ' <<<"$sr"; }; then
+    echo "START READ: start-read.py failed (exit $src): $(printf '%s' "$sr" | tail -1 | cut -c1-160)" >> "$out"; sr=$(grep -v '^START READ: ' <<<"$sr" | grep '^start read: ' || true); fi
+  printf '%s\n' "$sr" | grep -v '^START READ: ' | grep . || true; printf '%s\n' "$sr" | grep '^START READ: ' >> "$out" || true
+elif [ -f "$ROOT/.claude/skills/lead/SKILL.md" ]; then echo "START READ: LEAD-START.md is missing: the Lead's start read is unmeasured (OS-16, P-615)" >> "$out"
 fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0

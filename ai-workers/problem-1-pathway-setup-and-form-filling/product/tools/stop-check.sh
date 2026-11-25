@@ -44,6 +44,7 @@ docs_files() {  # $1 a check-docs line -> the paths (extended regexes, from the 
     "RULES REGISTER:"*|"RULES TOO BIG"*) printf '%s\n' "^$PH/RULES\.md$";;
     "RULE MAP:"*) printf '%s\n' "^$PH/RULES\.md$" "^$PH/rules/";;
     "STATE TOO BIG"*) printf '%s\n' "^$PH/STATE\.md$";;
+    "START READ:"*) printf '%s\n' "^$PH/LEAD-START\.md$" "^$PH/tools/start-read\.py$" "^$PH/[A-Z][A-Z-]*\.md$" "^\.claude/skills/lead(-watch)?/" "^(CLAUDE|AGENTS)\.md$";;   # OS-16: the page or a file it lists
     "CURRENT LEAD:"*) printf '%s\n' "^$PH/STATE\.md$" "^$PH/tools/current-lead\.sh$";;
     "TOO LONG ("*|"TOO BIG ("*) printf '^%s$\n' "$(printf '%s' "${1#*): }" | sed 's/[.[\*^$()+?{|]/\\&/g')";;
     "MISSING LINK in "*) f=${1#MISSING LINK in }; r=${f#*: }; f=${f%%: *}
@@ -55,7 +56,7 @@ mineset=$(printf '%s\n' "$touched" | while IFS= read -r f; do [ -n "$f" ] && { e
 if ! docs=$(bash "$PH/tools/check-docs.sh" 2>"${TMPDIR:-/tmp}/stop-check-$$.err"); then
   mine=""; theirs=""
   while IFS= read -r l; do
-    case "$l" in ""|WARN*|"docs OK") continue;; esac
+    case "$l" in ""|WARN*|"docs OK"|"start read: "*) continue;; esac   # OS-16: the start-read total is information
     pats=$(docs_files "$l")
     if [ -z "$scope" ] || [ -z "$pats" ] || printf '%s\n' "$mineset" | grep -qE -f <(printf '%s\n' "$pats"); then mine="$mine$l
 "; else theirs="$theirs$l
