@@ -20,6 +20,7 @@ import { MetricRegistry } from "../api/src/platform/reports/registry.ts";
 import { ReportsController } from "../api/src/platform/reports/routes.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import type { Db } from "../api/src/core.ts";
+import caseReportsFeature from "../api/src/features/case-reports.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -132,6 +133,7 @@ try {
   const count = (m: MetricAnswer) => (m.reading?.kind === "COUNT" ? m.reading.value : null);
 
   // ---------------------------------------------------------------------------------- DW1: registered on the one door
+  ok("CS-R1 DW1 pass: the feature file adds CaseReports to the app at start-up (features/case-reports.ts)", caseReportsFeature.providers?.includes(CaseReports) && !("controllers" in caseReportsFeature));
   const keys = registry.definitions().map((d) => d.key);
   ok("CS-R1 DW1 pass: the four case numbers are registered on PF-R1's registry, each with its definition in words (AG-14-4)",
     eq(keys, ["reports.cases.case_load", "reports.cases.new_vs_closed", "reports.cases.stage_durations", "reports.cases.open_review_findings"]) && registry.definitions().every((d) => d.module === "cases" && d.source.length > 20 && d.moneyTreatment === "NONE"));
