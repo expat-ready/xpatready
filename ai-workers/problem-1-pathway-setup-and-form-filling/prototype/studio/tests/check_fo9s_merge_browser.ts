@@ -185,7 +185,7 @@ try {
   await dialog(p).getByText(/cannot be merged here yet/).first().waitFor({ timeout: 15_000 });
   // The refusal re-reads the list, which refetches the preview: once it has settled, the sentence is there once (batch
   // 45594684150: the refusal's copy and the preview's warning were both shown, a strict-mode failure on main).
-  await p.waitForLoadState("networkidle"); await dialog(p).locator("[data-merge-field]").first().or(dialog(p).locator("[data-merge-confirm]")).first().waitFor({ timeout: 10_000 });
+  await dialog(p).getByRole("status").filter({ hasText: /cannot be merged here yet/ }).waitFor({ timeout: 15_000 });   // the refetched preview's warning (review r1 m3)
   const once = await dialog(p).getByText(/cannot be merged here yet/).count();
   ok("FO-9s G6 fail: money arriving after the dialog opened → the server's sentence, once (also after the preview is read again); nothing merged; Merge 2 people is off (it cannot succeed again)",
     once === 1 && mergedInto(ines.person) === "" && mergedInto(ines2.person) === "" && await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).isDisabled(), { once });
@@ -196,6 +196,23 @@ try {
   const bad = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok("FO-9s G7: the dialog passes axe (no serious or critical)", bad.length === 0, bad.map((v) => `${v.id}: ${v.help}`));
   await p.keyboard.press("Escape");
+
+  // ----------------------------------------------------------------------- G6b decided meanwhile (review r1 M1 on #3754)
+  {
+    const kai = await person("Kai", "Moreau", null, null), kai2 = await person("Kai", "Moreu", null, null), P_KAI = pairOf(kai.person, kai2.person);
+    await openMerge(p, P_KAI);
+    await next(p).click(); await next(p).click();
+    const kept = await api("POST", `/front-office/duplicates/review/${P_KAI}/keep-separate`);   // someone else keeps them separate meanwhile
+    const previewed = p.waitForResponse((r) => r.url().endsWith(`/duplicates/review/${P_KAI}/preview`), { timeout: 15_000 });
+    await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).click();
+    await previewed;   // the refusal re-reads the list, which refetches the preview: it is refused in the same words
+    await dialog(p).getByText("This pair was already decided.").first().waitFor({ timeout: 15_000 });
+    await p.waitForTimeout(300);
+    const copies = await dialog(p).getByText("This pair was already decided.").count(), retry = await dialog(p).getByRole("button", { name: "Try again" }).count();
+    ok("FO-9s G6b fail: a pair decided while the dialog is open → the server's sentence once, no Try again; nothing merged; Merge 2 people is off",
+      kept.status === 200 && copies === 1 && retry === 0 && mergedInto(kai.person) === "" && mergedInto(kai2.person) === "" && await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).isDisabled(), { kept: kept.status, copies, retry });
+    await p.keyboard.press("Escape");
+  }
 
   // ----------------------------------------------------------------------- G8 answers lost or failed (break r1 M1)
   const zoe = await person("Zoe", "Brandt", null, null), zoe2 = await person("Zoe", "Brant", null, null), P_ZOE = pairOf(zoe.person, zoe2.person);
