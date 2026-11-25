@@ -51,6 +51,8 @@ const { buildPackage, ExportTooLarge } = await import("../api/src/platform/firm-
 const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
 const { FirmExportController } = await import("../api/src/platform/firm-export/routes.ts");
 const feature = (await import("../api/src/features/platform-firm-export.ts")).default;
+const foFeature = (await import("../api/src/features/front-office-firm-export.ts")).default;
+const { FO_TABLES, frontOfficeSections, FRONT_OFFICE_MODULE } = await import("../api/src/front-office/export/sections.ts");
 
 const fc = new FakeClock("2026-11-24T10:00:00Z"), jobs = fakeJobs(fc), files = fakeFiles();
 const clock = new (class extends PlatformClock { override now() { return fc.now().getTime(); } })();
@@ -236,6 +238,29 @@ try {
     chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'READY', 'k', 1, now(), now())`) === "refused"
     && chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, sha256, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'DOWNLOADED', 'k', '${"0".repeat(64)}', 1, now(), now())`) === "refused"
     && chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, sha256, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'READY', 'k', '${"0".repeat(64)}', now(), now())`) === "refused");
+
+  // ------------------------------------------------------------------------------------------ DW9 (part 2): the front office's sections
+  const fA = await files.put(FIRM_A, "signing/doc-a/agreement.pdf", new TextEncoder().encode("%PDF firm A agreement"), "application/pdf");
+  const fB = await files.put(FIRM_B, "signing/doc-b/agreement.pdf", new TextEncoder().encode("%PDF firm B agreement"), "application/pdf");
+  const S = sql(`select id from platform_staff where firm_id = '${FIRM_B}' limit 1`), docA = crypto.randomUUID(), docB = crypto.randomUUID();
+  sql(`insert into fo_sales_setup (firm_id) values ('${FIRM_A}'), ('${FIRM_B}');
+    insert into fo_signing_document (id, firm_id, title, file_key, sha256, uploaded_by) values ('${docA}', '${FIRM_A}', 'Agreement A', '${fA.key}', '${fA.sha256}', '${R}'), ('${docB}', '${FIRM_B}', 'Agreement B', '${fB.key}', '${fB.sha256}', '${S}')`);
+  const foPort = new PgFirmExport(nestDb()); foPort.register("platform", platformSections);
+  const reg = (foFeature.providers[0] as { useFactory: (p: unknown) => boolean }).useFactory(foPort);
+  ok("PF-11 DW9 pass: the front office's feature file registers its exporter on the platform's PgFirmExport", reg === true && foPort.modules().includes(FRONT_OFFICE_MODULE), foPort.modules());
+  const foSvc = new FirmExports({ db: nestDb(), port: foPort, files, jobs, audit: auditEvent as never, holds: holds as never, now: () => fc.now() });
+  const foId = op(); sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${foId}', '${FIRM_A}', '${foId}', '${R}', now())`);
+  await withFirm(FIRM_A, () => foSvc.build(foId, FIRM_A));
+  const foZip = new PizZip((await files.get(FIRM_A, sql(`select file_key from platform_firm_export where id = '${foId}'`)))!.bytes), foNames = Object.keys(foZip.files), foCsv = (n: string) => foZip.file(n)?.asText() ?? "";
+  ok("PF-11 DW9 pass: every front-office table is a section (an empty one keeps its header row) and the README lists it",
+    FO_TABLES.every(([k]) => foNames.includes(`front-office/${k}.csv`) && foCsv(`front-office/${k}.csv`).split("\r\n")[0].length > 0) && /front-office\/leads\.csv: Leads \(0 rows\)/.test(foCsv("README.txt")), FO_TABLES.map(([k]) => k).filter((k) => !foNames.includes(`front-office/${k}.csv`)));
+  ok("PF-11 DW9 pass: the signing document is in the zip with its bytes, under the front office's files", foCsv(`front-office/files/signing-document-${docA}-agreement.pdf`) === "%PDF firm A agreement" && foCsv("front-office/signing-documents.csv").includes(docA), foNames.filter((n) => n.includes("files/")));
+  const foFirmCols = foNames.filter((n) => n.startsWith("front-office/") && n.endsWith(".csv")).map((n) => { const [head, ...body] = foCsv(n).split("\r\n").filter(Boolean); const i = head.split(",").indexOf("firm_id"); return { n, hasFirm: i >= 0, ids: i < 0 ? [] : body.map((l) => l.split(",")[i]) }; });
+  ok("PF-11 DW9 fail (DW6 on every front-office table): every section has a firm_id column and holds firm A's rows only; firm B's document and file are absent",
+    foFirmCols.every((c) => c.hasFirm && c.ids.every((id) => id === FIRM_A)) && foFirmCols.find((c) => c.n.endsWith("/sales-setup.csv"))!.ids.length === 1 && !foCsv("front-office/signing-documents.csv").includes(docB) && !foNames.some((n) => n.includes(docB)), foFirmCols.filter((c) => !c.hasFirm || c.ids.some((id) => id !== FIRM_A)));
+  ok("PF-11 DW9 fail: no front-office column named like a secret (a booking link's hash, a payload hash) reaches the zip", !foFirmCols.some((c) => /hash|token/i.test(foCsv(c.n).split("\r\n")[0])), foFirmCols.map((c) => foCsv(c.n).split("\r\n")[0]).filter((h) => /hash|token/i.test(h)));
+  const direct = await withFirm(FIRM_B, () => nestDb().$transaction((tx: never) => frontOfficeSections(FIRM_A, tx)));
+  ok("PF-11 DW9 fail: an exporter call run as firm B for firm A reads none of A's rows (the walls and the firm filter)", direct.sections.every((x) => x.rows.length === 0 || x.rows.every((r) => r.includes(FIRM_A))) && (direct.files ?? []).every((f) => f.key !== fA.key), direct.sections.filter((x) => x.rows.length).map((x) => x.key));
 } catch (e) { ok("no unexpected error", false, String((e as Error)?.stack ?? e)); } finally {
   await app?.close();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
