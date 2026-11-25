@@ -46,3 +46,39 @@ BIC-04 **Met at API level**: invalid input is refused with 400 and the field nam
 * CI at bbd1ad9e2: the PR is a draft, so `ci` has not run. queue-fresh and lead-read are still pending.
 
 **Verdict: Block** for the `review: approved` label until M1 is resolved (Reviewer: Changes bbd1ad9e275d023a15acd58c33014698ffc72c16). Fix list: M1 (Must); m1-m4 (Should).
+
+## Round 2 (diff only, bbd1ad9e2..e0f270db3): reviewer, 25 Nov
+Reviewed: `git diff bbd1ad9e2 e0f270db3` only (service.ts +39/-8, timeline.ts 4 lines, ports/notifications.ts 3 lines, check_csnt1_timeline.ts +37, challenge.md). About 770 changed code and test lines on the PR in all (P-610 limit 800).
+
+**What I ran (ports 4435 only, never :4400).** At e0f270db3: `check_csnt1_timeline.ts` **36/36**, `check_csnt1_notes.ts` 56/56, `check_case_feed.ts` 42/42, `check_pf18np_port.ts` 11/11 (they match the builder's numbers). j_76 on isolated copy `rvnt1c2` at :4435 gave **24/27**. The same 3 later parts fail (W5 CS-NT1t, W8 part 4, W8 FO-4 2b). The copy was then stopped and its database dropped. Four mutations, each in a scratch worktree: (a) no self-filter gives 3 red; (b) no de-duplication gives 3 red; (c) the tie predicate `<` changed to `<=` gives 3 red, including the new m3 tie test; (d) the explicit `firmId` filter removed (service.ts:110) stays **green**. I looked into (d). The firm B id is still refused because the transaction's reads are walled to the request's firm (PF-3 row rules), so two layers enforce the rule and the test proves the behaviour. This is not a finding.
+
+**Real adapter, end to end, on the copy** (DW12's test uses a counting fake port, so I checked the real `PrismaNotificationPort`):
+* Firm A's Owner adds a note mentioning [T, O, the writer]. Result: 201 in 84 ms and 2 `msg_notification` rows (`note-mention`, item `case`). The writer gets none. The audit detail has `mentioned: [T, O]` and no note words. A replay with the same key gives 201 `replayed` and still 2 rows. The same key with other mentions gives 409 IDEMPOTENCY_KEY_REUSED, so the fingerprint holds.
+* Firm B's staff gives 400 `fields.mentions` "Mention people of your firm only." and 0 notes written. 21 ids gives 400 "At most 20 people.". An upper-case id gives 201. An add with 2 mentions takes 32-40 ms.
+* T's own list (`GET /api/platform/me/notifications/items`) shows the case mention as `C-2026-00003` with a link to `/cases/<id>`, so the notification is labelled and linked.
+
+**Round-1 items**
+* **M1 @mentions: resolved.** It matches the brief's part 3: picked by id, same firm only, 400 with nothing written, once per person per version inside the note's transaction, the writer never told, one `NOTIFICATION_KIND` line and its MENTIONS group.
+* **M1 client's timeline (AG-13-33, DW15): no longer a Major.** challenge.md states the split, corrects the premise, gives its reason (P-610: about 770 lines now, plus about 120 more) and its evidence, and proposes "CS-NT1 part 3b". I checked the evidence. Row CS-NT1's Done-when and Source do not name AG-13-33 (BACKLOG:1092). The row's client half ("a CLIENT_VISIBLE note appears in the portal read") is part 1's `clientNotesOf`. No j_76 step reads a client timeline. That meets round 1's fix (b), except that the decision is not yet recorded: the tech lead's yes on #3649 is still to come. Scope is the tech lead's decision, not this review's. If the tech lead rules "build it here", this verdict no longer applies and the new code needs a round 3.
+* **m2: fixed.** The workspace limit is applied first on both audit queries (timeline.ts:89, :160). `case_id` is set only within its workspace, so no result changes.
+* **m3: fixed.** 30 notes and 40 audit lines share one microsecond and page 50 + 20, with no skip and no repeat, notes first at the tie. Mutation (c) shows the test fails when the tie order breaks.
+* **m1, m4: open as Minors**, as the PR body says (line 29).
+
+**New in this diff (none Blocker or Major)**
+| # | Sev | Where | Failure scenario | Fix |
+|---|-----|-------|------------------|-----|
+| m5 | Minor (Should) | service.ts:114 (new `case-client` item kind); store.ts:52 sends non-case kinds to `NotificationLabels`; bell.tsx:88 | A mention on a **client** note reaches the person (row written), but no labeller is registered for `case-client`. Their list shows `label: null, link: null` (seen on the copy), and the bell renders "Something needs you · This item can no longer be opened". That is false, and `/clients/:id` exists. | Register a `case-client` labeller from the case-notes feature (client code, `/clients/<id>`, firm-scoped), as front-office does for `lead`. Or point the item at a case kind. Before or in part 4. |
+| m6 | Minor (Should) | service.ts:114 versus brief part 3 (`{ kind: "case-note", id }`, AG-13-22 "linking to the note") | The item is the case, not the note. With PF-18n's one row per person, item and kind, mentions on two notes of one case become one row, marked unread again, and the link opens the case, not the note. The person is still told ("duplicate beats a miss"), but this is a silent departure from the brief. | Write the choice and its reason in the PR's "Known scope choices" or in challenge.md, or use a `case-note` item kind with a labeller. |
+| m7 | Minor (Should) | service.ts:110 | A **deactivated** colleague passes the check: 201, and the audit lists them as `mentioned`, but the adapter writes nothing (seen: no new row). The writer believes they were told. | Add `status: "ACTIVE"` to the check (400 "…is no longer at your firm"), or leave them out of `mentioned`. |
+| m8 | Minor (note for part 4) | service.ts:263 | An edit that adds a mention but keeps the same words answers 200 `unchanged: true`, and no one is told. The caller gets no error. | Part 4's picker sends mentions only with a text change, or the API says so (400 or a flag). |
+| m9 | Minor (Should) | check_csnt1_timeline.ts DW12 | The 503 MENTIONS_UNAVAILABLE path (no port bound) has no test, and DW12 runs only against a fake port. The real adapter path was proven only by this review's manual run. | Add one fail line with no port bound (503, nothing written). Optionally run one DW12 line through `PrismaNotificationPort`. |
+
+Also seen, not this PR's touch list: the bell's word map (`web/src/modules/platform/notifications/contract.ts:30`) has no `note-mention` entry, so a mention reads "Something needs you". This belongs to part 4 or PF-18ns.
+
+**Scores changed from round 1:** D1 **4** (mentions built; DW15 split, waiting for a ruling) · D15 **4** (m2 fixed; adds with mentions take 32-40 ms) · D16 **4** (m3 and DW12 tests added, mutations caught; m9). The rest are as in round 1. BIC: unchanged (API only). Journey: **8/10, pass**. See the Round 2 section of `journey-test-reviewer-2026-11-25.md`.
+
+**Could not check:** CI at e0f270db3. The PR is a draft, so only the guard checks ran, and they are green. The full `tsc` runs out of memory here. There is no screen, and D17/D20 stay with the founder.
+
+**Verdict: Approve** (Ship): no open Blocker or Major. Open Minors to list on the PR: m1, m4, m5-m9. For the tech lead, not a review finding: the yes or no on challenge.md's CS-NT1 part 3b.
+
+Verdict: Approve e0f270db3e47a994ca02c17e152b12e1f8206992

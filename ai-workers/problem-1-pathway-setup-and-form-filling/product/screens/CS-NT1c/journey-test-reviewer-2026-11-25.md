@@ -45,3 +45,27 @@ What would raise it: part 4's panel, with an empty state and keyboard use (next 
 Could not test: a real screen reader, an intended user's unaided walk (D17 and D20 stay with the founder), or a browser walk of this part (it has no page).
 
 Verdict: pass 8/10. The review's verdict (review.md) is separate: Changes, because M1 is open.
+
+## Round 2 (e0f270db3), reviewer, 25 Nov
+Copy `rvnt1c2` on :4435 (`isolated.sh … --ttl 40 PLATFORM_IDENTITY=local`), stopped afterwards with its database dropped. Sample data only, US$0. j_76: **24/27** (the same 3 later parts).
+New journeys (API, data checked in `msg_notification` and `audit_event`):
+10. **@mention (main).** The Owner writes a note mentioning two colleagues and themself. Expected: each colleague is told once and the writer is not. **Held:** 2 rows. A replay adds none. The colleague's list shows the case number and a link to `/cases/<id>`.
+11. **Error.** A mention of firm B's staff, of 21 people, or of a non-id. Expected: 400 naming `mentions`, nothing written. **Held.** The same idempotency key with other mentions gives 409 IDEMPOTENCY_KEY_REUSED.
+12. **A person.** A client note mentions a colleague. **Partly held:** they are told, but their list gives no label and no link, so the bell would say "This item can no longer be opened" (review m5).
+13. **Edge.** A deactivated colleague gives 201 and is listed in the audit as mentioned, but is not told (m7). Same words plus a new mention gives 200 `unchanged`, and no one is told (m8).
+
+| Criterion | R1 | R2 | Evidence (round 2) |
+|---|---|---|---|
+| Task completed | 1 | 1 | Journeys 10-11 end to end through the real notification adapter |
+| Next step obvious | ½ | ½ | A case mention links to the case; a client mention has no link (m5) |
+| Plain words | 1 | 1 | "Mention people of your firm only.", "At most 20 people." |
+| Feedback and state | ½ | ½ | m4 is still open; a mention on an unchanged edit gets no error (m8) |
+| Correct data | 1 | 1 | One row per person; the replay and the reused key hold; the audit has ids, no words |
+| Error recovery | 1 | 1 | 400 naming the field, nothing written; 409 on a reused key |
+| Accessibility and screen sizes | ½ | ½ | No screen (part 4) |
+| Speed | 1 | 1 | An add with 2 mentions takes 32-40 ms; the timeline reads within the workspace (m2) |
+| Visual quality | ½ | ½ | No screen |
+| Trust and sources | 1 | 1 | Who and when on every line; no AI |
+| **Total** | 8 | **8/10** | **Pass** (no 0) |
+
+To raise it: a `case-client` labeller (m5) for next step; part 4's panel for accessibility and visual. Could not test: a screen reader, an intended user's walk (D17, D20).
