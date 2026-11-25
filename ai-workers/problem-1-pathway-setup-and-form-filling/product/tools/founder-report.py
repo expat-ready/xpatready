@@ -4,6 +4,8 @@
 "One consistent look ... my key figures highlighted ... the order keeps changing." Every report the Lead sends the
 founder is this script's output, in this order, every time:
   1 🔴 Needs you            --needs (the Lead passes "nothing" when empty)
+  1b 🟡 Decide when you can --decide (P-478: every report opens with Needs you, then this; "nothing" when empty;
+                             OS-25, Lead 5 ruling 25 Nov 12:50 IST on #3683)
   2 ━━ Cycle ━━ header       Proven this cycle X / 15 · Total N / 101 · Forecast by 07:00 Y / 15 · On track
     (full report only, A262) the pipeline stage table, 7 fixed rows (--stage), then "Constraint today: <stage> because"
   3 Capability board (A263; it carries A262's timeline: target, order, stage, waits on, so one list, not two):
@@ -14,7 +16,7 @@ founder is this script's output, in this order, every time:
   4 Constraint               --constraint
   5 Since last report        --since, up to 4 lines
   6 Money and resources      --aws, --weekly (+ --rate for the 96% time), --context
---short prints blocks 1, 2, 3 and 5 (the checks between minutes 03 and 33); the default is all 6.
+--short prints blocks 1, 1b, 2, 3 and 5 (the checks between minutes 03 and 33); the default is all 6.
 
 Inputs (read-only; never writes, never posts):
   * product/cycle-plan.json (the Lead's) and GitHub PR states, both read through cycle-timeline.py's own code.
@@ -26,7 +28,7 @@ cycle's 07:00 and has not passed (a 19:00 row due 20:00 is late on its line but 
 proof a qa lane owns (`owner` in the plan; not AWS rows; an ETA only adds lateness). Otherwise no ETA does not count.
 On track: ✅ forecast >= 15 · ⚠️ 12-14 · ❌ under 12.
 
-  python3 -I product/tools/founder-report.py --needs nothing --constraint "..." --since "✅ R1.49 proven" \
+  python3 -I product/tools/founder-report.py --needs nothing --decide nothing --constraint "..." --since "✅ R1.49 proven" \
       --aws 0 --weekly 71 --rate 2.5 --context 38 --stage "Building: 4 · 2.5 h · 3/1 · ⚠️ two drafts quiet" [--short]
 Tests: --now ISO, --fixture (GitHub from a file), --plan, --capabilities, --capabilities-at-start.
 """
@@ -330,18 +332,23 @@ def money(a, now):
     return "Money and resources: AWS %s · weekly plan %s · Lead context %s" % (aws, weekly, ctx)
 
 
+def listed(title, items):
+    """Blocks 1 and 1b: "<title>: nothing", or the title then one "- " line per item, or "<title>: unknown" when not passed."""
+    items = items or []
+    if len(items) == 1 and items[0].strip().lower() == "nothing":
+        return [title + ": nothing", ""]
+    if items:
+        return [title + ":", ""] + ["- " + n for n in items] + [""]
+    return [title + ": " + U, ""]
+
+
 def report(a):
     now = datetime.fromisoformat(a.now) if a.now else datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=IST)
     start, _ = CT.cycle_bounds(now)
-    needs = a.needs or []
-    if len(needs) == 1 and needs[0].strip().lower() == "nothing":
-        out = ["🔴 Needs you: nothing", ""]
-    elif needs:
-        out = ["🔴 Needs you:", ""] + ["- " + n for n in needs] + [""]
-    else:
-        out = ["🔴 Needs you: " + U, ""]
+    out = listed("🔴 Needs you", a.needs)
+    out.extend(listed("🟡 Decide when you can", a.decide))
 
     try:
         text, _src = CT.read_capabilities(a.capabilities)
@@ -406,6 +413,8 @@ def report(a):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--needs", action="append", help='one 🔴 item: what · where · what stops (repeatable), or "nothing"')
+    ap.add_argument("--decide", action="append", help='one 🟡 item the Lead decides (P-486): what · where · what it changes '
+                    '(repeatable), or "nothing"')
     ap.add_argument("--constraint", help="<one stage> because <measured number> → doing: <action> → expect by HH:MM")
     ap.add_argument("--since", action="append", help="one line (✅ proven · 🔀 merged · ⚠️ new risk); repeatable, 4 shown")
     ap.add_argument("--aws", help="AWS spend in US$ (credit)")
@@ -414,7 +423,7 @@ def main(argv=None):
     ap.add_argument("--context", type=float, help="the Lead's context %%")
     ap.add_argument("--stage", action="append", help='full report: "<stage>: items · median age · in/out 3 h · '
                     '✅|⚠️|❌ reason", from lead-watch.sh / flow-measure.py output; repeatable; a stage left out is unknown')
-    ap.add_argument("--short", action="store_true", help="blocks 1, 2, 3 and 5 only")
+    ap.add_argument("--short", action="store_true", help="blocks 1, 1b, 2, 3 and 5 only")
     ap.add_argument("--plan", default=os.path.join(P, "cycle-plan.json"))
     ap.add_argument("--now", help="ISO time (tests); default the clock")
     ap.add_argument("--fixture", help="answer GitHub from this JSON file (tests)")

@@ -1,0 +1,13 @@
+# P-822 (founder, 25 Nov ~08:1x IST): pr-suites is required before the label, and the 4 suites that most often pass only
+# on a second try are quarantined with it (design/why-targets-missed-2026-11-24.md, "Tests that most often pass only on a
+# second try", 148 bot comments "Passed only on retry" in the 72 h window: check_s5_slice3_browser 19,
+# check_c69_page_browser 17, check_c83_review_browser 13, check_fo8_prospect_won 11).
+# Read by .github/workflows/pr-suites.yml only (SUITES_QUARANTINE_AUTO for run-suites.sh): in pr-suites each still has a
+# row, "quarantined", naming its owner and date; the merge queue and the nightly full set still run them. Nothing is
+# skipped silently. An entry leaves this list in its fix PR (5 green runs in a row), or the owner lane asks the Lead for a
+# new date before that date; past its date its row says "overdue since <date>" (run-suites.sh qwhy).
+# <suite>|<owner lane>|<fix by, yyyy-mm-dd>|p822
+check_s5_slice3_browser.cjs|runtime|2026-12-02|p822
+check_c69_page_browser.cjs|runtime|2026-12-02|p822
+check_c83_review_browser.cjs|screens|2026-12-02|p822
+check_fo8_prospect_won.ts|runtime|2026-12-02|p822

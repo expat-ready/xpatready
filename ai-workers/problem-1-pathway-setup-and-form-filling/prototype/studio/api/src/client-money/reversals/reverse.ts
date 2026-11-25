@@ -20,6 +20,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { MoneyCurrency } from "../../../../ports/client-money.ts";
 import { PaymentReversedPayload, REVERSAL_EVENT } from "../../../../ports/events/client-money-reversals.ts";
 import type { MoneyVisibility } from "../../../../ports/money-visibility.ts";
+import { liveParty } from "../live-party.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { parseInput } from "../../platform/http/input.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -108,6 +109,7 @@ export class Reversals {
       if (!(await trustShows(tx, f))) notFound("payment");
       const first = await planReversal(tx, f, pid, seen);   // C5 before any lock
       await tx.$executeRaw`select money_trust_lock(${f}::uuid, ${(first.personId ?? first.companyId)!}::uuid, ${first.currency}::"MoneyCurrency")`;
+      await liveParty(tx, f, first.personId ?? first.companyId, seen);   // FO-9b part 2m, under the party's lock
       const plan = await planReversal(tx, f, pid, seen);   // again, under the lock: what is written is what was read
       if (!plan.reasonsAllowed.includes(d.reasonCode))
         refuse("NOT_RETURNED", "This payment was cleared when it was recorded, so it is never \"Returned\": reverse it as \"Recorded by mistake\", \"Wrong client\" or with a typed reason.", { reasonsAllowed: plan.reasonsAllowed });

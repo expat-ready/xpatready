@@ -82,7 +82,7 @@ import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("fr", os.path.join(sys.argv[1], "founder-report.py")); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.caps_at = lambda w: "| R1.1 | 1 A | Who | Partial | n |\n"; m.LiveGitHub = type("G", (), {"pull": lambda s, n: {}})
 m.CT.read_capabilities = lambda p: ("| R1.1 | 1 A | Who | Partial | n |\n", "x"); m.CT.parse_capabilities = lambda t: {"R1.1": {"status": "Partial", "name": "A"}}; m.board = lambda *a: ([""], 3)
-a = type("A", (), dict(now="2026-11-24T09:00:00+05:30", needs=["nothing"], capabilities=None, capabilities_at_start=None, plan=sys.argv[2], fixture=None, short=True, since=[], stage=None, constraint=None))
+a = type("A", (), dict(now="2026-11-24T09:00:00+05:30", needs=["nothing"], decide=["nothing"], capabilities=None, capabilities_at_start=None, plan=sys.argv[2], fixture=None, short=True, since=[], stage=None, constraint=None))
 print(m.report(a))
 PY
 }
