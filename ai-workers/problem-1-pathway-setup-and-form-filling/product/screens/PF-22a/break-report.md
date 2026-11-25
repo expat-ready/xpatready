@@ -94,3 +94,28 @@ Scratch DB `xr_studio_pf22a_break2` (every migration in order, `seedSampleFirms`
 **Held (round 2):** EXCEPTION blocks under `debug_parallel_query=on`; `pf_custom_value_ok` STABLE and in no CHECK or index; a used option's case rename (Yes to yes) and SELECT to MULTI_SELECT with values refused, a reorder allowed; `pf_custom_trim` on 200 k-2 M spaces 3-48 ms; a 5000-deep view under 16 KB accepted; the rollback leaves no `pf_custom_` function, type or key (its `_prisma_migrations` line errors only because the copy was not built by Prisma). No open Blocker or Major.
 
 Verdict: Approve
+
+## Round 3 (head b901ec4bc, diff-only: `prisma/` since 05d4820a1)
+
+Scratch DB `xr_studio_pf22a_break3` (every migration in order), plus two one-function copies on an ICU (`und`) and a libc `en_US.UTF-8` database. All three were dropped. The PR's `check_pf22a_custom_schema.ts` gives 86 passed, 0 failed. `migration-slots.py check` against main's merge base gives PASS (the new stamp 20261125130000 comes after main's newest, 20261124170000).
+
+**Round-2 findings**
+- **n3: closed.** I ran 120,031 JSON numbers through `pf_custom_value_ok('NUMBER',…)`: 60 k random bit-pattern doubles, 30 k doubles in everyday ranges (each written by `JSON.stringify`), 30 k random 16-18 digit literals, and 41 hand-picked cases. Expected: accepted exactly when the literal equals, as numeric, what JS writes back, and |x| < 1e15. Result: 0 mismatches. I ran the whole set again with session `extra_float_digits` at -15, 0, 1 and 3 (PGOPTIONS), with 0 mismatches each time, and the session's value is the same after the call.
+  - Accepted: π, 1/3, 0.1+0.2, 123456789012345.6, 123456789012345.67, 999999999999999.9, 5e-324, -5e-324, 1e-310, 2.2250738585072014e-308, 1e-7, 1.50, 1E2, -0 and -0.0 (stored as 0).
+  - Refused: 0.10000000000000001, 1.0000000000000001, 4.9406564584124654e-324, 12345678901234.567 (JS writes …566), 9007199254740993, 999999999999999.94 (JS writes 1e15), 1e15, -1e15, 1e-400, 1e400 and 1.7976931348623157e308.
+  - Huge exponents: `1e131071` and `-1e-16383` are refused in about 2 ms (the cast error is caught). `1e1000000`, `1e-100000` and `1e-16384` are refused by jsonb input itself, before the check runs.
+  - A `SET LOCAL extra_float_digits=-15` survives the call and a rolled-back savepoint around a refused call.
+  - The function's SET clause works in parallel workers (`debug_parallel_query=on`, 4 workers, 30 k/30 k accepted).
+  - Cost is about 2.7 µs per call (200 k calls in 538 ms).
+- **n2: closed.** `pf_custom_trim` was run on every code point from U+0001 to U+10FFFF (surrogates skipped), with the input under `C`, `und-x-icu`, `en_US.utf8`, `tr-TR-x-icu`, `pg_unicode_fast`, the default, and a nondeterministic ICU collation (`und-u-ks-level2`). All give the same 27 blanks. The nondeterministic one raises no "not supported for regular expressions" error, because the explicit COLLATE wins. The blank set has the same md5 on the C, ICU and libc databases (a bare `[[:space:]]` regex on the libc database still keeps U+0085, so the fix is what makes them agree).
+  - Long strings take 0.5-42 ms and grow linearly, against 1.5-26 ms for the old body. The cases were: 1 M spaces; `a` + 100 k spaces or U+3000 + `a`; 500 k `a `; 1 M é or 中; 500 k emoji; 100 k U+0085 + `a`. No run of spaces in the middle showed quadratic backtracking.
+  - The rollback (`-1`, with a `_prisma_migrations` row under the new name) leaves no `pf_custom_` function, no type, no table and no migration row.
+
+**New findings**
+- **n6 (Minor): U+0085 joins U+200B as "database stricter than zod"** (`migration.sql:134`, n1's class). Under pg_c_utf8, `[[:space:]]` is Unicode White_Space, so U+0085 now counts as blank on every cluster. JS `.trim()` keeps it: `"\u0085a".trim().length` is 2. Of all code points, the database trims exactly JS's 25 plus U+0085 and U+200B. So `"Yes\u0085"` as a label or choice, or `"\u0085"` as a TEXT value, passes zod and then hits a check_violation in part 2. Expected: the same answer on both sides. Fix: in part 2's zod, strip both (or drop them from the SQL class), and add U+0085 to N5's parity test with U+200B.
+- **Observation (outside the diff, m3 residue):** EMAIL and URL in `pf_custom_value_ok` (`migration.sql:186,188`) still use a bare `[[:space:]]` in the middle of the string. `U&'a\0085b@c.d' ~ '^[^@[:space:]]+@'` gives t on this C cluster and f on the ICU database. The function is STABLE and not in a CHECK, so no stored row changes meaning. The result does differ by environment, though. Part 2 could use the same `COLLATE pg_c_utf8`.
+- **Note:** `var/suites/selection.tsv` (not tracked) still names the old folder `20261125090000_pf22a_custom_fields`. The demo and builder databases on this cluster never applied the old name, so no Prisma "missing migration" drift is pending here.
+
+**Held (round 3):** numbers JS writes are accepted, and numbers it does not are refused, under any session `extra_float_digits`. Huge exponents are refused quickly. `-0` is stored as 0. The GUC is restored after a call, after an error and in parallel workers. `pf_custom_trim` gives one answer under every input collation and every database locale, does not fail under a nondeterministic collation, and runs in linear time. The rename to `shared__` passes the slot check, and the rollback names the new folder. No open Blocker or Major.
+
+Verdict: Approve
