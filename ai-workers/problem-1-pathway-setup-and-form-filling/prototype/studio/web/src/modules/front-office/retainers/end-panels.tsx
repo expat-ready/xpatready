@@ -45,7 +45,8 @@ function useOpenedOn(r: Retainer, open: boolean) {
   const stale = !!on && (on.n !== r.version.n || on.status !== r.status);
   return { on: on ?? { n: r.version.n, status: r.status }, stale };
 }
-const STALE = "This retainer changed meanwhile (a colleague saved, sent or ended it). Close this panel and open it again to see what it is now.";
+// Review round 2 m3: the words fit both kinds and do not guess who changed it (a colleague, the client signing, the provider).
+const staleWords = (consult: boolean) => `This ${consult ? "agreement" : "retainer"} changed meanwhile (it was saved, sent, signed or ended elsewhere). Close this panel and open it again to see what it is now.`;
 
 export function WithdrawPanel({ r, client, open, onOpenChange, onDone, onStale, returnFocus }: Common) {
   const [reason, setReason] = React.useState(""), [error, setError] = React.useState<Failure | null>(null), [busy, setBusy] = React.useState(false);
@@ -67,11 +68,11 @@ export function WithdrawPanel({ r, client, open, onOpenChange, onDone, onStale, 
   };
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} title={consult ? "Withdraw this agreement" : "Withdraw this retainer"} description={`Version ${on.n}, sent to ${client}.`}
-      confirmClose={() => busy || !reason.trim() || window.confirm("Discard the reason you typed?")}
+      confirmClose={() => !busy && (!reason.trim() || window.confirm("Discard the reason you typed?"))}   // r2 m4: stays open while its request runs
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="destructive" busy={busy} disabled={stale} onClick={() => void submit()} data-confirm-withdraw>Withdraw {consult ? "agreement" : "retainer"}</Button></>}>
       <div className={`flex flex-col gap-3 text-sm ${WRAP}`}>
         <p data-withdraw-says>The signing link stops working. This cannot be undone. {client} is emailed that it was withdrawn{consult ? "." : "; to go on, prepare a new retainer from the prospect."}</p>
-        {stale ? <Notice tone="warn" title={STALE} /> : null}
+        {stale ? <Notice tone="warn" title={staleWords(consult)} /> : null}
         {error && error.field !== "reason" ? <Notice tone="danger" title={error.text} /> : null}
         <Field label="Reason" hint={`Kept with the ${consult ? "agreement" : "retainer"}, at most ${REASON_MAX} characters. ${client} does not see it.`} error={error?.field === "reason" ? error.text : null}>
           <Textarea ref={reasonRef} value={reason} maxLength={REASON_MAX} rows={3} onChange={(e) => { setReason(e.target.value); setError(null); }} />
@@ -113,13 +114,13 @@ export function SignedOfflinePanel({ r, client, open, onOpenChange, onDone, onSt
   const dirty = !!file || !!reason.trim();
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} title="Record as signed on paper" description={`${consult ? "Consultation agreement" : "Retainer"} for ${client}.`}
-      confirmClose={() => busy || !dirty || window.confirm("Discard the file and reason you entered?")}
+      confirmClose={() => !busy && (!dirty || window.confirm("Discard the file and reason you entered?"))}   // r2 m4: stays open while its request runs
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button busy={busy} disabled={stale} onClick={() => void submit()} data-confirm-offline>Record as signed on paper</Button></>}>
       <div className={`flex flex-col gap-3 text-sm ${WRAP}`}>
         <p data-offline-says>{consult
           ? "Marks the consultation agreement Signed offline. No email is sent. This cannot be undone."
           : `Marks the retainer Signed offline and makes ${client} a client. No email is sent. This cannot be undone.`}</p>
-        {stale ? <Notice tone="warn" title={STALE} /> : null}
+        {stale ? <Notice tone="warn" title={staleWords(consult)} /> : null}
         {error && error.field !== "reason" && error.field !== "file" ? <Notice tone="danger" title={error.text} /> : null}
         <Field label="Signed PDF" hint="The scan or file of the signed agreement: a PDF, at most 10 MB." error={error?.field === "file" ? error.text : null}>
           <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5"

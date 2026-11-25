@@ -125,9 +125,12 @@ try {
   await r.locator("[data-retainer-status]", { hasText: "Withdrawn" }).waitFor({ timeout: 15_000 });
   const ra = await row(a.id);
   const req = sql(`select status || ':' || coalesce(cancel_reason::text, '-') from fo_signature_request where document_id = '${a.id}' order by sent_at desc limit 1`);
-  ok("R1.55 FO-5s3 S6 pass: Withdraw with a reason, by keyboard: the page reads Withdrawn, the reason is kept, the signing request ended (QA-770 once merged) and focus is back on the page",
-    ra.status === "WITHDRAWN" && ra.withdrawnReason === "Client changed plans (Sample)" && (await statusOf(r)) === "Withdrawn"
-      && await r.evaluate(() => document.activeElement?.tagName === "H1" || !!document.activeElement?.closest("main")), { status: ra.status, req });
+  const aEmail = sql(`select email from fo_person where id = (select signer_person_id from fo_retainer where id = '${a.id}')`);
+  const inbox = (await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(aEmail)}`)).json().catch(() => ({}))) as { messages?: { subject: string }[] };
+  const told = (inbox.messages ?? []).filter((m) => /^Agreement withdrawn/.test(m.subject)).length;
+  ok("R1.55 FO-5s3 S6 pass: Withdraw with a reason, by keyboard: the page reads Withdrawn, the reason is kept, the signing request ended (CANCELLED, WITHDRAWN: QA-770), the client is emailed \"Agreement withdrawn\" once, and focus is back on the page",
+    ra.status === "WITHDRAWN" && ra.withdrawnReason === "Client changed plans (Sample)" && (await statusOf(r)) === "Withdrawn" && req === "CANCELLED:WITHDRAWN" && told === 1
+      && await r.evaluate(() => document.activeElement?.tagName === "H1" || !!document.activeElement?.closest("main")), { status: ra.status, req, told });
   ok("R1.55 FO-5s3 S6 pass: once withdrawn, neither Withdraw nor Signed offline is offered; the page says to prepare a new one",
     (await r.getByRole("button", { name: /^Withdraw/ }).count()) === 0 && (await r.getByRole("button", { name: /signed offline/i }).count()) === 0 && (await r.locator("main").innerText()).includes("Prepare a new one from the prospect"));
   await shot(r, "fo5s3-withdrawn-1440");
@@ -174,8 +177,9 @@ try {
   await r.locator("[data-retainer-status]", { hasText: "Signed on paper" }).waitFor({ timeout: 15_000 });
   const rb = await row(b.id);
   const won = sql(`select s.kind::text || '|' || coalesce(p.won_via::text, '') from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${b.p.id}'`);
-  ok("R1.55 FO-5s3 S6 pass: with the PDF and a reason the page reads Signed on paper, the file's sha256 and the reason are kept, and the prospect is Won (SIGNED_OFFLINE)",
-    rb.status === "SIGNED_OFFLINE" && !!rb.offlineFileSha256 && rb.offlineReason === "Signed at the office (Sample)" && won === "WON|SIGNED_OFFLINE", { status: rb.status, won });
+  const toastB = await r.locator("body").innerText();
+  ok("R1.55 FO-5s3 S6 pass: with the PDF and a reason the page reads Signed on paper, the file's sha256 and the reason are kept, the prospect is Won (SIGNED_OFFLINE) and the toast says the client is now a client",
+    toastB.includes(`${b.p.name} is now a client.`) && rb.status === "SIGNED_OFFLINE" && !!rb.offlineFileSha256 && rb.offlineReason === "Signed at the office (Sample)" && won === "WON|SIGNED_OFFLINE", { status: rb.status, won });
   ok("R1.55 FO-5s3 S6 pass: once signed on paper, neither Withdraw nor Signed offline is offered",
     (await r.getByRole("button", { name: /^Withdraw/ }).count()) === 0 && (await r.getByRole("button", { name: /signed offline/i }).count()) === 0);
   await shot(r, "fo5s3-signed-offline-1440");
@@ -193,8 +197,8 @@ try {
   await r.waitForTimeout(1_500);   // the page re-reads the retainer (version 2) behind the panel
   const kept = { reason: await oe.getByLabel("Reason").inputValue(), file: await oe.getByLabel("Signed PDF").evaluate((x) => (x as HTMLInputElement).files?.length ?? 0), says: await oe.innerText() };
   const confirmOff = await oe.getByRole("button", { name: "Record as signed on paper" }).isDisabled();
-  ok("R1.55 FO-5s3 review B1 fail: a colleague's edit meanwhile → the server's 409 is shown in its words, the file and the reason are kept, the panel says it changed and its confirm button is off; nothing is filed",
-    edit.status === 200 && /newer version|changed/i.test(kept.says) && kept.reason === "Signed v1 at the office (Sample)" && kept.file === 1 && confirmOff && kept.says.includes("changed meanwhile")
+  ok("R1.55 FO-5s3 review B1 fail: a colleague's edit meanwhile → the server's 409 is shown in its words (\"newer version (2) than the one you saw (1)\"), the file and the reason are kept, the panel says it changed and its confirm button is off; nothing is filed",
+    edit.status === 200 && /newer version \(2\) than the one you saw \(1\)/.test(kept.says) && kept.reason === "Signed v1 at the office (Sample)" && kept.file === 1 && confirmOff && kept.says.includes("changed meanwhile")
       && (await row(e.id)).status === "DRAFT", { edit: edit.status, kept, confirmOff, status: (await row(e.id)).status });
   await shot(r, "fo5s3-offline-stale-1440");
   await oe.getByRole("button", { name: "Cancel" }).click();
