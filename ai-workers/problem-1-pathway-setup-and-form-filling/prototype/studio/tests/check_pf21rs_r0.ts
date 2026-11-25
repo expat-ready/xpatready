@@ -99,6 +99,9 @@ const bypassLines = (use: string) => Number(sql(`select count(*) from audit_even
 const apps: { close(): Promise<void> }[] = [];
 try {
   const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
+  // The day a request is received, as the route reads "today": Toronto's day on the app's clock (requests/service.ts
+  // today()), never the UTC date, which is a day ahead between 00:00 and 05:00 UTC and is refused as the future (422).
+  const receivedToday = () => new Date(clock.now()).toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
   const firmLocal = new LocalIdentity("pf21rs-r0-firm-standin-key-0123456789ab", () => clock.now());
   const systemLocal = new SystemLocalIdentity("pf21rs-r0-system-standin-key-012345678", () => clock.now());
   const keep = (p: unknown) => !(typeof p === "object" && p !== null && "provide" in p && ([BREACH_MESSAGES, BREACH_WORDS, DATA_REQUEST_DAILY] as unknown[]).includes((p as { provide: unknown }).provide));
@@ -206,8 +209,12 @@ try {
   const hs = await call(base, "GET", "/api/system/register/holds?state=all", { token: ownerT });
   const h = (hs.body?.holds ?? []).find((x: { id: string }) => x.id === placed.body.id) ?? {};
   ok("R0-3 pass (holds): a hold names its firm, who placed it and who released it", h.firmName === "Sample Words Firm A" && h.placedByName === "Sample Owner" && h.releasedByName === "Sample Owner", h);
-  const withFirm = await call(base, "POST", "/api/system/register/requests", { token: ownerT, body: { type: "DELETION", requester: "Requester A (Sample)", requesterEmail: "requester.a@example.com", receivedOn: new Date().toISOString().slice(0, 10), firmId: firmA, subject: { kind: "PERSON", id: subject } } });
-  const noFirm = await call(base, "POST", "/api/system/register/requests", { token: ownerT, body: { type: "ACCESS", requester: "Requester B (Sample)", requesterEmail: "requester.b@example.com", receivedOn: new Date().toISOString().slice(0, 10) } });
+  // Fixed clock, the window that broke batches (00:00-05:00 UTC): 02:30 UTC on 25 Nov is still 24 Nov in Toronto.
+  const was = clock.t; clock.t = Date.UTC(2026, 10, 25, 2, 30); const inWindow = receivedToday(); clock.t = was;
+  ok("R0-3 pass/fail (fixed clock 02:30 UTC): the day sent is Toronto's (2026-11-24), never the UTC date the route refuses as the future",
+    inWindow === "2026-11-24" && new Date(Date.UTC(2026, 10, 25, 2, 30)).toISOString().slice(0, 10) === "2026-11-25", inWindow);
+  const withFirm = await call(base, "POST", "/api/system/register/requests", { token: ownerT, body: { type: "DELETION", requester: "Requester A (Sample)", requesterEmail: "requester.a@example.com", receivedOn: receivedToday(), firmId: firmA, subject: { kind: "PERSON", id: subject } } });
+  const noFirm = await call(base, "POST", "/api/system/register/requests", { token: ownerT, body: { type: "ACCESS", requester: "Requester B (Sample)", requesterEmail: "requester.b@example.com", receivedOn: receivedToday() } });
   await call(base, "POST", `/api/system/register/requests/${withFirm.body.id}/status`, { token: ownerT, body: { status: "IN_PROGRESS" } });
   const rq = await call(base, "GET", `/api/system/register/requests/${withFirm.body.id}`, { token: ownerT });
   const rl = await call(base, "GET", "/api/system/register/requests", { token: ownerT });
