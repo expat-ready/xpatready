@@ -20,12 +20,14 @@
 // Stand-ins, said: the prospects, the conflict check and the ended requests (B) are written by SQL; the firm setting in D
 // is written by SQL into platform_firm_setting (the Owner's switch has no route yet: note question 6). Sample values only;
 // US$0, no model call, no live mail, no vendor call. Legal points (e-signature identity): Unconfirmed: no counsel.
-// The third argument names the parts built so far (here "4a,4b"): a line whose label names a part not yet built prints
+// The third argument names the parts built so far (4c's PR drops it: every part is built, every line counts): a line whose label names a part not yet built prints
 // PENDING and is not counted, but a pending line that passes fails (its part is built: add it to the argument), so the
 // suite holds what is merged while the later parts are built (P-606); with no third
-// argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1). 4c's PR drops the argument.
+// argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1, and on 4b's head with "4a,4b,4c",
+// 36 of 42). E needs the copy started local with no STUDIO_PUBLIC_URL exported (the stand-in page's links are then the
+// copy's own localhost origin; plan-4c challenge m10).
 // Run from prototype/:
-//   zsh studio/tools/isolated.sh fo6door 4434 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6_door.ts 4434 xr_studio_fo6door 4a,4b
+//   zsh studio/tools/isolated.sh fo6door 4434 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6_door.ts 4434 xr_studio_fo6door
 // (stop it after with: zsh studio/tools/isolated.sh fo6door 4434 stop)
 import "reflect-metadata";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
