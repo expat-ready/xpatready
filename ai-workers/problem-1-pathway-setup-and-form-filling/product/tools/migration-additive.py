@@ -8,7 +8,7 @@ additive only when every statement, read by a small SQL scanner, is one of
   CREATE SEQUENCE · CREATE TYPE <name> AS ENUM (...) · ALTER TYPE <name> ADD VALUE '...' · COMMENT ON ...
   ALTER TABLE <t> ADD ...            and none of DROP, RENAME, ALTER, DISABLE, ENABLE, FORCE, OWNER, REPLICA, CLUSTER,
                                      SET, RESET, INHERIT, OF, ATTACH, DETACH, VALIDATE, GENERATED
-  CREATE TRIGGER ... ON <t>          only on a table this migration creates (review 2 M3)
+  (CREATE TRIGGER: never; its function may be any existing one, review 3 B3)
   INSERT INTO <t> [(cols)] VALUES    only into a table this migration creates, never SELECT or ON CONFLICT
 and no statement calls a function: a name followed by "(" counts only when it is a type size or a constraint word
 (VARCHAR(n), DECIMAL(p,s), TIMESTAMP(3), KEY, UNIQUE, CHECK, VALUES, ENUM, a column list); DEFAULT now() is read first.
@@ -62,7 +62,7 @@ def statements(sql):
                 j = sql.find('"', j + 2)
             if j < 0:
                 return None, "an unclosed quoted name"
-            cur.append('"' + re.sub(r"\W", "_", sql[i + 1:j]) + '"'); i = j + 1; continue
+            cur.append('"' + sql[i + 1:j].replace('""', "\x01") + '"'); i = j + 1; continue   # kept exactly (review 3 M4)
         if c == ";":
             out.append("".join(cur)); cur = []; i += 1; continue
         cur.append(c); i += 1
@@ -76,9 +76,10 @@ def key(name):
 
 def calls(s):
     """A name directly followed by "(" that is not a type size or a constraint word: a function call."""
+    for m in re.finditer(r'"[^"]*"\s*\(', s):   # a quoted name before "(" (review 3 B2: "setval"(...)): only a table's or column list's
+        if not re.search(r'(\bREFERENCES|\bON|\bINTO|\bTABLE( IF NOT EXISTS)?|\bKEY|\bINDEX)\s*$', s[:m.start()], I):
+            return m.group(0)
     for m in re.finditer(r'([A-Za-z_]\w*)\s*\(', s):
-        if re.search(r"\bEXECUTE (FUNCTION|PROCEDURE) $", s[:m.start()], I) and re.match(r"\s*\(\s*\)", s[m.end() - 1:]):
-            continue   # a trigger's EXECUTE FUNCTION f(): allowed only on a table this migration creates (below)
         if m.group(1).lower() not in CALL_OK:
             return m.group(1)
     return None
@@ -98,9 +99,9 @@ def judge(patch):
         return f"no: {why}"
     created = set()
     for s in sts:
-        m = re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I)
+        m = re.match(r"^CREATE TABLE " + NAME + r" \(", s, I)   # never IF NOT EXISTS: it may be an existing table (review 3 B1)
         if m:
-            created.add(key(m.group(2) + (m.group(3) or "")))
+            created.add(key(m.group(1) + (m.group(2) or "")))
     for s in sts:
         u, ok = s.upper(), False
         if NEVER.search(s) or calls(s):
@@ -108,16 +109,16 @@ def judge(patch):
         if re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I):
             ok = not TABLE_BAD.search(s[s.index("("):])
         elif re.match(r"^CREATE (UNIQUE )?INDEX\b", s, I) or re.match(r"^CREATE SEQUENCE\b", s, I) \
-                or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE ('' ?)?$", s + " ", I) \
-                or re.match(r"^COMMENT ON\b", s, I):
+                or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE (IF NOT EXISTS )?'' ?$", s + " ", I) \
+                or (re.match(r"^COMMENT ON\b", s, I) and not re.search(r"\bIS NULL$", s, I)):
             ok = True
         elif re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + r" ADD\b", s, I):
+            t = re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME, s, I)
+            new = key(t.group(3) + (t.group(4) or "")) in created   # a table this migration creates has no rows to cascade
             rest = re.sub(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + " ", "", s, flags=I)
-            ok = not ALTER_BAD.search(re.sub(r"\bON (DELETE|UPDATE) (SET (NULL|DEFAULT)|NO ACTION)\b", "", rest, flags=I))   # FK actions
-        else:
-            m = re.match(r"^CREATE TRIGGER " + NAME + r" .*? ON " + NAME + r"( |$)", s, I)
-            if m:
-                ok = key(m.group(4) + (m.group(5) or "")) in created
+            ok = (new or not re.search(r"\bON DELETE (CASCADE|SET)\b", rest, I)) and \
+                not ALTER_BAD.search(re.sub(r"\bON (UPDATE|DELETE) (SET (NULL|DEFAULT)|NO ACTION)\b", "", rest, flags=I))   # an FK onto existing rows never cascades a delete (review 3 M5)
+        else:   # CREATE TRIGGER is never additive: its function may be any existing one (review 3 B3)
             m = re.match(r"^INSERT INTO " + NAME + r"( \([^()]*\))? VALUES ", s, I)
             if m:
                 ok = key(m.group(1) + (m.group(2) or "")) in created and "ON CONFLICT" not in u

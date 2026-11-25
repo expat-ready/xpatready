@@ -563,10 +563,10 @@ fp() {  # fp <n> <path> <status> <patch> ... → files-<n>.json with status and 
   while [ $# -ge 3 ]; do a=$(jq -c --arg f "$1" --arg s "$2" --arg p "$3" '. + [{filename: $f, status: $s, patch: $p, changes: 1}]' <<< "$a"); shift 3; done
   echo "$a" > "$T/fx/files-$n.json"; }
 MG="$S/prisma/migrations/20261125090000_cases__add_case_notes/migration.sql"
-ADD=$'@@ -0,0 +1,6 @@\n+-- Adds case notes; we never drop or delete one (comment lines are not read)\n+CREATE TABLE "case_note" ("id" TEXT NOT NULL, "case_id" TEXT NOT NULL);\n+ALTER TABLE "case_note" ADD CONSTRAINT "case_note_case_fkey" FOREIGN KEY ("case_id") REFERENCES "case"("id") ON DELETE CASCADE;\n+CREATE TRIGGER t BEFORE DELETE ON "case_note" FOR EACH ROW EXECUTE FUNCTION no_delete();\n+CREATE INDEX "case_note_case_idx" ON "case_note"("case_id");'
+ADD=$'@@ -0,0 +1,5 @@\n+-- Adds case notes; we never drop or delete one (comment lines are not read)\n+CREATE TABLE "case_note" ("id" TEXT NOT NULL, "case_id" TEXT NOT NULL);\n+ALTER TABLE "case_note" ADD CONSTRAINT "case_note_case_fkey" FOREIGN KEY ("case_id") REFERENCES "case"("id") ON DELETE CASCADE;\n+CREATE INDEX "case_note_case_idx" ON "case_note"("case_id");'
 prj 9 $HEAD1; cmt 9 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
 fp 9 "$MG" added "$ADD"; run label 9
-ok "P-823 plant: an additive migration (ON DELETE CASCADE, a BEFORE DELETE trigger and a comment saying drop are not destructive), drawn: labelled, \"Lead after-read owed: migration\" and after-read: other" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q "^COMMENT 9 \*\*Queue gate (P-823):\*\* Lead after-read owed: migration #9 $HEAD1 (1 in 3" <<< "$log" && grep -qx 'LABELNAME 9 after-read: other' <<< "$log" && echo 1)" "$out / $log"
+ok "P-823 plant: an additive migration (ON DELETE CASCADE onto its own new table and a comment saying drop are not destructive), drawn: labelled, \"Lead after-read owed: migration\" and after-read: other" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q "^COMMENT 9 \*\*Queue gate (P-823):\*\* Lead after-read owed: migration #9 $HEAD1 (1 in 3" <<< "$log" && grep -qx 'LABELNAME 9 after-read: other' <<< "$log" && echo 1)" "$out / $log"
 fp 7 "$MG" added "$ADD"; run label 7
 ok "P-823: the same additive migration, not drawn (7 mod 3 = 1): labelled, says so, no after-read label" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (P-823):\*\* read after the label (migration), not drawn' <<< "$log" && ! grep -q '^LABELNAME' <<< "$log" && echo 1)" "$out / $log"
 for c in 'DROP COLUMN:+ALTER TABLE "case" DROP COLUMN "notes";' 'named additive, adds a DROP:+ALTER TABLE "case" DROP CONSTRAINT "case_pkey";' 'lower case:+drop table "old_case";' \
@@ -610,18 +610,26 @@ GENERATED with a function|ALTER TABLE "Fee" ADD COLUMN "c" int GENERATED ALWAYS 
 FORCE ROW LEVEL SECURITY|ALTER TABLE "Fee" ADD COLUMN "c" int, FORCE ROW LEVEL SECURITY;
 REPLICA IDENTITY and SET (|ALTER TABLE "Fee" ADD COLUMN "c" int, REPLICA IDENTITY NOTHING, SET (autovacuum_enabled = false);
 DEFAULT with a function call|ALTER TABLE "Fee" ADD COLUMN "c" TEXT DEFAULT gen_random_uuid();
+IF NOT EXISTS hides an existing table|CREATE TABLE IF NOT EXISTS "User" ("id" INTEGER); INSERT INTO "User" ("id", "role") VALUES (99, 'admin');
+a quoted function call in DEFAULT|ALTER TABLE "User" ADD COLUMN "z" BIGINT DEFAULT "setval"('"User_id_seq"', 1);
+a quoted function call in CHECK|ALTER TABLE "User" ADD CONSTRAINT "ck" CHECK ("setval"('"User_id_seq"', 5) > 0);
+a schema-qualified quoted call|ALTER TABLE "User" ADD COLUMN "z" TEXT DEFAULT pg_catalog."version"();
+a trigger on a new table calling an existing function|CREATE TABLE "Log" ("id" INTEGER); CREATE TRIGGER "t2" AFTER INSERT ON "Log" FOR EACH ROW EXECUTE FUNCTION audit(); INSERT INTO "Log" VALUES (1);
+two names that differ only in a dash|CREATE TABLE "_Role-ToUser" ("A" INTEGER); INSERT INTO "_Role_ToUser" ("A") VALUES (1);
+a cascading FK onto existing rows|ALTER TABLE "Child" ADD CONSTRAINT "c_fk" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE;
+a comment wiped|COMMENT ON TABLE "User" IS NULL;
 SQL
 )
 while IFS='|' read -r what sql; do [ -n "$what" ] || continue
   fp 9 "$MG" added "@@ -0,0 +1 @@"$'\n'"+$sql"; run label 9
-  ok "P-823 plant (#3661 review 2): $what: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+  ok "P-823 plant (#3661 review 2-3): $what: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
 done <<< "$R2"
 ALLF=$(cat <<'SQL'
 @@ -0,0 +1,8 @@
-+CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
-+CREATE TRIGGER "n_guard" BEFORE UPDATE OR DELETE ON "n" FOR EACH ROW EXECUTE FUNCTION no_change();
++CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "p" TEXT REFERENCES "p"("id") ON DELETE CASCADE, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
++ALTER TYPE "Kind" ADD VALUE IF NOT EXISTS 'd';
 +CREATE TYPE "Kind" AS ENUM ('a', 'b');
-+ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE SET NULL ON UPDATE CASCADE;
++ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 +CREATE UNIQUE INDEX "i" ON "case"("kind");
 +ALTER TYPE "Kind" ADD VALUE 'c';
 +COMMENT ON TABLE "case" IS 'it''s ok -- a dash; DROP in a string';
@@ -629,7 +637,7 @@ ALLF=$(cat <<'SQL'
 SQL
 )
 fp 9 "$MG" added "$ALLF"; run label 9
-ok "P-823: an additive migration of every allowed form (enum, ADD COLUMN and CONSTRAINT with ON DELETE SET NULL, index, ADD VALUE, comment, insert): labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
+ok "P-823: an additive migration of every allowed form (a new table with an FK, enum, ADD VALUE IF NOT EXISTS, ADD COLUMN and a RESTRICT FK, index, comment, an insert into the new table): labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$MG" modified "$ADD"; run label 9
 ok "P-823 plant: an edit to a migration (status modified), additive lines or not: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'an edit, rename or removal of a migration' <<< "$out" && echo 1)" "$out / $log"
 fp 9 "$MG" removed ""; run label 9

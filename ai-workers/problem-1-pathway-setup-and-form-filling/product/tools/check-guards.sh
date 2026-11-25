@@ -700,7 +700,9 @@ P823 allow|product/tools/migration-additive.py|s/^        if NEVER.search(s) or/
 P823 block comment|product/tools/migration-additive.py|s/if two == "\/\*":/if False:/|check-queue-gate.sh
 P823 dollar|product/tools/migration-additive.py|s/^        if c == "\$":/        if False:/|check-queue-gate.sh
 P823 calls|product/tools/migration-additive.py|s/^        if NEVER.search(s) or calls(s):/        if NEVER.search(s):/|check-queue-gate.sh
-P823 created|product/tools/migration-additive.py|s/^                ok = key(m.group(4) + (m.group(5) or "")) in created/                ok = True/|check-queue-gate.sh
+P823 created|product/tools/migration-additive.py|s/ in created and "ON CONFLICT" not in u/ or True/|check-queue-gate.sh
+P823 quoted call|product/tools/migration-additive.py|s/^        if not re.search(r'(\\bREFERENCES/        if False and re.search(r'(\\bREFERENCES/|check-queue-gate.sh
+P823 cascade|product/tools/migration-additive.py|s/ok = (new or not re.search/ok = (True or not re.search/|check-queue-gate.sh
 P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
 P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
 P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh
