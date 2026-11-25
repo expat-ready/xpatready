@@ -96,3 +96,45 @@ this is inherited, but the plan route's wording overclaims.
   23 cancelled). Speed: GET averages 16 ms; fifteen 12-instalment plans were all made.
 
 **Verdict: Minor.** No way was found to make a plan's sum wrong, to get two ACTIVE plans, to change or un-cancel a plan, or to cross a wall. m1 (settled ≠ paid, against the brief) and m2 (coverage drifts after due rises) are the ones worth settling before part 3.
+
+## Round 2: diff-only re-break of head `d3ccb560b`
+
+Tested on a `git archive` of `d3ccb560b` with the same harness (probe file `…/scratchpad/breaker2/r2/…/studio/tests/brk_r2.ts`, log `r2.log`).
+The PR's own check passes 38/38.
+
+* **m2 fixed.** Refunding the 100.00 paid before the plan gives `dueNowMinor 100000, uncoveredMinor 10000` (R5). The uncovered
+  amount drops back to 0 after a 100.00 credit note (R5c), a payment (R5b), a write-off (R5d), an overpayment of 1,500.00 (R6b,
+  `dueNowMinor` clamped to 0) or a full credit note (R7b). It is never negative, and it is 0 on a cancelled plan (`plan.ts:106`).
+* **m3 fixed.** The database now refuses a past due date by the UTC day (migration L121), whatever the session time zone. In SQL as `xr_app`:
+  UTC yesterday is refused under Kiritimati (+14), Pago Pago (-11) and Toronto, and UTC today is accepted under all of them (R10).
+  Around midnight: with the API clock at yesterday 23:59:59Z while the database is already on today, a plan due "yesterday" gets a
+  clean 409 MONEY_RULE ("an instalment is due today or later"), not a 500 (R9). `-infinity` is refused.
+* **m5 still open (Minor).** Moving the input into `ports/client-money.ts:113` did not change this: the raw body
+  `{"instalments":[{"dueDate":"<+1d>","amountMinor":50000,"__proto__":{"x":1}},{"dueDate":"<+31d>","amountMinor":50000}]}`
+  still gets 201 (R1). A top-level `__proto__` is still refused on both the plan and the cancel route.
+* **n1 (Minor, new): the database accepts dates the API refuses, and the plan then cannot be read.** The API allows only the years
+  2000 to 2999. The trigger only bounds dates from below. Repro (R11) as `xr_app`: an instalment with `due_date 'infinity'` or
+  `'5874897-12-31'` commits, and every `GET …/plan` on that invoice afterwards gives **500**. The cause is that `dayOf(x.dueDate)` (`plan.ts:107`)
+  throws on an invalid Date. Year 3500 commits and reads fine. Only a direct SQL writer can reach this. Fix: add an upper bound
+  to the trigger, for example `due_date <= '2999-12-31'`, matching the API.
+* **n2 (Minor, new): a cancelled plan's instalments keep changing after the cancel.** Settlement is still derived from today's due amount
+  (`plan.ts:41, 103`).
+  * Pay 300.00, cancel → `[30000/45000 Cancelled; 0/45000 Cancelled]` (R8).
+  * Then pay 600.00 with no plan in place → the cancelled plan reads `[Settled; Settled]`, settled 90000 (R8b). A write-off after the
+    cancel does the same (R8e).
+  * The other way round: pay 450.00, cancel → instalment 1 "Settled". Refund that 450.00 → it turns "Cancelled", settled 0 (R8c).
+  * The words "its unsettled instalments then read Cancelled" (`plan.ts:10`) suggest a record frozen at `cancelledAt`. Instead it moves
+    with money that came in after the cancel and has nothing to do with the plan.
+  * Also, a part-paid instalment reads "Cancelled" even though its `settledMinor` is 30000.
+  No money effect.
+* **Held in round 2:**
+  * The cancel reason now goes through `words()`: a tab, U+2028 or a lone surrogate gets 422, and padding is trimmed. A zero-width
+    space is still stored (m6, unchanged).
+  * Amounts: a string or 0 gets 422, 2^31 gets 422. An invoice at INT_MAX splits into 2 instalments of up to MINOR_MAX (201).
+  * Dates: 2999-12-31 gets 201; 3000-01-01, 1999-12-31 and 29 Feb 2027 get 422.
+  * GET after cancel, re-plan, cancel returns the latest plan.
+  * The ledger is balanced after every scenario and firm-wide. No plan's instalments miss its amount.
+* m1 (settled counts credit notes and write-offs) is unchanged and was not part of this round's diff: R7 and R7c still read "Settled" with nothing
+  paid.
+
+**Round 2 verdict: Minor.** The worst left are m5, n1 and n2, all Minor. m2 and m3 are fixed.
