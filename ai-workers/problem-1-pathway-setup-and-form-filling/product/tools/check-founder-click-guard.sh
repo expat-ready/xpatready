@@ -73,6 +73,12 @@ for m in 'No need to wait: please merge #12 now.' 'I can'"'"'t, so could you arc
 for m in 'No need to wait, merge #12.' 'Never mind me please merge #12.' "You don't need to wait please merge #12." 'Do not forget to merge #12 please.' \
          'No need to wait - merge #12 please.' 'Do not wait for me, just merge #12.'; do
   r=$(stop lead "$m"); ok "refused (#3665 review 4, the cut stops before the ask): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I can close the stale issues and archive both sessions if you agree.' 'You should not have to click anything today.' \
+         'You never need to merge the PR yourself; the queue does it.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 5, an offer or a reassurance): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'Do you want me to? Otherwise close all of the stale PRs.' 'If not, merge #12.' 'Do not hesitate to merge #12 please.' \
+         'No need to wait - dispatch the nightly workflow by hand please.' 'If you do not mind, close #3601 for me.'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 5): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
 q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")
 ok "the Python program inside the bash single quotes has no ' (one would end it, and every check would pass silently)" "$([ "$q" = 0 ] && echo 1)" "$q line(s) with '"
 r=$(stop lead 'Nothing for you to do: I will close #3601 myself.'); ok "passes (#3665 review 4): nothing for you to do" "$([ "$r" = pass ] && echo 1)" "got $r"

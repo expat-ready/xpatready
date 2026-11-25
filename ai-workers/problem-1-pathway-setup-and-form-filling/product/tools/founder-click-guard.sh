@@ -35,12 +35,12 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 # Not an ask (review 2 of #3665): the Lead offering to do it, or telling the founder not to.
-NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))(\s+[\w#][\w#-]*){0,4}"  # an offer: the verb after it is one the Lead does
-  r"|(\b(should|must|need|do|does)( not|n.t)\b|\bno need\b|\bnever\b|\bnothing (left )?for you( to do)?\b)(\s+[\w#][\w#-]*)?(\s+(?!(please|pls|could|can|would|will|just|then|now|close|archive|merge|reopen|dispatch|trigger|press|click|label|run|add|open|convert|mark|edit)\b)[\w#][\w#-]*){0,3}", I)  # a "not": the thing not to do, then up to 3 more words, never "please" or an ask verb
+NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))(\s+(?!(please|pls|could|so|but|otherwise)\b)[\w#][\w#-]*)*"  # an offer: to the end of its clause, whose verbs the Lead does
+  r"|(\b(should|must|need|do|does)( not|n.t)\b(?!\s+(forget|hesitate)\b)|\bno need\b|\bnever\b(?!\s+(forget|hesitate)\b)|\bnothing (left )?for you( to do)?\b)(\s+(?!(please|pls|could|so|but|otherwise)\b)[\w#][\w#-]*){0,4}", I)  # a "not": with its own verbs, never past please or could; "do not forget to" stays an ask
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
-  r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
+  r"(then |and |just |now |otherwise,? |if not,? )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
   r"|run (the )?workflow(?! (was|is|ran|has)\b))\b", I)   # E-c verbs as a plain command too (review of #3665)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
