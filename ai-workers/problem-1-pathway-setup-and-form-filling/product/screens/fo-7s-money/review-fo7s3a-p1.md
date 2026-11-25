@@ -92,3 +92,44 @@ Each Major is a Must on this commit: M1, M2 and M3 match the breaker's round 1 o
 * The graph view: `graph.mjs --check` exits 0, but it lists `POST …/invoices/:id/payments` and `GET …/payments/:id` as G3 "no test reaches". The pages call them through template URLs, which the tool does not see. This is a limit of the tool, not a finding against this PR.
 
 Reviewer: Changes 2e1085ca2dc03c8975b23ace39f8e87f588c64ec
+
+## Round 2 (25 Nov): `git diff 2e1085ca2..4a4a6509dc9e81ba147286dc453eec7faa125df6`, diff only
+Commits `0a11cc94e` (breaker fixes), `272cf71c7` (M4, m1) and `4a4a6509d` (screenshots only). Fresh copy `rv7s3a` on :4761, web bundle rebuilt from the head.
+
+**Verdict: Ship (Approve).** No Blocker or Major is open.
+
+**Suites:**
+* `check_fo7s3a` gave **42/42 twice on the same database** (M4 confirmed fixed). `platform.everyone_sees_all` is absent after the runs, as it was before them.
+* `check_fo7s1` on that database afterwards: **36/36**.
+* The rewritten screenshots are restored and the copy is stopped.
+
+**Round 1 findings:**
+* **M1, fixed.** With no answer, the panel now shows "No answer came back, so this payment may already be recorded…", holds the fields (read-only, Method disabled), refreshes the invoice, and resends on the same key. The replay says "…it was not recorded twice." Test lines B-M1 pass and fail.
+* **M2, fixed.** The date defaults to the earlier of the local day and FO-7b's UTC day, and `max` is FO-7b's day. B-M2 covers it (Vancouver at 21:30).
+* **M3, fixed for what was reported.** `cleanReference` (NFKC folding, then stripping U+00AD, U+200B-200F, U+202A-202E, U+2060-2064, U+FEFF) is sent on every submit. B-M3 shows "4471"+RLM asking "Record anyway?".
+* **M4, fixed.** The suite now restores the setting in `finally`, and the DW10 setup is checked on its own line.
+* **Minors:**
+  * m1 fixed: the refund-promise sentence is gone.
+  * m2 fixed: the footer Close asks first and is disabled while busy (B-m1).
+  * m4 fixed: focus goes to Record anyway.
+  * m5 fixed: amounts over the limit are refused on the field, and a replay is said (B-m2, `data-pay-replayed`).
+  * m3 is deferred to part 2's DW1, by the builder's note. I accept that: round 1's hand scan (Owner and Billing, trust No, titles and aria-labels) found 0. **It must land in part 2.**
+
+**New, Minor (Should), none blocking:**
+* **r2-m1 (residual M3, root FO-7b):** some marks are still kept by `cleanReference` (`contract.ts:53`) and also pass FO-7b's API. Sent raw to the API after an existing "4471", each of these was recorded with no duplicate question (R-0015 to R-0019):
+  * U+061C (Arabic letter mark)
+  * U+034F
+  * U+115F
+  * U+3164
+  * U+2800
+
+  U+2066-2069 are refused by the API (INVALID). **Fix:** have the screen strip the same invisible class `money_text_ok` lists. The lasting fix is FO-7b's duplicate check comparing a cleaned form (already the PR's question 2 for the tech lead).
+* **r2-m2:** in the "No answer yet" state, Close still asks "Discard this payment?", but the payment may already be recorded. **Fix:** say "It may already be recorded: check Payments before recording it again."
+
+**Code read for round 2:**
+* Replay safety holds: FO-7b answers a held key before its duplicate and trust checks, and the held fields match its KEY_USED comparison.
+* No `api/` change; the touch list holds (plus the module card row `MODULE.rows/FO-7s3a.md`, P-712).
+
+**Not checked in round 2:** CI on 4a4a6509d; a real screen reader.
+
+Reviewer: Approve 4a4a6509dc9e81ba147286dc453eec7faa125df6

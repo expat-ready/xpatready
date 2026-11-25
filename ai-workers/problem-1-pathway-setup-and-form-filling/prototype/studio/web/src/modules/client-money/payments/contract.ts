@@ -48,9 +48,11 @@ export const PAYMENTS_HOME = "/money/payments";
 /** One key per opening of the panel (AG-6-19 r3): every submit of that opening sends it, so a double click or a retry is one payment. */
 export const newKey = () => `pay-${crypto.randomUUID()}`;
 
-/** Break M3, m6: a reference is compared by its letters, so the screen sends it without invisible marks (zero-width, direction
- *  marks, soft hyphen) and with look-alike widths folded (NFKC): "Ab‏-4471" and "Ａｂ-4471" are the reference Ab-4471. */
-export const cleanReference = (t: string) => t.normalize("NFKC").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").trim();
+/** Break M3, m6 (rounds 1-2): a reference is compared by its letters, so the screen sends it without any invisible mark (every
+ *  Unicode default-ignorable code point and direction control: zero-width, U+200F, U+061C, U+034F, variation selectors, tags,
+ *  U+3164) and with full-width letters and digits folded to ASCII ("Ａｂ-4471" is Ab-4471). Nothing visible is changed
+ *  ("No² ①" stays as typed). */
+export const cleanReference = (t: string) => t.replace(/[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}]/gu, "").replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim();
 
 /** The receipt line after a success, in words (concept (c) "R-0012 recorded · Receipt emailed to Client B"). */
 export function recordedWords(r: Recorded, party: string): string {

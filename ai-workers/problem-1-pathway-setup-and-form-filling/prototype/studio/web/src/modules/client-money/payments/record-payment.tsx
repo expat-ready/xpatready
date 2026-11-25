@@ -40,7 +40,9 @@ export function RecordPaymentPanel({ open, onOpenChange, invoiceId, number, curr
     setMethod(""); setAmount(""); setOn(defaultDay()); setReference(""); setErrors({}); setProblem(null); setAsk(null); setAcks({}); setDone(null); setKept(null); setUnsure(false);
   }, [open]);
   const dirty = !done && (!!method || !!amount || !!reference);
-  const close = () => { if (!busy && (!dirty || window.confirm("Discard this payment?"))) onOpenChange(false); };   // break m1: the footer's Close asks too
+  /** Asked before any close (Close, Escape, X): never while Record is busy; after "No answer yet" it says what may have happened. */
+  const mayClose = () => !busy && (!dirty || window.confirm(unsure ? "This payment may already be recorded. Close anyway? The invoice shows it if it was." : "Discard this payment?"));
+  const close = () => { if (mayClose()) onOpenChange(false); };   // break m1: the footer's Close asks too
 
   const send = async (extraAcks: Record<string, boolean> = acks) => {
     if (sending.current) return;
@@ -55,7 +57,8 @@ export function RecordPaymentPanel({ open, onOpenChange, invoiceId, number, curr
       await qc.invalidateQueries({ queryKey: ["fo", "money"] });
     } catch (x) {
       if (x instanceof StaffApiError && x.status === 409 && x.problem.code && ASKS[x.problem.code]) { setAsk({ code: x.problem.code, words: x.message }); requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-pay-anyway]")?.focus()); }   // break m4
-      else if (x instanceof StaffApiError) {
+      // Break round 2 M1: a 5xx may come after the payment was saved (a gateway time-out, the answer's own read): not a refusal
+      else if (x instanceof StaffApiError && x.status < 500) {
         setUnsure(false);
         setErrors({ method: x.field("method") ?? undefined, amount: x.field("amountMinor") ? `Enter an amount in ${currency}, for example 100.00.` : undefined, on: x.field("receivedOn") ?? undefined, reference: x.field("reference") ?? undefined });
         setProblem(x.message);
@@ -76,7 +79,7 @@ export function RecordPaymentPanel({ open, onOpenChange, invoiceId, number, curr
 
   const extra = done?.extra ?? null, waiting = !!extra && extra.waitingMinor > 0 && extra.choices.includes("KEEP_AS_CREDIT") && !kept;
   return (
-    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !dirty || window.confirm("Discard this payment?")}
+    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={mayClose}
       title="Record payment" description={`On ${number}. Balance due: ${money(dueMinor, currency)}. Money over the balance is recorded in full.`}
       footer={done ? <Button onClick={() => onOpenChange(false)} data-pay-close>Done</Button>
         : <><Button variant="ghost" disabled={busy} onClick={close}>Close</Button><Button type="submit" form="record-payment-form" busy={busy} disabled={busy} data-pay-save>Record</Button></>}>

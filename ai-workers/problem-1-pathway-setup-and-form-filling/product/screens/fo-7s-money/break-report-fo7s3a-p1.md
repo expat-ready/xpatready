@@ -70,3 +70,30 @@ PR #3658 at `2e1085ca2dc03c8975b23ace39f8e87f588c64ec`. Isolated copy `br7s3a` o
 - **Layout and keyboard:**
   - 1024 px, 200 % zoom (720 CSS px) and 375 px: no sideways scroll, Record stays in view, and axe finds 0 serious issues on the panel, list and detail.
   - Keyboard only: open, method by type-ahead, amount, reference, then Enter to record.
+
+## Round 2 at `4a4a6509dc9e81ba147286dc453eec7faa125df6` (diff `2e1085ca2..4a4a6509d`)
+
+Fresh `br7s3a` on :4762 with the same set-up; stopped afterwards. Round 2 verdict: **Changes**. M2, m2 and m4 are fixed. M1 and M3 are narrowed but still open. m1 is mostly fixed.
+
+**M1: still Major, but now only when the answer is a 5xx after the commit.**
+- Fixed for a cut connection: a network cut after the commit shows "No answer yet …", locks the fields, and the balance reloads. Record again gives "R-0014 recorded · This payment was already recorded from this panel", and the database holds one payment.
+- Still open: if the gateway answers 504 (`route.fetch()` then `fulfill({ status: 504 })`) after the API committed, the panel shows "Not recorded · Something went wrong on our side. Please try again." The fields stay editable. Changing the amount to 65.00 and retrying gives KEY_USED ("This idempotency key already recorded a different payment"), and the panel is stuck. The database holds CAD 60.00, and the header balance already dropped by it. A 500 does the same.
+- Where: `record-payment.tsx:58-63` treats every `StaffApiError` as a refusal. A 5xx is an unknown outcome: the gateway may time out, and `paymentView` runs in its own transaction after the commit (`money.ts:142`).
+- Repro: open the panel, enter Cash 60.00 and Record. Let the POST through, then answer it with 504. Change the amount and click Record.
+
+**M3: still Major (narrowed).** `cleanReference` (`payments/contract.ts:53`) now removes U+200F, U+00AD and U+200B, and folds full-width letters. Each of those now gets "Record anyway?". But other invisible marks are not in its list, and the API accepts them: each was recorded on INV-0007 with no question, next to `Ab-4471`, and looks the same in the list:
+  U+061C (Arabic letter mark, a direction mark like U+200F; hex `…34343731d89c`), U+034F (combining grapheme joiner), U+FE0F (variation selector), U+E0041 (tag character) and U+3164 (Hangul filler).
+
+  U+2066 and U+2069 are refused in the API's words, which held. The API's own `money_text_ok` already lists the full invisible set (U+034F, U+061C, U+115F-1160, U+FE00-FE0F, U+E0000-E007F and more). The screen's list is a subset of it.
+  - Repro: record Cheque 10.00 with reference `Ab-4471`. Open the panel again and record reference `Ab-4471` followed by U+061C.
+
+**m1: fixed, one Minor gap left.**
+- Fixed: footer Close now asks "Discard this payment?", and it is disabled while Record is busy.
+- Gap: Escape and X while busy still offer "Discard this payment?". If accepted, the panel closes while the POST is in flight and the payment is recorded anyway. After "No answer yet", Close asks the same "Discard" question about a payment that is probably recorded.
+
+**Fixed in round 2:**
+- **M2.** In America/Vancouver at 23:22 on 24 Nov (UTC 25 Nov), the default is 2026-11-24 with max 2026-11-25, and the detail page reads "24 Nov 2026". In Pacific/Kiritimati (UTC+14) the default is the UTC day.
+- **m2.** `21,474,836.48` now gets "That amount is too large: at most CAD 21,474,836.47." before sending, and nothing is recorded.
+- **m4.** After the duplicate question, focus is on "Record anyway" (checked by `data-pay-anyway`).
+
+**New Minor: NFKC folding changes visible text without telling the person.** Reference `No² ①ﬁ` is stored as `No2 1fi` (`payments/contract.ts:53`), and the panel does not say so.

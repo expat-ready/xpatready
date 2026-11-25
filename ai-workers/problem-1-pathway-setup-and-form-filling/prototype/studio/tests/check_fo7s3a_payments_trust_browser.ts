@@ -178,9 +178,10 @@ try {
   await pb.locator("[data-pay-close]").click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached" });
 
   // ---------------------------------------------------------------------------------------------- B: the breaker's round 1
-  ok("FO-7s3a B-M3 pass/fail: a reference is sent without invisible marks and with look-alike widths folded: \"Ab‏-4471\", \"A­b-4471\" and \"Ａｂ-4471\" are Ab-4471; a plain one is kept",
-    ["Ab‏-4471", "A­b-4471", "Ａｂ-4471", " Ab-4471​ "].every((t) => cleanReference(t) === "Ab-4471") && cleanReference("4471 / cheque") === "4471 / cheque");
-  await detail(pb, INV); await open(pb); await fill(pb, "CHEQUE", "1.00", "4471‏");
+  ok("FO-7s3a B-M3 pass/fail: a reference is sent without any invisible mark (U+200F, U+00AD, U+200B, U+061C, U+034F, U+FE0F, a tag, U+3164) and with full-width letters folded: each is Ab-4471; visible characters (No² ①ﬁ) are kept",
+    ["Ab\u200F-4471", "A\u00ADb-4471", "\uFF21\uFF42-4471", " Ab-4471\u200B ", "Ab-4471\u061C", "Ab\u034F-4471", "Ab-4471\uFE0F", "Ab-4471\u{E0041}", "Ab-4471\u3164"].every((t) => cleanReference(t) === "Ab-4471")
+    && cleanReference("4471 / cheque") === "4471 / cheque" && cleanReference("No\u00B2 \u2460\uFB01") === "No\u00B2 \u2460\uFB01");
+  await detail(pb, INV); await open(pb); await fill(pb, "CHEQUE", "1.00", "4471\u200F");
   await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-ask]").waitFor({ timeout: 15_000 });
   ok("FO-7s3a B-M3 fail: 4471 with a right-to-left mark still asks \"Record anyway?\" (nothing recorded), and focus is on Record anyway (m4)",
     pays(INV) === "2" && (await pb.locator("[data-pay-anyway]").evaluate((el) => el === document.activeElement)));
@@ -198,6 +199,14 @@ try {
     pays(INV) === "3" && (await pb.locator("[data-pay-problem]").count()) === 0 && (await pb.locator("[data-pay-amount]").getAttribute("readonly")) !== null && (await pb.locator("[data-pay-method]").isDisabled()));
   await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-done]").waitFor({ timeout: 15_000 });
   ok("FO-7s3a B-M1 pass: Record again answers the payment already recorded (\"not recorded twice\"): still one payment for it", pays(INV) === "3" && (await pb.locator("[data-pay-replayed]").count()) === 1 && sql(`select count(*) from money_payment where invoice_id = '${INV}' and reference = 'M1-${run}'`) === "1");
+  await pb.locator("[data-pay-close]").click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached" });
+  await open(pb); await fill(pb, "CASH", "1.00", `M1b-${run}`);
+  await pb.route(`**/api${M}/invoices/${INV}/payments`, async (r) => { await r.fetch(); await r.fulfill({ status: 504, contentType: "application/json", body: JSON.stringify({ title: "Gateway Timeout", detail: "Something went wrong on our side. Please try again." }) }); }, { times: 1 });
+  await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-unsure]").waitFor({ timeout: 15_000 });
+  ok("FO-7s3a B-M1 fail (round 2): a 504 after the payment was saved is not a refusal either: \"No answer yet\", the fields held, no \"Not recorded\"",
+    sql(`select count(*) from money_payment where invoice_id = '${INV}' and reference = 'M1b-${run}'`) === "1" && (await pb.locator("[data-pay-problem]").count()) === 0 && (await pb.locator("[data-pay-method]").isDisabled()));
+  await pb.locator("[data-pay-save]").click(); await pb.locator("[data-pay-done]").waitFor({ timeout: 15_000 });
+  ok("FO-7s3a B-M1 pass (round 2): Record again after the 504 is the replay: one payment", (await pb.locator("[data-pay-replayed]").count()) === 1 && sql(`select count(*) from money_payment where invoice_id = '${INV}' and reference = 'M1b-${run}'`) === "1");
   await pb.locator("[data-pay-close]").click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached" });
   // M2: west of UTC in the evening the person's day is still today, not the UTC tomorrow
   const west = await (async () => { const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "America/Vancouver", deviceScaleFactor: 1 });
@@ -275,7 +284,9 @@ try {
   await fill(pb, "CASH", "5.00"); await pb.locator("[data-pay-date]").fill("2099-01-01"); await pb.locator("[data-pay-save]").click();
   await pb.locator("[data-pay-problem]").waitFor({ timeout: 15_000 });
   ok("FO-7s3a L fail: a date in the future is refused in the API's words on the panel, and nothing is written", /future/.test(await pb.locator("[data-pay-problem]").innerText()) && pays(INV2) === "2", await pb.locator("[data-pay-problem]").innerText());
-  await pb.keyboard.press("Escape"); await pb.locator('[role="dialog"]').waitFor({ state: "detached", timeout: 5_000 });
+  let discard = 0; const onAsk = () => { discard++; }; pb.on("dialog", onAsk);
+  await pb.locator('[role="dialog"]').getByRole("button", { name: "Close", exact: true }).last().click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached", timeout: 5_000 }); pb.off("dialog", onAsk);
+  ok("FO-7s3a B-m1 pass: after a refusal, Close asks \"Discard this payment?\" once and closes on yes", discard === 1, { discard });
 
   // ---------------------------------------------------------------------------------------------- K: widths, axe
   for (const w of [375, 1024]) {
