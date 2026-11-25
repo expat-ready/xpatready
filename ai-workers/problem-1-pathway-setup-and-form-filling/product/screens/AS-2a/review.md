@@ -77,3 +77,43 @@ Screenshots are in this session's scratchpad (`/tmp/claude-0/-home-user-xpatread
 **Verdict: Block** (Must fix: M1, M2, M3. Then re-run `check_as2a_cited_gates.ts` with their new pass and fail lines.)
 
 Reviewer: Block 6f71259eaa4c2f2a9e2619a0f1e98e4bf8fc6cfd
+
+## Round 2: diff 6f71259ea..fc4ee1299 (code fix b9628074d; fc4ee1299 is shape.md only)
+Re-checked by the same fresh reviewer after `git fetch origin`, on head fc4ee1299048c985e1b1a775e1d9a45e8e06996c. I used my own isolated copies: :4460 for the suite and :4461 for the route and browser walk, both stopped afterwards. US$0.
+
+**Runs on this head**
+* `check_as2a_cited_gates.ts`: 74/74 on :4460.
+* `check_c95_release_update.ts`: 34/34.
+* `check_c617_stages.ts`: 32/32.
+
+**Round-1 findings**
+* **M1, fixed.**
+  * One predicate, `assessmentOnlyRelease` (flag, a gate, no form line and no document line), now decides every skip: filing modes, placement, release lines, the "no case" line and the door. `engine/validate.ts` refuses the flag on a combination that still files.
+  * Repro on :4461: the flag on the Visitor visa with forms → submit 400 "Assessment only: no forms is for a combination with no form and no document line…".
+  * With the forms removed but a document line kept, the submit is still refused. Cases still open on the earlier release.
+* **M2, fixed.**
+  * Repro: remove the forms (DELETE) and retire the document line through the product's own route (`PATCH /combinations/:id/requirements/:lineage {retire:true}`), then release → Release 3, assessment only.
+  * The release-update view shows `refused.code "assessment_only"`. The POST returns 409 "Can't move: … This case stays on Release 2. Nothing was changed.", and the pin stays at Release 2, revision 1.
+* **M3, fixed.** The error now shows under its gate (`data-gate-source-error`, role=alert), in words without JSON, at 1440, 1024 and 400 px. The saved source shows as "Source: Sample (not from an official page)". axe finds 0 violations in the dialog.
+* **m1, fixed.** Lengths are now counted in UTF-16 units, as the port counts them. Test S covers the emoji quote.
+* **m2, fixed.**
+  * Dates before 2000 are refused.
+  * A page read one day ahead of UTC is accepted, so an author in IST just after midnight is not refused; two days ahead is refused.
+  * The engine still takes its UTC date as a default parameter. The tolerance makes this acceptable.
+* **m3, fixed.** User names, ports, localhost, IP addresses, single-label hosts, `https:/` and backslashes are all refused, and the page is stored as `URL.href`. French non-breaking spaces, curly quotes, percent-encoded paths, punycode hosts, queries and fragments are still accepted.
+* **m4, fixed** (`api/src/case-stages.ts:111`: "Cannot start: Assessment only: no forms…").
+* **m5, fixed.** The New case list now reads "Assessment only: no forms. This release…" without the name. Open a case keeps the name.
+* **m6:** recorded as part AS-2a2 in `screens/AS-2/shape.md` (Lead 5, 12:20 IST).
+* **m7:** still open, as listed.
+
+**New in the fix (Minor, Should; neither blocks)**
+* n1: a page address typed with non-ASCII letters (for example `https://www.quebec.ca/immigration/qualifiés`) is refused (`engine/eligibility-gates.ts:121`, printable ASCII only), and the message does not say why. It names https, a public host and the length. Either encode the address (`new URL(typed).href` already does this) or say "letters such as é: paste the address as the browser copies it".
+* n2: `tests/check_as2a_cited_gates.ts:237` deletes document lines with SQL, saying "no single route does". The route exists: `PATCH /combinations/:id/requirements/:lineage {retire:true}` (used above). This is a test-only shortcut, not a product step. Prefer the route, so the test walks what an author does.
+* Change noted, not an issue: `api/src/eligibility.ts:74` makes a PUT that leaves out `assessmentOnly` keep the stored flag; only `false` turns it off. This is safe: the editor and stage one both leave it out, and the change summary still shows "No longer assessment only" when it is turned off.
+* Not this part: the Questionnaires page scrolls sideways at 1024 px by 123 px, from an icon outside the eligibility section. The editor dialog itself does not overflow. Logged here for qa only.
+
+Fingerprints are unchanged (`snapshotEligibility` is untouched by the fix), and no immigration value was added to code.
+
+**Verdict: Approve** (no open Blocker or Major; n1, n2 and m7 are Minors).
+
+Reviewer: Approve fc4ee1299048c985e1b1a775e1d9a45e8e06996c
