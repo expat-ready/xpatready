@@ -14,6 +14,7 @@ import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/p
 import { notePairs } from "../duplicates/merge/review.ts";
 import { logPort } from "../../platform/observability/log.ts";
 import { livePersonId } from "../duplicates/merge/follow.ts";
+import { queueArrivalMerge, type AutoMergeQueue } from "../duplicates/merge/at-arrival.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -65,7 +66,7 @@ function placedWords(p: Placement, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null
   return `, left in Unassigned leads: ${p.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : p.fallback === "POSSIBLE_MATCH" ? "a possible match waits for a person" : "no one in the rule's turn is active"}`;
 }
 
-export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx>; notifications?: NotificationPort<Tx> | null }): Promise<ArrivalOut> {
+export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx>; notifications?: NotificationPort<Tx> | null; autoMerge?: AutoMergeQueue | null }): Promise<ArrivalOut> {
   const firmId = firmScope(a.firmId).firmId;
   // The receipt first (AG-2-84 rule 3). A second post with the same key waits on the unique key until the first commits,
   // then finds its receipt and makes nothing.
@@ -147,6 +148,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   // user; a booking's host only once the booking door passes the port: booking/runtime-ports.ts passes none yet, a
   // follow-up for the booking module) is told, in this transaction; an adder who owns their own lead (a.ownerStaffId) is not.
   if (owner && !a.ownerStaffId) await tellAssigned(tx, ports.notifications, firmId, owner, lead.id);
+  // FO-9b part 2b (P-574 (2)): a new person's safe duplicate is merged by itself, by a job after this commits (at-arrival.ts).
+  if (!a.existingPersonId) await queueArrivalMerge(tx, ports.autoMerge, firmId, personId);
   return { leadId: lead.id, personId, created: true };
 }
 
