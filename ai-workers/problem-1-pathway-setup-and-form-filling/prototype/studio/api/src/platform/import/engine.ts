@@ -276,6 +276,18 @@ export class ImportService {
 
 
 
+  /** GET /imports: the firm's batches, newest first (AG-18-56). */
+  async list(s: StaffContext, q: { page?: string }) {
+    const page = Math.max(1, Math.min(10_000, Number.parseInt(q.page ?? "1", 10) || 1));
+    const where = { firmId: s.firmId };
+    const [total, list] = await Promise.all([this.d.db.platImportBatch.count({ where }), this.d.db.platImportBatch.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * PAGE, take: PAGE })]);
+    return { page, pageSize: PAGE, total, imports: list.map((b) => ({ id: b.id, target: b.targetKey, targetLabel: this.d.targets.get(b.targetKey)?.label ?? b.targetKey, sourceName: b.sourceName, state: b.state, counts: { created: b.createdCount, merged: b.mergedCount, skipped: b.skippedCount, errors: b.errorCount }, importerStaffId: b.importerStaffId, createdAt: b.createdAt.toISOString(), finishedAt: b.finishedAt?.toISOString() ?? null, undoDeadline: b.undoDeadline?.toISOString() ?? null })) };
+  }  /** GET /imports/origin/:kind/:id: where an imported record came from (AG-18-42: origin Import, the batch, its source). */
+  async origin(s: StaffContext, kind: string, id: string) {
+    if (!UUID.test(id)) return { imported: false };
+    const r = await this.d.db.platImportRow.findFirst({ where: { firmId: s.firmId, phase: "RUN", outcome: "CREATE", recordKind: kind, recordId: id.toLowerCase() }, include: { batch: true } });
+    return r ? { imported: true, origin: "IMPORT", batchId: r.batchId, sourceName: r.batch.sourceName, at: r.writtenAt.toISOString() } : { imported: false };
+  }
 }
 
 const tally = (o: string[]) => ({ CREATE: o.filter((x) => x === "CREATE").length, MERGE: o.filter((x) => x === "MERGE").length, SKIP: o.filter((x) => x === "SKIP").length, ERROR: o.filter((x) => x === "ERROR").length });

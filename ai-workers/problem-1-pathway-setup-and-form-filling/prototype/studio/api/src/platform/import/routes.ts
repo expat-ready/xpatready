@@ -34,8 +34,12 @@ export class ImportController {
   attestation(@Req() r: R) { return this.svc.attestation(staffOf(r)); }
   @Post("attestation") @PermissionKeys(RUN_KEY)
   attest(@Req() r: R, @Body() b: unknown) { return this.svc.attest(staffOf(r), b); }
+  @Get() @PermissionKeys(VIEW_KEY)
+  list(@Req() r: R, @Query() q: { page?: string }) { return this.svc.list(staffOf(r), q); }
   @Post() @PermissionKeys(RUN_KEY)
   async upload(@Req() r: R, @Query() q: { target?: string; source?: string; name?: string }) { const s = staffOf(r); return this.svc.upload(s, q, await csvBody(r)); }
+  @Get("origin/:kind/:id") @PermissionKeys(VIEW_KEY)
+  origin(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string) { return this.svc.origin(staffOf(r), kind, id); }
   @Get(":id") @PermissionKeys(VIEW_KEY)
   view(@Req() r: R, @Param("id") id: string) { return this.svc.view(staffOf(r), id); }
   @Get(":id/rows") @PermissionKeys(VIEW_KEY)

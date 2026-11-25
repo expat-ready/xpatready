@@ -21,6 +21,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeFiles } from "../ports/files.ts";
 import { ImportTargets } from "../ports/import-target.ts";
+import { FakeClock } from "../ports/clock.ts";
+import { fakeJobs } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -49,7 +51,7 @@ const { ImportService } = await import("../api/src/platform/import/engine.ts");
 const { ImportController } = await import("../api/src/platform/import/routes.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const { CONSENT_PORT, consentStore } = await import("../api/src/platform/messages/consent/index.ts");
-const { IMPORT_TARGETS } = await import("../api/src/features/platform-import.ts");
+const { IMPORT_TARGETS, registerImportJobs } = await import("../api/src/features/platform-import.ts");
 const { FrontOfficeImportTargets } = await import("../api/src/features/front-office-import-targets.ts");
 const { seedFirmFrontOffice } = await import("../api/src/front-office/firm-seed.ts");
 
@@ -57,7 +59,7 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB
 const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
 const local = new LocalIdentity("pf10t-check-signing-key-0123456789abcdef", () => clock.now());
 const targets = new ImportTargets<unknown>();
-const files = fakeFiles();
+const files = fakeFiles(), jobs = fakeJobs(new FakeClock());
 
 type Res = { status: number; body: any };
 let base = "";
@@ -70,13 +72,15 @@ const call = async (method: string, path: string, o: { token?: string; body?: un
 };
 
 let app: { close(): Promise<void> } | null = null;
+let svc: InstanceType<typeof ImportService> | null = null;
 try {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: IMPORT_TARGETS, useValue: targets }, { provide: CONSENT_PORT, useValue: consentStore }, FrontOfficeImportTargets,
-    { provide: ImportService, useFactory: (d: InstanceType<typeof Db>) => new ImportService({ db: d, audit: auditEvent, files, targets: targets as never }), inject: [Db] }];
+    { provide: ImportService, useFactory: (d: InstanceType<typeof Db>) => (svc = new ImportService({ db: d, audit: auditEvent, files, targets: targets as never, jobs })), inject: [Db] }];
   @Module({ controllers: [PlatformIdentityController, ImportController] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
+  await registerImportJobs(jobs, svc!);
   const person = targets.get("person");
   ok("PF-10t DW6 pass: the front office's feature registers the person target (fo_person, personal data) at start-up", person?.recordKind === "fo_person" && person.personalData === true && person.label === "People");
 
@@ -125,8 +129,9 @@ try {
     && words(8)[0] === "Given names: needs a given or family name" && words(9)[0] === "Email: needs an email or a phone" && words(10)[0] === "Email marketing consent: needs an email (consent is for email)", rows);
   ok("PF-10t DW2 pass: row 5 (no email) matches Client P by the phone in E.164; row 4 (Client W, withdrawn) is SKIP nothing new",
     rows[4].outcome === "MERGE" && rows[4].recordId === P.id && rows[3].outcome === "SKIP" && rows[3].recordId === W.id && rows[1].recordId === B.id);
-  const run = await call("POST", `/api/platform/imports/${up.body.id}/run`, { token: tR, body: { dryRunHash: dry.body.dryRunHash } });
-  ok("PF-10t DW1 pass: the run → PARTIAL: 2 created, 2 merged, 1 skipped, 5 errors", run.status === 201 && run.body.state === "PARTIAL" && run.body.counts.created === 2 && run.body.counts.merged === 2 && run.body.counts.skipped === 1 && run.body.counts.errors === 5, run.body);
+  await call("POST", `/api/platform/imports/${up.body.id}/run`, { token: tR, body: { dryRunHash: dry.body.dryRunHash } }); await jobs.runDue();
+  const run = await call("GET", `/api/platform/imports/${up.body.id}`, { token: tR });
+  ok("PF-10t DW1 pass: the run → PARTIAL: 2 created, 2 merged, 1 skipped, 5 errors", run.status === 200 && run.body.state === "PARTIAL" && run.body.counts.created === 2 && run.body.counts.merged === 2 && run.body.counts.skipped === 1 && run.body.counts.errors === 5, run.body);
   const a = await db.foPerson.findFirstOrThrow({ where: { firmId: FIRM_A, email: "a@client.test" } }), b = await db.foPerson.findUniqueOrThrow({ where: { id: B.id } }), p = await db.foPerson.findUniqueOrThrow({ where: { id: P.id } });
   ok("PF-10t DW2 pass: the local phone \"(416) 555-0101\" is stored as +14165550101 (readable), the language as fr", a.phone === "+14165550101" && a.phoneReadable && a.phoneE164 === "+14165550101" && a.language === "fr", a);
   ok("PF-10t DW1 pass: Client B kept the filled family name (\"B\", not the file's \"Bee\") and gained phone and language; Client P gained the language only",
@@ -139,6 +144,8 @@ try {
   ok("PF-10t DW3 fail: \"no\" writes no consent; Client W, who withdrew, is not given consent again", live(c.id) === "0" && live(W.id) === "0");
   const orig = await call("GET", `/api/platform/imports/origin/fo_person/${a.id}`, { token: tR }), origB = await call("GET", `/api/platform/imports/origin/fo_person/${B.id}`, { token: tR });
   ok("PF-10t DW4 pass/fail: Client A's origin is Import, from \"Old spreadsheet\"; Client B (already known) was not imported", orig.body.imported && orig.body.origin === "IMPORT" && orig.body.sourceName === "Old spreadsheet" && origB.body.imported === false, [orig.body, origB.body]);
+  const listA = await call("GET", "/api/platform/imports", { token: tR }), tO = await signIn("user-O"), listO = await call("GET", "/api/platform/imports", { token: tO });
+  ok("PF-10t DW4 pass/fail: the import list shows the batch with its source and counts (AG-18-56); a Case Officer without view-report → 403", listA.body.total === 1 && listA.body.imports[0].sourceName === "Old spreadsheet" && listA.body.imports[0].counts.created === 2 && listO.status === 403, listA.body);
   ok("PF-10t DW6 pass: quiet: no lead made, no message queued (AG-18-43, -59)", sql(`select count(*) from fo_lead where firm_id = '${FIRM_A}'`) === leads0 && sql("select count(*) from msg_outbox") === out0);
   ok("PF-10t DW6 pass: one audit line per person made or filled, ids and fields named, in the trail", sql("select count(*) from audit_event where action = 'front_office.person.imported'") === "2" && sql("select count(*) from audit_event where action = 'front_office.person.import_filled'") === "2");
 
@@ -146,7 +153,7 @@ try {
   const up2 = await call("POST", "/api/platform/imports?target=person&source=Old%20spreadsheet", { token: tR, csv: FILE });
   const dry2 = await call("POST", `/api/platform/imports/${up2.body.id}/dry-run`, { token: tR, body: { columns: up2.body.mapping.columns, declared: true } });
   ok("PF-10t DW5 pass: the re-import's preview: 0 to create, 0 to merge, 5 skip (nothing new), the same 5 errors", dry2.body.totals.CREATE === 0 && dry2.body.totals.MERGE === 0 && dry2.body.totals.SKIP === 5 && dry2.body.totals.ERROR === 5, dry2.body.totals);
-  const run2 = await call("POST", `/api/platform/imports/${up2.body.id}/run`, { token: tR, body: { dryRunHash: dry2.body.dryRunHash } });
+  const run2 = await call("POST", `/api/platform/imports/${up2.body.id}/run`, { token: tR, body: { dryRunHash: dry2.body.dryRunHash } }); await jobs.runDue();
   ok("PF-10t DW5 fail: the re-import adds no person and no consent", run2.status === 201 && Number(sql(`select count(*) from fo_person where firm_id = '${FIRM_A}'`)) === people0 + 2 && consents() === c0 + 2, run2.body);
 } catch (e) {
   ok("the check ran to the end", false, String((e as Error).stack ?? e));
