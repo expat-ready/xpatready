@@ -144,3 +144,32 @@ Reviewer: Approve 3f88a5d304c8172d572a49cc940c60630883526d
 * the top-N page.
 
 Reviewer: Block ea647490a0ff15528fb03bfb1933b50c2850affa
+
+## Round 4 (diff-only, 0561097…)
+**Verdict: Approve. Head `0561097c276f7747bc0f7af580972ab10db64c18`.** No open Blocker or Major. I reviewed only `git diff ea647490..0561097c -- prototype`. The check gave **45 passed, 0 failed** (the machine was loaded, load average about 2.8).
+* **R3-2 fixed: `sp` equals the old running sum on every page.**
+  * **By construction:** a page line's balance is `st.s` (the group's lines before the page's first line) plus a running sum over every `run` line of the group from `g1` to `g9`, whatever its period. That is the old window over all lines, with no reliance on the period being an unbroken run.
+  * **By probe** (every page line against the old window computed over all lines; CAD and USD, INVOICES and TRUST; 5 periods × page sizes 1, 2, 3, 7, 200, every cursor walked):
+    * normal ledger: **1,210 of 1,210 equal**;
+    * with the trust seq/time inversion across 1 Mar: **1,250 of 1,250 equal** (round 3: 6 off).
+  * The check's new S5 lines (pages of 1 and 3) agree.
+* **R3-1 fixed.** The array condition and `ca_ids` are gone.
+
+  | Client | Round 3 (statement / summary) | Now, medians of 3 on the loaded machine |
+  |---|---|---|
+  | 10,000 invoices, 2,000 applied credits | 817 ms (readSql) | 126 / 128 ms |
+  | 20,000 invoices, 5,000 applied credits, 5,000 withdrawals | failed at the 5 s limit | 304 / 348 ms (round 2: 289 ms) |
+
+  The check's S8 gives 95 ms / 110 ms (3,333 invoices, each with credit applied and reversed) and 255 ms / 215 ms (53,000 other invoices in the firm).
+* **R3-3 fixed.** The comment now says the partial index serves only scopes without cases.
+* **`summarySql`** is a move of the round-3 text. My round-2 figures still hold: closing 170.00 = Σ(due − extra) = owed.
+
+**Minor R4-1 (new, from the breaker's R3-m1 fix): a forged cursor with an impossible fact time gives a database error, not a 422**
+* **Where:** `FactTime` (statement.ts:42) is a regex only. A cursor whose `r` is `2026-99-99T99:99:99.000000` or `0000-01-01T00:00:00.000000` reaches `::timestamp`, and Postgres raises 22008 ("date/time field value out of range"). Nothing maps 22008 in `api/src`, so the answer is a 500.
+* **The rule it breaks:** `cursorOf`'s "anything else is 422 naming after", and the "never a database 500" rule in reads/common.ts.
+* **Still works:** a real 1999 time walks fine.
+* **Fix:** refine `FactTime` with a real-date round trip (any year 0001–9999), as `Stamp` does without the 2000–2999 range.
+
+**Still open, Minor (stated limit):** the "Held in trust" sentence goes to part 2 (round-1 m4). Round-1 m3 is now fixed by R3-2.
+
+Reviewer: Approve 0561097c276f7747bc0f7af580972ab10db64c18
