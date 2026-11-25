@@ -147,3 +147,59 @@ Reviewer: Block d2c603bd38cfec50738400003470d3720aef7ec3
 **Journey score at e7bee6efb: 7/10, fail** (see the journey report's Round 2): task ½ (a two-line reason cannot be declined) · next step ½ · words 1 · feedback 1 · data ½ (m10) · recovery ½ (500, no field error) · accessibility ½ · speed 1 · visual ½ · trust 1.
 
 Reviewer: Block e7bee6efb318b60634c48a3ba8ef11e3cdfbfe65
+
+## Round 3 (c49d5ab69, diff-only against e7bee6efb)
+
+**Verdict: Approve (Ship).** The round 2 Major and m10 are closed. The app and the database now apply one rule to every input the app can produce. Proof: an exhaustive probe under seven collations, plus mutations showing that each new test line goes red when its rule is removed. No Blocker or Major is open.
+
+**Ran:** `check_fo5d_decline_withdraw.ts`: exit 0, **41/41**. The worktree is clean. Probes and mutations ran on scratch copies only, on cluster :54329, never :4400.
+
+**Agreement probe (`decline.ts:36-37` vs `migration.sql:14-15`):**
+* Inputs: every code point U+0001-10FFFF except surrogates, each alone and as `a·c·b`. BMP code points were also tried as `c·x`, `x·c`, ` c `, `cc`, `CRLF·c·TAB` and `a CRLF c TAB b`. That is 2.6 M inputs, giving 2,477,550 distinct non-null outputs of the real `cleanReason`.
+* Each output was checked against the check's own expression under default (C), C, C.utf8, en_US.utf8, und-x-icu, pg_c_utf8 and pg_unicode_fast. **0 refused in each.**
+* Inside a reason, the database refuses exactly 68 code points under every collation: U+0001-0008, 000B, 000C, 000E-001F, 007F-009F, 200B, 202A-202E, FEFF. That is the app's removal set minus NUL, which text cannot hold.
+* Named cases went through the real constraint on a `fo_signer` table: TAB, LF, CR, CRLF, U+200B, U+FEFF, U+202A-202E, ZWNJ, ZWJ, LRM, RLM, U+2060-2069, NEL, LS, PS, NBSP, NNBSP and U+180E, each inside, at the start, at the end, at both ends, alone and as `m m`. All 130 non-null outputs were inserted, with 0 errors.
+* What happens to each:
+  * Tab, LF and CR are kept inside and trimmed at the ends.
+  * U+200B, U+FEFF and U+202A-202E are removed anywhere.
+  * ZWJ, ZWNJ, LRM, RLM and U+2060-2069 are kept anywhere, including at the ends. That is harmless: the database does not count them as space.
+  * A reason made only of marks and whitespace is no reason.
+
+**Mutations at c49d5ab69 (red means caught):**
+* Red:
+  * migration and `decline.ts` both from e7bee6efb: 3 red (r2 Major pass, m10 pass, D-DB pass). So the new lines fail on e7bee6efb.
+  * migration only from e7bee6efb: 2 red (r2 Major, D-DB pass).
+  * `decline.ts` only from e7bee6efb: 1 red (m10 pass).
+  * marks-only rule dropped (`return t ? t : null`): m10 fail red.
+  * marks-only set without `\s`: m10 fail red.
+  * app strips tab, LF and CR: r2 Major red.
+  * app strips U+200B-200F: m10 pass red.
+* Green (not caught):
+  * the check without `​‪-‮﻿`;
+  * the app keeping U+202A-202E, which the database then refuses, so a 500;
+  * the app removing only LRM and RLM.
+
+The new lines are honest. They go through the door's own controller and read the stored row.
+
+**Minors, new:**
+* **m11 (Should): the bidi-override and BOM half of the shared rule has no test** (mutations above).
+  * Round 2's Major was exactly this kind of app-versus-database drift. Today one would again be a silent 500.
+  * Fix: a pass line declining with `"‮Fee﻿ too high"` and expecting it kept as `"Fee too high"`, plus a D-DB fail for `'a'||chr(8238)||'b'`, `chr(65279)` and `chr(8203)`.
+  * Also add LRM or RLM to the m10 pass reason (e.g. mixed Arabic and Latin text with U+200F).
+* **nit:** `decline.ts:32` says "The database's check … holds the same rule". The database has no marks-only rule; it is looser, which is safe. Say "the same characters".
+* **nit (not a regression; the same as at e7bee6efb):** a reason made only of other invisible characters is kept and shows blank. Examples: U+00AD, U+034F, U+115F, U+180E, U+3164, U+2800, U+FE0F, U+E0020, as in `"ㅤ ㅤ"`. There is no 500 and nothing is lost.
+
+**Open Minors listed in the PR body (m9 closed: the body is updated to c49d5ab69, 41, and the rule as built):**
+* I accept them as Minors for this API-only part:
+  * Home's Needs you (for the Lead, AG05-D4(8));
+  * the item's words, now stated as deviation 5 (old m3);
+  * the lock order against #3648, as stated (old m6). I did not re-read it this round;
+  * one `canOpen` per row (m7);
+  * the provider's decline past expiry and no retry of the vendor cancel (breaker m7-m9);
+  * no test for the version check, the limiter or the 409 deadlock mapping (m5, m6);
+  * the 4,000-unit raw cap and nits (m8).
+* m3's words and m4 must be met by FO-5s S7 or the notification screens' part, not later than that.
+
+**Journey score at c49d5ab69: 8½/10, pass** (journey report, Round 3).
+
+Reviewer: Approve c49d5ab6990721739d83937aed57a1ee9f9ae5f7

@@ -56,3 +56,25 @@ Walked in process with the PR's own controller, on a scratch copy of `studio/` (
 | Visual quality | ½ | ½ | no screen |
 | Trust and sources | 1 | 1 | |
 | **Total** | **8** | **7 / 10** | **Fail** (below 8). The most valuable fix is J3b (one rule for app and DB on tab, LF and CR), then J3c |
+
+## Round 3 (c49d5ab69), diff-only, reviewer
+These were walked in process through the door's own controller (the suite's lines and a scratch copy of `studio/`), on :54329, never :4400.
+* **J3b (two-line reason) held.** `"We chose another firm.\r\nThanks for your time.\tAll the best"` is DECLINED and kept with CR, LF and the tab exactly as written. The database accepts line breaks and tabs inside under all seven collations probed.
+* **J3c (Persian with ZWNJ, an emoji family with ZWJ) held.** It is kept word for word. A reason of joiners and direction marks only is no reason.
+* **Break:**
+  * Bidi overrides and the BOM are removed by the app and refused by the database in the same way: 0 disagreements over every code point.
+  * Not tested by the suite (review m11). Reasons made only of other invisible characters (U+3164, U+00AD) are kept blank (nit, as before).
+
+| Criterion | R2 | R3 | Why it changed |
+|---|---|---|---|
+| Task completed | ½ | 1 | J3b: a multi-line reason declines |
+| Next step obvious | ½ | ½ | words unchanged (review m3, deviation 5) |
+| Plain words | 1 | 1 | |
+| Feedback and state | 1 | 1 | |
+| Correct data | ½ | 1 | J3c: joiners kept, word for word |
+| Error recovery | ½ | 1 | no 500. 422, 409 and 404 in words as in round 1 |
+| Accessibility and screen sizes | ½ | ½ | no screen |
+| Speed | 1 | 1 | |
+| Visual quality | ½ | ½ | no screen |
+| Trust and sources | 1 | 1 | |
+| **Total** | **7** | **8½ / 10** | **Pass** (8+, no 0). To raise it: the page (FO-5s S7) for accessibility and visual quality; the item's next step in words |
