@@ -3,7 +3,7 @@
 // the firm is the session's. The demo-only check-now route runs a pass at once, so a person (or a journey) can see a
 // change found without waiting 30 minutes; it is 404 outside the demo workspace.
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Post, Query, Req } from "@nestjs/common";
-import { ArchiveKeyExists, ArchiveRetained } from "../../../../../ports/audit-archive.ts";
+import { ArchiveKey, ArchiveKeyExists, ArchiveRetained } from "../../../../../ports/audit-archive.ts";
 import { AuditChainExport } from "../write-once/daily-export.ts";
 import { actorOf, fail, isDemoWorkspace, need } from "../../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
@@ -52,7 +52,9 @@ export class DemoAuditChainController {
   @Post("archive/tamper") @HttpCode(200)
   async tamper(@Headers("x-actor") a: string | undefined, @Body() b: { key?: unknown; how?: unknown } | null) {
     this.demo(a);
-    const key = typeof b?.key === "string" ? b.key : fail("Name the key."), store = this.x.store();
+    const key = typeof b?.key === "string" && ArchiveKey.safeParse(b.key).success ? b.key : fail("Name an archived key (lower-case path segments)."), store = this.x.store();
+    // Only an object already archived is tried: this route never writes a new key (review M4, break M2).
+    if (!(await store.get(key))) fail("No archived object has this key.", HttpStatus.NOT_FOUND);
     try {
       if (b?.how === "replace") await store.put(key, Buffer.from("replaced (Sample)"), new Date(Date.now() + 86_400_000));
       else if (b?.how === "delete") await store.remove(key);
