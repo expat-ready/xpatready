@@ -129,8 +129,10 @@ console.log("== 2. a held secret never prints, logs or serialises its value");
   const mine = generated();
   for (const n of SCRUBBED_FROM_ENV) process.env[n] = mine[n];
   process.env.PLATFORM_SECRET_BOX_KEY_VERSION = mine.PLATFORM_SECRET_BOX_KEY_VERSION;
+  process.env.PLATFORM_GOOGLE_CLIENT_ID = mine.PLATFORM_GOOGLE_CLIENT_ID;   // R1.43 part 0: the secret's pair (not secret)
   process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
   const live = platformConfig();
+  delete process.env.PLATFORM_GOOGLE_CLIENT_ID;
   delete process.env.PLATFORM_SECRET_BOX_KEY_VERSION;   // not secret; removed only so the copies started below inherit nothing of this
   ok("pass (break M1): the loaded configuration still holds every secret for its adapter", SCRUBBED_FROM_ENV.every((n) => n === "PLATFORM_SECRET_BOX_KEYS" ? live.secretBox?.keys.size === 2 : JSON.stringify(live).includes(`[secret ${n}]`)) && live.zoom.clientSecret?.reveal() === mine.PLATFORM_ZOOM_CLIENT_SECRET);
   const childEnv = execFileSync(process.execPath, ["-e", "process.stdout.write(JSON.stringify(process.env))"], { encoding: "utf8" });
