@@ -36,6 +36,7 @@ export const COLUMNS: Readonly<Record<string, readonly [Treatment, string]>> = {
   "msg_outbox.subject_id": ["STAYS", "a message record names whom it was sent to"],
   "plat_complaint.subject_id": ["STAYS", "a complaint names whom it was about (kept as received)"],
   "plat_data_request.person_id": ["STAYS", "a privacy request to ExpatReady names the one person record it was made about, fixed when it is logged (SA-11-40 §6: \"The subject is fixed when the request is created\"; its trigger refuses a change); a legal record of who asked, kept as received like a complaint (PF-21b part 3). A merge and its Undo leave it; a reader follows merged_into_id"],
+  "platform_person_export.person_id": ["STAYS", "an export of one person's data names the record it was made for, fixed when it is asked for (its trigger refuses a change; PF-26, R1.34); a record of who exported whom. A merge and its Undo leave it; the survivor's next export reads the merged record through its lineage"],
   "case_client.fo_person_id": ["STAYS", "the case side's column: its ClientMergePort (CS-K2) re-points it in the same transaction"],
   "case_client.fo_company_id": ["STAYS", "the case side's column: its ClientMergePort (CS-K2) re-points it in the same transaction"],
   "money_credit_entry.person_id": ["STAYS", "client money's insert-only ledger; never written here (a person with money is never merged by itself, P-574 (2))"],
