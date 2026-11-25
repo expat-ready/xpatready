@@ -6,8 +6,8 @@ import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
 import { currentAlerts } from "../platform/observability/alerts.ts";
-import { chooseAuditArchive } from "../platform/audit/archive/bind.ts";
-import { AuditChainExport, EXPORT_CRON, EXPORT_QUEUE, EXPORT_ZONE } from "../platform/audit/archive/daily-export.ts";
+import { chooseAuditArchive } from "../platform/audit/write-once/bind.ts";
+import { AuditChainExport, EXPORT_CRON, EXPORT_QUEUE, EXPORT_ZONE } from "../platform/audit/write-once/daily-export.ts";
 import { DemoAuditChainController, FirmAuditIntegrityController, SystemAuditIntegrityController } from "../platform/audit/chain/routes.ts";
 import { AuditChainVerifier, CHAIN_CHECK_CRON, CHAIN_CHECK_QUEUE, CHAIN_DEEP_CRON, CHAIN_DEEP_QUEUE, CHAIN_ZONE } from "../platform/audit/chain/verify.ts";
 

@@ -4,7 +4,7 @@
 // change found without waiting 30 minutes; it is 404 outside the demo workspace.
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Post, Query, Req } from "@nestjs/common";
 import { ArchiveKeyExists, ArchiveRetained } from "../../../../../ports/audit-archive.ts";
-import { AuditChainExport } from "../archive/daily-export.ts";
+import { AuditChainExport } from "../write-once/daily-export.ts";
 import { actorOf, fail, isDemoWorkspace, need } from "../../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
 import { SystemKeys } from "../../system-identity/keys.ts";
