@@ -39,6 +39,8 @@ type Row = { seq: string; id: string; at: string; ws: string; firm: string | nul
 type CheckRow = { verified_seq: string; verified_hash: Uint8Array | null; status: "INTACT" | "BROKEN"; failing_from_seq: string | null };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A chain's key as the insert trigger makes it: a firm id, `platform`, or `sample:<workspace id>`. */
+const CHAIN_KEY = /^(platform|(sample:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const LINES = Prisma.sql`select seq::text seq, id::text id, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at, workspace_id::text ws,
   firm_id::text firm, case_id::text cas, combination_id::text combo, actor, actor_type::text atype, action, entity, entity_key, summary, correlation_id,
   support_session_id::text sup, detail::text detail, prev_hash, entry_hash from audit_event`;
@@ -50,16 +52,23 @@ export class AuditChainVerifier {
   /** `anchors` (AUD-2 part 2): the newest exported head of a chain, from the write-once archive; compared on every pass. */
   constructor(private readonly d: { db: Db; alerts: AlertPort; now: () => Date; page?: number; anchors?: { latestAnchor(k: string): Promise<{ seq: string; entryHash: string } | null> } }) {}
 
-  /** One pass over every chain. Throws (and writes no heartbeat) when the database does not answer. */
+  /** One pass over every chain. A chain that cannot be checked (the database does not answer; a check row whose key is
+   *  no chain's) never stops the others (break M3): every other chain is still checked and any break raised, then the
+   *  pass throws and writes no heartbeat, so the job fails and the heartbeat's absence alarms. */
   async pass(mode: Mode): Promise<PassResult> {
     const keys = (await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
       union select chain_key from aud_chain_check order by 1`).map((r) => r.k);
     const out: PassResult = { mode, chains: 0, linesRead: 0, findings: [] };
+    let failed = 0;
     for (const k of keys) {
-      const r = await this.d.db.$transaction((tx) => this.chain(tx, k, mode), { timeout: 120_000, maxWait: 10_000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
-      out.chains++; out.linesRead += r.read;
-      if (r.finding) out.findings.push(r.finding);
+      if (!CHAIN_KEY.test(k)) { failed++; log().trusted("error", "audit_chain_bad_check_row", { rule: "BR-2" }); continue; }
+      try {
+        const r = await this.d.db.$transaction((tx) => this.chain(tx, k, mode), { timeout: 120_000, maxWait: 10_000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+        out.chains++; out.linesRead += r.read;
+        if (r.finding) out.findings.push(r.finding);
+      } catch (e) { failed++; log().write("error", "audit_chain_check_failed", { rule: "BR-2", error: e }); }
     }
+    if (failed) throw new Error(`audit chain check: ${failed} chain(s) could not be checked; no heartbeat`);
     log().trusted("info", "audit_chain_verify", emf({ Mode: mode }, { [HEARTBEAT]: { value: 1, unit: "Count" }, AuditChainBreaks: { value: out.findings.length, unit: "Count" } },
       { mode, chains: out.chains, linesRead: out.linesRead, breaks: out.findings.length }));
     return out;
@@ -73,17 +82,24 @@ export class AuditChainVerifier {
     const sample = k.startsWith("sample:");
     if (head === null && sample) { await tx.$executeRaw`delete from aud_chain_check where chain_key = ${k}`; return { read: 0, finding: null }; }   // the demo reset took it
     let start = 0n, prev: Buffer = ZERO_HASH, read = 0;
-    // A BROKEN chain is re-read from seq 1 by every pass, so a later run never turns it back to INTACT from a verified
-    // place after the break (the break stays until the chain verifies whole; it is raised once: found()).
-    if (mode === "incremental" && c && c.status !== "BROKEN" && BigInt(c.verified_seq) > 0n) {
+    // The verified place is checked on every pass, whatever the mode and the status: a line removed or rewritten there
+    // after a check stays a finding (break M2: found() never moves verified_seq or verified_hash, so the evidence is
+    // kept). A BROKEN chain is then re-read from seq 1, never from its verified place, so no run turns it back to INTACT.
+    if (c && !sample && BigInt(c.verified_seq) > 0n) {
+      const at = BigInt(c.verified_seq), [v] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
+      read++;
+      const same = !!v && !!c.verified_hash && Buffer.from(v.h).equals(Buffer.from(c.verified_hash));
+      if (!same) return this.found(tx, k, c, { chainKey: k, fromSeq: String(at), toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: v ? "verified-changed" : "missing" }, read);
+      if (mode === "incremental" && c.status !== "BROKEN") { start = at; prev = Buffer.from(v!.h); }
+    } else if (c && sample && mode === "incremental" && c.status !== "BROKEN" && BigInt(c.verified_seq) > 0n) {
+      // A sample: chain may restart (the demo reset): a changed verified place re-reads it from seq 1.
       const at = BigInt(c.verified_seq), [v] = await tx.$queryRaw<{ h: Uint8Array }[]>`select entry_hash h from audit_event where chain_key = ${k} and seq = ${at}`;
       read++;
       if (v && c.verified_hash && Buffer.from(v.h).equals(Buffer.from(c.verified_hash))) { start = at; prev = Buffer.from(v.h); }
-      else if (!sample) return this.found(tx, k, c, { chainKey: k, fromSeq: String(at), toSeq: String(head !== null && BigInt(head) > at ? BigInt(head) : at), why: v ? "verified-changed" : "missing" }, read);
     }
     let last = start, lastHash = start === 0n ? null : prev;
     for (;;) {
-      const rows = await tx.$queryRaw<Row[]>`${LINES} where chain_key = ${k} and seq > ${last} order by seq limit ${this.d.page ?? CHAIN_PAGE}`;
+      const rows = await tx.$queryRaw<Row[]>`${LINES} where chain_key = ${k} and seq > ${last} order by audit_event.seq limit ${this.d.page ?? CHAIN_PAGE}`;
       if (!rows.length) break;
       for (const r of rows) {
         read++;
@@ -114,9 +130,15 @@ export class AuditChainVerifier {
     await tx.$executeRaw`insert into aud_chain_check (chain_key, verified_seq, verified_hash, checked_at, status, failing_from_seq, failing_to_seq)
       values (${k}, 0, null, ${this.d.now()}, 'BROKEN', ${BigInt(f.fromSeq)}, ${BigInt(f.toSeq)})
       on conflict (chain_key) do update set checked_at = excluded.checked_at, status = 'BROKEN', failing_from_seq = excluded.failing_from_seq, failing_to_seq = excluded.failing_to_seq`;
-    if (!(c?.status === "BROKEN" && c.failing_from_seq === f.fromSeq))
-      await this.d.alerts.raise("audit_chain_break", { rule: "BR-2", ...(UUID.test(k) ? { firmId: k } : {}), entity: "audit_chain", entityKey: k, fromSeq: Number(f.fromSeq), toSeq: Number(f.toSeq) });
+    // Raised without ever throwing: an alert that cannot be raised is itself a line, and the pass goes on (break M3).
+    if (!(c?.status === "BROKEN" && c.failing_from_seq === f.fromSeq)) await this.raise(k, f);
     return { read, finding: f };
+  }
+
+  private async raise(k: string, f: Finding) {
+    try {
+      await this.d.alerts.raise("audit_chain_break", { rule: "BR-2", ...(UUID.test(k) ? { firmId: k } : {}), entity: "audit_chain", entityKey: k, fromSeq: Number(f.fromSeq), toSeq: Number(f.toSeq) });
+    } catch (e) { log().write("error", "alert_not_raised", { alert: "audit_chain_break", rule: "BR-2", error: e }); }
   }
 
   /** The firm's own chain (AUD-4's integrity line; GET /api/platform/audit/integrity). */
