@@ -593,6 +593,9 @@ export class Retainers {
         after: { status: "DRAFT", version: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, fees: feeWords(fees) } });
       // FO-5f item 1: the ended request is told outside FO-5 (FO-6 cancels the signing request on it).
       if (ends) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: cur.n, reason: "UPDATED" });
+      // QA-770 (FO-5d (3)): the ended version's signing request ends with the edit (UPDATED, no email); the provider's
+      // envelope is cancelled before the commit, as Withdraw's.
+      if (ends && r.kind === "RETAINER") await (await endRetainerSigning(tx, ctx, r.id, "UPDATED", { db: this.db, audit: this.audit, now: new Date(this.clock.now()) })).cancelNow();
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, r.id)), warnings: s.warnings, signerOptions: s.options };
   }
@@ -670,9 +673,11 @@ export class Retainers {
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer",
         before: { status: r.status, withdrawnReason: null }, after: { status: "WITHDRAWN", withdrawnAt: now.toISOString(), withdrawnReason: reason } });
-      // QA-770: the client's signing request ends with the withdraw (its link stops); the envelope after the commit.
-      if (r.kind === "RETAINER") signing = await endRetainerSigning(tx, ctx, r.id, "WITHDRAWN", { audit: this.audit, now });
+      // QA-770 (FO-5d (2)): the client's signing request ends with the withdraw (its link stops); the provider's envelope is
+      // cancelled before the commit (a failed cancel rolls the withdraw back: 503 "Try again"); the client's email after it.
+      if (r.kind === "RETAINER") signing = await endRetainerSigning(tx, ctx, r.id, "WITHDRAWN", { db: this.db, audit: this.audit, now });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_WITHDRAWN, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
+      await signing?.cancelNow();   // the last step before the commit
     });
     await signing?.afterCommit();
     return this.read(ctx, id);
@@ -763,8 +768,9 @@ export class Retainers {
         before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
         after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
-      // QA-770: a paper signature ends the open e-signing request too (SIGNED_OFFLINE); the envelope after the commit.
-      if (r.kind === "RETAINER") signing = await endRetainerSigning(tx, ctx, r.id, "SIGNED_OFFLINE", { audit: this.audit, now });
+      // QA-770: a paper signature ends the open e-signing request too (SIGNED_OFFLINE); its envelope is cancelled after the
+      // commit, so a provider outage never holds up a signature already made on paper.
+      if (r.kind === "RETAINER") signing = await endRetainerSigning(tx, ctx, r.id, "SIGNED_OFFLINE", { db: this.db, audit: this.audit, now });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });
     await signing?.afterCommit();

@@ -321,10 +321,13 @@ try {
   const p10 = await prospect("Ida"), r10 = await draft(p10);
   await sendIt(r10);
   const [q10, d10] = reqOf(r10);
+  const cancelsBefore = signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length, mails10 = mail.sent.length;
   await svc.edit(R, r10, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 160000, when: "ON_SIGNING" }] });
-  const cancelsBefore = signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length;
+  ok("QA-770 pass (FO-5d (3)): an Edit of a sent retainer ends its signing request (CANCELLED, UPDATED) at once, one cancel at the vendor, no email",
+    sql(`select status || ':' || cancel_reason from fo_signature_request where id = '${q10}'`) === "CANCELLED:UPDATED" && mail.sent.length === mails10
+      && signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length === cancelsBefore + 1);
   await svc.send(R, r10, { expectedVersion: 2 });
-  ok("FO-6 B pass (deviation 4): Send of version 2 ends version 1's live request (CANCELLED, UPDATED) with one audit line and one cancel at the fake; one live request",
+  ok("FO-6 B pass (deviation 4): after the Edit, Send of version 2 leaves version 1's request ended (CANCELLED, UPDATED) with one audit line and one cancel at the fake in all; one live request",
     sql(`select status || ':' || cancel_reason from fo_signature_request where id = '${q10}'`) === "CANCELLED:UPDATED" && count("audit_event", `entity_key = '${q10}' and action = 'signing.request_cancelled'`) === 1
       && signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length === cancelsBefore + 1
       && count("fo_signature_request", `document_id = '${r10}' and status in ('SENT','VIEWED','CLIENT_SIGNED')`) === 1);
@@ -366,7 +369,17 @@ try {
   const failedWd = await refusal(() => new Retainers(db, files, clock, failingOn("signing.request_cancelled")).withdraw(R, r70, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" }));
   ok("QA-770 fail: a withdraw whose transaction fails leaves the request SENT, the retainer SENT, and cancels nothing at the vendor",
     failedWd !== null && reqOf(r70)[2] === "SENT" && sql(`select status from fo_retainer where id = '${r70}'`) === "SENT" && cancels70() === 0, failedWd);
+  useSigningPort({ ...signing, cancel: async () => { throw new Error("vendor down"); } });
+  const down = await refusal(() => svc.withdraw(R, r70, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" }));
+  useSigningPort(signing);
+  ok("QA-770 fail (FO-5d (2)): a cancel the vendor refuses rolls the withdraw back: 503 \"Try again\", the retainer and the request still SENT, no audit line",
+    down?.status === 503 && down.body.code === "SIGNING_UNAVAILABLE" && reqOf(r70)[2] === "SENT" && sql(`select status from fo_retainer where id = '${r70}'`) === "SENT"
+      && count("audit_event", `(entity_key = '${q70}' and action = 'signing.request_cancelled') or (entity_key = '${r70}' and action = 'retainer.withdrawn')`) === 0, down);
+  const mails70 = mail.sent.length;
   await svc.withdraw(R, r70, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" });
+  const told = mail.sent.slice(mails70);
+  ok("QA-770 pass (FO-5d (2), AG-5-34 r3): the client is emailed \"Agreement withdrawn\" once, Reply-To the firm",
+    told.length === 1 && told[0].templateKey === "signing.withdrawn" && /^Agreement withdrawn/.test(told[0].subject) && told[0].to === sql(`select lower(email) from fo_person where id = '${p70.personId}'`) && !!told[0].replyTo, told.map((m) => m.subject));
   ok("QA-770 pass: Withdraw ends the client's signing request (CANCELLED, WITHDRAWN, ended), one signing.request_cancelled line, one cancel at the vendor; no live request",
     sql(`select status || ':' || cancel_reason || ':' || (ended_at is not null) from fo_signature_request where id = '${q70}'`) === "CANCELLED:WITHDRAWN:true"
       && count("audit_event", `entity_key = '${q70}' and action = 'signing.request_cancelled' and detail->>'reason' = 'WITHDRAWN'`) === 1 && cancels70() === 1
@@ -403,7 +416,7 @@ try {
     gone13?.status === 409 && gone13.body.code === "NO_LIVE_REQUEST" && count("audit_event", `entity_key = '${q13}' and action = 'signing.consent_recorded'`) === 0, gone13);
   const badV = await refusal(() => routes.firmLink({ platform: rep14 }, r14, { consent: true, consentTextVersion: "sign-electronically-v0" }));
   ok("FO-6 4c E fail (review m2): a consent version that is not the current one → 422 on the body, before any lookup", badV?.status === 422, badV);
-  // review round 1 m3: QA-770's guard on a newer version (an Edit leaves the old request live until the next Send)
+  // review round 1 m3: QA-770's guard on a newer version (since QA-770 the Edit itself ends the old request, so the refusal reads "cancelled")
   const p15 = await prospect("Nia"), r15 = await draft(p15);
   await sendIt(r15);
   const [q15, d15] = reqOf(r15);
@@ -411,8 +424,8 @@ try {
   const [s15] = await signing.act(A, d15, signerOf(q15, "CLIENT"), "signed");
   await svc.edit(R, r15, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 170000, when: "ON_SIGNING" }] });
   const nv = await post(s15);
-  ok("FO-6 B fail (part 4c, QA-770, review m3): a signature on version 1 after an Edit made version 2 → 200 not applied (\"a newer version\"), the signer unsigned",
-    nv.applied === false && /newer version/.test(nv.reason ?? "") && count("fo_signer", `request_id = '${q15}' and signed_at is not null`) === 0, nv);
+  ok("FO-6 B fail (part 4c, QA-770, review m3): a signature on version 1 after an Edit made version 2 → 200 not applied (\"a newer version\" or, since QA-770, \"cancelled\"), the signer unsigned",
+    nv.applied === false && /newer version|cancelled/.test(nv.reason ?? "") && count("fo_signer", `request_id = '${q15}' and signed_at is not null`) === 0, nv);
 
   // break R2-M1: a completed that arrives before the signatures is "not yet" (409, nothing kept), then applies
   const p12 = await prospect("Kim"), r12 = await draft(p12);
