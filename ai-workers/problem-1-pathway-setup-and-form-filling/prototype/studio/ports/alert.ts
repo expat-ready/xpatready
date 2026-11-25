@@ -27,6 +27,9 @@ export const AlertDetail = z.object({
   /** When the clock runs out (privacy_clock_near, breach_clock_near). */
   dueAt: z.iso.datetime().optional(),
   count: z.number().int().nonnegative().optional(),
+  /** AUD-1c part 2 (SA-11-6): the broken range of an audit chain (audit_chain_break), seq numbers only. */
+  fromSeq: z.number().int().positive().optional(),
+  toSeq: z.number().int().positive().optional(),
 }).strict();
 export type AlertDetail = z.infer<typeof AlertDetail>;
 
