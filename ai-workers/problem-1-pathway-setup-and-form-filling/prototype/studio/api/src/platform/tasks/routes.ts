@@ -1,7 +1,5 @@
-// PF-29b (R1.75; shape screens/tk-tasks/shape-r175.md part p1): the task routes, behind PF-4's guard. Each declares the
-// least key it needs (agent/task:view.own, held by all six starter roles; agent/task:create to add); the service checks
-// the rest per task (BR-8: edit, assign, Take it's "assign, or view.all with edit", Done by the assignee), since a key
-// alone cannot say whose task it is. Another firm's task, or one the person may not read, is 404 (PF-3).
+// PF-29b (R1.75 part p1): the task routes behind PF-4's guard. Each declares its least key (view.own, all six starter roles;
+// :create to add); the service checks the rest per task (BR-8). A task the person may not read is 404 (PF-3).
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Req } from "@nestjs/common";
 import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { Tasks, KEY } from "./service.ts";

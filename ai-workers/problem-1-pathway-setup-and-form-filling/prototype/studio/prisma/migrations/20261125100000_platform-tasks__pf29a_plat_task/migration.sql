@@ -61,7 +61,7 @@ ALTER TABLE "plat_task"
   ADD CONSTRAINT "plat_task_actor_check" CHECK (char_length("created_by") BETWEEN 1 AND 120 AND ("assigned_by" IS NULL OR char_length("assigned_by") <= 120) AND ("completed_by" IS NULL OR char_length("completed_by") <= 120)),
   ADD CONSTRAINT "plat_task_source_key_check" CHECK ("source_key" IS NULL OR char_length("source_key") BETWEEN 1 AND 200),
   ADD CONSTRAINT "plat_task_version_check" CHECK ("version" >= 1);
--- BR-19: the assignee is staff of the task's own firm (read in the caller's scope: another firm's person is not seen).
+-- BR-19: the assignee is staff of the task's own firm (the row's own firm_id is compared).
 CREATE FUNCTION plat_task_assignee_in_firm() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW."assignee_staff_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "platform_staff" s WHERE s."firm_id" = NEW."firm_id" AND s."id" = NEW."assignee_staff_id") THEN

@@ -1,6 +1,4 @@
-// PF-29b (R1.75; shape screens/tk-tasks/shape-r175.md part p1): the firm's tasks (api/src/platform/tasks/). TaskHosts is
-// the one registry each module's task host joins at start-up (the firm host is built in; the front office's and the case
-// side's hosts come with part p2).
+// PF-29b (R1.75 part p1): the firm's tasks; TaskHosts is the registry each module's task host joins at start-up (p2 adds them).
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";

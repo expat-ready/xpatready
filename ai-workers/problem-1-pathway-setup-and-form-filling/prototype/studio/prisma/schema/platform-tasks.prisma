@@ -1,16 +1,10 @@
-// platform-tasks.prisma — the firm's tasks (PF-29a, R1.75). Owner: the screens lane for R1.75 (the platform's task area).
-// One file per area (DB-SPLIT, studio/DEVELOPING.md): a new module adds its own file here; never edit another area's file without its owner.
-// Migration 20261125100000_pf29a_plat_task (additive: one new table). Rules Prisma cannot say (checks, the update rule,
-// PF-12's wall) are in the migration. Written only by api/src/platform/tasks/ (the task service).
+// platform-tasks.prisma — the firm's tasks (PF-29a, R1.75; owner: the R1.75 screens lane). One file per area (DB-SPLIT).
+// Migration 20261125100000_platform-tasks__pf29a_plat_task holds the rules Prisma cannot say. Written only by api/src/platform/tasks/.
 
-/// One task (AG-13-1, -2, -5, -8, -62; BR-19). It sits on a host a module registers (api/src/platform/tasks/hosts.ts):
-/// host_type `fo_person`, `case`, `case_client` or `firm` (host_id null only for `firm`), with the context it was made in
-/// (LEAD, PROSPECT or CASE, and its id). assignee null = Unassigned; never another firm's person (trigger); never a
-/// deactivated or suspended person (the service). The assignee is checked against platform_staff of the same firm by a
-/// trigger, not a foreign key (as fo_lead's owner: Prisma cannot say an optional composite key), so platform.prisma gets
-/// one back-relation line only. due_at and due_zone come together (the record's office zone, IANA).
-/// CANCELLED needs a reason; COMPLETED needs who and when. version: the change counter a change names (409 when stale).
-/// source_key: an automation's task is made once per firm. created_by, assigned_by, completed_by: actor words
+/// One task (AG-13-1, -2, -5, -8, -62; BR-19) on a host a module registers (tasks/hosts.ts): fo_person, case, case_client or
+/// firm (no host_id), with the context it was made in. No assignee = Unassigned; the assignee is same-firm staff by trigger
+/// (Prisma cannot say an optional composite key), active by the service. Due time with its zone; CANCELLED needs a reason;
+/// version is the change counter (409 when stale); source_key once per firm; *_by are actor words (staff:<id>, system:<door>).
 /// (`staff:<id>`, `system:<door>`), as the audit lines carry.
 model PlatTask {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

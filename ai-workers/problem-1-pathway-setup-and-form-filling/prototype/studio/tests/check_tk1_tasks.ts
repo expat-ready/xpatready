@@ -33,7 +33,7 @@ const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
 const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { TaskHosts } = await import("../api/src/platform/tasks/hosts.ts");
-const { dueInstant, Tasks } = await import("../api/src/platform/tasks/service.ts");
+const { dueInstant } = await import("../api/src/platform/tasks/service.ts");
 type Feat = { controllers?: unknown[]; providers?: unknown[] };
 const feature = async (f: string) => (await import(`../api/src/features/${f}.ts`)).default as Feat;
 
@@ -157,7 +157,7 @@ try {
     { a: [a.status, a.body.detail], b: [b.status, b.body.detail] });
   const reassign = await call("POST", `/api/platform/tasks/${U}/assign`, OWNER, { version: 2, assigneeStaffId: AWAY });
   const toOff = await call("POST", `/api/platform/tasks/${U}/assign`, OWNER, { version: 2, assigneeStaffId: OFF });
-  const unassign = await call("POST", `/api/platform/tasks/${U}/assign`, OWNER, { version: 3, assigneeStaffId: null });
+  const unassign = await call("POST", `/api/platform/tasks/${U}/assign`, OWNER, { version: toOff.body.version, assigneeStaffId: null });   // review r2 M1: v2 when the officer won the race (a no-op)
   ok("TK5 pass: the Owner reassigns to the Case Officer, then back to Unassigned; TK5 fail: reassigning to a suspended person is 422",
     reassign.status === 422 && toOff.status === 200 && toOff.body.assignee?.id === OFF && unassign.status === 200 && unassign.body.assignee === null && (await audits(U)).filter((x) => x === "plat.task.assign").length === 2, [reassign.status, toOff.status, unassign.status]);
 
@@ -210,10 +210,8 @@ try {
   const billReopen = await call("POST", `/api/platform/tasks/${c9.id}/reopen`, BILLING, { version: 2 }), closedAssign = await call("POST", `/api/platform/tasks/${c9.id}/assign`, OWNER, { version: 2, assigneeStaffId: OWNER });
   ok("TK9 fail (review M2): Billing (view.all, no edit) cannot cancel or reopen (403); a closed task cannot be assigned (409); TK9 pass: the Owner (edit, not the assignee) marks it Done",
     billCancel.status === 403 && billReopen.status === 403 && closedAssign.status === 409 && byOwner.status === 200, [billCancel.status, billReopen.status, closedAssign.status, byOwner.status]);
-  const tasks9 = nest.get(Tasks), offCtx = { staffId: OWNER, firmId: FA, firmKey: "sample-firm", roles: [], keys: ["agent/task:view.own"], duties: [], authTime: 0, via: "local" as const };
-  let noAll = 0; try { await tasks9.get(offCtx, c9.id); } catch (e) { noAll = (e as { status?: number }).status ?? 0; }
   const solo9 = await t9(OWNER), offTake = await call("POST", `/api/platform/tasks/${solo9.id}/take`, OFF);
-  ok("TK9 fail (review M2): without view.all, someone else's task is 404; TK9 pass: a Case Officer (view.all with edit, no assign) takes an Unassigned task alone", noAll === 404 && offTake.status === 200, [noAll, offTake.status]);
+  ok("TK9 pass (review M2): a Case Officer (view.all with edit, no assign) takes an Unassigned task alone", offTake.status === 200, offTake.status);
   const before9 = (await q<{ detail: Record<string, unknown> }>("select detail from audit_event where entity_key = $1 and action = 'plat.task.take'", [solo9.id]))[0]?.detail ?? {};
   ok("TK9 (break m5): Take it's audit line has no assignee before and the taker after", before9.assignee_after === OFF && !("title_before" in before9), before9);
   const stale9 = await call("PATCH", `/api/platform/tasks/${solo9.id}`, READER, { version: 1, title: "x" }), same9 = await call("PATCH", `/api/platform/tasks/${solo9.id}`, OFF, { version: 2 });
@@ -228,10 +226,18 @@ try {
   const badHostZone = await call("POST", "/api/platform/tasks", OWNER, { host: { type: "case_client", id: randomUUID() }, title: "x", due: { date: "2026-11-25" } });
   ok("TK9 fail (break m1, m2): a retired zone is 422; TK9 pass: 'america/toronto' is stored as America/Toronto, and a host's unknown zone falls back to the person's (201, never a 500)",
     oldZone.status === 422 && lower.body.dueZone === "America/Toronto" && badHostZone.status === 201 && badHostZone.body.dueZone !== "Mars/Olympus", [oldZone.status, lower.body.dueZone, badHostZone.status, badHostZone.body.dueZone]);
+  const india = await call("POST", "/api/platform/tasks", OFF, onLead({ due: { date: "2026-11-25", time: "17:30", zone: "Asia/Kolkata" } })), kyiv = await call("POST", "/api/platform/tasks", OFF, onLead({ due: { date: "2026-11-25", zone: "Europe/Kyiv" } }));
+  ok("TK9 pass (review r2 M2): IANA's own names the firm setting accepts (Asia/Kolkata, Europe/Kyiv) are kept as named, 17:30 Kolkata is 12:00Z",
+    india.status === 201 && india.body.dueZone === "Asia/Kolkata" && india.body.dueAt === "2026-11-25T12:00:00.000Z" && kyiv.status === 201 && kyiv.body.dueZone === "Europe/Kyiv", [india.body, kyiv.status]);
   const persian = await call("POST", "/api/platform/tasks", OFF, onLead({ title: "می‌خواهم تماس بگیرم" })), sep = await call("POST", "/api/platform/tasks", OFF, onLead({ title: "Call now" })), filler = await call("POST", "/api/platform/tasks", OFF, onLead({ title: "ㅤㅤ" }));
   const firmCtx = await call("POST", "/api/platform/tasks", OWNER, { host: { type: "firm", contextType: "LEAD", contextId: LEAD }, title: "x" });
   ok("TK9 pass (break m3): a Persian title with ZWNJ is kept; TK9 fail: a line separator and a title of fillers only are 422; a firm task with a context is 422 (break m4)",
     persian.status === 201 && sep.status === 422 && filler.status === 422 && firmCtx.status === 422, [persian.status, sep.status, filler.status, firmCtx.status]);
+  // Review r2 M3: the view.all read rule through the routes. In this scratch database only, Billing loses view.all.
+  await q("delete from platform_role_permission where role = 'BILLING_FINANCE' and permission_key = 'agent/task:view.all'");
+  const forBill = await t9(OWNER, { assigneeStaffId: BILLING }), colleague = await t9(OWNER, { assigneeStaffId: OFF });
+  const ownRead = await call("GET", `/api/platform/tasks/${forBill.id}`, BILLING), otherRead = await call("GET", `/api/platform/tasks/${colleague.id}`, BILLING);
+  ok("TK9 pass (review r2 M3): with view.own only, my own task reads (200); TK9 fail: a colleague's task on a record I can see is 404", ownRead.status === 200 && otherRead.status === 404, [ownRead.status, otherRead.status]);
 } catch (e) {
   fail++;
   process.stderr.write(`FAIL  TK1: the check crashed — ${e instanceof Error ? e.stack ?? e.message : String(e)}\n`);

@@ -13,6 +13,7 @@ import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import { fieldsOf, FIELD_ERROR_STATUS } from "../http/input.ts";
 import { forbidden, type StaffContext } from "../identity/keys.ts";
+import { TIME_ZONE } from "../settings.ts";
 import { holdsKey } from "../identity/catalogue.ts";
 import { CONTEXT_TYPES, HOST_TYPES, refKey, type HostView, type TaskHosts } from "./hosts.ts";
 
@@ -35,11 +36,15 @@ const tidy = (s: string) => s.normalize("NFC").trim();
 const Title = z.string().transform(tidy).pipe(z.string().refine((s) => s.length > 0 && HAS_WORD(s), "Write what needs doing (up to 200 characters)").refine((s) => chars(s) <= 200, "Write what needs doing (up to 200 characters)").refine((s) => !CONTROL.test(s), "One line, no hidden characters"));
 const Description = z.string().nullish().transform((v) => (v == null || !tidy(v) ? null : v.normalize("NFC").trimEnd())).refine((v) => v === null || chars(v) <= 5000, "Details: up to 5,000 characters").refine((v) => v === null || !LONG_CONTROL.test(v), "No hidden characters");
 const Category = z.string().nullish().transform((v) => (v == null || !tidy(v) ? null : tidy(v))).refine((v) => v === null || chars(v) <= 40, "A category: up to 40 characters").refine((v) => v === null || !CONTROL.test(v), "One line, no hidden characters");
-/** Break m1, m2: the zones PostgreSQL and this process both know, by their canonical names (Intl's own list); a zone given in
- *  another spelling ("america/toronto") is stored canonical, an unknown or retired one ("US/Pacific-New") is refused. */
-const ZONES = new Map((Intl as unknown as { supportedValuesOf(k: string): string[] }).supportedValuesOf("timeZone").map((z0) => [z0.toLowerCase(), z0] as const));
-ZONES.set("utc", "UTC");
-export const canonicalZone = (z0: unknown): string | null => (typeof z0 === "string" && z0.length <= 64 ? ZONES.get(z0.toLowerCase()) ?? null : null);
+/** Review r2 M2: a zone the firm's setting accepts (settings.ts TIME_ZONE: Asia/Kolkata and Asia/Calcutta), or a listed name in any case. */
+const LISTED = new Map(Intl.supportedValuesOf("timeZone").map((z0) => [z0.toLowerCase(), z0] as const));
+const zoneRule = (z0: string) => TIME_ZONE.schema.safeParse(z0).success;
+export const canonicalZone = (z0: unknown): string | null => {
+  if (typeof z0 !== "string" || z0.length > 64) return null;
+  if (zoneRule(z0)) return z0;
+  const listed = LISTED.get(z0.toLowerCase());
+  return listed && zoneRule(listed) ? listed : null;
+};
 /** A due date in a zone (the record's office zone when none is named): a date, and a time or the end of that day. */
 const Due = z.strictObject({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A date as 2026-11-25"),
@@ -149,10 +154,13 @@ export class Tasks {
     if (!p || p.status !== "ACTIVE") refused("Choose an active member of your firm.", { assigneeStaffId: p ? "This person is not active: choose someone else." : "Choose a member of your firm." });
   }
 
+  /** Break m1: a zone this runtime knows but PostgreSQL does not (US/Pacific-New) would fail the row's check: asked first. */
+  private async dbKnows(zone: string): Promise<boolean> { try { await this.deps.db.$queryRaw`select now() at time zone ${zone}`; return true; } catch { return false; } }
   /** The first of these zones known by its canonical name, else my office's, else the firm's, else UTC. */
-  private async zoneOf(s: StaffContext, ...given: (string | null | undefined)[]): Promise<string> {
-    for (const z0 of given) { const c = canonicalZone(z0); if (c) return c; }
-    return canonicalZone(await this.deps.offices.zoneFor(s.firmId, await this.deps.offices.officeOfStaff(s.firmId, s.staffId))) ?? "UTC";
+  private async zoneOf(s: StaffContext, named: string | null | undefined, ...given: (string | null | undefined)[]): Promise<string> {
+    if (named != null) { const c = canonicalZone(named); return c && (await this.dbKnows(c)) ? c : refused("Please check the highlighted details.", { "due.zone": "A time zone from the list" }); }
+    for (const z0 of given) { const c = canonicalZone(z0); if (c && (await this.dbKnows(c))) return c; }
+    return canonicalZone(await this.deps.offices.zoneFor(s.firmId, await this.deps.offices.officeOfStaff(s.firmId, s.staffId))) ?? refused("Choose a time zone for this due date.", { due: "Name a time zone: your office's is not one on the list." });
   }
 
   async get(s: StaffContext, id: string): Promise<TaskView> {
