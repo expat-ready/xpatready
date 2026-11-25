@@ -144,3 +144,44 @@ Fixes that would raise it, most valuable first:
 2. One limit and one wording above 500 too. This raises plain words.
 
 Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (unchanged in this diff).
+
+---
+
+# Round 4 (head 82081ec02; the journeys the diff touches)
+**Setup:**
+* Scratch worktree of the head, `isolated.sh rv4875 4437 start --ttl 20 PLATFORM_SYSTEM_IDENTITY=local` (runtime-lane port, never :4400); stopped afterwards.
+* Script: `scratchpad/tools/journey4.sh`. Each start is by a new Support person.
+* Still API only.
+
+| # | Journey | Result |
+|---|---|---|
+| J1 | Support starts with a ticket reason | 201 (54 ms) |
+| J11, J11b, J11c | Non-English: 228, 200 and 201 UTF-16 units | 422 "1-200", 201, 422 (as in round 3) |
+| J13, J13b | 300, then 600 Latin | 422 "1-200", then 422 "at most 500" (R2-S1, unchanged) |
+| J14 | "Sample: ticket 4821, client.a@sample-firm.example cannot see invoices" | **422** "…without an email address or other personal detail: it is kept on the firm's audit trail. Nothing was opened." `fields.reason` names it (was a 500 plus an alarm) |
+| J14b | "ticket a@b.co" | 422, the same words |
+| J14c | Recovery: the same reason with "Client A" instead of the email | 201 |
+| J15 | Exactly 200 Latin | 201 |
+| Break | A lone surrogate `\uD800` (crafted) | 422 (was a 500); the field words mention email (R4-m1) |
+| Break | A valid emoji pair | 201 |
+
+Data: 5 sessions opened (J1, J11b, J14c, J15, the emoji), and every start line's reason equals the register's. No session for any refusal. The API log has no `audit_write_failed` and no 500.
+
+## Score (each 0, ½ or 1)
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J14c, J15 |
+| Next step obvious | 1 | J14's 422 says what to leave out; J14c succeeds right after |
+| Plain words | ½ | "at most 500" above 500 (J13b), and the email words for a lone surrogate |
+| Feedback and state | 1 | Every refusal is a 422 with a field message, and nothing was opened |
+| Correct data | 1 | The reason is the same everywhere |
+| Error recovery | 1 | J14 → J14c |
+| Accessibility and screen sizes | N/A | No screen |
+| Speed | 1 | 30-54 ms per call |
+| Visual quality | N/A | No screen |
+| Trust and sources | 1 | Unchanged |
+
+**7.5 of the 8 criteria that apply = 9.4 / 10: a pass, no criterion at 0.** This passes on the journeys alone; R4-M1 (a type error, see review.md Round 4) still blocks the merge.
+Fix that would raise it: one limit and one wording above 500 (plain words).
+
+Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (unchanged in this diff).

@@ -218,3 +218,75 @@ Journey (reviewer, round 3): **8.1 / 10, a pass, no criterion at 0**; R3-M1 stil
 Not checked: browser, keyboard, zoom and BIC (no screen); a screen reader; D17 and D20; whether other routes put free-text reasons into AuditDetail (outside this diff).
 
 Reviewer: Changes 8a8de4bcafc7ae8067c30daedfc83d212e19f73d
+
+---
+
+# Round 4 (diff-only, 8a8de4bca..82081ec02; reviewer, fresh context; the Lead's "round 4: diff-only check of the reason's AuditDetail.safeParse/isWellFormed check and its tests")
+
+## Verdict: Ship after fixes (one Major, one line) → **Verdict: Block** until R4-M1 is fixed
+The new check works at runtime. Every reason that passes it is accepted by the start line, by the in-session and refusal lines' `supportReason`, and by Postgres. The new tests kill every mutation the Lead asked about. But `String.prototype.isWellFormed` is ES2024, and the api project compiles to es2023. So tsc reports a new error, and the `types` CI job fails (R4-M1).
+
+## What I ran
+* PR worktree at 82081ec02 (run only, nothing changed): `check_aud3b_support_session.ts` passes 26/0 (`scratchpad/r4_head.log`).
+* Scratch worktree of the head (`scratchpad/r4wt`, studio and prototype node_modules linked; the PR worktree untouched):
+  * 25 probes added to the PR's harness (`scratchpad/r4probe.log`). For each reason accepted: the start line equals the register; an in-session read gives 200, and its `supportReason` equals the register; a refused nested start gives 403, and its `supportReason` equals the register. The run had no 500 and no `audit_write_failed`.
+  * 5 mutations (`scratchpad/r4mut.py`, `r4mut-out.txt`).
+  * tsc and `product/tools/typecheck.mjs` on the changed files (`api/tsconfig.r4.json`, scratch only).
+  * The API journeys on the full app (`isolated.sh rv4875 4437`, runtime-lane port, stopped afterwards; `journey-test-reviewer-2026-11-25.md`, Round 4).
+
+## Does every reason that passes the check pass downstream?
+* **Start line AuditDetail: holds.** The line's other values are a uuid, "READ" and two ISO times. None contains "@", and the refine tests each value on its own. So `AuditDetail.safeParse({ reason })` passing means the full detail passes. The field names are fixed and valid.
+* **In-session and refusal lines' `detail.supportReason`: holds.** `audit-event.ts:67` adds it after `AuditEntry.parse`, so AuditDetail never sees it. Only Postgres JSON does. It is the register's text, at most 200 units, so `slice(0, 200)` cuts nothing and never splits a pair.
+* **Postgres jsonb: holds.** Every lone surrogate is refused (U1-U5).
+* **The check runs on the cleaned text, the text that is stored.**
+  * An email split by a ZWSP or an RLO (E8, E9) → 422.
+  * A pair split by a ZWSP (U7) is well formed after cleaning → 201, stored as the emoji.
+
+| Probe | Result |
+|---|---|
+| E1 the round-3 sentence; E2 `ticket a@b.co`; E3 upper case; E4 `x@y.z`; E10 `mailto:a.b@firm.example`; E11 an email ending at unit 200 | 422 INVALID, `fields.reason`, nothing opened |
+| E8 `a@` ZWSP `b.co`; E9 `a` RLO `@b.co` | 422 (the cleaned text is an email) |
+| E5 `a@b`; E6 `user@localhost`; E7 fullwidth `＠`; E12 `@support team.example` | 201; every line accepted (EMAILISH needs `x@y.z`) |
+| U1 lone high; U2 lone low; U3 high at the end; U4 two highs; U5 a reversed pair | 422, nothing opened |
+| U6 a valid pair; U7 a pair split by ZWSP | 201; every line accepted |
+| U8 lone high + 200 Latin | 422 "1-200" (the length check runs first) |
+| L1 exactly 200 Latin; L2 8 + 96 wide (200 units); L3 198 + a pair (200 units) | 201; every line accepted |
+| L4 199 + a pair (201 units); L5 201 Latin | 422 "1-200" |
+
+## Mutations (scratch, each reverted)
+| Mutation | Result |
+|---|---|
+| `isWellFormed()` dropped | **Killed** (SS1 fail: the lone case) |
+| `AuditDetail.safeParse` dropped | **Killed** (SS1 fail: the email case) |
+| `>=` (exactly 200 refused) | **Killed** (the `exact` case: 422, not 409) |
+| The whole new check dropped | Killed |
+| AuditDetail on `raw` instead of the cleaned `reason` | Survived (see R4-S1) |
+
+## Issues (ranked)
+1. **Must (Major), R4-M1: the new check fails the type check, so CI's `types` job is red.**
+   * Where: `service.ts:67`, `reason!.isWellFormed()`.
+   * The error: `TS2550: Property 'isWellFormed' does not exist on type 'string'. Do you need to change your target library?` (`api/tsconfig.json` has `"target": "es2023"`, and `@types/node` does not declare it).
+   * `node product/tools/typecheck.mjs --project api=<a tsconfig of service.ts plus the check>` gives `FAIL 1 new type error(s) (not in typecheck-known.txt)` and exits 1. The known list only shrinks, so this error cannot be added there.
+   * The `types` job was skipped on this commit, so it fails later, in the merge queue. Runtime is fine (Node 24.21.0 in `.nvmrc` and the Dockerfile).
+   * Fix: use the project's existing shim in `ports/files.ts:22-23`, `(String.prototype as unknown as { isWellFormed(this: string): boolean }).isWellFormed.call(s)`. Exporting it and reusing it is best. Then rerun tsc on the api project.
+2. **Should, R4-S1: no test catches the check moving to the raw text.** The mutation `AuditDetail.safeParse({ reason: raw })` passes 26/0. With it, E8 (an email split by a ZWSP, which can come in with pasted text) passes the check. The cleaned line is then refused: the round-3 500 and alarm again. Fix: add one email with an invisible character inside to the SS1 fail case.
+3. **Minor, R4-m1: a lone surrogate gets the email words.** The field says "A ticket reference or plain words, with no email address." Only a crafted request sends one (R3-S2), so this is a stated Minor or a nit. A neutral "in plain text" would cover both cases.
+
+Round-3 findings: **R3-M1 fixed** (E1-E11, J14). **R3-S2 fixed** (U1-U5). **R3-S3 fixed** (the `>=` mutation is now killed). R2-S1 ("at most 500" above 500, J13b) is unchanged and was not in this diff.
+
+The comment at `service.ts:60-62` ("a reason that passes here (and the check below) is never refused there") is now true for everything I probed.
+
+Outside the round, not findings: the guard's own reason handling (`system-identity/guard.ts:122-145`), and other routes that put free text into AuditDetail.
+
+## D1-D20 changes from round 3 (the rest unchanged)
+| D | Score | Evidence |
+|---|---|---|
+| D2 | 5 | The reason is the same in the register, on the start line, and on the read and refusal lines for every reason probed. Every refusal opens nothing. |
+| D10 | 4 | J14 gets a field message; "at most 500" remains above 500 (R2-S1). |
+| D16 | 4 | The new tests kill all four required mutations. The raw-text mutation survives (R4-S1). The build has a type error (R4-M1). |
+
+Journey (reviewer, round 4): **9.4 / 10, a pass, no criterion at 0** (`journey-test-reviewer-2026-11-25.md`, Round 4). R4-M1 still blocks the merge.
+
+Not checked: browser, keyboard, zoom and BIC (no screen); a screen reader; D17 and D20; the full api and web tsc run (12 GB heap; only service.ts and the check, with everything they import).
+
+Reviewer: Changes 82081ec02068072dce40086907bf548be9b0adb9

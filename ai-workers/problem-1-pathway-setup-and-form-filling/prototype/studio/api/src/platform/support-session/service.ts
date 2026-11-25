@@ -46,6 +46,8 @@ export const ALWAYS_BLOCKED = Object.freeze([
   "Starting another session", "Waiving a deficiency, approving a review, recording a decision, exporting a case", "Keeping the current message wording, switching automatic messages on or off",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** ES2024's String.prototype.isWellFormed (Node 20+; this project's TypeScript lib is es2023), as ports/files.ts: no lone surrogate. */
+const isWellFormed = (v: string): boolean => (String.prototype as unknown as { isWellFormed(this: string): boolean }).isWellFormed.call(v);
 export const StartBody = strict({ reason: z.string().trim().min(1, "Give a reason or a ticket reference.").max(500, `A reason of 1-${REASON_LIMIT} characters.`) });
 
 export type OpenSession = { id: string; firmId: string; reason: string; mode: string; startedAt: Date; endsAt: Date };
@@ -64,7 +66,8 @@ export class SupportSessions {
     if (!reason || reason.length > REASON_LIMIT) problem(FIELD_ERROR_STATUS, "Check the details", `Give a reason or a ticket reference of 1-${REASON_LIMIT} characters, in plain text. Nothing was opened.`, { code: "INVALID", fields: { reason: `A reason of 1-${REASON_LIMIT} characters.` } });
     // Round 3 (R3-M1, R3-S2): the reason is carried on audit lines, so it must pass the line's own rules here, before
     // anything is opened: well-formed text (no lone surrogate) and AuditDetail (ids and facts only: no email address).
-    if (!reason!.isWellFormed() || !AuditDetail.safeParse({ reason }).success) problem(FIELD_ERROR_STATUS, "Check the details", "Give a ticket reference or a reason in plain words, without an email address or other personal detail: it is kept on the firm's audit trail. Nothing was opened.", { code: "INVALID", fields: { reason: "A ticket reference or plain words, with no email address." } });
+    if (!isWellFormed(reason!)) problem(FIELD_ERROR_STATUS, "Check the details", "The reason holds a broken character. Type it again in plain text. Nothing was opened.", { code: "INVALID", fields: { reason: "Plain text only: a character in it is broken." } });
+    if (!AuditDetail.safeParse({ reason }).success) problem(FIELD_ERROR_STATUS, "Check the details", "Give a ticket reference or a reason in plain words, without an email address or other personal detail: it is kept on the firm's audit trail. Nothing was opened.", { code: "INVALID", fields: { reason: "A ticket reference or plain words, with no email address." } });
     if (typeof firmId !== "string" || !UUID.test(firmId)) problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
     const firm = firmId.toLowerCase(), { actor } = ourStaff();
     return this.db.$transaction(async (tx) => {
