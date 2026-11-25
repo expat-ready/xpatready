@@ -8,7 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const retainerFeesPort: RetainerFeesPort<Prisma.TransactionClient> = {
   async read(tx, firmId, retainerId) {
-    if (!UUID.test(retainerId)) return null;
+    if (typeof firmId !== "string" || !UUID.test(firmId) || typeof retainerId !== "string" || !UUID.test(retainerId)) return null;   // never thrown (the contract)
     const r = await tx.foRetainer.findFirst({ where: firmScope(firmId, { id: retainerId.toLowerCase() }), select: { id: true, kind: true, status: true, subject: true, signerPersonId: true, companyId: true, currentVersion: true } });
     if (!r) return null;
     const v = await tx.foRetainerVersion.findFirst({ where: firmScope(firmId, { retainerId: r.id, n: r.currentVersion }), select: { fees: { orderBy: { position: "asc" } } } });

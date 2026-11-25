@@ -11,7 +11,8 @@
 //      once → one line only; the database's unique index refuses a second line of the same row;
 //   R8 a Case Officer (agent/invoice:create) may start it; issuing still needs agent/invoice:issue (403);
 //   R9 one transaction, one invoice.draft_created audit line naming the retainer and the row ids; a refusal writes none;
-//   R10 the line's source and the invoice's deposit mark are fixed once written (the database's gate).
+//   R10 the line's source and the invoice's deposit mark are fixed once written (the database's gate);
+//   R11 RetainerFeesPort's contract (ports/contracts/retainer-fees-port.contract.ts) on its adapter, and a broken one fails it.
 // A scratch database (every migration), a Nest app of PF-4's guard, PF-12's walls and FO-7b's draft routes, with the
 // local sign-in stand-in. No network, no model call (US$0). Sample data only. Dropped at the end.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo7w1_retainer_invoice.ts
@@ -26,6 +27,9 @@ import { join } from "node:path";
 import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
 import { PROVINCE_TAX_RATES as T } from "../api/src/client-money/tax/canada-gst-hst.ts";
 import { moneyVisible } from "./lib/money-visible.ts";
+import { retainerFeesPortContract, type RetainerFeesHarness } from "../ports/contracts/retainer-fees-port.contract.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import type { RetainerFeesPort } from "../ports/retainer-fees.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const NEW = "20261125140000_client-money__fo7w1_invoice_from_retainer";
@@ -199,6 +203,28 @@ try {
     && Number(sql(`select count(*) from audit_event where entity_key = '${d1.body.id}'`)) === 1 && audits() > a0, line1);
   const a9 = audits(); await start({ retainerId: rB.id });
   ok("FO-7w1 R9 fail: a refused start writes no audit line", audits() === a9);
+
+  // ---------------------------------------------------------------------- R11: RetainerFeesPort's contract (P-606 (8))
+  const { retainerFeesPort } = await import("../api/src/front-office/retainers/retainer-fees-port.ts");
+  // A retainer on its second version (an edit before signing): only version 2's rows are agreed.
+  const cR = sql(`select gen_random_uuid()`), cV1 = sql(`select gen_random_uuid()`), cV2 = sql(`select gen_random_uuid()`), cT = sql(`select gen_random_uuid()`), cRows = [sql(`select gen_random_uuid()`), sql(`select gen_random_uuid()`)];
+  sql(`set session_replication_role = replica;
+    insert into fo_retainer (id, firm_id, kind, prospect_id, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, status, current_version, created_by, updated_at) values ('${cR}', '${A}', 'RETAINER', gen_random_uuid(), '${PA}', '${staffA}', '${cT}', 1, 'retainer-templates/${cT}/v1.docx', 'SIGNED', 2, 'seed:FO-7w1', now());
+    insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${cV1}', '${A}', '${cR}', 1, '{}', 'retainers/${cR}/v1.pdf', repeat('b', 64), 'seed:FO-7w1'), ('${cV2}', '${A}', '${cR}', 2, '{}', 'retainers/${cR}/v2.pdf', repeat('b', 64), 'seed:FO-7w1');
+    insert into fo_retainer_fee_row (id, firm_id, version_id, position, label, amount_minor, "when") values (gen_random_uuid(), '${A}', '${cV1}', 1, 'Old fee (Sample)', 99900, 'WHEN_DONE'),
+      ('${cRows[1]}', '${A}', '${cV2}', 2, 'Decision fee (Sample)', null, 'WHEN_DECIDED'), ('${cRows[0]}', '${A}', '${cV2}', 1, 'Application fee (Sample)', 150000, 'WHEN_SUBMITTED');`);
+  const expected = { id: cR, kind: "RETAINER" as const, status: "SIGNED", personId: PA, companyId: null,
+    rows: [{ id: cRows[0], position: 1, label: "Application fee (Sample)", amountMinor: 150000, currency: "CAD", when: "WHEN_SUBMITTED" as const }, { id: cRows[1], position: 2, label: "Decision fee (Sample)", amountMinor: null, currency: "CAD", when: "WHEN_DECIDED" as const }] };
+  class Rollback extends Error { constructor(readonly value: unknown) { super("rollback"); } }
+  const harness = (port: RetainerFeesPort<any>): RetainerFeesHarness => ({ port, firmId: A, otherFirmId: B, expected, changedStatus: "DECLINED",   // eslint-disable-line @typescript-eslint/no-explicit-any -- the adapter's transaction type
+    inTransaction: async (fn) => { try { await owner.$transaction(async (tx) => { throw new Rollback(await fn(tx)); }); } catch (e) { if (e instanceof Rollback) return e.value as never; throw e; } throw new Error("unreachable"); },
+    change: async (tx) => { await (tx as typeof owner).$executeRawUnsafe(`set local session_replication_role = replica`); await (tx as typeof owner).$executeRawUnsafe(`update fo_retainer set status = 'DECLINED' where id = '${cR}'`); } });
+  const port = { read: (tx: unknown, f: string, id: string) => retainerFeesPort.read((tx ?? owner) as never, f, id) };
+  const rc = await runContract(retainerFeesPortContract, "retainerFeesPort", () => harness(port), ok);
+  ok("FO-7w1 R11 pass: RetainerFeesPort's contract passes on its adapter (every case)", rc.failed.length === 0 && rc.passed.length >= 5, rc);
+  const broken: RetainerFeesPort<any> = { read: async (tx, f, id) => { const r = await port.read(tx, f, id); return r && { ...r, rows: [...r.rows].reverse() }; } };   // eslint-disable-line @typescript-eslint/no-explicit-any -- as above
+  const rb = await runContract(retainerFeesPortContract, "brokenRowOrder", () => harness(broken), null);
+  ok("FO-7w1 R11 fail: an adapter that answers the rows out of order fails the contract", rb.failed.length > 0, rb);
 
   // ---------------------------------------------------------------------- R10: fixed once written
   ok("FO-7w1 R10 fail: a line's source row and an invoice's deposit mark cannot be changed (the database's gate)",
