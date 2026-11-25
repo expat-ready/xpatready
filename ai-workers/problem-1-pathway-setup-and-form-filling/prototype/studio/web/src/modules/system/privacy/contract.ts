@@ -96,7 +96,7 @@ export function recordBody(d: RecordDraft): Record<string, unknown> {
 }
 /** A 422's field names as the dialog's own fields ("affectedFirms.1" → "affectedFirms"); anything else under "other". */
 export function fieldErrors(fields: Record<string, string> | undefined): Record<string, string> {
-  const known = ["reason", "discoveredAt", "description", "affectedFirms", "dataCategories", "rootCause", "containment", "otherNotifications"];
+  const known = ["reason", "discoveredAt", "description", "affectedFirms", "dataCategories", "rootCause", "containment", "otherNotifications", "decision", "decisionReason"];
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(fields ?? {})) { const top = k.split(".")[0]; const at = known.includes(top) ? top : "other"; out[at] = out[at] ? `${out[at]} ${v}` : v; }
   return out;
@@ -122,5 +122,71 @@ export const COPY = {
   descriptionHint: "Firms will read this in their notice.",
   reasonHint: "Why you are recording it: kept on the audit line.",
   recordFailed: "Could not record the breach. Please try again.",
+  editTitle: "Edit the record", confirmTitle: "Confirm the record",
+  editLead: "Change what is known now. When it was discovered stays as recorded. Firms already sent a notice stay named.",
+  confirmLead: "Confirm the description firms will read in their notice. Nothing is sent to anyone.",
+  noticeInfo: "ExpatReady's Security incident notice goes to each firm's active Owner and Admins. The firm decides about its clients. Wording: Sample until counsel's (Unconfirmed: no counsel).",
+  noticeConfirm: "Its active Owner and Admins get ExpatReady's Security incident notice now. It cannot be withdrawn or sent twice; the decision and this firm stay fixed on the record.",
+  decisionFixed: "Fixed once a notice is sent.",
+  draftFirst: "Confirm the record first.", decideFirst: "Record the decision first.", noNotice: "No notice is sent: the decision is No notice.",
+  sentNoMore: "Sent: cannot be sent again.",
+  stale: "This breach was changed by someone else since you opened it: nothing was saved. The page now shows the latest; try again.",
+  draftWords: "From the alert (our own words; firms never read these):",
+  draftSame: "Write the description firms will read: the alert's own words cannot be sent to them.", breachMissing: "No such breach.",
   maybeRecorded: "An earlier try may already have recorded this breach: check the list behind this dialog before recording it again.",
 } as const;
+
+// ------------------------------------------------------------------------------------------------ A2: one breach
+// PF-21rs A2 (concept §4 "A breach", board §3-§4; QA-757): `GET …/breaches/:id` with each notice's words as sent (R0,
+// through MessageWordsPort; null with a note when they cannot be read back) and the breach's events.
+const SentNotice = Notice.extend({
+  recipients: z.array(z.object({ staffId: z.string(), roles: z.array(z.string()), outboxId: z.string(), state: z.string() })),
+  subject: z.string().nullable(), text: z.string().nullable(), wordsNote: z.string().nullable(),
+});
+export const BreachEvent = z.object({ seq: z.number(), kind: z.string(), at: z.string(), actor: z.string(), actorName: z.string().nullable(), detail: z.unknown() });
+export type BreachEvent = z.infer<typeof BreachEvent>;
+export const BreachOne = Breach.extend({ notices: z.array(SentNotice), events: z.array(BreachEvent) });
+export type BreachOne = z.infer<typeof BreachOne>;
+export type SentNotice = z.infer<typeof SentNotice>;
+
+/** The one next step a breach's header names (board §3: one next action per status). */
+export const NEXT_STEP: Record<BreachStatus, string> = {
+  DRAFT: "Next: confirm the record (the description firms will read).",
+  DECISION_OWED: "Next: decide whether the affected firms are told.",
+  FIRMS_TO_NAME: "Next: name the affected firms, then send their notices.",
+  NOTICES_OWED: "Next: send the notice to each firm not yet told.",
+  RECORDED: "Nothing is owed.",
+};
+/** Who did it: our staff member's name, the daily check, or the short id (R0 names our staff; M2). */
+export const actorWords = (actor: string, name: string | null) => name ?? (actor.startsWith("system:") ? "ExpatReady (automatic)" : `ExpatReady staff ${shortId(actor.replace(/^(our)?staff:/, ""))}`);
+const FIELD_WORDS: Record<string, string> = { status: "status", description: "what happened", affected_firms: "affected firms", data_categories: "data categories", root_cause: "root cause",
+  containment: "containment", other_notifications: "other notifications", decision: "decision", decision_reason: "why" };
+/** One History line in words (board §3): Recorded · Drafted from an alert · Decision: A → B · Changed: … · Notice sent to <firm>. */
+export function historyWords(e: Pick<BreachEvent, "kind" | "detail">, firmName: (id: string) => string): string {
+  const d = (e.detail ?? {}) as { before?: Record<string, unknown>; after?: Record<string, unknown>; firm?: string };
+  if (e.kind === "DRAFTED") return "Drafted from an alert";
+  if (e.kind === "NOTICE_SENT") return `Notice sent to ${d.firm ? firmName(d.firm) : "a firm"}`;
+  const keys = Object.keys(d.after ?? {}).filter((k) => k !== "decided_by" && k !== "decided_at");
+  if (e.kind === "RECORDED" && !d.before) return "Recorded";
+  const parts: string[] = [];
+  if (keys.includes("decision")) parts.push(`Decision: ${DECISION_WORDS[(d.before?.decision ?? "UNDECIDED") as Breach["decision"]] ?? d.before?.decision} → ${DECISION_WORDS[d.after!.decision as Breach["decision"]] ?? d.after!.decision}`);
+  const rest = keys.filter((k) => k !== "decision" && k !== "decision_reason" && k !== "status").map((k) => FIELD_WORDS[k] ?? k);
+  if (rest.length) parts.push(`Changed: ${rest.join(", ")}`);
+  if (e.kind === "RECORDED") parts.unshift("Confirmed (no longer a draft)");
+  return parts.join(" · ") || "Changed";
+}
+const MOMENT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });
+/** "24 Nov 2026, 09:05 UTC" (a notice's sent time, inside <time datetime>). */
+export const momentUtc = (iso: string) => `${MOMENT.format(new Date(iso))} UTC`;
+
+/** The PATCH body of an edit: only what changed (PF-21c ChangeBody); confirming a draft adds status and always the description. */
+export function changeBody(was: Pick<Breach, "description" | "affectedFirms" | "dataCategories" | "rootCause" | "containment" | "otherNotifications">, d: RecordDraft, confirm: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = { reason: d.reason };
+  if (confirm) { out.status = "RECORDED"; out.description = d.description; }
+  else if (d.description !== was.description) out.description = d.description;
+  const firms = d.firms.map((f) => f.id);
+  if (JSON.stringify(firms) !== JSON.stringify(was.affectedFirms)) out.affectedFirms = firms;
+  if (JSON.stringify(d.categories) !== JSON.stringify(was.dataCategories)) out.dataCategories = d.categories;
+  for (const k of ["rootCause", "containment", "otherNotifications"] as const) { const v = d[k].trim() ? d[k] : null; if (v !== was[k]) out[k] = v; }
+  return out;
+}
