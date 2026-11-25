@@ -246,3 +246,16 @@ Head **ba5a294d6926eef1fa4acc4d686beac63476797f** (branch `claude/runtime-pf28-a
 **Verdict: Approve** — commit ba5a294d6926eef1fa4acc4d686beac63476797f. No open Blocker or Major.
 
 Reviewer: Approve ba5a294d6926eef1fa4acc4d686beac63476797f
+## Round 4 (merge resolution)
+Diff-only review of head 20e47581b10facac5b8e6b8a19cd12bcb5516526, a merge of origin/main 63f5cc913 into the last approved head ba5a294d6 (round 3). The tech lead asked for this check. I did not write the merge.
+
+1. **`PUBLIC_WRITES` is exactly the union.** ba5a294d6 has 12 entries and origin/main has 10. Their union has 13 entries, and HEAD has the same 13. I checked this with node, reading each side's array from `git show`. The order is what the check compares against: `[...h].sort()` equals `h`. `/api/public/sign-fake/:doc/:signer/:nonce` comes before `/api/public/sign/:token/code` because `-` (0x2D) sorts before `/` (0x2F). No entry is lost. Both trailing comments are kept: the PR's PF-28 A2 comment first, then main's. `git diff ba5a294d6 HEAD` on the file shows only main's two changes: the FO-6 4c `REVIEWED` row and its unknown-nonce 404 probe. `git diff origin/main HEAD` on the file shows only the PR's three changes: the `@OpenRead` regex, the nine open-read rows, and the three booking writes.
+2. **The merge changes no other PR file.** `git diff origin/main HEAD --stat` lists the same 23 files, with the same line counts, as the PR's diff from merge base e0be451c4 to ba5a294d6. With `check_forms_qa53.ts` left out, the two patches are byte-identical (`diff` of the two `git diff` outputs is empty).
+3. **Suites pass on this head.** I ran `run-suites.sh --only` with prefix runtime and ports +14000, never :4400. All four pass: `check_forms_qa53.ts` 49/0, `check_fo3_booking.ts` 133/0, `check_pf28_a2_fields.ts` 7/7 and `check_pf21rs_r0.ts` 24/0, including both R0-3 (requests) lines.
+   - The PR does not touch what `check_pf21rs_r0.ts` R0-3 (requests) tests. No PR file is under `platform/register/` or `erasure/`.
+   - The PR's one shared file on that path is `http/input.ts`, which `register/requests/service.ts` imports. That change only adds a new export, `plainIssue`. `fieldsOf`, which the register uses, is unchanged.
+   - The shard-11 failure on ba5a294d6 has a cause outside this PR. Main's d22607db2 (25 Nov, 01:07 UTC: "check_pf21rs_r0 sends a request's day as Toronto's today on the app clock, never the UTC date") is not in ba5a294d6's history but is in HEAD's. Before that commit, the test sent the UTC date, which the route refuses as the future between 00:00 and 05:00 UTC. The merge brings the fix in.
+
+Journey score: still **8/10** from round 1 (`journey-test-reviewer-2026-11-24-part-a2.md`). The merge changes no behaviour of this PR, since its own patch is byte-identical, so I did not walk the journeys again. No new findings.
+
+**Verdict: Approve** — commit 20e47581b10facac5b8e6b8a19cd12bcb5516526. No open Blocker or Major.
