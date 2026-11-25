@@ -1,0 +1,30 @@
+{
+  "item": "R1.29",
+  "name": "29 One person record; duplicate warning; safe merge",
+  "pr": 3716,
+  "sha": "373cf8d8cf6b9921748c724eb9660f3fa0bd7b68",
+  "run_id": "45662548306",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45662548306",
+  "at": "2026-11-25T17:17:22.767Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_29.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45662548306/artifacts/15045762000",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.29-373cf8d8cf6b9921748c724eb9660f3fa0bd7b68.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
