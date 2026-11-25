@@ -78,7 +78,7 @@ try {
   };
   const onLead = (extra: Record<string, unknown> = {}) => ({ host: { type: "fo_person", id: LEAD, contextType: "LEAD", contextId: LEAD }, title: "Call about the job offer", ...extra });
   const row = async (id: string) => (await q<Record<string, any>>("select * from plat_task where id = $1", [id]))[0];
-  const audits = async (id: string) => (await q<{ action: string }>("select action from audit_event where entity = 'plat_task' and entity_key = $1 order by created_at", [id])).map((a) => a.action);
+  const audits = async (id: string) => (await q<{ action: string }>("select action from audit_event where entity = 'plat_task' and entity_key = $1 order by at, id", [id])).map((a) => a.action);
 
   // ---------------------------------------------------------------- TK1 the table's rules (PF-29a)
   const ins = (cols: Record<string, unknown>) => {
@@ -88,8 +88,10 @@ try {
   ok("TK1 pass: a firm task with a title inserts (the owner, below the walls)", await ins({}) === "ok");
   ok("TK1 fail: CANCELLED without a reason is refused by the check (23514); a reason without CANCELLED too", await ins({ status: "CANCELLED" }) === "23514" && await ins({ cancel_reason: "No longer needed" }) === "23514");
   ok("TK1 fail: an assignee of another firm is refused (23503, the same-firm trigger)", await ins({ assignee_staff_id: SOLO }) === "23503");
-  ok("TK1 fail: a 201-character title, a blank title, a due time without its zone, an unknown zone, a host id on a firm task and no host id on a person task are each refused (23514)",
-    [await ins({ title: "x".repeat(201) }), await ins({ title: "  " }), await ins({ due_at: new Date() }), await ins({ due_at: new Date(), due_zone: "Mars/Olympus" }), await ins({ host_id: randomUUID() }), await ins({ host_type: "fo_person" })].every((x) => x === "23514"));
+  const shapes = [await ins({ title: "x".repeat(201) }), await ins({ title: "  " }), await ins({ due_at: new Date() }), await ins({ host_id: randomUUID() }), await ins({ host_type: "fo_person" }), await ins({ context_type: "LEAD" })];
+  const mars = await ins({ due_at: new Date(), due_zone: "Mars/Olympus" });
+  ok("TK1 fail: a 201-character title, a blank title, a due time without its zone, a host id on a firm task, no host id on a person task and a context without its id are each refused (23514); a zone PostgreSQL does not know is refused too (22023)",
+    shapes.every((x) => x === "23514") && mars === "22023", { shapes, mars });
   const keyed = randomUUID();
   ok("TK1 pass and fail: one source_key per firm (a second in firm A is 23505; the same key in firm B inserts)",
     await ins({ id: keyed, source_key: "auto:1" }) === "ok" && await ins({ source_key: "auto:1" }) === "23505" && await ins({ firm_id: FB, source_key: "auto:1" }) === "ok");
@@ -102,7 +104,9 @@ try {
   // ---------------------------------------------------------------- TK2 add a task (create, BR-9's fields)
   const made = await call("POST", "/api/platform/tasks", OFF, onLead({ due: { date: "2026-11-25", time: "17:30" }, assigneeStaffId: OFF, priority: "HIGH", category: "Call" }));
   ok("TK2 pass: a Case Officer adds a task on a lead they can see, given to themself, due 17:30 in the record's zone (Vancouver), one audit line",
-    made.status === 201 && made.body.assignee?.id === OFF && made.body.dueZone === "America/Vancouver" && made.body.dueAt === "2026-11-26T01:30:00.000Z" && made.body.priority === "HIGH"
+    // The instant read back in the record's zone is 25 Nov 17:30 (the zone's own offset, from the machine's zone data).
+    made.status === 201 && made.body.assignee?.id === OFF && made.body.dueZone === "America/Vancouver" && made.body.priority === "HIGH"
+    && new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(made.body.dueAt)) === "2026-11-25, 17:30"
     && made.body.host?.label === "Client A Sample (L-00001)" && made.body.version === 1 && JSON.stringify(await audits(made.body.id)) === JSON.stringify(["plat.task.create"]), made.body);
   const T = made.body.id as string;
   const noKey = await call("POST", "/api/platform/tasks", READER, onLead());

@@ -35,7 +35,7 @@ const chars = (s: string) => [...s].length;
 const tidy = (s: string) => s.normalize("NFC").trim();
 
 /** A title: what needs doing, 1-200 characters on one line (AG-13-1). */
-const Title = z.string().transform(tidy).pipe(z.string().min(1, "Write what needs doing (up to 200 characters)").refine((s) => chars(s) <= 200, "Write what needs doing (up to 200 characters)").refine((s) => !CONTROL.test(s), "One line, no hidden characters"));
+const Title = z.string().transform(tidy).pipe(z.string().refine((s) => s.length > 0, "Write what needs doing (up to 200 characters)").refine((s) => chars(s) <= 200, "Write what needs doing (up to 200 characters)").refine((s) => !CONTROL.test(s), "One line, no hidden characters"));
 const Description = z.string().nullish().transform((v) => (v == null || !tidy(v) ? null : v.normalize("NFC").trimEnd())).refine((v) => v === null || chars(v) <= 5000, "Details: up to 5,000 characters").refine((v) => v === null || !LONG_CONTROL.test(v), "No hidden characters");
 const Category = z.string().nullish().transform((v) => (v == null || !tidy(v) ? null : tidy(v))).refine((v) => v === null || chars(v) <= 40, "A category: up to 40 characters").refine((v) => v === null || !CONTROL.test(v), "One line, no hidden characters");
 const zoneOk = (z0: string) => { try { new Intl.DateTimeFormat("en", { timeZone: z0 }); return /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/.test(z0); } catch { return false; } };
@@ -56,7 +56,7 @@ export const CreateTask = z.strictObject({
 export const EditTask = z.strictObject({ version: Version, title: Title.optional(), description: Description.optional(), category: Category.optional(), due: Due.nullish(), priority: z.enum(PRIORITIES).optional() });
 export const AssignTask = z.strictObject({ version: Version, assigneeStaffId: StaffId.nullable() });
 export const VersionOnly = z.strictObject({ version: Version });
-export const CancelTask = z.strictObject({ version: Version, reason: z.string().transform(tidy).pipe(z.string().min(1, "Give a reason for cancelling").refine((s) => chars(s) <= 500, "A reason: up to 500 characters").refine((s) => !CONTROL.test(s), "One line, no hidden characters")) });
+export const CancelTask = z.strictObject({ version: Version, reason: z.string().transform(tidy).pipe(z.string().refine((s) => s.length > 0, "Give a reason for cancelling").refine((s) => chars(s) <= 500, "A reason: up to 500 characters").refine((s) => !CONTROL.test(s), "One line, no hidden characters")) });
 
 const refused = (detail: string, fields: Record<string, string> = {}): never => {
   throw new HttpException({ type: "https://expatready.local/problems/task-refused", title: "Task not saved", status: FIELD_ERROR_STATUS, detail, code: "INVALID", fields }, FIELD_ERROR_STATUS);
