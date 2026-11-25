@@ -142,3 +142,15 @@ Reviewer: Block c9cd9ef38ab705a0b400f069b1443b1e7bc0259a
 Reviewer: Approve 155d6722d6d32c5499abb6b08d42a8a6e270f902
 
 **Verdict: Approve** (commit `155d6722d6d32c5499abb6b08d42a8a6e270f902`). No Blocker or Major is open. The new race Minor, issue 7 and the crumb stay Minor, for the PR or the row.
+
+## Round 3 follow-up (CI fix; head `f15af430af797491344519361d4c2c6d3d86fc7a`; diff `f9a0e37a1..f15af430a` only)
+**The change:** "Words sent" uses the shared `FoldOut` (`breach-page.tsx:12`, `:63`). It is still a native `<details>`, with BK-2's `aria-hidden` arrow added. The `<pre>` keeps `tabIndex=0`, `role=region` and its name.
+**Checked (copy `rsrev` on :4437, stopped after; I did not run the builder's check, so no screenshot changed):** one sent notice with a 700-character description, at 1440, 1024 and 400 px. At each width:
+* Tab reaches the summary, named "Words sent".
+* Enter opens it, and the next Tab lands on the region "Words sent to <firm>". Space on the summary closes it.
+* The words equal the API's text, and the arrow is present.
+* axe finds 0 serious with it open, and there is no sideways scroll.
+
+Reviewer: Approve f15af430af797491344519361d4c2c6d3d86fc7a
+
+**Verdict: Approve** (commit `f15af430af797491344519361d4c2c6d3d86fc7a`). No Blocker or Major. Round 3's Minors stand as listed.
