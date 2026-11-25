@@ -107,6 +107,17 @@ try {
   ok("FO-7w1 R1 pass (AG-6-65 r1, j_56 W1): a draft from the signed retainer carries its 1,500.00 WHEN_SUBMITTED row as FEE:150000, taxed at the draft's default (ON 13 %), with its label and its row id",
     d1.status === 201 && lines(d1.body.id) === `FEE:150000:${ON}:${tax(150000)}:${r1.rows[1]},FEE:50000:${ON}:${tax(50000)}:${r1.rows[3]}` && d1.body.lines[0].description === "Professional fee: application (Sample)" && d1.body.lines[0].sourceFeeRowId === r1.rows[1] && d1.body.lines[0].quantity === 1, [d1.status, d1.body, d1.body?.id && lines(d1.body.id)]);
   ok("FO-7w1 R1 fail: a rate is never the retainer's or the request's: a draft sent ratePpm is refused at the field (strict body)", (await start({ retainerId: r1.id, ratePpm: 0 })).status === 422);
+  // The rate is the draft's own default, not a fixed 13 % (review m1): firm B in British Columbia (GST 5 %), then not registered (0).
+  sql(`update platform_firm set business_address = jsonb_build_object('street_name', 'Sample St', 'city', 'Victoria', 'province_state', 'BC', 'country', 'CA') where id = '${B}'`);
+  const rBC = retainer(B, staffB, PB, "SIGNED", [{ amount: 100000, when: "WHEN_DONE" }]), dBC = await call(tB, "POST", M, { personId: PB, currency: "CAD", retainerId: rBC.id });
+  sql(`update money_payment_settings set tax_registered = false, tax_number = null where firm_id = '${B}'`);
+  const rNo = retainer(B, staffB, PB, "SIGNED", [{ amount: 100000, when: "WHEN_DONE" }]), dNo = await call(tB, "POST", M, { personId: PB, currency: "CAD", retainerId: rNo.id });
+  sql(`update money_payment_settings set tax_registered = true, tax_number = '123456789RT0001' where firm_id = '${B}'`);
+  ok("FO-7w1 R1 pass: the line takes the draft's default as a typed line does: a BC firm's 5 % GST, an unregistered firm's 0",
+    dBC.status === 201 && lines(dBC.body.id) === `FEE:100000:${T.BC.ratePpm}:${taxForLine(100000, T.BC.ratePpm)}:${rBC.rows[0]}` && T.BC.ratePpm !== ON && dNo.status === 201 && lines(dNo.body.id) === `FEE:100000:0:0:${rNo.rows[0]}`, [dBC.body, dNo.body]);
+  // A row larger than one line holds (fee rows go to 1e10 minor; a line to MINOR_MAX): refused, nothing written (review m3).
+  const rBig = retainer(A, staffA, PA, "SIGNED", [{ amount: 2_147_483_648, when: "WHEN_DONE" }]), cBig = drafts(), dBig = await start({ retainerId: rBig.id });
+  ok("FO-7w1 R1 fail: a fee row above what one line holds (21,474,836.47) → 422 at feeRowIds, nothing written", dBig.status === 422 && dBig.body.fields?.feeRowIds && drafts() === cBig, dBig.body);
   // ---------------------------------------------------------------------- R2: the deposit is never copied by itself
   ok("FO-7w1 R2 fail (AG-6-61, Code s. 32): the ON_SIGNING deposit row is not copied by itself; that draft is not a deposit", d1.status === 201 && !lines(d1.body.id).includes(r1.rows[0]) && d1.body.deposit === false);
   const d2 = await start({ retainerId: r1.id, feeRowIds: [r1.rows[0]] });
@@ -146,9 +157,17 @@ try {
   const c7 = drafts(), named = await start({ retainerId: r1.id, feeRowIds: [r1.rows[1]] });
   ok("FO-7w1 R7 fail: a billed row named again → 409 ROW_ON_INVOICE, nothing written", named.status === 409 && named.body.code === "ROW_ON_INVOICE" && drafts() === c7, named.body);
   const r7 = retainer(A, staffA, PA, "SIGNED", [{ amount: 12345, when: "WHEN_DONE" }]);
-  const both = await Promise.all([start({ retainerId: r7.id }), start({ retainerId: r7.id }), start({ retainerId: r7.id, feeRowIds: [r7.rows[0]] })]);
-  ok("FO-7w1 R7 pass (two at once): three drafts started at once from one row → the row is on exactly one line",
-    Number(sql(`select count(*) from money_invoice_line where source_fee_row_id = '${r7.rows[0]}'`)) === 1 && both.every((x) => x.status === 201 || (x.status === 409 && x.body.code === "ROW_ON_INVOICE")), both.map((x) => [x.status, x.body?.code]));
+  // Five rounds of three at once (two unnamed, one named): with the retainer's lock, an unnamed start waits and then
+  // skips a billed row (201, empty); without it, it would collide on the unique index and answer 409 (review m2).
+  const rounds: string[] = [];
+  for (let k = 0; k < 5; k++) {
+    const r7 = retainer(A, staffA, PA, "SIGNED", [{ amount: 12345, when: "WHEN_DONE" }]);
+    const both = await Promise.all([start({ retainerId: r7.id }), start({ retainerId: r7.id }), start({ retainerId: r7.id, feeRowIds: [r7.rows[0]] })]);
+    const withLine = both.filter((x) => x.status === 201 && x.body.lines.length === 1).length, unnamedOk = both.slice(0, 2).every((x) => x.status === 201);
+    const namedOk = both[2].status === 201 || (both[2].status === 409 && both[2].body.code === "ROW_ON_INVOICE");
+    if (!(withLine === 1 && unnamedOk && namedOk && Number(sql(`select count(*) from money_invoice_line where source_fee_row_id = '${r7.rows[0]}'`)) === 1)) rounds.push(JSON.stringify(both.map((x) => [x.status, x.body?.code, x.body?.lines?.length])));
+  }
+  ok("FO-7w1 R7 pass (two at once, 5 rounds): three drafts started at once from one row → the row is on exactly one line; each unnamed start answers 201 (skipped, never 409); the named one 201 or 409 ROW_ON_INVOICE", rounds.length === 0, rounds);
   ok("FO-7w1 R7 fail: the database refuses a second line of the same row (the unique index)",
     refused(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, unit_amount_minor, amount_minor, currency, source_fee_row_id) values ('${A}', '${again.body.id}', 1, 'FEE', 'x', 1, 1, 'CAD', '${r1.rows[1]}')`, /unique|duplicate/));
 
