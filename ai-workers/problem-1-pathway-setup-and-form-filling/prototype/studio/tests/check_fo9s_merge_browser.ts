@@ -182,9 +182,13 @@ try {
   sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${A}', 'seed:FO-9s-3', now()) on conflict (firm_id) do nothing`);
   sql(`insert into money_invoice (firm_id, person_id, currency, created_by, updated_at) values ('${A}', '${ines2.person}', 'CAD', 'seed:FO-9s-3', now())`);
   await next(p).click(); await next(p).click(); await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).click();
-  await dialog(p).getByText(/cannot be merged here yet/).waitFor({ timeout: 15_000 });
-  ok("FO-9s G6 fail: money arriving after the dialog opened → the server's sentence; nothing merged; Merge 2 people is off (it cannot succeed again)",
-    mergedInto(ines.person) === "" && mergedInto(ines2.person) === "" && await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).isDisabled());
+  await dialog(p).getByText(/cannot be merged here yet/).first().waitFor({ timeout: 15_000 });
+  // The refusal re-reads the list, which refetches the preview: once it has settled, the sentence is there once (batch
+  // 45594684150: the refusal's copy and the preview's warning were both shown, a strict-mode failure on main).
+  await p.waitForLoadState("networkidle"); await dialog(p).locator("[data-merge-field]").first().or(dialog(p).locator("[data-merge-confirm]")).first().waitFor({ timeout: 10_000 });
+  const once = await dialog(p).getByText(/cannot be merged here yet/).count();
+  ok("FO-9s G6 fail: money arriving after the dialog opened → the server's sentence, once (also after the preview is read again); nothing merged; Merge 2 people is off (it cannot succeed again)",
+    once === 1 && mergedInto(ines.person) === "" && mergedInto(ines2.person) === "" && await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).isDisabled(), { once });
   await p.keyboard.press("Escape");
   await openMerge(p, P_INES);
   ok("FO-9s G6: reopened, the dialog says so before any step and Next is off", (await dialog(p).getByText(/cannot be merged here yet/).count()) === 1 && await next(p).isDisabled());
