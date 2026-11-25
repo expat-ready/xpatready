@@ -3,6 +3,7 @@
 // api/src/documents/staff-door.ts): a dropped connection pauses and resumes from the server's offset, in CS-D2's words
 // ("Upload paused: reconnecting", "Resumed, 62%"); a refusal is the server's own words. The rail takes the firm staff
 // sign-in (PF-4's bearer session), so with none the sign-in shows inline. The kinds and every rule are the server's.
+import { cn } from "@/lib/utils";
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/controls";
@@ -51,7 +52,7 @@ export function OtherDocuments({ caseId, subject, label, docs, kinds, nameOf }: 
       <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-hidden accept="application/pdf,image/jpeg,image/png" data-other-upload-input
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) start(f); }} />
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        {kinds.map((k) => <Button key={k.key} size="sm" variant="secondary" className="h-auto min-h-8 max-w-full shrink whitespace-normal py-1 text-left" aria-disabled={busy || undefined} data-other-upload={k.key}
+        {kinds.map((k) => <Button key={k.key} size="sm" variant="secondary" className={cn("h-auto min-h-8 max-w-full shrink whitespace-normal py-1 text-left", busy && "cursor-not-allowed opacity-60")} aria-disabled={busy || undefined} data-other-upload={k.key}
           ref={(e) => { if (e) buttons.current.set(k.key, e); else buttons.current.delete(k.key); }}
           onClick={() => { if (busy) return; kind.current = k; if (!staffToken()) { setAsked(true); return; } input.current?.click(); }}>Add {k.name} for {label}…</Button>)}
         {/* Review m5: a refusal is said once, by the alert below; the status stays empty then. */}

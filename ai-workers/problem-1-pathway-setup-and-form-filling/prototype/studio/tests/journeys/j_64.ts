@@ -201,9 +201,17 @@ try {
     await p6.waitForLoadState("networkidle");   // the signed-in page's reads settle before the next key
     return p6.waitForFunction((who) => document.activeElement?.closest(`[data-other-documents="${who}"]`)?.hasAttribute("data-other-documents") && document.activeElement.hasAttribute("data-other-upload"), person, { timeout: 5_000 }).then(() => true, async () => { console.log(`FAIL  W6: focus after sign-in is on ${await p6.evaluate(() => `${document.activeElement?.tagName} ${document.activeElement?.outerHTML.slice(0, 120)}`)}`); return false; });
   };
+  // Review R2-1: Enter on Add opens the chooser only once Add is ready (not aria-disabled while the page settles); the
+  // waiter is armed before the key, and the key goes to Add itself.
+  const enterOnAdd = async (timeout = 30_000) => {
+    await p6.waitForFunction(() => { const a = document.activeElement; return !!a?.hasAttribute("data-other-upload") && a.getAttribute("aria-disabled") !== "true"; }, null, { timeout: 10_000 }).catch(() => undefined);
+    const waiter = p6.waitForEvent("filechooser", { timeout });
+    await add6.press("Enter");
+    return waiter;
+  };
   const focusAfterSignIn = await signInByKeys(emailOf(OFFICER));
   if (!focusAfterSignIn) await add6.focus();   // said above as a failure; the walk goes on from the button
-  const [chooser6] = await Promise.all([p6.waitForEvent("filechooser"), p6.keyboard.press("Enter")]);
+  const chooser6 = await enterOnAdd(60_000);
   await chooser6.setFiles({ name: "invitation-keyboard.pdf", mimeType: "application/pdf", buffer: bigPdf(200_000, "w6") });
   await p6.locator("[data-upload-words='done']").waitFor({ timeout: 60_000 });
   const focusAfterUpload = await p6.waitForFunction(() => document.activeElement?.hasAttribute("data-other-upload"), null, { timeout: 5_000 }).then(() => true, () => false);
@@ -217,7 +225,7 @@ try {
   rawSql(`update platform_role_grant set ended_at = now(), ended_by = 'J-64 (Sample)', end_reason = 'Sample: Read only' where staff_id = '${rep2}' and ended_at is null; insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${firmA}', '${rep2}', 'READ_ONLY', 'J-64 (Sample)')`);
   await p6.evaluate(() => { try { sessionStorage.removeItem("xr-staff-session"); } catch { /* ignore */ } }); await p6.reload(); await add6.waitFor({ timeout: 60_000 });
   await signInByKeys(emailOf("user-T"));
-  const chooser7 = await Promise.all([p6.waitForEvent("filechooser", { timeout: 15_000 }), p6.keyboard.press("Enter")]).then(([c]) => c, () => null);
+  const chooser7 = await enterOnAdd(15_000).catch(() => null);
   await chooser7?.setFiles({ name: "invitation-read-only.pdf", mimeType: "application/pdf", buffer: bigPdf(2_000, "w6ro") });
   const roWords = await p6.locator("[data-upload-refused]").textContent({ timeout: 30_000 }).catch(() => null);
   ok("R1.64 W6 fail: a Read-only staff member is told in words (\"Your role cannot add documents to cases. Nothing was stored.\"), never \"no longer on the server\"",
