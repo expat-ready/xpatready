@@ -211,6 +211,8 @@ try {
     (await files.get(FIRM_A, lostKey)) === null && swept.deleted === 1 && sql(`select count(*) from audit_event where entity_key = '${lost}' and action = 'platform.firm_export.file_deleted'`) === "1", swept);
   ok("PF-11 DW8 pass: a second sweep finds nothing to delete (no repeat line)", (await svc.sweep()).deleted === 0 && sql(`select count(*) from audit_event where entity_key = '${lost}' and action = 'platform.firm_export.file_deleted'`) === "1");
   ok("PF-11 DW8 pass: the sweep runs on the runner (a recurring run of its queue was queued)", jobs.jobs.some((j) => j.name === SWEEP_JOB));
+  const byp = Number(sql(`select count(*) from audit_event where action = 'platform.bypass' and firm_id = '${FIRM_A}' and detail->>'use' = 'job:platform.firm_export.sweep'`)); await svc.sweep();
+  ok("PF-11 DW8 fail (P-607): the sweep's read across firms writes one platform.bypass line per firm it reads, each run", byp >= 1 && Number(sql(`select count(*) from audit_event where action = 'platform.bypass' and firm_id = '${FIRM_A}' and detail->>'use' = 'job:platform.firm_export.sweep'`)) === byp + 1, byp);
   const caseReg = exportRegistry<string>((f, ex) => ex(f, "tx")); caseReg.register("twins", async (f) => ({ module: "twins", files: [{ key: "a", name: "a.pdf", sha256: "0".repeat(64) }, { key: "b", name: "A.pdf", sha256: "0".repeat(64) }], sections: [] }));
   ok("PF-11 DW8 fail (m4): two stored files whose names differ only in letter case are refused", await caseReg.collect(FIRM_A).then(() => false, (e) => e instanceof FirmExportRefused));
   // m5: the four fixes without a failing test
@@ -230,9 +232,10 @@ try {
   ok("PF-11 DW8 fail (m5, the zip headers counted): a cap a little above the entries' bytes alone is refused", await buildPackage({ title: "t", madeAt: fc.now(), modules: mods, file: async () => blob, cap: raw + 20 }).then(() => false, (e) => e instanceof ExportTooLarge), raw);
   const chk = (q: string) => { try { sql(q); return "stored"; } catch { return "refused"; } };
   const cid = op();
-  ok("PF-11 DW8 fail (m5, the CHECK's IS NOT NULL): a READY row with no hash, or a DOWNLOADED one with no date, is refused by the database",
+  ok("PF-11 DW8 fail (m5, the CHECK's IS NOT NULL): a READY row with no hash or no size, or a DOWNLOADED one with no date, is refused by the database",
     chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'READY', 'k', 1, now(), now())`) === "refused"
-    && chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, sha256, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'DOWNLOADED', 'k', '${"0".repeat(64)}', 1, now(), now())`) === "refused");
+    && chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, sha256, size_bytes, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'DOWNLOADED', 'k', '${"0".repeat(64)}', 1, now(), now())`) === "refused"
+    && chk(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, state, file_key, sha256, expires_at, updated_at) values ('${cid}', '${FIRM_A}', '${cid}', '${R}', 'READY', 'k', '${"0".repeat(64)}', now(), now())`) === "refused");
 } catch (e) { ok("no unexpected error", false, String((e as Error)?.stack ?? e)); } finally {
   await app?.close();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);

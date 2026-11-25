@@ -13,7 +13,8 @@ import type { JobPort } from "../../../../ports/jobs.ts";
 import type { LegalHoldPort } from "../../../../ports/legal-hold.ts";
 import { parseInput, idParam } from "../http/input.ts";
 import { actorWord } from "../identity/audit.ts";
-import { asBypass, firmScope, withFirm } from "../firm-scope.ts";
+import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
+import { logPort } from "../observability/log.ts";
 import { EXPORT_SWEEP_BYPASS } from "./export.bypass.ts";
 import { forbidden, problem, type StaffContext } from "../identity/keys.ts";
 import { buildPackage, ExportTooLarge } from "./package.ts";
@@ -173,9 +174,15 @@ export class FirmExports {
    *  failure never stops the rest. */
   async sweep(): Promise<{ expired: number; deleted: number; failed: number }> {
     const now = this.d.now();
-    const rows = await asBypass(EXPORT_SWEEP_BYPASS, () => this.d.db.platformFirmExport.findMany({
-      where: { OR: [{ state: { in: ["READY", "DOWNLOADED"] }, expiresAt: { lte: now } }, { state: "EXPIRED" }] }, select: { id: true, firmId: true, state: true, fileKey: true }, orderBy: { id: "asc" } }));
-    const out = { expired: 0, deleted: 0, failed: 0 };
+    // The cross-firm list, one platform.bypass line per firm it reads (P-607, PF-12b); a firm whose line fails is skipped
+    // and counted failed, as the other daily sweeps do (firm-closure, storage).
+    const { rows, unrecorded } = await asBypass(EXPORT_SWEEP_BYPASS, async () => {
+      const all = await this.d.db.platformFirmExport.findMany({
+        where: { OR: [{ state: { in: ["READY", "DOWNLOADED"] }, expiresAt: { lte: now } }, { state: "EXPIRED" }] }, select: { id: true, firmId: true, state: true, fileKey: true }, orderBy: { id: "asc" } });
+      const { failed: lost } = await touchEachFirm(this.d.db, all.map((r) => r.firmId));
+      return { rows: all.filter((r) => !lost.has(r.firmId.toLowerCase())), unrecorded: new Set(all.filter((r) => lost.has(r.firmId.toLowerCase())).map((r) => r.firmId)).size };
+    });
+    const out = { expired: 0, deleted: 0, failed: unrecorded };
     for (const r of rows) {
       try {
         await withFirm(r.firmId, async () => {
@@ -183,13 +190,14 @@ export class FirmExports {
           if (!r.fileKey || !(await this.d.files.exists(r.firmId, r.fileKey))) return;
           const del = await this.d.db.$transaction(async (tx) => {
             if ((await this.d.holds.isHeld(tx, r.firmId, [{ kind: "ALL_FIRM_DATA" }])).held) return false;
+            // FilesPort's order: the record first, then the delete; a failed delete is tried again by the next sweep.
             await this.d.audit.record(tx, { firmId: r.firmId, actor: SYSTEM, action: "platform.firm_export.file_deleted", entity: "platform_firm_export", entityKey: r.id,
-              summary: "The expired data download's file is deleted (no legal hold covers the firm now)", detail: { scope: "FIRM" }, before: null, after: null });
+              summary: "The expired data download's file is being deleted (no legal hold covers the firm now)", detail: { scope: "FIRM" }, before: null, after: null });
             return true;
           });
           if (del && (await this.d.files.delete(r.firmId, r.fileKey)).deleted) out.deleted++;
         });
-      } catch { out.failed++; }
+      } catch (e) { out.failed++; logPort.error("firm_export_sweep_failed", e, { firmId: r.firmId }); }
     }
     return out;
   }
