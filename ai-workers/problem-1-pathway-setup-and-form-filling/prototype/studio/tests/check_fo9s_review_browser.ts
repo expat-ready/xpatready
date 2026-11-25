@@ -145,8 +145,20 @@ try {
     noItem && (await n.getByText("You need access to People to merge. Ask an Owner or Admin.").count()) === 1 && (await n.getByRole("tab").count()) === 0);
   await n.screenshot({ path: join(SHOTS, "fo9s2-06-no-key-1440.png"), fullPage: true });
   await n.context().close();
+  // The key taken away mid-session (the page still holds the old keys): the list's 403 is the no-key sentence (break r1 F7).
+  const lostKey = await pageAs(tok.O);
+  await lostKey.route("**/api/front-office/duplicates/review?status=*", (q) => q.fulfill({ status: 403, contentType: "application/problem+json", body: JSON.stringify({ title: "Not allowed", detail: "You do not have access.", code: "FORBIDDEN" }) }));
+  await openPage(lostKey);
+  ok("FO-9s R1 BR-6 fail (break r1 F7): a key lost mid-session (the list answers 403) shows the no-key sentence, not a load error",
+    await lostKey.getByText("You need access to People to merge. Ask an Owner or Admin.").waitFor({ timeout: 10_000 }).then(() => true, () => false) && (await lostKey.getByText("Could not load").count()) === 0);
+  await lostKey.context().close();
 
   // ----------------------------------------------------------------------- R4 BR-11 Keep separate
+  // From the lead (its "Possible match" notice shown) to People to merge by the menu, so Back is the app's own
+  // navigation with its cached answers (break r1 F1).
+  await o.goto(`${BASE}/front-office/leads/${ana2.lead}`); await o.getByText(/Possible match/i).first().waitFor({ timeout: 15_000 });
+  await o.getByRole("navigation", { name: "Sales" }).getByRole("link", { name: /People to merge/ }).click();
+  await row(o, P_ANA).waitFor({ timeout: 15_000 });
   await row(o, P_ANA).getByRole("button", { name: "Keep separate" }).click();
   await o.getByRole("dialog").waitFor();
   await o.screenshot({ path: join(SHOTS, "fo9s2-02-keep-separate-confirm-1440.png"), fullPage: true });
@@ -162,6 +174,9 @@ try {
   const after = await o.waitForFunction(() => document.activeElement && document.activeElement !== document.body ? (document.activeElement.getAttribute("data-dup-tab") ?? (document.activeElement.hasAttribute("data-dup-keep") ? "keep" : document.activeElement.tagName)) : null, null, { timeout: 5_000 }).then((h) => h.jsonValue(), () => "body");
   ok("FO-9s R7 fail (review r1 M1, m1): a double click on Keep separate sends one request, and focus moves to the next pair's Keep separate or the tab, never the body",
     keepPosts.length === 1 && (after === "keep" || after === "review"), { posts: keepPosts.length, after });
+  await o.goBack(); await o.waitForTimeout(1_500);
+  ok("FO-9s R4 BR-11 fail (break r1 F1): Back to the lead right after Keep separate no longer shows \"Possible match\" (no reload)", !(/Possible match/i.test(await o.locator("main").innerText())));
+  await o.goForward(); await o.getByRole("heading", { level: 1, name: "People to merge" }).waitFor();
   await o.getByRole("tab", { name: /Kept separate/ }).click();
   await row(o, P_ANA).waitFor({ timeout: 10_000 });
   await o.screenshot({ path: join(SHOTS, "fo9s2-03-kept-separate-1440.png"), fullPage: true });
@@ -182,6 +197,11 @@ try {
   ok("FO-9s R7 fail (review r1 M1): after Undo merge, focus stays on the row (its Undone line), never the page body", undoFocus);
   ok("FO-9s R5 BR-10 pass: Undo merge restores both people (by API: two live records, each with its own lead) and the row reads Undone",
     live(lea.person, lea2.person) && sql(`select count(*) from fo_lead where id = '${lea2.lead}' and person_id = '${lea2.person}'`) === "1" && (await leaRow.getByRole("button", { name: "Undo merge" }).count()) === 0);
+  // Busy (503) is "try again": Undo stays offered (break r1 F4).
+  await r.route(`**/duplicates/merges/${m2.body?.mergeRef}/undo`, (q) => q.fulfill({ status: 503, contentType: "application/problem+json", body: JSON.stringify({ title: "Busy", detail: "These records were being changed by someone else at the same moment. Nothing was changed. Try again.", code: "BUSY" }) }), { times: 1 });
+  await maxRow.getByRole("button", { name: "Undo merge" }).click();
+  await r.getByText("These records were being changed by someone else at the same moment.", { exact: false }).first().waitFor({ timeout: 10_000 });
+  ok("FO-9s R5 BR-10 fail (break r1 F4): a busy answer (503) says try again and Undo merge stays offered", (await maxRow.getByRole("button", { name: "Undo merge" }).count()) === 1 && (await maxRow.locator("[data-undo-refused]").count()) === 0);
   caseFor(max.person, "Max Weber");   // a case since the merge: the case side splits it, not here
   await maxRow.getByRole("button", { name: "Undo merge" }).click();
   await maxRow.locator("[data-undo-refused]").waitFor({ timeout: 10_000 });

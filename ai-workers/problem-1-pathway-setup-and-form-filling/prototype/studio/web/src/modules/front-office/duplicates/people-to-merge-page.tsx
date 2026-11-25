@@ -43,9 +43,10 @@ function PeopleToMergeBody() {
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((t) => t.param === params.get("tab"))?.tab ?? "OPEN";
   const allowed = can(me, REVIEW_KEY);
-  const open = useQuery({ ...reviewQuery("OPEN"), enabled: allowed });
-  const kept = useQuery({ ...reviewQuery("KEPT_SEPARATE"), enabled: allowed });
-  const merges = useQuery({ ...mergesQuery, enabled: allowed });
+  const retry = (n: number, e: unknown) => !(e instanceof StaffApiError && (e.status === 401 || e.status === 403)) && n < 2;   // a refusal is final
+  const open = useQuery({ ...reviewQuery("OPEN"), enabled: allowed, retry });
+  const kept = useQuery({ ...reviewQuery("KEPT_SEPARATE"), enabled: allowed, retry });
+  const merges = useQuery({ ...mergesQuery, enabled: allowed, retry });
   const staff = useQuery({ ...assigneesQuery, enabled: allowed && tab === "MERGED" });
   const staffNames = React.useMemo(() => new Map((staff.data?.assignees ?? []).map((a) => [a.staffId, a.displayName])), [staff.data]);
   const [confirm, setConfirm] = React.useState<ReviewPair | null>(null);
@@ -59,7 +60,9 @@ function PeopleToMergeBody() {
     if (el) { el.focus(); setFocusNext(null); }
   });
   const [refused, setRefused] = React.useState<Record<string, string>>({});   // BR-10: the server's reason in Undo's place
-  const refresh = () => qc.invalidateQueries({ queryKey: ["fo", "duplicates"] });
+  // A decision also changes the leads (BR-11: Keep separate clears "Possible match"; Undo gives leads back): their cached
+  // answers are read again too (break r1 F1).
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["fo", "duplicates"] }), qc.invalidateQueries({ queryKey: ["fo", "leads"] })]);
   /** The next pair's Keep separate after `id` in the To review list, as a selector (or the tab when it was the last). */
   const nextAfter = (id: string) => { const items = open.data?.items ?? [], i = items.findIndex((x) => x.id === id), n = items[i + 1] ?? items[i - 1];
     return n ? `[data-dup-pair="${n.id}"] [data-dup-keep]` : `[data-dup-tab="review"]`; };
@@ -76,9 +79,12 @@ function PeopleToMergeBody() {
     onSettled: () => { sending.current = false; },
     onSuccess: async (_, m) => { toast.push({ tone: "ok", text: "Merge undone: the two records are separate again, each with its own leads." }); await refresh(); setFocusNext(`[data-dup-merge="${m.id}"] [data-dup-after]`); },
     // A refusal shows the server's sentence in the button's place, and the list is read again (review r1 m5).
-    onError: (e, m) => { if (e instanceof StaffApiError && e.status !== 401) setRefused((r) => ({ ...r, [m.id]: e.message })); else toast.push({ tone: "danger", text: "Could not undo the merge. Nothing changed." }); void refresh(); setFocusNext(`[data-dup-merge="${m.id}"] [data-dup-after]`); },
+    // 503 (busy) is "try again": Undo stays offered, the sentence in a toast (BR-10 "always offered"; break r1 F4).
+    onError: (e, m) => { if (e instanceof StaffApiError && e.status !== 401 && e.status !== 503) setRefused((r) => ({ ...r, [m.id]: e.message })); else toast.push({ tone: "danger", text: e instanceof StaffApiError && e.status === 503 ? e.message : "Could not undo the merge. Nothing changed." }); void refresh(); setFocusNext(e instanceof StaffApiError && e.status === 503 ? `[data-dup-merge="${m.id}"] button` : `[data-dup-merge="${m.id}"] [data-dup-after]`); },
   });
-  if (!allowed) return <div className="mx-auto flex max-w-6xl flex-col gap-4"><h1 className="text-2xl font-semibold text-text">People to merge</h1><Notice tone="info" title="You need access to People to merge. Ask an Owner or Admin." /></div>;
+  // The key taken away mid-session: the list answers 403, said as the no-key sentence (break r1 F7).
+  const lost = [open.error, kept.error, merges.error].some((e) => e instanceof StaffApiError && e.status === 403);
+  if (!allowed || lost) return <div className="mx-auto flex max-w-6xl flex-col gap-4"><h1 className="text-2xl font-semibold text-text">People to merge</h1><Notice tone="info" title="You need access to People to merge. Ask an Owner or Admin." /></div>;
   const live = merges.data?.filter((m) => !m.undoneAt) ?? [];
   const count: Record<Tab, number | undefined> = { OPEN: open.data?.items.length, MERGED: merges.data ? live.length : undefined, KEPT_SEPARATE: kept.data?.items.length };
   const failed = (what: string, retry: () => void) => <Notice tone="danger" title={`Could not load ${what}.`} action={<Button variant="outline" size="sm" onClick={retry}>Try again</Button>} />;
