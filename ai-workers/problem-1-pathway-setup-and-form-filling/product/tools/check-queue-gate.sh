@@ -627,6 +627,9 @@ a comment emptied|COMMENT ON TABLE "User" IS '';
 ON UPDATE CASCADE onto existing rows|ALTER TABLE "Post" ADD CONSTRAINT "p_fk" FOREIGN KEY ("u") REFERENCES "User"("id") ON UPDATE CASCADE;
 a NOT VALID check|ALTER TABLE "User" ADD CONSTRAINT "pos" CHECK ("n" > 0) NOT VALID;
 a sequence owned by an existing column|CREATE SEQUENCE "s" OWNED BY "User"."id";
+an insert before the CREATE TABLE of its name|INSERT INTO "User" ("id") VALUES (99); CREATE TABLE "User" ("id" INT);
+a cascade before the CREATE TABLE of its name|ALTER TABLE "User" ADD CONSTRAINT "f" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE CASCADE; CREATE TABLE "User" ("id" INT);
+a comment overwritten|COMMENT ON TABLE "User" IS 'pwned';
 SQL
 )
 while IFS='|' read -r what sql; do [ -n "$what" ] || continue
@@ -641,12 +644,12 @@ ALLF=$(cat <<'SQL'
 +ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 +CREATE UNIQUE INDEX "i" ON "case"("kind");
 +ALTER TYPE "Kind" ADD VALUE 'c';
-+COMMENT ON TABLE "case" IS 'it''s ok -- a dash; DROP in a string';
++CREATE INDEX "n_at" ON "n" ("at");
 +INSERT INTO "n" ("id") VALUES (E'a\'b');
 SQL
 )
 fp 9 "$MG" added "$ALLF"; run label 9
-ok "P-823: an additive migration of every allowed form (a new table with an FK, enum, ADD VALUE IF NOT EXISTS, ADD COLUMN and a RESTRICT FK, index, comment, an insert into the new table): labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
+ok "P-823: an additive migration of every allowed form (a new table with an FK, enum, ADD VALUE IF NOT EXISTS, ADD COLUMN and a RESTRICT FK, index, an insert into the new table): labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$MG" modified "$ADD"; run label 9
 ok "P-823 plant: an edit to a migration (status modified), additive lines or not: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'an edit, rename or removal of a migration' <<< "$out" && echo 1)" "$out / $log"
 fp 9 "$MG" removed ""; run label 9

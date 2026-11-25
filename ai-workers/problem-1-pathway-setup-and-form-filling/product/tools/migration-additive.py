@@ -115,12 +115,11 @@ def judge(patch):
     sts, why = statements("\n".join(added))
     if sts is None:
         return f"no: {why}"
-    created = set()
+    created = set()   # in statement order: a table counts as new only after its CREATE TABLE (review 5 M1)
     for s in sts:
         m = re.match(r"^CREATE TABLE " + NAME + r" \(", s, I)   # never IF NOT EXISTS: it may be an existing table (review 3 B1)
         if m:
             created.add(key(m.group(1) + (m.group(2) or "")))
-    for s in sts:
         u, ok = s.upper(), False
         if NEVER.search(s) or calls(s) or dots(s):
             return "no: " + s[:80]
@@ -128,7 +127,7 @@ def judge(patch):
             ok = not TABLE_BAD.search(s[s.index("("):])
         elif re.match(r"^CREATE (UNIQUE )?INDEX\b", s, I) or (re.match(r"^CREATE SEQUENCE\b", s, I) and not re.search(r"\bOWNED BY\b", s, I)) \
                 or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE (IF NOT EXISTS )?'x' ?$", s + " ", I) \
-                or (re.match(r"^COMMENT ON\b", s, I) and not re.search(r"\bIS (NULL|'')$", s, I)):
+                :   # COMMENT ON is never additive: it replaces or empties a comment (review 4 m1, review 5 m1-m2); Prisma writes none
             ok = True
         elif re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + r" ADD\b", s, I):
             t = re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME, s, I)
