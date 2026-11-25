@@ -2,10 +2,11 @@
 
 current_lead: local_b3dca92e-931b-4e47-bbf5-7bfcd6f6a69d Lead 9 · 25 Nov 17:37 IST (after Lead 8 local_89852a53, past 200k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 17:46 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
+updated: 2026-11-25 19:05 IST (clock): **Lead 9 took over at 17:38 (Lead 8 handed over; its block below is still the to-do list).** Check 4901ca0f created (cron 3,33). Weekly 86% at 17:4x, about 3%/h: push STATE and RESUME by 94%, about 20:30 IST.
 
 ## Hand-over Lead 8 → Lead 9, 17:37 IST 25 Nov (Lead 8 past 200k beyond its start read, P-446; Lead 7's block and every Lead 8 check, word for word: `history/` files named STATE-2026-11-25-*lead8*)
 
+**Lead 9 check 18:55-19:05:** checks at 18:03 and 18:33 missed (my P-842 turn ran through them). Disk 1.7 GB: my scratch clone had grown to 3.6 GB; rebuilt shallow (since 22 Nov) and sparse at $TMPDIR/lw, 38 MB: 5.2 GB free (no Mac start under 7). Weekly 87%. Lead reads posted: #3760, #3728 (labelled), #3665. Next: qa proofs R1.29, R1.45 need a cloud qa start at the founder's next typed turn; P-423 reads #3647, #3649, #2129, #3693; batches #3767, #3768 running.
 **P-842 (18:1x):** founder counts 9 team-code Phase 1 rows in R1 (R1.113-R1.121; 101 → 110; ZIP stays out, P-607): records PR #3769 labelled; next: shape them, five are lift candidates.
 **Lead 9 first check (17:38-17:55):** disk 4 GB after clean-up; #3758 and #3702 labelled; P-841 + 15 FD/IJ rows on #3755: `history/STATE-2026-11-25-1755-lead9-first-check.md`.
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 8's 32e9c6fc is deleted. **Standbys after you:** Lead 10 local_d682100b, Lead 11 local_fef3e227 (never archive Lead 5 or Lead 7). **Weekly 85% at 17:36, about 3%/h: 94% about 20:30 IST: push STATE and RESUME by then, tell the founder the time** (he switches at 95-96%, A386).
