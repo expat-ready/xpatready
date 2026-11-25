@@ -94,7 +94,9 @@ export class Clients {
   /** GET /api/runtime/clients?query=&page=: the firm's clients by name or client code, 50 a page, newest number first. */
   async list(ctx: StaffContext, input: unknown) {
     // CS-V1 (STANDARDS §6): the query is read through its schema (contracts/runtime.ts ClientListQuery).
-    const r = ClientListQuery.safeParse(input ?? {});
+    // R1.10 A5 (W5): an unknown query key is refused 400 and named (the contract's object, read strict here).
+    const r = ClientListQuery.strict().safeParse(input ?? {});
+    if (!r.success && r.error.issues[0]?.code === "unrecognized_keys") { const k = String((r.error.issues[0] as { keys: string[] }).keys[0]).slice(0, 64); return problem(400, "Check the details", `${k} is not a field of the client search.`, { code: "INVALID", fields: { [k]: "This field is not allowed here." } }); }
     if (!r.success) { const i = r.error.issues[0], field = String(i.path[0] ?? "query"); return problem(400, "Check the details", i.message, { code: "INVALID", fields: { [field]: i.message } }); }
     const { query, page } = r.data;
     const firmKey = await this.firm(ctx);
