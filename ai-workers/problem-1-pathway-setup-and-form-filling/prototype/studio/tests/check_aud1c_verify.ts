@@ -185,6 +185,16 @@ try {
   const sliceRuns: number[] = []; for (let s = 0; s < DEEP_SLICES; s++) { try { sliceRuns.push((await v.pass("full", s)).chains); } catch { sliceRuns.push(-1); } }
   ok("AUD-1c part 5 pass: the weekly check's 24 slices take every chain exactly once between them (a stable hash), each slice checking only its own",
     wholeKeys.length > 3 && wholeKeys.every((k) => seen.get(k) === 1) && sliceRuns.reduce((a, b) => a + b, 0) === wholeKeys.length && Math.max(...sliceRuns) < wholeKeys.length, { n: wholeKeys.length, sliceRuns });
+  // Part 5's break m4: the archive's chain list is read by slice 0 only, never by all 24 slices; a chain only the archive
+  // holds is checked in that run.
+  let listed = 0; const ghost = "00000000-0000-4000-8000-0000000a1cee";
+  const stubbed = new AuditChainVerifier({ db, alerts: fakeAlerts(), now: () => new Date(), anchors: { check: async () => null, chains: async () => { listed++; return [ghost]; } } });
+  const ghostIn: number[] = [];
+  for (let s = 0; s < DEEP_SLICES; s++) { try { const r = await stubbed.pass("full", s); if (r.chains && r.findings.length >= 0 && s === 0) ghostIn.push(r.chains); } catch { /* bad rows are another case's */ } }
+  const s0 = (await v.all()).filter((i) => i.chainKey === ghost).length;
+  ok("AUD-1c part 5 pass (break m4): a day of 24 slices reads the archive's chain list once (slice 0), and the chain only the archive holds is checked in that run",
+    listed === 1 && s0 === 1 && ghostIn.length === 1, { listed, ghostIn, s0 });
+
   // The feature's own handler (review M1): each hourly run passes its hour's slice, never the whole check.
   const calls: (number | undefined)[] = [], realPass = v.pass.bind(v);
   (v as { pass: typeof v.pass }).pass = async (m, s) => { if (m === "full") calls.push(s); return realPass(m, s); };

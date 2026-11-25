@@ -68,11 +68,16 @@ export class AuditChainVerifier {
    *  no chain's) never stops the others (break M3): every other chain is still checked and any break raised, then the
    *  pass throws and writes no heartbeat, so the job fails and the heartbeat's absence alarms. */
   async pass(mode: Mode, slice?: number): Promise<PassResult> {
-    const keys = [...new Set([...(await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
-      union select chain_key from aud_chain_check order by 1`).map((r) => r.k), ...(mode === "full" ? await this.d.anchors?.chains() ?? [] : [])])].sort();   // the archive's own chain list: weekly (break R1: its cost grows with the archive)
+    const inDb = (await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
+      union select chain_key from aud_chain_check order by 1`).map((r) => r.k), dbSet = new Set(inDb);
+    // The archive's own chain list (break R1: its cost grows with the archive) is read by a deep check only, and of the
+    // daily slices only by slice 0 (part 5's break m4: never 24 times a day); the chains it alone holds, removed from the
+    // database whole, are all checked in that run.
+    const archiveOnly = mode === "full" && (slice === undefined || slice === 0) ? (await this.d.anchors?.chains() ?? []).filter((k) => !dbSet.has(k)) : [];
+    const keys = [...new Set([...inDb.filter((x) => slice === undefined || sliceOf(x) === slice), ...archiveOnly])].sort();
     const out: PassResult = { mode, chains: 0, linesRead: 0, findings: [] };
     let failed = 0;
-    for (const k of slice === undefined ? keys : keys.filter((x) => sliceOf(x) === slice)) {
+    for (const k of keys) {
       if (!CHAIN_KEY.test(k)) { failed++; log().trusted("error", "audit_chain_bad_check_row", { rule: "BR-2" }); continue; }
       try {
         // The archive is read before the chain's transaction, so its requests never count against the 120 s (break R1).
