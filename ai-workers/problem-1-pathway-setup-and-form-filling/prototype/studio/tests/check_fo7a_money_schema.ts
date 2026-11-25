@@ -114,7 +114,7 @@ try {
     (sql(DEMO, `create index money_tmp_bad on money_invoice (number)`), indexesNotFirmFirst(DEMO) === "money_tmp_bad") && (sql(DEMO, `drop index money_tmp_bad`), indexesNotFirmFirst(DEMO) === ""));
   ok("FO-7a pass: every amount is an integer — every *_minor column is integer, and no money_ column is a float or a decimal",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor' and data_type <> 'integer'`) === "0"
-    && sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and column_name like '%\\_minor'`) === "11"
+    && sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and column_name like '%\\_minor'`) === "12"   // R1.60 a1 adds money_trust_request.estimated_tax_minor (integer)
     && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and data_type in ('real', 'double precision', 'numeric', 'money')`) === "0");
   ok("FO-7a pass: every table with an amount carries its currency, as an enum of CAD and USD",
     sql(DEMO, `select coalesce(string_agg(distinct c.table_name, ','), '') from information_schema.columns c where c.table_name like 'money\\_%' and c.column_name like '%\\_minor'
