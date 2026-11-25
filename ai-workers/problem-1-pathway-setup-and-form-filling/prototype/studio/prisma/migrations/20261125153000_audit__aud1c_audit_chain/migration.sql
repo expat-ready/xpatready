@@ -52,7 +52,11 @@ CREATE FUNCTION aud_chain_key_of(workspace_id uuid, firm_id uuid) RETURNS text
       OR EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = workspace_id AND w."key" = 'demo') THEN 'sample:' || workspace_id::text
     WHEN firm_id IS NOT NULL THEN firm_id::text
     ELSE 'platform' END $fn$;
+-- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public;
+-- granted for the hand-over and taken back after.
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION aud_chain_key_of(uuid, uuid) OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 
 -- Back-fill: every existing line chained once, oldest first (at, then id) per chain. Chaining is an UPDATE, which
 -- AUD-1a's trigger refuses: it is switched off for this step only, inside this migration's transaction.
@@ -99,7 +103,11 @@ BEGIN
   NEW."entry_hash" := sha256(NEW."prev_hash" || convert_to(aud_event_canonical(NEW), 'UTF8'));
   RETURN NEW;
 END $fn$;
+-- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public;
+-- granted for the hand-over and taken back after.
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION aud_event_zchain() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 CREATE TRIGGER "aud_event_zchain" BEFORE INSERT ON "audit_event" FOR EACH ROW EXECUTE FUNCTION aud_event_zchain();
 
 -- Reset restart: when a DELETE (only ever the demo reset's, AUD-1a) removes a `sample:` chain's lines 1..M (a reset,
@@ -127,7 +135,11 @@ BEGIN
   END LOOP;
   RETURN NULL;
 END $fn$;
+-- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public;
+-- granted for the hand-over and taken back after.
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION aud_event_chain_restart() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 CREATE TRIGGER "aud_event_chain_restart" AFTER DELETE ON "audit_event" REFERENCING OLD TABLE AS gone
   FOR EACH STATEMENT EXECUTE FUNCTION aud_event_chain_restart();
 
