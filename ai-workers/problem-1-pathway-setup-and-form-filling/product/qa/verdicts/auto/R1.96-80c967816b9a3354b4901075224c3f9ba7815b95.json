@@ -1,0 +1,30 @@
+{
+  "item": "R1.96",
+  "name": "96 Reversals, refunds, credit notes, payment plans, write-offs",
+  "pr": 3792,
+  "sha": "80c967816b9a3354b4901075224c3f9ba7815b95",
+  "run_id": "45681111333",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45681111333",
+  "at": "2026-11-25T19:07:23.183Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_96.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45681111333/artifacts/15053578024",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.96-80c967816b9a3354b4901075224c3f9ba7815b95.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
