@@ -6,7 +6,8 @@
 // fails, and its label names the part.
 // Done when (CAPABILITIES R1.57): "A client pays by card through the firm's own account in test mode; the money is booked
 // to operating, never trust (P-567); a failed card leaves the invoice unpaid with the reason".
-//   W1 (the payment account): the Owner's Getting paid › Card payments reads Active; a non-Owner is refused (403).
+//   W1 (the payment account): the account's status is read from Stripe (never seeded as Active) and the Owner's Getting
+//       paid › Card payments says clients can pay by card; a non-Owner is refused (403).
 //   W2 (the pay link): an issued invoice gives a no-login link for its full amount due; a trust request gives none.
 //   W3 (the client opens it): no sign-in; the firm, the invoice number, the amount due and one "Pay … by card" button.
 //   W4 (the card pays): Stripe's hosted page, in test mode, on the firm's own account; test card 4242 4242 4242 4242.
@@ -15,7 +16,8 @@
 //   W6 (a failed card): test card 4000 0000 0000 0002 is declined; the invoice stays unpaid and shows the reason.
 //   W7 (account down): a firm with no connected account shows its offline details or contact line, no card button.
 //   W8 (walls): another firm's staff get 404 on the pay link; an unknown or settled link is the one not-found.
-//   W9 (by screens, to R1.58's first step): Money › Payments lists the card payment as operating.
+//   W9 (by screens, to R1.58's first step): Money › Payments (FO-7s3a part 1) lists the card payment; its "Received
+//       into" column shows only when the trust answer is Yes (concept-payments.md), so operating is proven in W5's data.
 // Stripe test mode only (a live key is refused outside production, settings.ts). Without a test key and the firm's test
 // connected account (J57_STRIPE_ACCOUNT, onboarded once in the sandbox by the Lead, P-824), the copy runs on the fake
 // rail: W1, W3's card, W4-W6 then fail, labelled "part missing: test-mode proof (part 5)". Sample data only, US$0, no
@@ -39,6 +41,9 @@ const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "scre
 const ACCOUNT = process.env.J57_STRIPE_ACCOUNT ?? "";   // the firm's test connected account (acct_…), when the walk runs on Stripe's test mode
 const LIVE = /^acct_[A-Za-z0-9]{1,64}$/.test(ACCOUNT);
 const T5 = LIVE ? "" : " (part missing: test-mode proof, part 5: no test connected account on this copy)";
+/** Review M4 (#3692): each step names the parts it needs, whatever the copy (P-606). */
+const PART = { p2a: "FO-7c part 2a (#3633)", p2b: "FO-7c part 2b", s1: "FO-7s2 part 1", s2: "FO-7s2 part 2", p5: "part 5 (test-mode proof)", s3a: "FO-7s3a part 1 (Money › Payments)" };
+const needs = (...k: (keyof typeof PART)[]) => ` (needs ${k.map((x) => PART[x]).join(", ")})`;
 const { ok, summary } = recorder();
 const { sql: rawSql } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
@@ -86,13 +91,15 @@ try {
     const i = await api(t, "POST", `/front-office/money/invoices/${d.body?.id}/issue`);
     return { id: String(d.body?.id ?? ""), number: String(i.body?.invoice?.number ?? ""), dueMinor: Number(i.body?.invoice?.dueMinor ?? 0) };
   };
-  if (LIVE) sql(`insert into money_payment_account (firm_id, stripe_account_id, status, charges_enabled, payouts_enabled, updated_at) values ('${A}', '${ACCOUNT}', 'ACTIVE', true, true, now()) on conflict (firm_id) do update set stripe_account_id = excluded.stripe_account_id, status = 'ACTIVE', charges_enabled = true, payouts_enabled = true`);
+  // Review M1 (#3692): the account is seeded PENDING (the Owner's hosted sign-up is done once in the sandbox, P-824); its
+  // ACTIVE comes from Stripe through part 5's account read, never from this seed.
+  if (LIVE) sql(`insert into money_payment_account (firm_id, stripe_account_id, status, charges_enabled, payouts_enabled, updated_at) values ('${A}', '${ACCOUNT}', 'PENDING', false, false, now()) on conflict (firm_id) do update set stripe_account_id = excluded.stripe_account_id, status = 'PENDING', charges_enabled = false, payouts_enabled = false`);
   const INV = await issued(TA, PA, 125000, "Professional fee: work permit application"), INV2 = await issued(TA, PA, 30000, "Professional fee: document review");
   ok("J-57 setup: two issued invoices of firm A (1,250.00 and 300.00, Sample)", /^INV-/.test(INV.number) && /^INV-/.test(INV2.number) && INV.dueMinor > 0, [INV, INV2]);
 
   // ------------------------------------------------------------------------------------------- W1: the payment account
   const acct = await api(TA, "GET", "/front-office/money/payment-account"), acctO = await api(TO, "GET", "/front-office/money/payment-account");
-  ok(`R1.57 W1: the Owner reads the firm's payment account as ACTIVE with charges on${T5}`, acct.status === 200 && acct.body?.status === "ACTIVE" && acct.body?.chargesEnabled === true, acct.body);
+  ok(`R1.57 W1: the Owner reads the firm's payment account as ACTIVE with charges on, as Stripe reports it${needs("p5")}${T5}`, acct.status === 200 && acct.body?.status === "ACTIVE" && acct.body?.chargesEnabled === true, acct.body);
   ok("R1.57 W1 fail: a person without agent/payment-rail:connect (a case officer) is refused (403)", acctO.status === 403, acctO.status);
 
   // ---------------------------------------------------------------------------------------------- W2: the pay link
@@ -102,12 +109,22 @@ try {
   ok("R1.57 W2 fail (FO-7c part 2a): a part amount is refused (422): the client pays the full amount due", part.status === 422, part.status);
   const link2 = await api(TA, "POST", `/front-office/money/invoices/${INV2.id}/pay-link`), token2 = String(link2.body?.url ?? "").split("/money/pay/")[1] ?? "";
   const pub = await api(null, "GET", `/public/pay/${token}`);
-  ok("R1.57 W3 (FO-7c part 2a): the client's door, with no sign-in, answers the firm, the invoice number and the amount due, and creates nothing", pub.status === 200 && pub.body?.invoice?.number === INV.number && pub.body?.invoice?.dueMinor === INV.dueMinor && !!pub.body?.firm?.name, pub.body);
-  ok(`R1.57 W3: the card is offered (the firm's account is ACTIVE with charges on)${T5}`, pub.body?.card?.offered === true, pub.body?.card);
+  ok(`R1.57 W3${needs("p2a")}: the client's door, with no sign-in, answers the firm, the invoice number and the amount due, and creates nothing`, pub.status === 200 && pub.body?.invoice?.number === INV.number && pub.body?.invoice?.dueMinor === INV.dueMinor && !!pub.body?.firm?.name, pub.body);
+  ok(`R1.57 W3: the card is offered (the firm's account is ACTIVE with charges on)${needs("p2a", "p5")}${T5}`, pub.body?.card?.offered === true, pub.body?.card);
 
   // ------------------------------------------------------------------------------------------------- W8: the walls
   const other = await api(TB, "POST", `/front-office/money/invoices/${INV.id}/pay-link`), unknown = await api(null, "GET", `/public/pay/${A.replace(/-/g, "")}.${"A".repeat(43)}`);
-  ok("R1.57 W8 fail: firm B's Owner gets 404 on firm A's invoice's pay link; an unknown link is the one not-found", other.status === 404 && unknown.status === 404 && unknown.body?.code === "LINK_NOT_WORKING", [other.status, unknown.body]);
+  ok(`R1.57 W8 fail${needs("p2a")}: firm B's Owner gets 404 on firm A's invoice's pay link (the route exists: firm A's own call made one); an unknown link is the one not-found`, link.status === 200 && other.status === 404 && other.body?.code !== undefined && unknown.status === 404 && unknown.body?.code === "LINK_NOT_WORKING", [other.status, unknown.body]);
+
+  // Review M5 (#3692): a trust request gives no pay link (never trust, P-567), and a settled link is the same not-found.
+  sql(`update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'seed:J-57' where firm_id = '${A}'`);
+  const TR = sql(`insert into money_trust_request (firm_id, person_id, currency, amount_minor, purpose, created_by, updated_at) values ('${A}', '${PA}', 'CAD', 50000, 'Deposit for the application (Sample)', 'seed:J-57', now()) returning id`);
+  const trLink = await api(TA, "POST", `/front-office/money/invoices/${TR}/pay-link`);
+  ok(`R1.57 W2 fail${needs("p2a")}: a trust request (a deposit, never an invoice) gives no pay link: the one 404, nothing stored`, link.status === 200 && trLink.status === 404 && sql(`select coalesce(pay_link_token_hash, 'none') from money_trust_request where id = '${TR}'`) === "none", trLink.status);
+  const INV3 = await issued(TA, PA, 20000, "Professional fee: travel history review"), link3 = await api(TA, "POST", `/front-office/money/invoices/${INV3.id}/pay-link`), token3 = String(link3.body?.url ?? "").split("/money/pay/")[1] ?? "";
+  const paidOff = await api(TA, "POST", `/front-office/money/invoices/${INV3.id}/payments`, { method: "E_TRANSFER", amountMinor: INV3.dueMinor, idempotencyKey: `j57-${run}-settle` });
+  const settled = await api(null, "GET", `/public/pay/${token3}`);
+  ok(`R1.57 W8 fail${needs("p2a")}: once paid in full another way, the link is the same not-found as an unknown one`, link3.status === 200 && paidOff.status < 300 && settled.status === 404 && settled.body?.code === "LINK_NOT_WORKING", { link: link3.status, paid: paidOff.status, settled: settled.status });
 
   // ------------------------------------------------------------------------------------------------ W7: account down
   const invB = await issued(TB, PB, 50000, "Professional fee: consultation follow-up"), linkB = await api(TB, "POST", `/front-office/money/invoices/${invB.id}/pay-link`);
@@ -123,13 +140,13 @@ try {
     await s.goto(`${BASE}/account`);
     await s.getByLabel("Firm key").fill("sample-firm"); await s.getByLabel("Work email").fill(emailA); await s.getByRole("button", { name: "Sign in" }).click();
     await s.locator("[data-account], [data-terms-page]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
-    await s.goto(`${BASE}/settings/payments`); await s.waitForLoadState("networkidle").catch(() => undefined);
+    await s.goto(`${BASE}/money/settings/getting-paid`); await s.waitForLoadState("networkidle").catch(() => undefined);
     await s.screenshot({ path: join(SHOTS, "w1-card-payments-1440.png"), fullPage: true });
-    ok(`R1.57 W1 (part missing: FO-7s2 part 1, Getting paid › Card payments): the Owner's screen shows the card payments status in words${T5}`,
-      /card payments/i.test(await s.locator("[data-card-payments]").innerText().catch(() => "")) && /active/i.test(await s.locator("[data-card-payments-status]").innerText().catch(() => "")));
+    ok(`R1.57 W1: Getting paid › Card payments says, in the concept's words, that clients can pay invoices by card${needs("s1", "p5")}${T5}`,
+      (await s.getByText("Clients can pay invoices by card. Money goes to your own Stripe account.").count()) >= 1);
     await s.goto(`${BASE}/money/invoices/${INV2.id}`); await s.waitForLoadState("networkidle").catch(() => undefined);
     await s.screenshot({ path: join(SHOTS, "w2-invoice-pay-link-1440.png"), fullPage: true });
-    ok("R1.57 W2 (part missing: FO-7s2 part 2, the invoice's Copy pay link): the issued invoice offers a pay link by screen", (await s.getByRole("button", { name: /copy pay link|send pay link/i }).count()) >= 1);
+    ok(`R1.57 W2${needs("s2")}: the issued invoice offers a pay link by screen`, (await s.getByRole("button", { name: /copy pay link|send pay link/i }).count()) >= 1);
     await staffCtx.close();
 
     // The client's side: no sign-in, a phone first (375 px) and the desk (1440 px).
@@ -138,7 +155,7 @@ try {
     await c.goto(`${BASE}/money/pay/${token}`); await c.waitForLoadState("networkidle").catch(() => undefined);
     await c.screenshot({ path: join(SHOTS, "w3-pay-page-1440.png"), fullPage: true });
     const payButton = c.getByRole("button", { name: new RegExp(`Pay CAD ${cad(INV.dueMinor).replace(".", "\\.")} by card`) });
-    ok("R1.57 W3 (part missing: FO-7s2 part 2, the client's pay page): the page shows the invoice number, the amount due and one \"Pay … by card\" button, no amount field",
+    ok(`R1.57 W3${needs("p2a", "s2", "p5")}: the client's pay page shows the invoice number, the amount due and one "Pay … by card" button, no amount field`,
       (await c.getByText(INV.number).count()) >= 1 && (await payButton.count()) === 1 && (await c.getByRole("spinbutton").count()) + (await c.locator("input[name*=amount i]").count()) === 0);
     let paidOnStripe = false;
     if (LIVE && (await payButton.count()) === 1) {
@@ -146,18 +163,18 @@ try {
       try { await payOnStripe(c, "4242 4242 4242 4242"); await c.waitForURL(/\/money\/pay\/.+\/done/, { timeout: 60_000 }); paidOnStripe = true; } catch (e) { console.log(`  note: Stripe's page: ${String(e).split("\n")[0]}`); }
       await c.screenshot({ path: join(SHOTS, "w4-stripe-return-1440.png"), fullPage: true });
     }
-    ok(`R1.57 W4: the card pays on Stripe's hosted page (test mode, the firm's own account) and comes back to the return page${T5}`, paidOnStripe);
-    ok("R1.57 W5 (part missing: FO-7s2 part 2, the return page): the return page says the payment is being confirmed until Stripe's event", paidOnStripe && /being confirmed|payment received/i.test(await c.locator("main").innerText().catch(() => "")));
+    ok(`R1.57 W4${needs("p2a", "s2", "p5")}: the card pays on Stripe's hosted page (test mode, the firm's own account) and comes back to the return page${T5}`, paidOnStripe);
+    ok(`R1.57 W5${needs("s2", "p5")}: the return page says the payment is being confirmed until Stripe's event`, paidOnStripe && /being confirmed|payment received/i.test(await c.locator("main").innerText().catch(() => "")));
     // Paid by the event, never by the redirect (AG-6-14 rule 5): wait for the event or the poll (part 2b), at most 90 s.
     const cardPay = () => sql(`select coalesce((select method || ':' || received_into || ':' || amount_minor from money_payment where firm_id = '${A}' and invoice_id = '${INV.id}' and method = 'CARD' limit 1), 'none')`);
     for (let i = 0; paidOnStripe && cardPay() === "none" && i < 45; i++) await new Promise((r) => setTimeout(r, 2000));
-    ok(`R1.57 W5 (part missing: FO-7c part 2b, paid by Stripe's event): one card payment for the full amount, received into OPERATING${T5}`, cardPay() === `CARD:OPERATING:${INV.dueMinor}`, cardPay());
-    ok(`R1.57 W5: never trust (P-567): no trust entry for the client, and exactly one card payment and one receipt on the invoice${T5}`,
+    ok(`R1.57 W5${needs("p2b", "p5")}: paid by Stripe's event: one card payment for the full amount, received into OPERATING${T5}`, cardPay() === `CARD:OPERATING:${INV.dueMinor}`, cardPay());
+    ok(`R1.57 W5${needs("p2b", "p5")}: never trust (P-567): no trust entry for the client, and exactly one card payment and one receipt on the invoice${T5}`,
       sql(`select count(*) from money_trust_entry where firm_id = '${A}'`) === "0" && sql(`select count(*) from money_payment where invoice_id = '${INV.id}' and method = 'CARD'`) === "1"
         && sql(`select count(*) from money_receipt r join money_payment p on p.firm_id = r.firm_id and p.id = r.payment_id where p.invoice_id = '${INV.id}'`) === "1");
     const TA2 = await signIn("sample-firm", emailA);   // the browser's sign-in as the same Owner replaced the API session
     const after = await api(TA2, "GET", `/front-office/money/invoices/${INV.id}/detail`);
-    ok(`R1.57 W5: the invoice is Paid, nothing left due${T5}`, after.body?.invoice?.statusWord === "Paid" && after.body?.invoice?.dueMinor === 0, { status: after.body?.invoice?.statusWord, due: after.body?.invoice?.dueMinor });
+    ok(`R1.57 W5${needs("p2b", "p5")}: the invoice is Paid, nothing left due${T5}`, after.body?.invoice?.statusWord === "Paid" && after.body?.invoice?.dueMinor === 0, { status: after.body?.invoice?.statusWord, due: after.body?.invoice?.dueMinor });
 
     // W6: a declined card (Stripe's test card for a generic decline).
     let declined = false;
@@ -168,11 +185,11 @@ try {
       try { await payOnStripe(c, "4000 0000 0000 0002"); await c.getByText(/declined/i).first().waitFor({ timeout: 30_000 }); declined = true; } catch (e) { console.log(`  note: Stripe's page: ${String(e).split("\n")[0]}`); }
       await c.screenshot({ path: join(SHOTS, "w6-declined-1440.png"), fullPage: true });
     }
-    ok(`R1.57 W6: Stripe declines test card 4000 0000 0000 0002 on its page${T5}`, declined);
+    ok(`R1.57 W6${needs("s2", "p5")}: Stripe declines test card 4000 0000 0000 0002 on its page${T5}`, declined);
     for (let i = 0; declined && Number(sql(`select count(*) from audit_event where action = 'payment.failed' and entity_key = '${INV2.id}'`)) === 0 && i < 45; i++) await new Promise((r) => setTimeout(r, 2000));
     const inv2 = await api(TA2, "GET", `/front-office/money/invoices/${INV2.id}/detail`), pub2 = await api(null, "GET", `/public/pay/${token2}`);
-    ok(`R1.57 W6 fail: the declined card leaves the invoice unpaid (its amount due unchanged, no card payment)${T5}`, declined && inv2.body?.invoice?.dueMinor === INV2.dueMinor && sql(`select count(*) from money_payment where invoice_id = '${INV2.id}'`) === "0", inv2.body?.invoice?.dueMinor ?? inv2.status);
-    ok(`R1.57 W6 (part missing: FO-7c part 2b, the failed card's reason): the client's answer and the invoice's trail carry the reason Stripe gave${T5}`,
+    ok(`R1.57 W6 fail${needs("s2", "p5")}: the declined card leaves the invoice unpaid (its amount due unchanged, no card payment)${T5}`, declined && inv2.body?.invoice?.dueMinor === INV2.dueMinor && sql(`select count(*) from money_payment where invoice_id = '${INV2.id}'`) === "0", inv2.body?.invoice?.dueMinor ?? inv2.status);
+    ok(`R1.57 W6${needs("p2b", "p5")}: the failed card's reason: the client's answer and the invoice's trail carry the reason Stripe gave${T5}`,
       /declined/i.test(JSON.stringify(pub2.body?.lastFailure ?? "")) && Number(sql(`select count(*) from audit_event where action = 'payment.failed' and entity_key = '${INV2.id}'`)) === 1, pub2.body?.lastFailure ?? null);
     await clientCtx.close();
 
@@ -184,7 +201,7 @@ try {
     await d.goto(`${BASE}/money/payments`); await d.waitForLoadState("networkidle").catch(() => undefined);
     await d.screenshot({ path: join(SHOTS, "w9-money-payments-1440.png"), fullPage: true });
     const rows = (await d.locator("[data-payment-row]").allInnerTexts().catch(() => [])).join(" | ");
-    ok(`R1.57 W9: the walk ends at R1.58's first step: Money › Payments lists the card payment as operating${T5}`, /card/i.test(rows) && /operating/i.test(rows) && rows.includes(cad(INV.dueMinor)), rows.slice(0, 200));
+    ok(`R1.57 W9${needs("s3a", "p2b", "p5")}: the walk ends at R1.58's first step: Money › Payments lists the card payment (operating is proven in W5's data)${T5}`, /card/i.test(rows) && rows.includes(cad(INV.dueMinor)), rows.slice(0, 200));
     await deskCtx.close();
   } finally { await browser.close(); }
 } finally {
