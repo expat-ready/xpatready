@@ -7,7 +7,7 @@ DROP TABLE "plat_custom_field";
 DROP TABLE "plat_saved_view";
 DROP FUNCTION pf_custom_field_kept(), pf_custom_value_checked(), pf_custom_view_kept(),
   pf_custom_value_ok("PlatCustomFieldType", jsonb, jsonb), pf_custom_options_ok("PlatCustomFieldType", jsonb),
-  pf_custom_names_ok(jsonb), pf_custom_name_ok(text, int);
+  pf_custom_names_ok(jsonb), pf_custom_label_ok(text, int), pf_custom_name_ok(text, int), pf_custom_trim(text);
 DROP TYPE "PlatCustomFieldType";
 DELETE FROM "platform_role_permission" WHERE "permission_key" = 'agent/custom-field:manage';
 DELETE FROM "platform_permission_key" WHERE "key" = 'agent/custom-field:manage';

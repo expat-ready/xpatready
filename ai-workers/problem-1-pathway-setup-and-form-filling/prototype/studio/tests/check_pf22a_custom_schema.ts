@@ -12,7 +12,7 @@
 //   tsx studio/tests/check_pf22a_custom_schema.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
@@ -128,15 +128,15 @@ try {
   const pA = uuid();
   const TYPES: [string, unknown[], unknown[], unknown[]][] = [
     // type, options, good values, bad values
-    ["TEXT", [], ["Met at the fair"], ["", "   ", 5, "x".repeat(501), true]],
+    ["TEXT", [], ["Met at the fair", " padded is kept "], ["", "   ", "\t\n", "\u00a0", "\u200b", "\u3000", 5, "x".repeat(501), true]],
     ["LONG_TEXT", [], ["A longer note"], ["x".repeat(5001), ["a"]]],
-    ["NUMBER", [], [42, -1.5, 0], ["42", true, 1e16]],
+    ["NUMBER", [], [42, -1.5, 0, 0.1], ["42", true, 1e16]],
     ["DATE", [], ["2026-11-25", "2024-02-29"], ["tomorrow", "2026-02-30", "2025-02-29", "25/11/2026", "2026-11-25T10:00:00Z", 20261125]],
     ["MULTI_SELECT", ["Red", "Blue"], [["Red"], ["Red", "Blue"]], [[], ["Green"], ["Red", "Red"], "Red", [1]]],
     ["CHECKBOX", [], [true, false], ["true", 1, null]],
-    ["EMAIL", [], ["person@example.com"], ["person", "a@b", "two words@example.com"]],
-    ["PHONE", [], ["+1 416 555 0100", "(416) 555-0100"], ["call me", "12", "+1 416 555 0100 ext 9"]],
-    ["URL", [], ["https://example.com/a"], ["example.com", "ftp://example.com", "https://exa mple.com"]],
+    ["EMAIL", [], ["person@example.com", "first.last+tag@mail.example.ca"], ["person", "a@b", "two words@example.com", "<script>@x.y", "a@b..c", "a@b.c\u3000"]],
+    ["PHONE", [], ["+1 416 555 0100", "(416) 555-0100"], ["call me", "12", "+1 416 555 0100 ext 9", "((((", "(   )", "0---"]],
+    ["URL", [], ["https://example.com/a"], ["example.com", "ftp://example.com", "https://exa mple.com", "https:// ", "https://"]],
   ];
   const typeFields: Record<string, string> = {};
   for (const [t, o] of TYPES) { typeFields[t] = uuid(); sql(field(typeFields[t], firmA, sA, `f_${t.toLowerCase()}`, t, o)); }
@@ -199,6 +199,68 @@ try {
     && refused(`update plat_saved_view set list_kind = 'fo.leads' where id = '${vP}'`, /never change/) && refused(`update plat_saved_view set created_by = '${sA2}' where id = '${vP}'`, /never change/));
   ok("PF-22a DW7 pass: a leaver's shared view stays (the person deactivated, the view kept)",
     (() => { sql(`begin; update platform_staff set status = 'DEACTIVATED' where id = '${sA2}'; commit`); const n = sql(`select count(*) from plat_saved_view where id = '${vS}'`); sql(`update platform_staff set status = 'ACTIVE' where id = '${sA2}'`); return n === "1"; })());
+
+  // ------------------------------------------------------------------------------- review and break round 1
+  const rawValue = (fieldId: string, v: string) => `insert into plat_custom_value (id, firm_id, field_id, entity_kind, entity_id, value, updated_by, updated_at)
+     values (gen_random_uuid(), '${firmA}', '${fieldId}', 'fo_prospect', gen_random_uuid(), '${v}'::jsonb, '${sA}', now())`;
+  ok("PF-22a break m4 fail: a NUMBER a JSON reader cannot get back unchanged is refused (1e-400, 0.1234567890123456789, 999999999999999.9)",
+    ["1e-400", "0.1234567890123456789", "999999999999999.9"].every((n) => refused(rawValue(typeFields.NUMBER, n), /does not fit its field's type \(NUMBER\)/)));
+  ok("PF-22a break m1 fail: a label or a choice padded or made only of Unicode spaces is refused",
+    refused(field(uuid(), firmA, sA, "lbl3", "TEXT").replace("'Label lbl3'", "E'\\tTabbed'"), /plat_custom_field_shape/)
+    && refused(field(uuid(), firmA, sA, "lbl4", "TEXT").replace("'Label lbl4'", "'　'"), /plat_custom_field_shape/)
+    && refused(field(uuid(), firmA, sA, "opt_tab", "SELECT", ["\tYes", "No"]), /plat_custom_field_options/));
+  ok("PF-22a break m2 fail: choices that differ only by case or spelling (NFC) are one choice: refused",
+    refused(field(uuid(), firmA, sA, "opt_case", "SELECT", ["Élan", "élan"]), /plat_custom_field_options/)
+    && refused(field(uuid(), firmA, sA, "opt_nfc", "SELECT", ["café", "café"]), /plat_custom_field_options/));
+  ok("PF-22a review m1 fail: a label over 80, a choice over 80, more than 100 choices, help text over 300 or a negative order is refused",
+    refused(field(uuid(), firmA, sA, "long_lbl", "TEXT").replace("'Label long_lbl'", `'${"L".repeat(81)}'`), /plat_custom_field_shape/)
+    && refused(field(uuid(), firmA, sA, "long_opt", "SELECT", ["x".repeat(81)]), /plat_custom_field_options/)
+    && refused(field(uuid(), firmA, sA, "many_opt", "SELECT", Array.from({ length: 101 }, (_, i) => `Choice ${i}`)), /plat_custom_field_options/)
+    && refused(`update plat_custom_field set help_text = '${"h".repeat(301)}' where id = '${fSel}'`, /plat_custom_field_shape/)
+    && refused(`update plat_custom_field set position = -1 where id = '${fSel}'`, /plat_custom_field_shape/));
+  ok("PF-22a review m1 pass: exactly 80, 100 choices, 300 of help text are kept",
+    (() => { const f = uuid(); sql(field(f, firmA, sA, "edge_80", "SELECT", Array.from({ length: 100 }, (_, i) => `Choice ${i}`)).replace("'Label edge_80'", `'${"L".repeat(80)}'`));
+      sql(`update plat_custom_field set help_text = '${"h".repeat(300)}' where id = '${f}'`); return true; })());
+  ok("PF-22a review m2 / m1 fail: a field's id and created time never change", refused(`update plat_custom_field set id = gen_random_uuid() where id = '${fDate}'`, /never change/)
+    && refused(`update plat_custom_field set created_at = now() - interval '1 day' where id = '${fDate}'`, /never change/));
+  ok("PF-22a review m1 fail: a value's firm, field, kind and id never change",
+    refused(`update plat_custom_value set field_id = '${fDate}' where field_id = '${fSel}' and entity_id = '${pA}'`, /never change/)
+    && refused(`update plat_custom_value set entity_kind = 'fo_person' where field_id = '${fSel}' and entity_id = '${pA}'`, /never change/)
+    && refused(`update plat_custom_value set firm_id = '${firmB}' where field_id = '${fSel}' and entity_id = '${pA}'`, /never change|foreign key/)
+    && refused(`update plat_custom_value set id = gen_random_uuid() where field_id = '${fSel}' and entity_id = '${pA}'`, /never change/));
+  ok("PF-22a break M1 fail: a type or choices change at REPEATABLE READ or SERIALIZABLE is refused (its values check would read an old snapshot)",
+    refused(`begin isolation level repeatable read; update plat_custom_field set options = '["Partner A", "Partner B", "Partner D"]' where id = '${fSel}'; commit`, /only at READ COMMITTED/)
+    && refused(`begin isolation level serializable; update plat_custom_field set type = 'NUMBER' where id = '${typeFields.TEXT}'; commit`, /only at READ COMMITTED/));
+  ok("PF-22a break M1 pass: at REPEATABLE READ a field's label, order and archive still change; at READ COMMITTED its choices do",
+    (() => { sql(`begin isolation level repeatable read; update plat_custom_field set label = 'Referral partner (RR)', position = 4 where id = '${fSel}'; commit`);
+      sql(`update plat_custom_field set options = '["Partner A", "Partner B", "Partner D"]' where id = '${fSel}'`); return sql(`select label from plat_custom_field where id = '${fSel}'`) === "Referral partner (RR)"; })());
+  {
+    // Session 2 writes a value (its trigger holds the field FOR SHARE) and stays open 2 s; session 1's type change waits
+    // for that lock, then its READ COMMITTED check reads the committed value and refuses.
+    const f = uuid(); sql(field(f, firmA, sA, "race_num", "NUMBER"));
+    const s2 = spawn(join(BIN, "psql"), [urlOf(DB), "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", `begin; ${value(firmA, f, uuid(), 42, sA)}; select pg_sleep(2); commit;`], { stdio: "ignore" });
+    const s2done = new Promise<number | null>((res) => s2.on("exit", res));
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);   // session 2 is inside its transaction
+    const t0 = Date.now(), refusedRace = refused(`update plat_custom_field set type = 'DATE' where id = '${f}'`, /type of a field with values never changes/), waited = Date.now() - t0;
+    const code = await s2done;
+    ok("PF-22a break M1 pass (two sessions): a type change waits for another session's uncommitted value, then sees it and is refused; the value stands",
+      refusedRace && waited > 500 && code === 0 && sql(`select type from plat_custom_field where id = '${f}'`) === "NUMBER" && sql(`select value from plat_custom_value where field_id = '${f}'`) === "42", { refusedRace, waited, code });
+  }
+  ok("PF-22a break m6 (c) fail: a value of an archived field is not deleted (kept until un-archived); un-archived it is",
+    (() => { const e = uuid(); sql(value(firmA, fDate, e, "2026-03-03", sA)); sql(`update plat_custom_field set archived_at = now() where id = '${fDate}'`);
+      const kept = refused(`delete from plat_custom_value where field_id = '${fDate}' and entity_id = '${e}'`, /archived/);
+      sql(`update plat_custom_field set archived_at = null where id = '${fDate}'`); sql(`delete from plat_custom_value where field_id = '${fDate}' and entity_id = '${e}'`);
+      return kept && sql(`select count(*) from plat_custom_value where entity_id = '${e}'`) === "0"; })());
+  ok("PF-22a break m6 (d) / review m1 fail: a view's filter over 16 KB, its sort over 2 KB, more than 50 columns, a column twice, or a change of its id, firm or created time is refused",
+    refused(view(uuid(), firmA, sA, sA, { filter: { big: "x".repeat(16_400) } }), /plat_saved_view_shape/)
+    && refused(`update plat_saved_view set sort = '${j({ by: "x".repeat(2100) })}' where id = '${vS}'`, /plat_saved_view_shape/)
+    && refused(view(uuid(), firmA, sA, sA, { columns: Array.from({ length: 51 }, (_, i) => `c${i}`) }), /plat_saved_view_(shape|columns)/)
+    && refused(view(uuid(), firmA, sA, sA, { columns: ["name", "name"] }), /plat_saved_view_columns/)
+    && refused(`update plat_saved_view set id = gen_random_uuid() where id = '${vS}'`, /never change/)
+    && refused(`update plat_saved_view set firm_id = '${firmB}' where id = '${vS}'`, /never change|foreign key|firm/)
+    && refused(`update plat_saved_view set created_at = now() - interval '1 day' where id = '${vS}'`, /never change/));
+  ok("PF-22a review m1 pass: a view of exactly 50 distinct columns and a sort object are kept",
+    (() => { const id = uuid(); sql(view(id, firmA, sA, sA, { columns: Array.from({ length: 50 }, (_, i) => `c${i}`), name: "Fifty" })); sql(`update plat_saved_view set sort = '{"by":"name","dir":"asc"}' where id = '${id}'`); return true; })());
 
   // ------------------------------------------------------------------------------- DW6: PF-12's wall and the firm keys
   ok("PF-22a DW6 fail: a field of firm A created by firm B's staff is refused by the (firm_id, staff_id) key", refused(field(uuid(), firmA, sB, "cross", "TEXT"), /foreign key/));

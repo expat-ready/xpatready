@@ -7,14 +7,16 @@
 --     of 1-100 distinct labels (each 1-80) for a SELECT or MULTI_SELECT and [] for every other type
 --     (pf_custom_options_ok). Never deleted or truncated (archive instead: archived_at; its values kept). Its firm, kind,
 --     key, creator and created time never change; its type never changes once it has a value; an option a value uses is
---     never removed from its list (archive the field and add a new one, PF-22a's rule).
+--     never removed from its list (archive the field and add a new one, PF-22a's rule); a type or choices change runs
+--     only at READ COMMITTED, where its values check sees every committed value (break round 1 M1). Choices are distinct
+--     in NFC and Unicode lower case; "blank" counts every Unicode space.
 --   * plat_custom_value: the value is checked against its field's type and options (pf_custom_value_ok, the same rules as
 --     the API's zod schema: TEXT 1-500 characters, LONG_TEXT 1-5000, NUMBER a finite JSON number, DATE an ISO calendar
 --     day, SELECT one option, MULTI_SELECT 1+ distinct options, CHECKBOX true or false, EMAIL, PHONE and URL their plain
---     shapes); its entity kind is its field's; a value of an archived field is not written; its firm, field, kind and
---     record never change. A cleared value is a deleted row.
---   * plat_saved_view: name 1-80 characters, list kind a name, filter a JSON object, columns a list of at most 50 names,
---     sort null or an object; its firm, list kind, creator and created time never change. owner_staff_id null = shared.
+--     shapes); its entity kind is its field's; a value of an archived field is not written, changed or deleted (kept
+--     until un-archived); its id, firm, field, kind and record never change. A cleared value is a deleted row.
+--   * plat_saved_view: name 1-80 characters, list kind a name, filter a JSON object of at most 16 KB, columns a list of at
+--     most 50 distinct names, sort null or an object of at most 2 KB; its firm, list kind, creator and created time never change. owner_staff_id null = shared.
 --   * Staff keys are the pair (firm_id, staff_id) → platform_staff(firm_id, id) (PF-3's rule); a value's field is the
 --     (firm_id, field_id) pair, so nothing of firm A names anything of firm B.
 --   * PF-12's wall on all three: a forced policy naming the session's firm and the firm-first gate; the trigger functions
@@ -125,31 +127,44 @@ ALTER TABLE "plat_saved_view" ADD CONSTRAINT "plat_saved_view_firm_id_owner_staf
 ALTER TABLE "plat_saved_view" ADD CONSTRAINT "plat_saved_view_firm_id_created_by_fkey" FOREIGN KEY ("firm_id", "created_by") REFERENCES "platform_staff"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 
--- The shapes (immutable, no table read: usable in checks).
+-- The shapes (no table read; all but pf_custom_value_ok are immutable and used in checks). "Blank" counts every Unicode space, not only ASCII ones
+-- (break m1): a tab, a no-break space, a zero-width space or an ideographic space is no text.
+CREATE FUNCTION pf_custom_trim(s text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = pg_catalog AS $fn$
+  SELECT regexp_replace(s, '^[[:space:]\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+|[[:space:]\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+$', '', 'g') $fn$;
+
 CREATE FUNCTION pf_custom_name_ok(n text, max_len int) RETURNS boolean LANGUAGE sql IMMUTABLE PARALLEL SAFE
   SET search_path = pg_catalog AS $fn$ SELECT n ~ '^[a-z][a-z0-9_.]*$' AND length(n) <= max_len $fn$;
 
+-- A label or a choice: 1 to max characters, nothing blank at either end.
+CREATE FUNCTION pf_custom_label_ok(s text, max_len int) RETURNS boolean LANGUAGE sql IMMUTABLE PARALLEL SAFE
+  SET search_path = pg_catalog, public AS $fn$ SELECT s IS NOT NULL AND length(s) BETWEEN 1 AND max_len AND s = pf_custom_trim(s) $fn$;
+
+-- Distinct choices compare in one spelling (NFC) and Unicode lower case, whatever the database's collation (break m2:
+-- "café" composed and decomposed, "Élan" and "élan" are one choice; pg_c_utf8 is PostgreSQL 17+'s built-in Unicode case).
 CREATE FUNCTION pf_custom_options_ok(t "PlatCustomFieldType", o jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
-  SET search_path = pg_catalog AS $fn$
+  SET search_path = pg_catalog, public AS $fn$
 DECLARE n int;
 BEGIN
   IF o IS NULL OR jsonb_typeof(o) <> 'array' THEN RETURN false; END IF;
   n := jsonb_array_length(o);
   IF t NOT IN ('SELECT', 'MULTI_SELECT') THEN RETURN n = 0; END IF;
   IF n < 1 OR n > 100 THEN RETURN false; END IF;
-  RETURN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(o) e
-                      WHERE jsonb_typeof(e) <> 'string' OR length(btrim(e #>> '{}')) < 1 OR length(e #>> '{}') > 80
-                         OR e #>> '{}' <> btrim(e #>> '{}'))
-     AND (SELECT count(DISTINCT lower(e #>> '{}')) FROM jsonb_array_elements(o) e) = n;
+  RETURN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(o) e WHERE jsonb_typeof(e) <> 'string' OR NOT pf_custom_label_ok(e #>> '{}', 80))
+     AND (SELECT count(DISTINCT lower(normalize(e #>> '{}', NFC) COLLATE pg_c_utf8)) FROM jsonb_array_elements(o) e) = n;
 END $fn$;
 
-CREATE FUNCTION pf_custom_value_ok(t "PlatCustomFieldType", o jsonb, v jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
-  SET search_path = pg_catalog AS $fn$
-DECLARE s text; d date; n int;
+-- STABLE, not IMMUTABLE (review m4): the date cast and to_char are STABLE; only the triggers call it, never a check.
+CREATE FUNCTION pf_custom_value_ok(t "PlatCustomFieldType", o jsonb, v jsonb) RETURNS boolean LANGUAGE plpgsql STABLE PARALLEL SAFE
+  SET search_path = pg_catalog, public AS $fn$
+DECLARE s text; d date; n int; x numeric;
 BEGIN
   IF v IS NULL THEN RETURN false; END IF;
   IF t = 'CHECKBOX' THEN RETURN jsonb_typeof(v) = 'boolean'; END IF;
-  IF t = 'NUMBER' THEN RETURN jsonb_typeof(v) = 'number' AND abs((v #>> '{}')::numeric) < 1e15; END IF;
+  IF t = 'NUMBER' THEN
+    IF jsonb_typeof(v) <> 'number' THEN RETURN false; END IF;
+    -- A number a JSON reader gets back unchanged (break m4): finite, below 1e15, and equal to its double-precision reading.
+    BEGIN x := (v #>> '{}')::numeric; RETURN abs(x) < 1e15 AND x = ((v #>> '{}')::float8)::numeric; EXCEPTION WHEN others THEN RETURN false; END;
+  END IF;
   IF t = 'MULTI_SELECT' THEN
     IF jsonb_typeof(v) <> 'array' THEN RETURN false; END IF;
     n := jsonb_array_length(v);
@@ -159,14 +174,16 @@ BEGIN
   END IF;
   IF jsonb_typeof(v) <> 'string' THEN RETURN false; END IF;
   s := v #>> '{}';
-  IF length(btrim(s)) < 1 THEN RETURN false; END IF;
+  IF length(pf_custom_trim(s)) < 1 THEN RETURN false; END IF;
   CASE t
     WHEN 'TEXT' THEN RETURN length(s) <= 500;
     WHEN 'LONG_TEXT' THEN RETURN length(s) <= 5000;
     WHEN 'SELECT' THEN RETURN o @> jsonb_build_array(s);
-    WHEN 'EMAIL' THEN RETURN length(s) <= 254 AND s ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
-    WHEN 'PHONE' THEN RETURN s ~ '^\+?[0-9(][0-9 ().-]{3,29}$';
-    WHEN 'URL' THEN RETURN length(s) <= 2000 AND s ~* '^https?://[^[:space:]]+$';
+    -- Plain shapes (break m3): an address with no space, bracket, quote or doubled dot; a phone of 4 to 20 digits; a web
+    -- address whose host starts with a letter or digit.
+    WHEN 'EMAIL' THEN RETURN length(s) <= 254 AND s = pf_custom_trim(s) AND s ~ '^[^@[:space:]<>()\[\],;:"\\]+@[A-Za-z0-9][^@[:space:]<>()\[\],;:"\\]*\.[^@[:space:]<>()\[\],;:"\\.]+$' AND s !~ '\.\.';
+    WHEN 'PHONE' THEN RETURN s ~ '^\+?[0-9(][0-9 ().-]{3,29}$' AND length(regexp_replace(s, '[^0-9]', '', 'g')) BETWEEN 4 AND 20;
+    WHEN 'URL' THEN RETURN length(s) <= 2000 AND s ~* '^https?://[a-z0-9][^[:space:]]*$' AND s = pf_custom_trim(s);
     WHEN 'DATE' THEN
       IF s !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN RETURN false; END IF;
       BEGIN d := s::date; EXCEPTION WHEN others THEN RETURN false; END;
@@ -178,25 +195,28 @@ END $fn$;
 CREATE FUNCTION pf_custom_names_ok(a jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE PARALLEL SAFE
   SET search_path = pg_catalog AS $fn$
   SELECT jsonb_typeof(a) = 'array' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a) e
-    WHERE jsonb_typeof(e) <> 'string' OR NOT ((e #>> '{}') ~ '^[A-Za-z][A-Za-z0-9_.:-]*$' AND length(e #>> '{}') <= 64)) $fn$;
+    WHERE jsonb_typeof(e) <> 'string' OR NOT ((e #>> '{}') ~ '^[A-Za-z][A-Za-z0-9_.:-]*$' AND length(e #>> '{}') <= 64))
+    AND (SELECT count(DISTINCT e) FROM jsonb_array_elements(a) e) = jsonb_array_length(a) $fn$;
 
 ALTER TABLE "plat_custom_field"
   ADD CONSTRAINT "plat_custom_field_shape" CHECK (
     pf_custom_name_ok("entity_kind", 64) AND "key" ~ '^[a-z][a-z0-9_]*$' AND length("key") <= 40
-    AND length(btrim("label")) BETWEEN 1 AND 80 AND "label" = btrim("label")
-    AND ("help_text" IS NULL OR length("help_text") <= 300) AND "position" >= 0),
+    AND pf_custom_label_ok("label", 80) AND ("help_text" IS NULL OR length("help_text") <= 300) AND "position" >= 0),
   ADD CONSTRAINT "plat_custom_field_options" CHECK (pf_custom_options_ok("type", "options"));
 ALTER TABLE "plat_custom_value"
   ADD CONSTRAINT "plat_custom_value_kind" CHECK (pf_custom_name_ok("entity_kind", 64));
+-- A view's filter at most 16 KB and its sort 2 KB as text; its columns distinct names (break m6 (d)).
 ALTER TABLE "plat_saved_view"
   ADD CONSTRAINT "plat_saved_view_shape" CHECK (
-    pf_custom_name_ok("list_kind", 64) AND length(btrim("name")) BETWEEN 1 AND 80 AND "name" = btrim("name")
-    AND jsonb_typeof("filter") = 'object' AND ("sort" IS NULL OR jsonb_typeof("sort") = 'object')
+    pf_custom_name_ok("list_kind", 64) AND pf_custom_label_ok("name", 80)
+    AND jsonb_typeof("filter") = 'object' AND length("filter"::text) <= 16384 AND ("sort" IS NULL OR (jsonb_typeof("sort") = 'object' AND length("sort"::text) <= 2048))
     AND jsonb_typeof("columns") = 'array' AND jsonb_array_length("columns") <= 50),
   ADD CONSTRAINT "plat_saved_view_columns" CHECK (pf_custom_names_ok("columns"));
 
--- A field is never removed (archive instead); its firm, kind, key, creator and created time never change; its type never
--- changes once a value exists; an option a value uses stays in its list. The field's values are locked FOR SHARE meanwhile.
+-- A field is never removed (archive instead); its id, firm, kind, key, creator and created time never change; its type
+-- never changes once a value exists; an option a value uses stays in its list. The field's values are read FOR SHARE.
+-- A type or choices change runs only at READ COMMITTED (break M1): at REPEATABLE READ or SERIALIZABLE the check would read
+-- the transaction's snapshot and miss a value committed after it began, so such a change is refused there.
 CREATE FUNCTION pf_custom_field_kept() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
   IF TG_RELID IS DISTINCT FROM 'public.plat_custom_field'::regclass THEN
@@ -205,10 +225,14 @@ BEGIN
   IF TG_OP <> 'UPDATE' THEN
     RAISE EXCEPTION 'plat_custom_field: a field is archived, never removed (% refused)', TG_OP USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF NEW."firm_id" IS DISTINCT FROM OLD."firm_id" OR NEW."entity_kind" IS DISTINCT FROM OLD."entity_kind"
+  IF NEW."id" IS DISTINCT FROM OLD."id" OR NEW."firm_id" IS DISTINCT FROM OLD."firm_id" OR NEW."entity_kind" IS DISTINCT FROM OLD."entity_kind"
      OR NEW."key" IS DISTINCT FROM OLD."key" OR NEW."created_by" IS DISTINCT FROM OLD."created_by"
      OR NEW."created_at" IS DISTINCT FROM OLD."created_at" THEN
-    RAISE EXCEPTION 'plat_custom_field: a field''s firm, record kind, key and creator never change' USING ERRCODE = 'insufficient_privilege';
+    RAISE EXCEPTION 'plat_custom_field: a field''s id, firm, record kind, key and creator never change' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF (NEW."type" IS DISTINCT FROM OLD."type" OR NEW."options" IS DISTINCT FROM OLD."options")
+     AND current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'plat_custom_field: a field''s type or choices change only at READ COMMITTED (the values check must see every committed value)' USING ERRCODE = 'object_not_in_prerequisite_state';
   END IF;
   IF NEW."type" IS DISTINCT FROM OLD."type" AND EXISTS (
        SELECT 1 FROM "plat_custom_value" v WHERE v."firm_id" = OLD."firm_id" AND v."field_id" = OLD."id" FOR SHARE) THEN
@@ -228,40 +252,48 @@ REVOKE DELETE, TRUNCATE ON "plat_custom_field" FROM xr_data;
 
 -- A value is checked against its field (read in the same firm, locked FOR SHARE so its type and options stay as read until
 -- this write commits): the same record kind, a field not archived, a value of the field's type and options. Its firm,
--- field, kind and record never change.
+-- field, kind and record never change. A value of an archived field is kept: not written, changed or deleted until the
+-- field is un-archived (break m6 (c)). Writers lock the field before the value (PF-22a part 2), so a value write and a
+-- field change wait for each other in one order (break m5). entity_id names the module's record: the module's own check
+-- (CustomFieldPort.canView/canEdit) decides it, never a key here (break m6 (b): the table cannot know every kind's table).
 CREATE FUNCTION pf_custom_value_checked() RETURNS trigger LANGUAGE plpgsql AS $fn$
-DECLARE f record;
+DECLARE f record; r record;
 BEGIN
   IF TG_RELID IS DISTINCT FROM 'public.plat_custom_value'::regclass THEN
     RAISE EXCEPTION 'pf_custom_value_checked: plat_custom_value''s own trigger only' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF platform_session_firm() IS NOT NULL AND NEW."firm_id" IS DISTINCT FROM platform_session_firm() THEN
+  IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
+  IF platform_session_firm() IS NOT NULL AND r."firm_id" IS DISTINCT FROM platform_session_firm() THEN
     RAISE EXCEPTION 'pf_custom_value_checked: only the session''s own firm' USING ERRCODE = 'insufficient_privilege';
   END IF;
   IF TG_OP = 'UPDATE' AND (NEW."firm_id" IS DISTINCT FROM OLD."firm_id" OR NEW."field_id" IS DISTINCT FROM OLD."field_id"
-       OR NEW."entity_kind" IS DISTINCT FROM OLD."entity_kind" OR NEW."entity_id" IS DISTINCT FROM OLD."entity_id") THEN
+       OR NEW."entity_kind" IS DISTINCT FROM OLD."entity_kind" OR NEW."entity_id" IS DISTINCT FROM OLD."entity_id" OR NEW."id" IS DISTINCT FROM OLD."id") THEN
     RAISE EXCEPTION 'plat_custom_value: a value''s firm, field and record never change' USING ERRCODE = 'insufficient_privilege';
   END IF;
   SELECT c."entity_kind", c."type", c."options", c."archived_at" INTO f
-    FROM "plat_custom_field" c WHERE c."firm_id" = NEW."firm_id" AND c."id" = NEW."field_id" FOR SHARE;
-  IF NOT FOUND THEN RETURN NEW; END IF;   -- no such field of this firm: the (firm_id, field_id) key refuses it
+    FROM "plat_custom_field" c WHERE c."firm_id" = r."firm_id" AND c."id" = r."field_id" FOR SHARE;
+  IF NOT FOUND THEN IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW; END IF;   -- no such field of this firm: the (firm_id, field_id) key refuses a write
+  IF f."archived_at" IS NOT NULL THEN
+    RAISE EXCEPTION 'plat_custom_value: the field is archived (un-archive it first; its values are kept)' USING ERRCODE = 'check_violation';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   IF f."entity_kind" IS DISTINCT FROM NEW."entity_kind" THEN
     RAISE EXCEPTION 'plat_custom_value: the value''s record kind is not its field''s' USING ERRCODE = 'check_violation';
-  END IF;
-  IF f."archived_at" IS NOT NULL THEN
-    RAISE EXCEPTION 'plat_custom_value: the field is archived (un-archive it first)' USING ERRCODE = 'check_violation';
   END IF;
   IF NOT pf_custom_value_ok(f."type", f."options", NEW."value") THEN
     RAISE EXCEPTION 'plat_custom_value: the value does not fit its field''s type (%)', f."type" USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $fn$;
-CREATE TRIGGER "plat_custom_value_checked" BEFORE INSERT OR UPDATE ON "plat_custom_value" FOR EACH ROW EXECUTE FUNCTION pf_custom_value_checked();
+CREATE TRIGGER "plat_custom_value_checked" BEFORE INSERT OR UPDATE OR DELETE ON "plat_custom_value" FOR EACH ROW EXECUTE FUNCTION pf_custom_value_checked();
 
--- A saved view's firm, list, creator and created time never change.
+-- A saved view's id, firm, list, creator and created time never change.
 CREATE FUNCTION pf_custom_view_kept() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-  IF NEW."firm_id" IS DISTINCT FROM OLD."firm_id" OR NEW."list_kind" IS DISTINCT FROM OLD."list_kind"
+  IF TG_RELID IS DISTINCT FROM 'public.plat_saved_view'::regclass THEN
+    RAISE EXCEPTION 'pf_custom_view_kept: plat_saved_view''s own trigger only' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NEW."id" IS DISTINCT FROM OLD."id" OR NEW."firm_id" IS DISTINCT FROM OLD."firm_id" OR NEW."list_kind" IS DISTINCT FROM OLD."list_kind"
      OR NEW."created_by" IS DISTINCT FROM OLD."created_by" OR NEW."created_at" IS DISTINCT FROM OLD."created_at" THEN
     RAISE EXCEPTION 'plat_saved_view: a view''s firm, list and creator never change' USING ERRCODE = 'insufficient_privilege';
   END IF;

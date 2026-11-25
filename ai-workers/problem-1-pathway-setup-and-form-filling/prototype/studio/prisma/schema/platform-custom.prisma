@@ -1,5 +1,5 @@
-// platform-custom.prisma — a firm's own fields on the records modules register, and the saved views of the lists they
-// register. Owner: Lead B (platform, P-559). Rows PF-22a and PF-22v (R1.95, map row 95; Doc-1 "per-entity custom fields",
+// platform-custom.prisma — a firm's own fields on registered records, and saved views of lists. Owner: Lead B (platform, P-559).
+// Rows PF-22a and PF-22v (R1.95, map row 95; Doc-1 "per-entity custom fields",
 // ADR C1-2; AG-2-23; P-570, P-584 (2)). Read and written only through api/src/platform/custom-fields/ and
 // api/src/platform/saved-views/ (PF-22a part 2, PF-22v); other modules reach them through CustomFieldPort and SavedViewPort
 // (ports/custom-fields.ts, ports/saved-views.ts) and never read these tables.
