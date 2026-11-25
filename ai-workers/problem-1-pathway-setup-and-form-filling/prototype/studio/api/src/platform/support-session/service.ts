@@ -77,7 +77,7 @@ export class SupportSessions {
       if (r?.status === "OPEN") problem(409, "A support session is open", `You already have a support session open until ${r.ends_at?.toISOString()} (it ends by itself then). One session at a time: start the next one after it ends.`, { code: "SUPPORT_SESSION_OPEN", sessionId: r.id });
       if (r?.status !== "STARTED" || !r.id || !r.started_at || !r.ends_at) problem(500, "Not started", "The support session could not be started. Nothing was opened.", { code: "SUPPORT_SESSION_NOT_STARTED" });
       if (req) req.supportSession = { id: r!.id!, reason: reason! };   // round 1 (breaker m1): the start line is the session's own (its column)
-      await auditEvent.record(tx, { firmId: firm, actor, action: STARTED, entity: SESSION_ENTITY, entityKey: r!.id!,
+      await auditEvent.record(tx, { firmId: firm, actor, action: STARTED, entity: "plat_support_session", entityKey: r!.id!,
         summary: `ExpatReady support started a read-only support session in this firm, until ${r!.ends_at!.toISOString()}.`,
         detail: { supportSessionId: r!.id!, reason, mode: "READ", startedAt: r!.started_at!.toISOString(), endsAt: r!.ends_at!.toISOString() }, before: null, after: null });   // a session start changes no firm record
       return { id: r!.id!, firmId: firm, mode: "READ" as const, reason, startedAt: r!.started_at!.toISOString(), endsAt: r!.ends_at!.toISOString(), header: "X-Support-Session", alwaysBlocked: ALWAYS_BLOCKED };
@@ -95,7 +95,7 @@ export class SupportSessions {
   /** One refusal line on the session's firm (SA-2-17: "a refusal is logged"), in its own transaction, under the session. */
   async refused(tx: Tx, s: OpenSession, call: { method: string; route: string }, why: string): Promise<void> {
     const { actor } = ourStaff();
-    await auditEvent.record(tx, { firmId: s.firmId, actor, action: REFUSED, entity: SESSION_ENTITY, entityKey: s.id,
+    await auditEvent.record(tx, { firmId: s.firmId, actor, action: REFUSED, entity: "plat_support_session", entityKey: s.id,
       summary: `ExpatReady support was refused in a support session: ${why}`, detail: { supportSessionId: s.id, method: call.method, route: call.route, why }, before: null, after: null });   // a refusal changes nothing
   }
 }
