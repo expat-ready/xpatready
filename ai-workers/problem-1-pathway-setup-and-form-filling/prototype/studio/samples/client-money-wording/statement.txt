@@ -6,7 +6,7 @@
 YOUR STATEMENT
 For: {{billTo}}
 Period: {{period}}
-Date {{issuedOn}}
+Date: {{issuedOn}}
 
 {{accounts}}
 {{held}}

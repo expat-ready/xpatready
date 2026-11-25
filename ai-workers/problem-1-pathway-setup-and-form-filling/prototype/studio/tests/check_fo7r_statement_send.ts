@@ -55,7 +55,12 @@ const { SIGNED } = await import("../api/src/client-money/reports/statement-docum
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("fo7r2-check-signing-key-0123456789abcdef", () => clock.now());
-const mail = fakeMail({ failOn: (m) => m.to === "fo7r2.fails@example.org" });
+const inner = fakeMail({ failOn: (m) => m.to === "fo7r2.fails@example.org" });
+/** The app's message layer refuses text over 100,000 characters (ports/messages.ts Words): the fake applies the same limit
+ *  (review M1 on #3753: fakeMail alone takes any length). */
+const TEXT_MAX = 100_000;
+const mail = { get sent() { return inner.sent; }, inbox: (a: string) => inner.inbox(a),
+  async send(m: Parameters<typeof inner.send>[0]) { if (m.text.length > TEXT_MAX) throw new Error(`text over ${TEXT_MAX} characters`); return inner.send(m); } };
 type Res = { status: number; body: any; type: string | null; bytes: Buffer };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 let app: { close(): Promise<void> } | null = null;
 try {
@@ -117,16 +122,20 @@ try {
   const before = mail.sent.length, lines0 = Number(sql(`select count(*) from audit_event where action = 'statement.sent'`));
   const sent = await call(tA, "POST", `${S}/statement/send`, {});
   const m = mail.sent.at(-1), audit = sql(`select actor || '|' || entity || '|' || entity_key || '|' || (detail->>'lines') from audit_event where action = 'statement.sent' order by at desc limit 1`);
-  ok("FO-7r P2 pass: Send statement emails the client once, to their address, no Cc, the statement text and the PDF attached", sent.status === 200 && sent.body.email === "SENT" && sent.body.to === "fo7r2.a@example.org"
-    && mail.sent.length === before + 1 && m?.to === "fo7r2.a@example.org" && !(m as any)?.cc && m?.text.includes("YOUR STATEMENT") && m?.text.includes(`Closing balance: ${printed("CAD", 165550)}`)   // eslint-disable-line @typescript-eslint/no-explicit-any -- an absent field
+  ok("FO-7r P2 pass: Send statement emails the client once, to their address, no Cc: a cover note (today's owed) and the statement as the PDF attached", sent.status === 200 && sent.body.email === "SENT" && sent.body.to === "fo7r2.a@example.org"
+    && mail.sent.length === before + 1 && m?.to === "fo7r2.a@example.org" && !(m as any)?.cc && m?.text.includes("is attached as a PDF") && m?.text.includes(`Owed: ${printed("CAD", 165550)}`)   // eslint-disable-line @typescript-eslint/no-explicit-any -- an absent field
     && m?.attachments?.length === 1 && m.attachments[0]!.contentType === "application/pdf" && pdfText(Buffer.from(m.attachments[0]!.bytes)) === text, { sent: sent.body, m: m && { to: m.to, subject: m.subject } });
   ok("FO-7r P2 pass: one audit line \"statement.sent\" by the person, on the client, with the line count", Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === lines0 + 1
     && audit.startsWith(`staff:`) && audit.includes(`|money_statement|${PA}|${json.body.items.length}`), audit);
-  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/invoice:issue', 'agent/invoice:show')`);   // this scratch database only
+  // review M4: a Case Officer as seeded holds agent/invoice:show but not agent/invoice:issue: the PDF answers, Send is 403
+  const keysO = sql(`select string_agg(permission_key, ',') from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/invoice:show', 'agent/invoice:issue')`);
   const tO = await signIn("user-O", "sample-firm"), n1 = mail.sent.length, l1 = Number(sql(`select count(*) from audit_event where action = 'statement.sent'`));
-  const noKey = await call(tO, "POST", `${S}/statement/send`, {}), noShow = await call(tO, "GET", `${S}/statement.pdf`);
-  ok("FO-7r P2 fail: without agent/invoice:issue → 403, nothing sent, no line; P5 fail: without agent/invoice:show, no PDF (403)", noKey.status === 403 && noShow.status === 403 && mail.sent.length === n1
-    && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l1, { noKey: noKey.status, noShow: noShow.status });
+  const showOk = await call(tO, "GET", `${S}/statement.pdf`), noKey = await call(tO, "POST", `${S}/statement/send`, {});
+  ok(`FO-7r P2 fail: a Case Officer with agent/invoice:show only (${keysO}) gets the PDF (200) but Send is 403, nothing sent, no line`, keysO === "agent/invoice:show" && showOk.status === 200 && noKey.status === 403 && mail.sent.length === n1
+    && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l1, { keysO, showOk: showOk.status, noKey: noKey.status });
+  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/invoice:show'`);   // this scratch database only
+  const noShow = await call(await signIn("user-O", "sample-firm"), "GET", `${S}/statement.pdf`);
+  ok("FO-7r P5 fail: without agent/invoice:show, no PDF (403)", noShow.status === 403, noShow.status);
   const sched = await call(tA, "POST", `${S}/statement/send`, { every: "month" });
   ok("FO-7r P6 fail: a schedule field is no field of Send statement (422 naming it): a person sends, never a schedule", sched.status === 422 && JSON.stringify(sched.body).includes("every") && mail.sent.length === n1, sched.body);
   const failed = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, {});
@@ -178,12 +187,23 @@ try {
   sql(`set session_replication_role = replica;
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PBULK}', 'BULK2-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, ${n}) g;
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PBULK}';
-    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 1000, 'CAD', 'OPERATING', now(), 'bulk2-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PBULK}'`);
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 1000, 'CAD', 'OPERATING', now(), 'bulk2-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PBULK}'; analyze`);   // statistics first (review: a 5,000-line read before them took minutes)
   const big = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement.pdf`), bigSend = await call(tA, "POST", `/front-office/money/parties/person/${PBULK}/statement/send`, {});
   const short = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement.pdf?to=2026-01-01`);
   ok(`FO-7r P4 fail: ${n * 2} lines (more than ${STATEMENT_LINE_MAX}) → 422 naming to, "choose a shorter period", nothing sent`, big.status === 422 && bigSend.status === 422 && JSON.stringify(big.body).includes("shorter period") && JSON.stringify(big.body).includes('"to"')
     && mail.inbox("fo7r2.bulk@example.org").length === 0, { big: big.body, bigSend: bigSend.status });
   ok("FO-7r P4 pass: a shorter period of the same client prints", short.status === 200 && short.type?.startsWith("application/pdf"), short.status);
+  // review M1: a statement of 4,000 lines (past the ~1,400 the text limit once allowed) is sent: the cover note is short, the PDF holds it all
+  const PLONG = person(A, "long", "fo7r2.long@example.org");
+  sql(`set session_replication_role = replica;
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PLONG}', 'LONG-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 2000) g;
+    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PLONG}';
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'long-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PLONG}'; analyze`);
+  const long = await call(tA, "POST", `/front-office/money/parties/person/${PLONG}/statement/send`, {}), lm = mail.inbox("fo7r2.long@example.org").at(-1);
+  const lText = lm?.attachments?.[0] ? pdfText(Buffer.from(lm.attachments[0].bytes)) : "";
+  ok(`FO-7r review M1 pass: a 4,000-line statement is sent (${long.body?.lines} lines): the cover note is ${lm?.text.length ?? 0} characters, the PDF holds every line`, long.status === 200 && long.body?.email === "SENT" && long.body?.lines === 4000
+    && (lm?.text.length ?? TEXT_MAX) < 2_000 && lText.split("\n").filter((l) => l.includes("  balance CAD")).length === 4000, { long: long.body, len: lm?.text.length });
+  ok("FO-7r review M1 fail: the same statement's full text is past the message layer's limit (why the body is a cover note)", lText.length > TEXT_MAX, lText.length);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
 } finally {

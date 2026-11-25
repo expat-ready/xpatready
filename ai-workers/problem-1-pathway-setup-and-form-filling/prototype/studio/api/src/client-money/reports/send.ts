@@ -14,9 +14,11 @@
 //       primary contact's. No address, or one the mail port would refuse, answers 422 naming `to`, and nothing is sent
 //       (break m2).
 //     * The audit line "statement.sent" (who, client, period, case, closing per account; AG-6-28 §9) and the email are
-//       one step: the line is written in a transaction that sends the email before it commits (break M1).
+//       one step (break M1, review M2): the email is written in the line's transaction (mailIn) and dispatched after commit.
 //       * An audit failure sends nothing.
-//       * A mail failure rolls the line back and answers { email: "NOT_SENT" }.
+//       * A refused or failed email rolls the line back and answers { email: "NOT_SENT" }; one the daily cap holds is HELD.
+//     * The email's text is a short cover note; the statement itself is the attached PDF (review M1: the message layer
+//       takes at most 100,000 characters of text, about 1,400 lines).
 //     * The idempotency key is per request, because a person may send the same period again.
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -28,6 +30,7 @@ import type { DocumentRenderPort, RenderedDocument } from "../../../../ports/ren
 import { firmScope, ownFirm } from "../../platform/firm-scope.ts";
 import { parseInput } from "../../platform/http/input.ts";
 import { SYSTEM_REPLY_TO } from "../../platform/identity/session/mail.ts";
+import { mailIn, mailReady } from "../../platform/messages/send/mail.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { addressOf } from "../invoices/money.ts";
 import { UUID, badField, notFound } from "../invoices/drafts.ts";
@@ -38,7 +41,7 @@ import { partyOf } from "../trust/service.ts";
 import { caseLinks } from "../visibility-adapter.ts";
 import { kindOf, partyFor, sortMemory, type Party } from "./common.ts";
 import { allLines } from "./statement.ts";
-import { STATEMENT_TEMPLATE, StatementDocuments, statementData, statementText } from "./statement-document.ts";
+import { STATEMENT_TEMPLATE, StatementDocuments, coverText, statementData } from "./statement-document.ts";
 import { summaryIn } from "./summary.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -47,7 +50,8 @@ export const STATEMENT_LINE_MAX = 5000;
 const Period = z.strictObject({ from: Day.optional(), to: Day.optional(), caseId: z.string().regex(UUID).optional() });
 /** The address the mail port takes (MailMessage's own rule): one the database holds but the port refuses is a 422 here. */
 const Address = z.email();
-export type SendView = { email: "SENT" | "NOT_SENT"; to: string; lines: number };
+/** SENT; HELD: written, waiting for the firm's daily cap (the message layer sends it later); NOT_SENT: refused or failed, nothing recorded. */
+export type SendView = { email: "SENT" | "HELD" | "NOT_SENT"; to: string; lines: number };
 /** Thrown inside the send transaction when the mail fails, so the audit line rolls back. */
 class MailFailed extends Error {}
 
@@ -69,19 +73,27 @@ export class StatementSend {
     const mail = this.mail, doc = await this.docs.render(STATEMENT_TEMPLATE, b.data);
     // audit values are scalars (AuditDetail, AuditValues) and a detail holds no email address: each closing as "INVOICES CAD 165550"
     const closing = b.accounts.map((a) => `${a.account} ${a.currency} ${a.closingMinor}`);
+    // review M2: the email is written in the audit line's own transaction (mailIn: the message layer's outbox when the app's
+    // MailPort is MessagesMail) and dispatched after the commit, as complaints.ts and card/account.ts do: no email without
+    // its line, no line without its email. A refusal or a failure inside rolls both back.
+    // review M1: the body is a short cover note (the message layer takes at most 100,000 characters of text); the whole
+    // statement travels in the PDF.
+    await mailReady(mail, f);
+    let out: { held: boolean; dispatch: () => Promise<void> };
     try {
-      await this.db.$transaction(async (tx) => {
+      out = await this.db.$transaction(async (tx) => {
         await this.audit.record(tx, { firmId: f, actor: `staff:${ctx.staffId}`, action: "statement.sent", entity: "money_statement", entityKey: b.party.id,
           summary: `Statement sent to ${b.head.billTo} (${b.data.period}).`, ...(b.caseId ? { caseId: b.caseId } : {}),
           detail: { partyKind: b.party.kind, partyId: b.party.id, from: b.q.from ?? null, to: b.q.to ?? null, caseId: b.caseId ?? null, lines: b.lines, closing },
           before: null, after: { period: String(b.data.period), lines: b.lines, closing } });
         try {
-          await mail.send({ firmId: f, to: b.email!, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: STATEMENT_TEMPLATE, idempotencyKey: `money-statement:${randomUUID()}`,
-            subject: `Your statement from ${b.head.firmName}`, text: statementText(b.data), attachments: [{ filename: `statement-${b.issuedOn}.pdf`, contentType: doc.contentType, bytes: new Uint8Array(doc.bytes) }] });
+          return await mailIn(mail, tx, { firmId: f, to: b.email!, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: STATEMENT_TEMPLATE, idempotencyKey: `money-statement:${randomUUID()}`,
+            subject: `Your statement from ${b.head.firmName}`, text: coverText(b.data), attachments: [{ filename: `statement-${b.issuedOn}.pdf`, contentType: doc.contentType, bytes: new Uint8Array(doc.bytes) }] });
         } catch { throw new MailFailed(); }
       });
     } catch (e) { if (e instanceof MailFailed) return { email: "NOT_SENT", to: b.email, lines: b.lines }; throw e; }
-    return { email: "SENT", to: b.email, lines: b.lines };
+    await out.dispatch();   // after the commit; a failed dispatch is the message layer's sweep's to retry, never a second send
+    return { email: out.held ? "HELD" : "SENT", to: b.email, lines: b.lines };
   }
 
   /** The whole statement, its summary, the letterhead and the client's address: one snapshot. */

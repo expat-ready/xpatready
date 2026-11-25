@@ -63,6 +63,14 @@ export function statementText(data: RenderData): string {
     .replace(/\{\{([A-Za-z]+)\}\}/g, (_, k: string) => { if (typeof d[k] !== "string") throw new Error(`statement: no value for ${k}`); return d[k]; }).replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
+/** The email's cover note (Sample wording): who it is for, the period, today's figures; the statement is the PDF (review M1). */
+export function coverText(data: RenderData): string {
+  const d = RenderData.parse(data), t = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
+  return [`Hello ${t("billTo")},`, "", `Your statement from ${t("firmName")} (${t("period")}) is attached as a PDF.`, "", t("held"), t("summary"), "",
+    "Each amount is in its own currency; amounts in two currencies are never added together.", "Questions about this statement? Reply to this email.", "", t("firmName")]
+    .join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
 /** DocumentRenderPort for the statement: the text above as a PDF. */
 export class StatementDocuments implements DocumentRenderPort {
   async render(templateKey: string, data: RenderData): Promise<RenderedDocument> {
