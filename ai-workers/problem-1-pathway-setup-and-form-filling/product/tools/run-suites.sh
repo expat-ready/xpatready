@@ -124,7 +124,21 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # 20 Nov: the suite derives its days from today's date (full runs 44676827988, 44676831421; #2305's batch). No product PR
 # merged for ~1.5 h. The nightly full set still runs it. The fix lane ("Fix · FO-3st2 staff-hours test fails by date")
 # pins the suite's dates and removes this hold in the same PR; it must be off this list by 21 Nov.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
+# Three browser suites quarantined 25 Nov by the tech lead (Lead 8, P-205, P-832's quarantine of the flakiest): merge
+# batches failed 9 of 15 in 6 h (flow-constraint, 17:06 IST) and these three failed both tries in batches or full runs
+# where the PR under test changed nothing they cover. The nightly full set still runs them. Each comes off this list in
+# its fix PR, after 5 green runs in a row:
+# check_fo9s_merge_browser.ts (FO-9s merge dialog, R1.29): batch run 45594684150 shard (11), "strict mode violation:
+#   locator('[data-merge-dialog]')" (two dialogs), both tries; #3659 (OAuth only) under test; a race in #3716's
+#   merge-dialog.tsx (#3659's lane). Fix: the R1.29 lane (asked 25 Nov 16:4x IST).
+# check_pf21rs_browser.ts (PF-21rs breach register screens, R1.87): batch #3749 run 45599205509 shard (7), "PF-21rs A2
+#   fail ... a breach changed elsewhere while Edit is open", both tries; Mergify: failed tested alone on top of main;
+#   #3692 (one journey file no suite imports) under test. Fix: the R1.87 lane.
+# check_uxa1_counts_browser.cjs (UX-A1 counts, Pathways screens): full run 45597595362 shard (2) on #3681 (client money
+#   only), "apiRequestContext.fetch: read ECONNRESET" on GET /api/combinations/:id/fact-sources after 38 passing steps,
+#   both tries; passed only on retry twice before (retry-watch, 17 Nov). Fix: a screens lane (a ready wait or a retry
+#   on the request).
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts check_fo9s_merge_browser.ts check_pf21rs_browser.ts check_uxa1_counts_browser.cjs"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do

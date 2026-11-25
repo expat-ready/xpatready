@@ -18,9 +18,10 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { InvoiceEventPayload, InvoiceView, MONEY_EVENT, WriteOffIn } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { liveParty } from "../live-party.ts";
 import { MONEY, UUID, badField, notFound, parse } from "../invoices/drafts.ts";
 import { dayOf, invoiceFacts } from "../invoices/facts.ts";
-import { failClosed, invoiceInScope, type ScopeOf } from "../reads/visibility.ts";
+import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { ledgerCheck } from "../ledger-check.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -38,7 +39,7 @@ export class WriteOffs {
     const scope = await this.scopeOf(ctx);   // before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
       await invoiceInScope(tx, firmId, id, scope);
-      const inv = await this.lock(tx, firmId, id);
+      const inv = await this.lock(tx, firmId, id, scope);
       if (!inv.issued) refuse("DRAFT", "A draft cannot be written off: edit or delete it instead. Nothing was saved.");
       const before = (await invoiceFacts(tx, firmId, id, today)) ?? notFound("invoice");
       if (before.view.statusWord === "Written off") refuse("ALREADY_WRITTEN_OFF", `${inv.number} is already written off. Nothing was saved.`);
@@ -70,10 +71,11 @@ export class WriteOffs {
     }
   }
   /** The party's trust lock first, then the invoice row (FO-7lk's one order, as InvoiceMoney.lock). */
-  private async lock(tx: Tx, firmId: string, id: string) {
+  private async lock(tx: Tx, firmId: string, id: string, scope: MoneyScope) {
     const [p] = await tx.$queryRaw<{ party: string; currency: string }[]>`select coalesce(person_id, company_id)::text as party, currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid`;
     if (!p) return notFound("invoice");
     await tx.$executeRaw`select money_trust_lock(${firmId}::uuid, ${p.party}::uuid, ${p.currency}::"MoneyCurrency")`;
+    await liveParty(tx, firmId, p.party, scope);   // FO-9b part 2m (review m4 on #3702): never a write-off on a merged-away client, under its lock
     const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; currency: "CAD" | "USD" }[]>`select issued_at is not null as issued, number, currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
     return inv ?? notFound("invoice");
   }
