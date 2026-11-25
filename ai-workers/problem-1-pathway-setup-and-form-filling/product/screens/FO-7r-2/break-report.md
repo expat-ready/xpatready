@@ -57,3 +57,43 @@ Page 1 already carries `accounts[].lines`, the period's line count, so the refus
 - **Figures.** The JSON figures (each line's amount and balance, opening, closing, owed, held) print exactly, and CAD and USD are never added.
 
 Verdict: Changes
+
+## Round 2 (bbeb2bd7e)
+
+Head tested: `bbeb2bd7e112bb743dfe07cd6077f46e848c72de`, only the diff from `9245f58`. I archived it into the scratchpad, where the PR's check passes 26/26. I ran the round-1 repros again twice: once with fakeMail behind a 100,000-character text limit, and once with the app's real mail stack (`MessagesMail` over `Messages` with the local email adapter). Both used scratch databases on :54329, which I dropped afterwards.
+
+**R2-M1 (Major, new in round 2). Reading the whole statement in one query becomes very slow when database statistics are out of date, and the request then fails with a 500.** `send.ts:104-118` runs `allLines` (`statement.ts:125`, a page of 5,001) and `summaryIn` inside one interactive transaction, which has Prisma's default 5 s timeout.
+
+Repro (realistic data): 5,000 clients with 4 invoices each, then `analyze`. Then give one client N invoices with a payment each. The new rows stay below autovacuum's 10 % re-analyze threshold.
+
+Timings, with the PDF before re-analyze, after `analyze`, and part 1's JSON page 1:
+- 300 lines: 0.44 s (200); 0.42 s; 0.09 s.
+- 800 lines: 8.5 s (**500**); 0.13 s; 0.15 s.
+- 2,000 lines: 171 s (**500**); 0.20 s; 0.76 s.
+
+The log says "A query cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 170873 ms passed". The query keeps a database connection for the whole time. Send fails the same way, so nothing is sent. With no statistics at all (a fresh copy), 1,000 invoices take 72 s and also end in a 500.
+
+Round 1's pages of 200 did not have this problem. The PR's own check adds `analyze` after its bulk insert ("a 5,000-line read before them took minutes"), and that hides it. Expected: a statement within the 5,000-line limit prints whatever state the statistics are in, and never answers 500.
+
+**R2-m1 (Minor, left over from round 1's m2). One address that the database and `z.email()` both accept is still refused later by the mail layer.** `a@b-.example` is the case the mail layer's own comment names. `send.ts:52` checks `z.email()`, but MessagesMail refuses the address in `normaliseAddress`.
+- With the app's real port: 200 `NOT_SENT` and no line, where 422 was expected.
+- With fakeMail: SENT.
+- The 8 other addresses I tried now get 422 naming `to`: `brk@localhost`, `brk..dots@`, `a@@`, `brk@-x.`, `x@example.org.`, `"q"@`, `brk@[127.0.0.1]` and `brk@ex_ample.org`.
+
+**Round-1 findings that now hold**
+- **M1:**
+  - With the audit trigger raising, the answer is 500, with 0 emails and 0 outbox rows, on both ports.
+  - A mail refusal (fake `failOn`, or a real address on the suppression list) gives 200 `NOT_SENT`, with 0 lines and 0 outbox rows.
+  - When the daily cap is full, the answer is `HELD`, with one line and one QUEUED row each time.
+- **M2:** `?caseId=` prints "Period: Everything, case C-2026-98001 only", with that case's owed only and no other case's trust. With `to=2020-01-31` added, "As of 2026-11-25:" heads today's figures for that case.
+- **M3:** another client's case, or a random UUID, gives 404 on both PDF and send, with nothing sent and no line. An upper-case id of the client's own case gives 200.
+- **M4:** I read 60 PDFs of a 300-line client while 60 payments were being recorded. All 60 were consistent: last running balance = closing = owed.
+- **m1 (with fresh statistics):** 4,998 lines: PDF 0.18-0.23 s, send 0.19-0.22 s. With 40,000 earlier lines: 0.55-0.62 s. 44,998 lines: 422 in 0.32-0.35 s. RSS within +15 MB.
+- **m3:** a merged-away person (PDF and send) and a merged-away company (send) give 404. A merged-away primary contact cannot happen through the product, because a merge moves the contact links (`duplicates/merge/columns.ts:18`).
+- **Long statements through the 100,000-character limit:** 4,998 lines are SENT. The cover note is 300 characters and the PDF is 368 KB, with every line. With MessagesMail the row is QUEUED.
+
+**Notes, not findings**
+- A HELD email still writes "statement.sent / Statement sent to …". Its detail does not say it is held.
+- A company billed on a case that is linked to a person is refused with 404 for that case, while part 1's JSON answers it. Nothing on main writes `money_invoice.case_id`, and trust checks the case's party, so this cannot happen today.
+
+Verdict (round 2): Changes

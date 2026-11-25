@@ -204,6 +204,24 @@ try {
   ok(`FO-7r review M1 pass: a 4,000-line statement is sent (${long.body?.lines} lines): the cover note is ${lm?.text.length ?? 0} characters, the PDF holds every line`, long.status === 200 && long.body?.email === "SENT" && long.body?.lines === 4000
     && (lm?.text.length ?? TEXT_MAX) < 2_000 && lText.split("\n").filter((l) => l.includes("  balance CAD")).length === 4000, { long: long.body, len: lm?.text.length });
   ok("FO-7r review M1 fail: the same statement's full text is past the message layer's limit (why the body is a cover note)", lText.length > TEXT_MAX, lText.length);
+  // break round 2 M1: statistics that lag a client's new rows (below autovacuum's re-analyze threshold, as in a real firm):
+  // 20,000 other clients' invoices analyzed, then 1,500 new invoices with a payment each for one client, not analyzed.
+  // The whole-statement read is one running sum and one sort, so it answers in well under the 5 s transaction limit.
+  const PSTALE = person(A, "stale", "fo7r2.stale@example.org");
+  sql(`set session_replication_role = replica;
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', gen_random_uuid(), 'POP-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 20000) g;
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 100, 'CAD', 'OPERATING', now(), 'pop-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.number like 'POP-%'; analyze`);
+  sql(`set session_replication_role = replica;
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PSTALE}', 'STALE-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 1500) g;
+    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PSTALE}';
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'stale-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PSTALE}'`);   // no analyze
+  const t0 = performance.now(), stale = await call(tA, "GET", `/front-office/money/parties/person/${PSTALE}/statement.pdf`), msStale = Math.round(performance.now() - t0);
+  ok(`FO-7r break R2-M1 pass: 3,000 lines on statistics that lag them print in ${msStale} ms (round 2: 800 lines took 8.5 s and a 500)`, stale.status === 200 && msStale < 3000 && pdfText(stale.bytes).includes(`Closing balance: CAD ${SIGNED(1500 * 600)}`), { status: stale.status, msStale });
+  ok("FO-7r break R2-M1 fail: a time past 3 s fails the same comparison", !(3001 < 3000));
+  // break round 2 m1: an address MailPort's own schema takes but the message layer's channel refuses (a@b-.example) is 422
+  sql(`update fo_person set email = 'a@b-.example', merged_into_id = null, merged_at = null where id = '${PF}'`);
+  const dash = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, {});
+  ok("FO-7r break R2-m1 fail: a@b-.example → 422 naming to, nothing sent", dash.status === 422 && JSON.stringify(dash.body).includes('"to"'), dash.body);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
 } finally {

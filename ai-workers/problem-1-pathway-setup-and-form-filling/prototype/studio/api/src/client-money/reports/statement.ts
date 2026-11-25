@@ -123,7 +123,24 @@ export class MoneyStatement {
  *  caller's transaction: part 2's PDF and Send statement read the whole statement in one query and one snapshot, never
  *  page by page (break M4, m1 on #3753). */
 export async function allLines(tx: Tx, f: string, party: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean, from: string | undefined, to: string | undefined, limit: number) {
-  return read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust)), from, to, limit + 1, null);
+  return read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust)), from, to, limit + 1, null, true);
+}
+
+/** The whole statement's SQL (part 2: every line of the period at once): one running sum over every line of each account
+ *  and currency, then the period's lines, a single sort. The page machinery (pg, g1, g9, st, sp) is for a page of 50 to
+ *  200; over thousands of lines with stale statistics its seven-column self-join became a nested loop, minutes and then
+ *  a 500 (break round 2 M1 on #3753). The balance is the same figure: the running sum over all lines, whatever the period. */
+export function wholeSql(base: Prisma.Sql, start: Prisma.Sql | null, end: Prisma.Sql | null, inPeriod: Prisma.Sql, limit: number): Prisma.Sql {
+  return Prisma.sql`${base},
+    t as (select run.acct, run.currency, coalesce(sum(run.amount) filter (where ${start ? Prisma.sql`run.at < ${start}` : Prisma.sql`false`}), 0)::text as opening,
+        coalesce(sum(run.amount) filter (where ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}), 0)::text as closing, (count(*) filter (where ${inPeriod}))::int as lines
+      from run group by run.acct, run.currency),
+    w as (select run.*, sum(run.amount) over (partition by run.acct, run.currency order by run.k, run.o, run.r, run.id, run.inv rows unbounded preceding) as balance from run),
+    p as (select run.acct, run.currency, to_char(run.k at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as k, run.o, to_char(run.r at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as r, run.id::text as id, run.inv::text as inv,
+        to_char(run.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as at, run.kind, run.reference, run.invoice_id::text as "invoiceId", run.case_id::text as "caseId", run.amount::text as amount, run.balance::text as balance,
+        row_number() over (order by run.acct, run.currency, run.k, run.o, run.r, run.id, run.inv) as n
+      from w run where ${inPeriod} order by run.acct, run.currency, run.k, run.o, run.r, run.id, run.inv limit ${limit})
+    select (select coalesce(json_agg(t order by t.acct, t.currency), '[]'::json) from t) as totals, (select coalesce(json_agg(p order by p.n), '[]'::json) from p) as rows`;
 }
 
 /** The page read's SQL (exported for the plan check in tests/check_fo7r_statement.ts). */
@@ -152,14 +169,14 @@ export function readSql(base: Prisma.Sql, start: Prisma.Sql | null, end: Prisma.
 }
 
 /** The period's totals per account and currency, and one page of its lines (each with its running balance). */
-async function read(tx: Tx, base: Prisma.Sql, from: string | undefined, to: string | undefined, pageSize: number, after: z.infer<typeof Cursor> | null) {
+async function read(tx: Tx, base: Prisma.Sql, from: string | undefined, to: string | undefined, pageSize: number, after: z.infer<typeof Cursor> | null, whole = false) {
   const start = from ? Prisma.sql`(${from}::date::timestamp at time zone 'UTC')` : null, end = to ? Prisma.sql`((${to}::date + 1)::timestamp at time zone 'UTC')` : null;
   const inPeriod = Prisma.sql`${start ? Prisma.sql`run.at >= ${start}` : Prisma.sql`true`} and ${end ? Prisma.sql`run.at < ${end}` : Prisma.sql`true`}`;
   const cur = after ? Prisma.sql`(run.acct, run.currency, run.k, run.o, run.r, run.id, run.inv) > (${after.a}::int, ${after.c}::text, (${after.t}::timestamp at time zone 'UTC'), ${after.o}::int, (${after.r}::timestamp at time zone 'UTC'), ${after.id}::uuid, ${after.v}::uuid)` : Prisma.sql`true`;
   // one statement: the lines are computed once (run, materialized), the totals and the page both read from it (break
   // M2: two statements computed the whole ledger twice)
   const [one] = await tx.$queryRaw<{ totals: { acct: number; currency: "CAD" | "USD"; opening: string; closing: string; lines: number }[];
-      rows: { acct: number; currency: "CAD" | "USD"; k: string; o: number; r: string; id: string; inv: string; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amount: string; balance: string }[] }[]>(readSql(base, start, end, inPeriod, cur, pageSize));
+      rows: { acct: number; currency: "CAD" | "USD"; k: string; o: number; r: string; id: string; inv: string; at: string; kind: string; reference: string | null; invoiceId: string | null; caseId: string | null; amount: string; balance: string }[] }[]>(whole ? wholeSql(base, start, end, inPeriod, pageSize) : readSql(base, start, end, inPeriod, cur, pageSize));
   const totals = one?.totals ?? [], rows = one?.rows ?? [];
   const page = rows.slice(0, pageSize), last = page.at(-1), acct = (a: number): Account => a === 0 ? "INVOICES" : "TRUST";
   return {

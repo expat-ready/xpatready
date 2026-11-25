@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
+import { normaliseAddress } from "../../../../ports/consent.ts";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import type { DocumentRenderPort, RenderedDocument } from "../../../../ports/render.ts";
@@ -48,8 +49,10 @@ type Tx = Prisma.TransactionClient;
 /** The most lines one statement prints (Sample: about 80 pages of the PDF); past it, a shorter period. */
 export const STATEMENT_LINE_MAX = 5000;
 const Period = z.strictObject({ from: Day.optional(), to: Day.optional(), caseId: z.string().regex(UUID).optional() });
-/** The address the mail port takes (MailMessage's own rule): one the database holds but the port refuses is a 422 here. */
+/** The address the mail port takes (MailMessage's own rule) and the message layer's channel keeps (normaliseAddress: break
+ *  round 2 m1, `a@b-.example` passes the first and not the second): one the database holds but either refuses is a 422. */
 const Address = z.email();
+const channelTakes = (a: string) => { try { normaliseAddress("EMAIL", a); return true; } catch { return false; } };
 /** SENT; HELD: written, waiting for the firm's daily cap (the message layer sends it later); NOT_SENT: refused or failed, nothing recorded. */
 export type SendView = { email: "SENT" | "HELD" | "NOT_SENT"; to: string; lines: number };
 /** Thrown inside the send transaction when the mail fails, so the audit line rolls back. */
@@ -68,7 +71,7 @@ export class StatementSend {
   async send(ctx: StaffContext, kind: string, id: string, body: unknown): Promise<SendView> {
     const b = await this.build(ctx, kind, id, body), f = firmScope(ctx.firmId).firmId;
     if (!b.email) return badField("to", `${b.head.billTo} has no email address on file: add one first. Nothing was sent.`);
-    if (!Address.safeParse(b.email).success) return badField("to", `${b.head.billTo}'s email address on file cannot receive mail: correct it first. Nothing was sent.`);
+    if (!Address.safeParse(b.email).success || !channelTakes(b.email)) return badField("to", `${b.head.billTo}'s email address on file cannot receive mail: correct it first. Nothing was sent.`);
     if (!this.mail) return { email: "NOT_SENT", to: b.email, lines: b.lines };
     const mail = this.mail, doc = await this.docs.render(STATEMENT_TEMPLATE, b.data);
     // audit values are scalars (AuditDetail, AuditValues) and a detail holds no email address: each closing as "INVOICES CAD 165550"
