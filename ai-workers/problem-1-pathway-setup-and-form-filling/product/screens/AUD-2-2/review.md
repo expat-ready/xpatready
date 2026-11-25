@@ -105,3 +105,33 @@ A live bucket (P-821). Whether S3 keeps the retain-until milliseconds. The 404 o
 **Journey re-score** (controller calls and the suite, not a browser): 9.4/10, Pass. J6 now 400, J8 404, P1-P3 fixed; error recovery, feedback and correct data at 1; J1b still ½.
 
 **Verdict: Block.** To fix: new Major 1. Minor 1 is cheap in the same round.
+
+## Round 3 (diff-only, 36b7787f)
+* **Runs** (from `/home/user/wt-p3`): `check_aud2_archive.ts` 43/43; `check_aud1c_verify.ts` 20/20; `tsc` 15 errors, none in our files.
+* **Method:** mutations and a probe in a scratch copy.
+
+**Round-2 Major: fixed.**
+* My round-2 probe again (recorded bucket, one chain, one export a day). After 1, 30 and 120 days:
+  * the 30-minute pass makes 2, 2 and 2 requests (round 2: 242 at day 120);
+  * the weekly pass makes 4, 40 and 130;
+  * the daily export makes 7, 8 and 8.
+* The old projection (about 110,000 requests a pass, about US$400 a month) no longer holds; the weekly pass grows by about one request per anchor.
+* `check()` now runs before the chain's transaction (`verify.ts:68-70`), and `chains()` only weekly (`:62`).
+* DW10 (R1) fails without the names-only skip, and with `chains()` on every pass. My probe's 30-minute pass still finds a rewrite of the newest anchored line with the check row moved.
+
+**Breaker R3: fixed.** Without the database comparison (`daily-export.ts:147-149`), DW10 (R3) fails. **Round-2 Minor 3: fixed** in the README.
+
+### Minor (none blocks)
+1. **Untested in the suite:**
+   * the 30-minute anchor choice: `lastAnchored` forced to the oldest file (`daily-export.ts:107`) still gives 43/43;
+   * the weekly file re-verify (its off switch fails only on a read count);
+   * the S3 first-version cache (off: 43/43);
+   * m3, m5, m6 and version-list paging.
+
+   A 30-minute case rewriting the newest anchored line would cover the first.
+2. The first-version cache (`s3-archive.ts:39`) is never evicted; "60 s" applies only on read. The weekly `chains()` listing fills it with every key, about 500,000 at 100 firms by year 7. Bound it, or clear it after each read.
+3. The README allows "a cheaper storage class". Glacier Flexible Retrieval or Deep Archive would make every weekly anchor read fail. Name the classes allowed: Standard-IA or Glacier Instant Retrieval.
+4. `MODULE.rows/AUD-2-2.md:1` still names `latestAnchor` and the three demo routes, which have moved to J-97.
+5. A chain deleted whole, with its check row, is now found only weekly (up to 7 days, accepted for cost). Say so in the card.
+
+**Verdict: Approve.** No open Blocker or Major; journey score stands at 9.4/10 (the demo routes are now J-97's).

@@ -87,3 +87,33 @@ Head `b9922aa38a44ed7fdb94ef86cc6046e5357fb84d`. Isolated copy `p3brk2` on :4642
 * `get` reads a key's first version, so a later version or a delete marker cannot hide the original.
 
 Breaker verdict: Changes b9922aa38a44ed7fdb94ef86cc6046e5357fb84d
+
+## Round 3 (36b7787f)
+
+Head `36b7787f312a238838bf6a2303d0ad9e91d44b7d`. Isolated copy `p3brk3` on :4643, started and stopped. I re-ran `r2b.ts` and `s3r2.ts`. The new `r3cost.ts` builds one chain with 120 daily exports on the recorded S3 bucket and counts requests on a fresh adapter (cold cache).
+
+**R1 fixed (request counts, real code):**
+
+| Step | S3 requests | Detail |
+|---|---|---|
+| 30-minute `check` | 2 | 1 `ListObjectVersions` + 1 `GetObject` |
+| Weekly `check` | 129 | 1 listing + 120 anchors + 8 recent files |
+| Daily `run` with 1 new line | 8 | |
+| Verifier pass, 12 chains | 13 incremental, 142 full | |
+
+The archive is read before the 120 s transaction (verify.ts:68-70), and `chains()` runs on the weekly pass only.
+
+**R3 fixed.** An S3-only attacker's crafted pending file is refused ("is not the database's lines"). A real crash between the file and its anchor still resumes on S3 (`122-123`, `resumed:true`).
+
+**No earlier Major is back:**
+* M1: the anchor named 11 is caught on the 30-minute pass from names alone (`anchor 11-11`; range fixed). A duplicate anchor is still a finding.
+* M3: junk under the first chain fails only that chain; the next exports `13-13`. M4: three lockless runs all fail. M2: the archive routes have left this head; only `check` remains.
+* No false alarm on an anchor seq passed by new lines, a chain never exported, or a legitimate pending file. R2 is still caught only weekly (`anchor 11-12`). R4 is not caught, as accepted.
+
+**Remaining (Minor, none blocking):**
+* **m-a. Weekly pass may not finish at scale.** One request per anchor, sequential: 100 firms × 7 years is about 257k requests. At an assumed 20 ms each that is about 86 min, against the job runner's default 15-minute expiry (pgboss-jobs.ts:48; the weekly queue sets none, audit-chain.ts:29). At roughly 50 firm-years of archive the weekly pass, which R2 relies on, stops finishing. Owed: one timed weekly pass on the real bucket.
+* **m-b. A crafted pending file blocks a chain silently.** It blocks that chain's export for the 7-year lock, and the checker raises nothing: `ledger` accepts a pending last file unread (daily-export.ts:113). Only the daily job's failure alarms.
+* **m-c. The version cache never shrinks.** `first` (s3-archive.ts:39, 114) gains every key of every listing and is pruned only on `remove`. The weekly `chains()` puts every key in the bucket into it: about 511k entries at 100 firms × 7 years.
+* **m-d. The recorded bucket never paginates `ListObjectVersions`** (always `IsTruncated=false`), so the adapter's `KeyMarker`/`VersionIdMarker` loop is untested.
+
+Breaker verdict: Approve 36b7787f312a238838bf6a2303d0ad9e91d44b7d
