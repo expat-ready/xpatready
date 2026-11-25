@@ -15,7 +15,7 @@
 //   case exists (NotificationPort; ids only).
 // * Once per version (B4, R8): the partial unique index on (firm_id, retainer_version_id) holds it, a cancelled request
 //   keeping its version; a second call for the same version writes nothing (no audit line, no item).
-// * Audit (R16): one `trust.request_prepared` line; the signing's own event row stays the transaction's last write.
+// * Audit (R16): one `trust_money.request_prepared` line; the signing's own event row stays the transaction's last write.
 // The signing never fails because of this: the caller runs it in a savepoint (front-office/retainers/signed-hooks.ts).
 // Legal reading (a deposit is money held in trust, never an earned fee): Unconfirmed: no counsel. Tax: Sample.
 import type { Prisma } from "@prisma/client";
@@ -51,7 +51,7 @@ export function notDue(signed: RetainerSigned, trustAnswer: string | null): stri
 
 /** Not a request we can hold (a currency trust does not take, or more than one request holds): said once, by name. */
 async function notPrepared(tx: Tx, deps: DepositDeps, firmId: string, signed: RetainerSigned, why: string): Promise<null> {
-  await deps.audit.record(tx, { firmId, actor: signed.actor, action: "trust.request_not_prepared", entity: "fo_retainer_version", entityKey: signed.retainerVersionId,
+  await deps.audit.record(tx, { firmId, actor: signed.actor, action: "trust_money.request_not_prepared", entity: "fo_retainer_version", entityKey: signed.retainerVersionId,
     summary: `No deposit request prepared: the deposit row "${signed.fees[0].label}" is signed, but ${why}. Bill it by hand.`, detail: { retainerId: signed.retainerId, retainerVersionId: signed.retainerVersionId, reason: why }, before: null, after: null });
   return null;
 }
@@ -83,7 +83,7 @@ export async function prepareDepositOnSigning(tx: Tx, deps: DepositDeps, firmId:
     returning id::text as id`;
   if (!made.length) return null;   // R8: a second call for this version is a quiet no-op
   const id = made[0].id;
-  await deps.audit.record(tx, { firmId, actor: by, action: "trust.request_prepared", entity: "money_trust_request", entityKey: id,
+  await deps.audit.record(tx, { firmId, actor: by, action: "trust_money.request_prepared", entity: "money_trust_request", entityKey: id,
     summary: `Deposit request prepared (Ask me first): ${currency.data} ${MONEY(amountMinor)} + ${MONEY(estimatedTaxMinor)} estimated ${tax.taxName ?? "tax"}, from the signed retainer (version ${signed.version}). Not sent: a person sends it.`,
     detail: { trustRequestId: id, retainerId: signed.retainerId, retainerVersionId: signed.retainerVersionId, via: signed.via, mode: "ASK_FIRST" }, before: null,
     after: { status: "Prepared", personId: signed.personId, companyId: signed.companyId, amountMinor, estimatedTaxMinor, currency: currency.data, taxSource: tax.source } });

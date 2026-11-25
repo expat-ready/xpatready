@@ -142,7 +142,7 @@ try {
   ok("R1.60 case 1 pass (R6): nothing was emailed for the request (Ask me first: a person sends it)", !mail.sent.some((m) => /trust|deposit/i.test(`${m.subject} ${m.templateKey ?? ""}`)), mail.sent.map((m) => m.subject));
   ok("R1.60 case 1 pass (R1, case 15): no money_invoice row was written", count("money_invoice") === invoices0);
   ok("R1.60 case 1 pass (R16): one trust.request_prepared audit line, by the signing webhook, in the completion's transaction (its now() falls after the firm's signature line and before the completion's line)",
-    count("audit_event", `action = 'trust.request_prepared' and entity_key = '${q1}' and actor = 'system:signing-webhook'`) === 1
+    count("audit_event", `action = 'trust_money.request_prepared' and entity_key = '${q1}' and actor = 'system:signing-webhook'`) === 1
       && sql(`select (q.created_at > (select max(at) from audit_event where entity_key = '${e1.q}' and action = 'signing.signed') and q.created_at <= (select at from audit_event where entity_key = '${e1.q}' and action = 'signing.completed'))::text from money_trust_request q where q.id = '${q1}'`) === "true",
     sql(`select string_agg(action || '@' || at::text, ' ; ') from audit_event where entity_key in ('${e1.q}', '${q1}')`) + " / " + sql(`select created_at from money_trust_request where id = '${q1}'`));
   const signingSrc = readFileSync(join(STUDIO, "api", "src", "front-office", "signing", "service.ts"), "utf8"), offlineSrc = readFileSync(join(STUDIO, "api", "src", "front-office", "retainers", "service.ts"), "utf8");
@@ -160,15 +160,15 @@ try {
       && sql(`select retainer_version_id::text from money_trust_request where id = '${q1}'`) === sql(`select id::text from fo_retainer_version where retainer_id = '${r1}' and n = 1`));
 
   // ------------------------------------------------------------- case 2: the same completion again → nothing new
-  const audits1 = count("audit_event", `action = 'trust.request_prepared'`), notes1 = notes.sent().length;
+  const audits1 = count("audit_event", `action = 'trust_money.request_prepared'`), notes1 = notes.sent().length;
   const again = await post(e1.last[1]);
   ok("R1.60 case 2 pass (B4, R8): the same signing.completed delivered again → still one request, one audit line, one item",
-    again.duplicate === true && reqFor(r1) === q1 && count("audit_event", `action = 'trust.request_prepared'`) === audits1 && notes.sent().length === notes1, again);
+    again.duplicate === true && reqFor(r1) === q1 && count("audit_event", `action = 'trust_money.request_prepared'`) === audits1 && notes.sent().length === notes1, again);
   const facts1: RetainerSigned = { retainerId: r1, retainerVersionId: sql(`select retainer_version_id from money_trust_request where id = '${q1}'`), version: 1, kind: "RETAINER", via: "E_SIGNED",
     representativeStaffId: R.staffId, personId: p1.personId, companyId: null, prospectId: p1.id, actor: "system:signing-webhook", fees: DEPOSIT.map((f) => ({ label: f.label, amountMinor: String(f.amountMinor), currency: "CAD", when: f.when })) };
   await db.$transaction((tx) => retainerSigned(tx, auditEvent, A, facts1));
   ok("R1.60 case 2 pass (R8): the listeners called again for the same version → a quiet no-op (no row, no audit line, no held line)",
-    reqFor(r1) === q1 && count("audit_event", `action = 'trust.request_prepared'`) === audits1 && count("audit_event", `action = 'retainer.signed_listener_held'`) === 0);
+    reqFor(r1) === q1 && count("audit_event", `action = 'trust_money.request_prepared'`) === audits1 && count("audit_event", `action = 'retainer.signed_listener_held'`) === 0);
   // planted fail: without the one-per-version guard the second call is not a quiet no-op
   const unguarded = await refusal(() => db.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`drop index "money_trust_request_one_per_retainer_version"`);
@@ -183,7 +183,7 @@ try {
   await svc.signedOffline(R, r3, { expectedVersion: "1", reason: "Signed at the office" }, pdf("r160 paper"));
   const q3 = reqFor(r3);
   ok("R1.60 case 3 pass (B2): Signed offline prepares one request, by the person who recorded the paper",
-    q3 !== "" && !q3.includes(",") && count("audit_event", `action = 'trust.request_prepared' and entity_key = '${q3}' and actor = 'staff:${R.staffId}'`) === 1);
+    q3 !== "" && !q3.includes(",") && count("audit_event", `action = 'trust_money.request_prepared' and entity_key = '${q3}' and actor = 'staff:${R.staffId}'`) === 1);
   ok("R1.60 O5 pass: Signed offline keys it by the filed version's id (version 1)", sql(`select retainer_version_id::text from money_trust_request where id = '${q3}'`) === sql(`select id::text from fo_retainer_version where retainer_id = '${r3}' and n = 1`));
   await db.$transaction((tx) => retainerSigned(tx, auditEvent, A, { ...facts1, retainerId: r3, retainerVersionId: sql(`select retainer_version_id from money_trust_request where id = '${q3}'`), personId: p3.personId, prospectId: p3.id }));
   ok("R1.60 case 3 fail: an e-signature of the same version after the paper one → still one request (B4)", reqFor(r3) === q3);
@@ -244,7 +244,7 @@ try {
   const big = await db.$transaction((tx) => prepareDepositOnSigning(tx, { audit: auditEvent, notifications: null }, A, { ...facts1, retainerVersionId: randomUUID(), fees: [{ ...facts1.fees[0], amountMinor: "2147483647" }] }));
   const fits = await db.$transaction((tx) => prepareDepositOnSigning(tx, { audit: auditEvent, notifications: null }, A, { ...facts1, retainerVersionId: randomUUID(), fees: [{ ...facts1.fees[0], amountMinor: "1900000000" }] }));
   ok("R1.60 R4 fail (break a1 m4): a deposit row whose amount with tax is past one request prepares nothing, with one not-prepared line naming why",
-    big === null && count("audit_event", `action = 'trust.request_not_prepared' and summary like '%with the estimated tax%'`) === 1);
+    big === null && count("audit_event", `action = 'trust_money.request_not_prepared' and summary like '%with the estimated tax%'`) === 1);
   ok("R1.60 R4 pass: a large row whose amount with tax still fits is prepared (19,000,000.00 + 2,470,000.00)", fits?.amountMinor === 1900000000 && fits.estimatedTaxMinor === 247000000, fits);
 
   // ------------------------------------------------------------- the signing never fails because of the listener

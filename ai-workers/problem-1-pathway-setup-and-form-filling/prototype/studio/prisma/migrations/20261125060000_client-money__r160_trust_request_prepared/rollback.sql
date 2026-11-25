@@ -57,8 +57,11 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- PF-8b F4: the reader may own a function only while it may create in public (granted here, taken back below).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION money_trust_request_write() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION money_trust_request_write() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 
 ALTER TABLE "money_trust_request" DROP CONSTRAINT "money_trust_request_estimated_tax_check", DROP CONSTRAINT "money_trust_request_prepared_check";
 ALTER TABLE "money_trust_request" DROP COLUMN "estimated_tax_minor", DROP COLUMN "prepared_at";

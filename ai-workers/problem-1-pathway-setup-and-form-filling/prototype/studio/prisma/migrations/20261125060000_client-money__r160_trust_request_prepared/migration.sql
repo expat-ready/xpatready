@@ -74,5 +74,8 @@ BEGIN
 END $$;
 
 -- PF-12: CREATE OR REPLACE keeps the owner but resets these settings, so they are set again.
+-- PF-8b F4: the reader may own a function only while it may create in public (granted here, taken back below).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION money_trust_request_write() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION money_trust_request_write() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
