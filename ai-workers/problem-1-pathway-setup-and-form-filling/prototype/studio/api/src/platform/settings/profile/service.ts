@@ -15,7 +15,7 @@ import { z } from "zod";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import { AuditActionNames } from "../../audit/firm-read/action-names.ts";
 import { firmScope } from "../../firm-scope.ts";
-import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, plainIssue } from "../../http/input.ts";
 import { platformAuditWorkspaceId } from "../../identity/audit.ts";
 import { forbidden } from "../../identity/keys.ts";
 import { CURRENCY, LANGUAGE, readSetting, registerSetting, TIME_ZONE, writeSetting } from "../../settings.ts";
@@ -145,13 +145,13 @@ export class FirmProfile {
     for (const k of Object.keys(DETAILS) as DetailName[]) {
       if (!(k in input)) continue;
       const v = input[k] === "" ? null : input[k];
-      const r = DETAILS[k].schema.safeParse(v);
+      const r = DETAILS[k].schema.safeParse(v, { error: plainIssue });   // PF-28 A2: a length refusal in plain words, never zod's "Too big"
       if (r.success) values[k] = r.data; else bad[k] = WORDS[k] ?? plain(r.error.issues[0]?.message);
     }
     let billingEmail: string | undefined;
     if ("billingEmail" in input) {
       // Break M2: one spelling, lower case, as the database keeps it (platform_firm_billing_email_lower).
-      const r = Email.safeParse(input.billingEmail);
+      const r = Email.safeParse(input.billingEmail, { error: plainIssue });
       if (r.success) billingEmail = r.data.toLowerCase(); else bad.billingEmail = plain(r.error.issues[0]?.message, "an email address like office@firm.ca");
     }
     if (Object.keys(bad).length) refused(locked.length && Object.keys(bad).length === locked.length ? "Some of these details are not changed here." : "Please check the highlighted details.", bad);

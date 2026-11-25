@@ -4,6 +4,7 @@
 // on the workspace's cases; a client reaches only the case they answer, and only its questionnaire; configuration
 // people reach no case. Answer values and typed names never go into audit text or logs (STANDARDS §5): audit lines name
 // a case by its id.
+import { ASSESSMENT_ONLY_CASE_WORDS } from "../../engine/programs.ts";
 import { additionsOf, withAdditions } from "../../engine/runtime/added-forms.ts";
 import { clientPersonOf, withClient, type StoredChange } from "../../engine/runtime/filing-changes.ts";
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
@@ -146,6 +147,19 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
     : `Please check this answer. It did not match the ${doc} on file. If it is wrong, change it here. Your case officer settles any difference with you.`;
 }
 
+/** AS-2a (P-650 (2)): an assessment-only release is not for cases at all, so the refusal says that, not "items to fix". */
+/** Review m5: the New case list already names the release, so its line leaves the name out (`named` false). */
+export const whyNotForCases = (label: string, missing: { code: string }[], named = true) => (missing.some((m) => m.code === "assessment_only") ? `${named ? `"${label}": ` : ""}${ASSESSMENT_ONLY_CASE_WORDS}` : notReadyForCases(label, missing.length));
+
+/** Who may reach a case at all, as reach() decides it before any look-up (R1.10 A5: a door that checks an id's shape before
+ *  the body calls this first, so authorise before validate stays: a person with no case duty is 403 whatever the id). */
+export function mayReach(actor: Actor, want: "read" | "answer" | "officer") {
+  const officer = isOfficer(actor), client = (actor.duties as readonly string[]).includes("answer");
+  if (!officer && !client) fail(`${actor.name} (simulated) works on configuration, not on cases.`, HttpStatus.FORBIDDEN);
+  if (want === "officer" && !officer) fail("Only the case officer can do this.", HttpStatus.FORBIDDEN);
+  return { officer, client };
+}
+
 @Injectable()
 export class Runtime {
   constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs,
@@ -163,9 +177,7 @@ export class Runtime {
    *  its release's hash: a changed pin or release is refused, never read. */
   async reach(actor: Actor, caseId: string, want: "read" | "answer" | "officer") {
     const workspaceId = await this.ws.id();
-    const officer = isOfficer(actor), client = (actor.duties as readonly string[]).includes("answer");
-    if (!officer && !client) fail(`${actor.name} (simulated) works on configuration, not on cases.`, HttpStatus.FORBIDDEN);
-    if (want === "officer" && !officer) fail("Only the case officer can do this.", HttpStatus.FORBIDDEN);
+    const { officer } = mayReach(actor, want);
     const c = await this.db.case.findFirst({ where: { id: caseId, workspaceId }, include: REACHED });
     // C6.11 (BR-20): staff reach only their own firm's cases; another firm's case is "not found", as for a client.
     if (!c || (!officer && c.clientActorId !== actor.id) || (officer && c.firmKey !== firmOfActor(actor)?.key)) fail("No such case.", HttpStatus.NOT_FOUND);
@@ -305,7 +317,7 @@ export class Runtime {
     // S4 (SA-1B-90): a case opens only on a startable release. The case officer reads a plain sentence (review M2 on
     // ea7f28b2: no field paths or keys, no author's step); the catalogue's own lines go in `missing` for the authors.
     const missing = await this.programs.startableMissing(b.combinationId, release!);
-    if (missing.length) throw new HttpException({ type: "https://expatready.local/problems/not-startable", title: "Not ready for cases", status: 409, detail: notReadyForCases(combination!.label, missing.length), missing: missing.map((m) => ({ code: m.code, text: m.text, step: m.step })) }, HttpStatus.CONFLICT);
+    if (missing.length) throw new HttpException({ type: "https://expatready.local/problems/not-startable", title: "Not ready for cases", status: 409, detail: whyNotForCases(combination!.label, missing), missing: missing.map((m) => ({ code: m.code, text: m.text, step: m.step })) }, HttpStatus.CONFLICT);
     let client: Actor | null = null;
     try { client = actorOf(b.clientActor); } catch { /* reported below as a field error */ }
     if (!client || !(client.duties as readonly string[]).includes("answer")) fieldError("clientActor", "Choose a client login (the client who answers the questionnaire).");
@@ -440,7 +452,7 @@ export class Runtime {
       const on = routeOf(routes, r.combination.combinationKey);
       const stage = on && on.at > 0 ? { route: on.route.key, route_label: on.route.label, key: on.route.stages[on.at].key, name: on.route.stages[on.at].staff_name,
         earlier: on.route.stages.slice(0, on.at).map((x) => ({ key: x.key, name: x.staff_name, key_details: (x.key_details ?? []).map((d) => ({ field: d.field, label: d.label, type: d.type, same_every_stage: !!d.same_every_stage })) })) } : undefined;
-      return { combination_id: r.combinationId, combination: r.combination.label, version: r.version, startable: !missing.length, items: missing.length, why: missing.length ? notReadyForCases(r.combination.label, missing.length) : null, ...(stage ? { stage } : {}) };
+      return { combination_id: r.combinationId, combination: r.combination.label, version: r.version, startable: !missing.length, items: missing.length, why: missing.length ? whyNotForCases(r.combination.label, missing, false) : null, ...(stage ? { stage } : {}) };
     }));
     return out.sort((a, b) => Number(b.startable) - Number(a.startable) || a.combination.localeCompare(b.combination));
   }
