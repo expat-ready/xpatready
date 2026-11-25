@@ -2,6 +2,7 @@
 
 **Verdict: Changes** (Ship after fixes). No Blocker, 1 open Major (new: R2-M1). Not approved, so no `review: approved` label for this head.
 * **Head reviewed:** `72835e584b07d9b5ab842d373db5f178b563be6f` on `claude/eloquent-goodall-y7jjmw`. I read only `git diff d4b1185d79dcdd50513301bc65a6f93d5107487d 72835e584 -- prototype`: `pay.ts`, `rail.ts`, `stripe-rail.ts`, `routes.ts`, the two suites and `j_57.ts`.
+* **The branch moved on during this review:** to `fb28d606d` (break round 2: one live page per invoice; 415 on a chunked body; "Stripe down → offline, logged"; 31-41 min; the fake honours expiry). That head is **not** reviewed here. It may close Minors 1 and 2 and the nit below. Its "Stripe down → offline" change turns real outages into offline answers, so the next round must check that it logs at warn or error with the cause, and that a platform-wide outage is still visible.
 * **Bar:** round 1's `review-part2a.md` (M1-M5) and `break-report-part2a.md` (M1-M2, m1-m4); the builder's comment on #3633 (25 Nov 05:53); brief DW5, DW8, DW11; AG-6-14 r2; AG-16-17; AG-6-49 r1.
 * **Run** (from `prototype/`, Postgres :54329, never :4400, no network): `check_fo7c_pay_link.ts` **34/34**, `check_fo7c_card_payments.ts` **43/43**. I did not run j_57 (it would overwrite the committed screenshots).
 * **Mutations:** 27 mutations in a scratch copy of `studio/` under the session scratchpad. The repo was not touched. Results are given under each finding.

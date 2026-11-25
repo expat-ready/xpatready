@@ -143,6 +143,9 @@ try {
   const gone = await call(undefined, "POST", `/public/pay/${T1}/session`);
   ok("FO-7c DW8 fail (AG-16-17): the row says ACTIVE but the processor no longer knows the account → 409 CARD_NOT_OFFERED with the offline details (never a 500, never another account)", gone.status === 409 && gone.body.code === "CARD_NOT_OFFERED" && gone.body.offline?.details?.startsWith("Interac"), gone.body);
   sql(`update money_payment_account set stripe_account_id = '${acct}' where firm_id = '${A}'`);
+  rail.set(acct, { chargesEnabled: false });
+  const refusedS = await call(undefined, "POST", `/public/pay/${T1}/session`); rail.set(acct, { chargesEnabled: true });
+  ok("FO-7c DW8 fail (review round 2 minor): the row says ACTIVE but the processor refuses the page (charges off at Stripe) → 409 CARD_NOT_OFFERED with the offline details, logged at warn", refusedS.status === 409 && refusedS.body.code === "CARD_NOT_OFFERED" && refusedS.body.offline?.details?.startsWith("Interac"), refusedS.body);
   // ------------------------------------------------------------------------------------- the card session (ACTIVE)
   rail.set(acct, { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false });
   sql(`update money_payment_account set status = 'ACTIVE', charges_enabled = true, payouts_enabled = true where firm_id = '${A}'`);
@@ -210,6 +213,24 @@ try {
     await kindOf(stripeSays(500, { type: "api_error", message: "Sample outage" })), await kindOf(stripeSays(401, { type: "invalid_request_error", message: "Invalid API Key provided (Sample)" }))];
   ok("FO-7c DW8 fail (break m1): on the Stripe adapter a revoked account (403), account_invalid, \"cannot make live charges\", a reused key, Stripe down (500) and a refused key (401, round 2 n2) are gone, gone, refused ×4: each the offline answer, never a 500",
     JSON.stringify(kinds) === JSON.stringify(["gone", "gone", "refused", "refused", "refused", "refused"]), kinds);
+
+  // Review round 2 R2-M1: what the Stripe adapter itself sends (a stand-in fetch records each request; no network).
+  { const reqs: { url: string; method: string; headers: Record<string, string>; body: string }[] = [];
+    const answer = (url: string, method: string) => url.includes("/v1/checkout/sessions/cs_same/expire") ? { id: "cs_same", object: "checkout.session", status: "expired" }
+      : method === "GET" ? { object: "list", has_more: false, url: "/v1/checkout/sessions", data: [{ id: "cs_keep", object: "checkout.session", metadata: { invoice_id: "inv-1" } }, { id: "cs_same", object: "checkout.session", metadata: { invoice_id: "inv-1" } }, { id: "cs_other", object: "checkout.session", metadata: { invoice_id: "inv-2" } }] }
+      : { id: "cs_keep", object: "checkout.session", url: "https://checkout.stripe.com/c/pay/cs_keep" };
+    const stand = (async (u: string | URL, init?: RequestInit) => { const url = String(u), method = init?.method ?? "GET", h = Object.fromEntries(new Headers(init?.headers as HeadersInit).entries());
+      reqs.push({ url, method, headers: h, body: typeof init?.body === "string" ? decodeURIComponent(init.body) : "" }); return new Response(JSON.stringify(answer(url, method)), { status: 200, headers: { "content-type": "application/json", "request-id": "req_fo7c2a" } }); }) as unknown as typeof fetch;
+    const real = StripeCardRail.fromKey(["sk", "test", "0".repeat(24)].join("_"), null, stand), exp = Math.floor(Date.now() / 1000) + 35 * 60;
+    const made = await real.createHostedPayment({ account: "acct_1Fo7c2aSample", amountMinor: 123456, currency: "USD", description: "Invoice INV-0009 from Sample", metadata: { firm_id: A, invoice_id: "inv-1" }, successUrl: "https://app.example.test/money/pay/t/done", cancelUrl: "https://app.example.test/money/pay/t", expiresAtSec: exp, idempotencyKey: "fo7c-pay-inv-1-0-abc" });
+    const c = reqs[0], b = c?.body ?? "";
+    ok("FO-7c DW5 pass (review round 2 R2-M1): the Stripe adapter asks Checkout, on the firm's account (Stripe-Account), under the idempotency key, for exactly the amount, the currency, the expiry and the two metadata keys (on the page and on its payment)",
+      made.url.startsWith("https://checkout.stripe.com/") && c?.method === "POST" && c.url.endsWith("/v1/checkout/sessions") && c.headers["stripe-account"] === "acct_1Fo7c2aSample" && c.headers["idempotency-key"] === "fo7c-pay-inv-1-0-abc"
+        && b.includes("line_items[0][price_data][unit_amount]=123456") && b.includes("line_items[0][price_data][currency]=usd") && b.includes(`expires_at=${exp}`) && b.includes("mode=payment")
+        && b.includes(`metadata[firm_id]=${A}`) && b.includes("metadata[invoice_id]=inv-1") && b.includes("payment_intent_data[metadata][invoice_id]=inv-1") && !/application_fee/.test(b), c);
+    reqs.length = 0; const n = await real.expireOtherHostedPayments("acct_1Fo7c2aSample", "inv-1", "cs_keep");
+    ok("FO-7c DW11 fail (review round 2 R2-M1, break N1): on Stripe the other open page of the same invoice is expired on the firm's account; the kept page and another invoice's are not",
+      n === 1 && reqs.filter((r) => r.method === "POST").map((r) => r.url.split("/v1/")[1]).join() === "checkout/sessions/cs_same/expire" && reqs.every((r) => r.headers["stripe-account"] === "acct_1Fo7c2aSample") && /status=open/.test(reqs[0]?.url ?? ""), reqs.map((r) => `${r.method} ${r.url}`)); }
 
   // -------------------------------------------------------------------------------------------------- the limit
   const burst: number[] = [];
