@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { AUTHOR, CLIENT, CLIENT_B, FAMILY, OFFICER, PORT, DB, answer, call, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
 
 type Doc = { id: string; current: boolean; sha256: string; size_bytes: number; media_type: string };
@@ -36,8 +37,9 @@ await main("C6.4 storage", "request, upload, Not applicable, kept lines; QA-149"
     const res = await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: { "x-actor": actor }, body: fd });
     return { status: res.status, body: await res.json().catch(() => null) };
   };
-  const pdf = (n: string) => new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic document ${n}\n`);
-  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+  const pdf = (n: string) => new Uint8Array(textPdf([`Sample synthetic document ${n}`]));   // CS-D1t: a PDF that opens
+  // CS-D1t: a PNG with its header (IHDR, 1 x 1), as PF-F4's check reads an image's size; the signature alone is refused as damaged.
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
 
   // QA-149: the deciding question stays on the case once answered.
   ok("QA-149 fail (before): unanswered, the child's \"travelling alone\" is asked (it decides the letter line)", await asked("agent", OFFICER));
@@ -101,7 +103,10 @@ await main("C6.4 storage", "request, upload, Not applicable, kept lines; QA-149"
   ps = await list();
   const docs = line(ps, A, /passport/i)!.documents;
   ok("C6.4 pass: a new passport (PNG) keeps the old one as history: two documents, the new one current", u.status === 201 && docs.length === 2 && docs.filter((d) => d.current).map((d) => d.id).join() === u.body?.document?.id && docs.find((d) => !d.current)?.id === d1?.id, docs);
-  const exact = new Uint8Array(MAX); exact.set(pdf("exact"));
+  // CS-D1t: a PDF of exactly 20 MB that opens (one long line of text; the length is found in a few tries, as the
+  // PDF's own numbers grow with it). Zeros after a PDF's end are refused as damaged now.
+  let exact = pdf("exact");
+  for (let fill = MAX - exact.length, i = 0; i < 20 && exact.length !== MAX; i++) { exact = new Uint8Array(textPdf(["Sample synthetic document exact", "x".repeat(fill)])); fill += MAX - exact.length; }
   u = await up(pass.id.toUpperCase(), [{ name: "Паспорт-护照-\u202Egpj.pdf", bytes: exact }]);
   ok("C6.4 pass: a file of exactly 20 MB is taken, on the line id in capitals, its name kept as typed (UTF-8) without the right-to-left control", u.status === 201 && u.body?.document?.size_bytes === MAX && sql(`select file_name from case_document where id='${u.body?.document?.id}'`) === "Паспорт-护照-gpj.pdf", u.status === 201 ? sql(`select file_name from case_document where id='${u.body?.document?.id}'`) : u.body);
   const onDisk = Number(execFileSync("find", [join(studio, "var"), "-path", `*/workspaces/demo/people/${A}/documents/*`, "-type", "f"], { encoding: "utf8" }).trim().split("\n").filter(Boolean).length);

@@ -22,6 +22,7 @@ case "$m $u" in
     [ "$pg" = 1 ] && [ ! -f "$FX/events-$n-p1.json" ] && { echo '{"message":"Server Error"}'; exit 22; }; echo '[]';;
   "DELETE "*/issues/*/labels/review%3A%20approved) n=$(printf '%s' "$u" | sed 's|.*/issues/\([0-9]*\)/labels.*|\1|')
     [ -n "${FAIL_DELETE:-}" ] && { echo '{"message":"Forbidden"}'; exit 22; }; echo "DELETE $n" >> "$FX/log"; echo '[]';;
+  "GET "*/issues/*/labels*) [ -f "$FX/labels.json" ] || { echo '{"message":"Not Found"}'; exit 22; }; [ "$pg" = 1 ] && cat "$FX/labels.json" || echo '[]';;
   "POST "*/issues/*/comments) n=$(printf '%s' "$u" | sed 's|.*/issues/\([0-9]*\)/comments.*|\1|')
     echo "POST $n $(echo "$d" | jq -r .body | head -1 | cut -c1-40)" >> "$FX/log"; echo '{}';;
   *) echo "unexpected $m $u" >> "$FX/log"; exit 22;;
@@ -33,7 +34,7 @@ ev() {  # ev <event> <label> <login> <type> → one issue event, as GitHub gives
   jq -n --arg e "$1" --arg l "$2" --arg a "$3" --arg t "$4" '{event: $e, label: {name: $l}, actor: {login: $a, type: $t}, created_at: "2026-11-07T06:31:45Z"}'; }
 evs() { jq -s . ; }   # stdin: events → an array
 pr() { jq -n --argjson n "$1" '{number: $n, pull_request: {url: "x"}}'; }
-printf '#!/usr/bin/env bash\n[ "${ELIGIBLE:-}" = "$PR" ]\n' > "$T/bin/gate"; chmod +x "$T/bin/gate"   # queue-gate.sh eligible, stood in
+printf '#!/usr/bin/env bash\necho "$1 PR=$PR LABELED_AT=${LABELED_AT:-}" > "$FX/gate.log"\n[ -z "${GATE_RC:-}" ] || exit "$GATE_RC"\n[ "${ELIGIBLE:-}" = "$PR" ] && exit 0; echo "#$PR: not eligible: no Approve names the head"; exit 1\n' > "$T/bin/gate"; chmod +x "$T/bin/gate"   # queue-gate.sh eligible, stood in
 sweep() {  # run the sweep on the fixtures in $T/fx → $out, $log, $r
   : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test QUEUE_GATE="$T/bin/gate" bash "$S" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 reset() { rm -f "$T/fx"/*.json; }
@@ -48,6 +49,13 @@ ok "B134: review: approved put on by github-actions[bot] comes off, with a comme
 # 1b. B194: the same bot label, when main's queue-gate.sh says the PR is eligible now (queue-gate.yml put it on): kept.
 ELIGIBLE=7 sweep
 ok "B194: a github-actions[bot] label on a PR queue-gate.sh judges eligible is kept" "$([ $r = 0 ] && [ -z "$log" ] && grep -q '#7: kept.*eligible' <<< "$out" && echo 1)" "exit $r: $out / $log"
+ok "CI-PRE: the sweep tells queue-gate.sh when the bot's label was put on (LABELED_AT: the batch rule for a label a workflow's token set)" "$(grep -qx 'eligible PR=7 LABELED_AT=2026-11-07T06:31:45Z' "$T/fx/gate.log" && echo 1)" "$(cat "$T/fx/gate.log" 2>&1)"
+GATE_RC=3 sweep
+ok "CI-PRE: queue-gate.sh could not read the full runs (exit 3): the bot's label is kept, the run is red, the next sweep tries again" "$([ $r = 2 ] && [ -z "$log" ] && grep -q '#7: queue-gate.sh could not judge it, label kept' <<< "$out" && echo 1)" "exit $r: $out / $log"
+GATE_RC=2 sweep
+ok "CI-PRE: any other failure of queue-gate.sh (exit 2) still takes the bot's label off" "$(grep -qx 'DELETE 7' <<< "$log" && echo 1)" "exit $r: $out / $log"
+ELIGIBLE=99 sweep
+ok "19 Nov: a bot label queue-gate.sh refuses comes off, and the run's log says why" "$([ $r = 0 ] && grep -qx 'DELETE 7' <<< "$log" && grep -q '#7: removed.*queue-gate.sh: #7: not eligible: no Approve names the head' <<< "$out" && echo 1)" "exit $r: $out / $log"
 # 2. A person's label (the tech lead, or a builder through the claude app: the actor is the person) is kept.
 reset; { pr 8; } | evs > "$T/fx/issues.json"
 { ev labeled records github-actions[bot] Bot; ev labeled "review: approved" the-owner User; ev labeled queued "mergify[bot]" Bot; } | evs > "$T/fx/events-8-p1.json"
@@ -87,6 +95,15 @@ reset; pr 17 | evs > "$T/fx/issues.json"; ev labeled "review: approved" github-a
 ok "B134: the labelled PRs cannot be listed: nothing removed, the run is red" "$([ $r = 2 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" FAIL_DELETE=1 GH_TOKEN=x REPO=o/r API=https://api.test bash "$S" 2>&1); r=$?; log=$(cat "$T/fx/log")
 ok "B134: GitHub refuses the removal: the run is red and says so" "$([ $r = 2 ] && grep -q 'could not be removed' <<< "$out" && echo 1)" "exit $r: $out / $log"
+# 8b. The DELETE fails because the label is already off (#3472, 24 Nov, 404): done. Still on, or its labels unreadable (a 404
+# GitHub also gives a token that may not see the PR): red, never taken for done.
+fd() { : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" FAIL_DELETE=1 GH_TOKEN=x REPO=o/r API=https://api.test QUEUE_GATE="$T/bin/gate" bash "$S" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+echo '[{"name":"tooling"}]' > "$T/fx/labels.json"; fd
+ok "label already off when the DELETE answers 404: done, the run is green, no comment" "$([ $r = 0 ] && [ -z "$log" ] && grep -q '#17: .*was already off' <<< "$out" && echo 1)" "exit $r: $out / $log"
+echo '[{"name":"tooling"},{"name":"review: approved"}]' > "$T/fx/labels.json"; fd
+ok "... still on: the run is red and says it could not be removed" "$([ $r = 2 ] && grep -q '#17: .*could not be removed' <<< "$out" && echo 1)" "exit $r: $out"
+rm -f "$T/fx/labels.json"; fd
+ok "... its labels unreadable: red, never taken for done" "$([ $r = 2 ] && grep -q '#17: .*could not be removed' <<< "$out" && echo 1)" "exit $r: $out"
 # 9. A label with no labeled event in its list (GitHub trimmed it): kept, red, never silent.
 reset; pr 18 | evs > "$T/fx/issues.json"; ev labeled records github-actions[bot] Bot | evs > "$T/fx/events-18-p1.json"
 sweep
@@ -119,6 +136,12 @@ else:
     if not co or co[0].get("with", {}).get("ref") != "main" or co[0]["with"].get("persist-credentials") is not False: out.append("sweep does not check out main without a kept token")
     runs = " ".join(str(s.get("run", "")) for s in j["steps"])
     if "label-sweep.sh" not in runs or "pr/" in runs or "head" in runs: out.append("sweep's run: " + runs)
+    # 19 Nov: eligible reads REVIEWERS; without it no Approve counted since the org move and the sweep undid queue-gate.
+    qg = yaml.safe_load(open(sys.argv[1].replace("label-guard.yml", "queue-gate.yml")))
+    want = [s.get("env", {}).get("REVIEWERS") for s in qg["jobs"]["gate"]["steps"] if "queue-gate.sh" in str(s.get("run", ""))]
+    have = [s.get("env", {}).get("REVIEWERS") for s in j["steps"] if "label-sweep.sh" in str(s.get("run", ""))]
+    if not want or not want[0] or have != want: out.append(f"the sweep's REVIEWERS {have} is not queue-gate's {want}")
+    if "workflow_dispatch" not in on or "workflow_dispatch" not in j.get("if", ""): out.append("the sweep cannot be run by hand (workflow_dispatch, Lead 84 19 Nov)")
 g = d["jobs"]["guard"].get("if", "")
 if "github.event.pull_request" not in g: out.append("the guard job's if changed: " + g)
 if "github.event.label.name == 'queued'" not in g: out.append("the guard does not run when Mergify puts queued on: " + g)

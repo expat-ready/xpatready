@@ -1,0 +1,53 @@
+# Review-round limit (ENF-783a, P-783 (1); the rule is P-293: at most two review rounds, then the tech lead decides).
+# A PR comment by someone with write access with a line starting "Reviewer: <verdict>" is one round; a third (or later)
+# round is refused unless a write-access comment has the line "Lead allows round N:" (N at least that round).
+# product/tools/review-rounds.py judges it and sets the commit status "review-rounds" on the PR's head (success /
+# failure / error when comments cannot be read: fails closed); the job fails with it. Runs when a comment that names a
+# verdict or a Lead allowance is written, edited or deleted, and on each new head. issue_comment and
+# pull_request_target run main's copy of this file and the script; the PR's code is never checked out or run.
+# A PR carrying the `records` label is exempt (the Lead's own records approvals, P-385, are not review rounds).
+# Report-only for 3 green days (Lead 13 on #2749, 21 Nov); then the Lead decides in its own PR whether to add
+# `status-success=review-rounds` to .mergify.yml (P-423), giving open PRs a one-time "Lead allows round N:".
+# Test: product/tools/test_review_rounds.py (lead-tools-tests.yml). Read-only apart from the status, US$0.
+name: review-rounds
+on:
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+jobs:
+  review-rounds:
+    # contains() ignores case; an edit is judged on its old body too (removing a verdict or an allowance re-judges)
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request && (contains(github.event.comment.body, 'reviewer') ||
+      contains(github.event.comment.body, 'allows round') || contains(github.event.changes.body.from, 'reviewer') ||
+      contains(github.event.changes.body.from, 'allows round')))
+    # On the job, not the workflow (#2749 review M1): a skipped run for an unrelated comment takes no slot, so it can
+    # never cancel a verdict's run. Every run reads the PR as it is now, so a newer run replacing an older one is safe.
+    # Never also at the workflow: the same group at both levels is a deadlock that cancels every run (SPD-2 item 5,
+    # review B1). A push run of a merge-queue batch (head mergify/...) is never cancelled (SPD-2 item 5, P-802); a verdict
+    # comment on a batch PR can supersede an older run of that batch, which is harmless (each run reads all).
+    concurrency:
+      group: review-rounds-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref || '', 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/review-rounds.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: at most two reviewer rounds without the Lead's line
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/review-rounds.py --pr "$PR" --status

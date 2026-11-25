@@ -1,0 +1,17 @@
+PASS  J-74 setup: Demo › Load the configured checkpoint (its Sample route "Study, then work") — 201
+PASS  J-74 setup: the route whose work permit deadline reads the study permit's end date is loaded
+PASS  J-74 setup: the Sample firms and their staff are seeded; the representative signs in (local stand-in) — 200
+PASS  J-74 W1: the officer opens a case on the study permit (firm A, team: representative user-R, officer user-O); its current stage has no deadline, so nothing is armed — "LEAD_REPRESENTATIVE:user-R,OFFICER:user-O"
+PASS  J-74 W2 (DW1): after Start next stage the work permit is current and its deadline shows "Mon 8 Mar 2027 (closed day)": the calendar date, never moved, marked by the firm's own closed days — "Stages\nStudy, then work (Sample route, not a recommended one)\nStudy permit (outside Canada)\nEnded — next stage started\nWork permit with an LMIA (inside Canada)\nCurrent\n\nApply for the work permit by Mon 8 Mar 2027 (closed day) Sample"
+PASS  J-74 W2 axe: the stage strip has no WCAG 2.2 A/AA violation; 1440 px, no sideways scroll — []
+PASS  J-74 W2 (DW1): the deadline followed the stage: three reminders armed for the work permit, counted back over open days: Wed 24 Feb (7), Wed 3 Mar (2), Thu 4 Mar (on the day: Fri 5 and Mon 8 are closed) — ["2027-02-24","2027-03-03","2027-03-04"]
+PASS  J-74 DW1 NR: with the defaults (no closed day) the same judge fails: the days would be Thu 25 Feb, Thu 4 Mar, Mon 8 Mar — "2027-02-25,2027-03-04,2027-03-08"
+PASS  J-74 DW2 NR: a job carrying firm B's id reads nothing of firm A's case and tells nobody
+PASS  J-74 DW4 NR: with the route back to Sample the case arms nothing and a waiting job tells nobody (shown, never reminded)
+PASS  J-74 DW3 NR: the withdraw sent as the simulated person (x-actor only) is 401, writes no case.closed and cancels nothing — 401
+PASS  J-74 W3 (DW3): withdrawn through CS-C1a's route with the representative's session: case.closed in the outbox, the three reminders cancelled, none fires (24 Feb passes) — 200
+PASS  J-74 W4 (DW2): reopened: the two reminders still to come reach the representative and the officer once each (Wed 3 and Thu 4 Mar, 09:00 Toronto); the passed one never fires late — {"status":200,"told":[{"staffId":"039d449f-2b30-44f1-8493-02c329aab8dc","stageId":"bd89f610-691c-4c10-8388-46d5ad709231","at":"2027-03-03T14:00"},{"staffId":"bcd32b90-e0fe-4155-9004-f28b19e20a29","stageId":"bd89f610-691c-4c10-8388-46d5ad709231","at":"2027-03-0
+PASS  J-74 walk: no page error on the way — []
+
+14/14 passed
+exit 0

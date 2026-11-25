@@ -1,0 +1,17 @@
+PASS  J-33 setup: both Sample firms have a front office, and firm A's web form is switched on — []
+PASS  J-33 W1: the visitor's enquiry arrives as a web-form lead, the phone kept as typed ("12") and marked unreadable — "12|false|-"
+PASS  J-33 W1: the Owner's Leads list flags the lead "Fix number" — "Wrenmwo2i22r Sample\nL-00001\nFix number\n\tNot given\tWebsite form\tNobody\tjust now since it arrived\tTake it"
+PASS  J-33 W1: the lead page's Phone row shows 12 with the Fix number pill, which can be pressed
+PASS  J-33 W2: Fix number opens the phone field, focused, with the number in it
+PASS  J-33 W2: staff entering "12" see the field's sentence under the field (role alert, the field marked invalid) — "This is not a phone number we can read. Add the country code, for example +1 416 555 0100."
+PASS  J-33 W2: nothing is saved: the person still holds "12", unreadable, and no phone audit line exists — "12|false|-"
+PASS  J-33 W2: the open phone field passes axe (WCAG 2.1 A and AA) with its error showing — []
+PASS  J-33 W2: the same through the route: 422 with the field's sentence in fields.phone — {"status":422,"body":{"type":"https://expatready.local/problems/invalid","title":"Check the details","status":422,"detail":"Phone: This is not a phone number we can read. Add the country code, for example +1 416 555 0100.","message":"Phone: This is not a phone
+PASS  J-33 W3: the number is saved and shown in E.164 (+14165550100), and the Fix number pill is gone
+PASS  J-33 W3: underneath, the person holds +14165550100, readable, and the database's phone_e164 follows — "+14165550100|true|+14165550100"
+PASS  J-33 W3: the Leads list no longer flags the lead — "Wrenmwo2i22r Sample\nL-00001\n\tNot given\tWebsite form\tNobody\tjust now since it arrived\tTake it"
+PASS  J-33 W3: one phone audit line, with ids only (no number)
+PASS  J-33 W4: firm A's Owner asking to change firm B's person's phone → 404, and B's person still holds "12" — {"b":201,"cross":{"status":404,"body":{"type":"https://expatready.local/problems/not-found","title":"Not found","status":404,"detail":"No such person in your firm.","message":"No such person in your firm.","code":"NOT_FOUND"}}}
+PASS  J-33 W4: firm B's Owner can fix their own person (the 404 is the firm wall, not a broken route) — {"status":200,"body":{"personId":"2646bbea-888f-4b8b-b1b7-40cfad23868d","phone":"+14165550101","fixNumber":false}}
+PASS  J-33: no page error in the walk — []
+PASS  secret check: no key or secret value in /home/runner/work/_temp/walk

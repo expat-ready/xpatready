@@ -7,8 +7,9 @@ import type { Me } from "../../front-office/sales/contract.ts";   // relative: t
 
 export const KEY = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const has = (me: Me, key: string) => me.keys.includes(key);
-/** BR-2: the handler, or someone holding both keys, may act on an open complaint (the server still decides). */
-export const canAct = (me: Me, c: { handlerStaffId: string }) => c.handlerStaffId === me.staffId || (has(me, KEY.record) && has(me, KEY.read));
+/** BR-2 as PF-21j has it: the record key, as the handler or with the read key too, acts on an open complaint (the server
+ *  still decides: api/src/platform/complaints/complaints.ts canAct). */
+export const canAct = (me: Me, c: { handlerStaffId: string }) => has(me, KEY.record) && (c.handlerStaffId === me.staffId || has(me, KEY.read));
 
 const when = z.string().nullable();
 export const Complaint = z.object({
@@ -38,7 +39,40 @@ export const EVENT: Record<string, string> = {
 export const word = (list: Record<string, string>, code: string | null) => (code === null ? "" : list[code] ?? code);
 
 export const NOT_FOUND = "We can't find this complaint. It may not exist, or it may not be one you can see.";
-export const READ_ONLY = "You can see this complaint but not change it: only its handler, an Owner or an Admin can.";
+export const READ_ONLY = "You can see this complaint but not change it: only an Owner, an Admin, or a handler who may record complaints can.";
+/** §5 Refused: the panel's title; the server's own words follow it. */
+export const FORBIDDEN = "You can't change this complaint. Ask an Owner or Admin.";
+export const CLOSED_REFUSED = "This complaint is closed. It was closed while you were working; add it as a note instead.";
+
+/** PF-21s part 4: the acts on a complaint, each one panel (concept §4 "Record page", "Drawers"). */
+export type Action = "acknowledge" | "step" | "note" | "response" | "close" | "handler";
+export const ACTION: Record<Action, { title: string; submit: string; done: string; description: string }> = {
+  acknowledge: { title: "Record the acknowledgement", submit: "Record the acknowledgement", done: "Acknowledgement recorded.", description: "When the firm told the person it received their complaint. Recorded once." },
+  step: { title: "Add a handling step", submit: "Add the step", done: "Handling step added.", description: "Something done to handle the complaint. It goes on the record and is never deleted." },
+  note: { title: "Add a note", submit: "Add the note", done: "Note added.", description: "Something to keep on the record. It changes nothing else." },
+  response: { title: "Record the response sent", submit: "Record the response", done: "Response recorded.", description: "When the firm sent its response to the person. Recorded once." },
+  close: { title: "Close with an outcome", submit: "Close the complaint", done: "Complaint closed.", description: "A closed complaint is kept as it is; notes can still be added." },
+  handler: { title: "Change handler", submit: "Change handler", done: "Handler changed.", description: "The new handler sees it and is reminded if it is not acknowledged by its date." },
+};
+/** The one filled button by status (concept §4): not acknowledged → acknowledge; response sent → close (steps are
+ *  never required, §1; review m1); no step → a step; else response sent. A closed complaint takes a note only. */
+export function nextAction(c: Detail): Action {
+  if (c.status === "CLOSED") return "note";
+  if (c.responseSentAt) return "close";   // also when answered before any acknowledgement (break m2a)
+  if (!c.acknowledgedAt) return "acknowledge";
+  if (!c.events.some((e) => e.kind === "STEP")) return "step";
+  return "response";
+}
+/** The quiet secondary acts the service still allows while open, without the one filled. */
+export function otherActions(c: Detail): Action[] {
+  if (c.status === "CLOSED") return [];
+  const all: Action[] = [...(c.acknowledgedAt ? [] : ["acknowledge" as const]), "step", "note", ...(c.responseSentAt ? [] : ["response" as const]), "close"];
+  return all.filter((a) => a !== nextAction(c));
+}
+/** Every act this person may take on this complaint now (a restored panel for any other act is not opened, break m3). */
+export const allowedActions = (me: Me, c: Detail): Action[] => (c.status === "CLOSED" ? ["note"] : [nextAction(c), ...otherActions(c), ...(canChangeHandler(me, c) ? ["handler" as const] : [])]);
+/** BR-3: change handler, both keys and open only (the server still decides). */
+export const canChangeHandler = (me: Me, c: { status: string }) => c.status === "OPEN" && has(me, KEY.record) && has(me, KEY.read);
 export const OVERDUE_TIP = "Open and not acknowledged by its date. Once acknowledged, a complaint is not shown as overdue.";
 export const HOW = "Record each complaint when it arrives. The handler acknowledges it, adds handling steps, records when the response was sent and closes it with an outcome. Everything stays on the record. A complaint is overdue only while it is not acknowledged by its date; once acknowledged it shows as Open however long it waits. The 2-business-day acknowledgement period and the lists of channels, topics and outcomes are Sample until the College's by-laws are read. Unconfirmed: no counsel.";
 

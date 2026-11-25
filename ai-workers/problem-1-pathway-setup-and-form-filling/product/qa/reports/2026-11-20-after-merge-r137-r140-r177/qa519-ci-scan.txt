@@ -1,0 +1,55 @@
+# QA-519 evidence (qa 7, 20 Nov)
+
+## Failing job: ci run 44581872718 (#2268's full run), job 135766849281, shard 4 — log lines 1780-1846
+run-suites: check_forms_qa206_name_browser.cjs starts, 1167 s into this part
+##[group]check_forms_qa206_name_browser.cjs failed (exit 1): its FAIL lines and the last 40 lines of ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/check_forms_qa206_name_browser.log
+--- 1st try (retried, B122): its FAIL lines
+--- 2nd try
+--- last 40 lines
+PASS  setup: the six load
+PASS  setup: IMM 5257's rules pass drafts its sections and answer lists (201, US$0) — "edition:IMM 5257 (09-2023)"
+PASS  setup: IMM 5475's rules pass drafts its sections and answer lists (201, US$0) — "edition:IMM 5475 (12-2022)"
+PASS  QA-206 pass: To review shows IMM 5257's sections under their printed headings — ["Education","Unnamed section 1 of IMM 5257","Background information","Personal details","National identity document","Details of visit to Canada","US PR card","Contact information","Employment"]
+PASS  QA-206 fail: no IMM 5257 section on To review carries a PDF part name (Page wrapper, Nat id, Us card …) — ["Education","Unnamed section 1 of IMM 5257","Background information","Personal details","National identity document","Details of visit to Canada","US PR card","Contact information","Employment"]
+PASS  QA-206 pass: a row says which printed heading its boxes sit under
+PASS  QA-206 pass: IMM 5475's part "Seven" shows as "Your declaration"; the two parts with no printed heading say so
+PASS  QA-206 fail: Accept of an unnamed section stays off, and says why
+PASS  QA-206 pass: axe finds no WCAG 2.2 AA violation in the panel — []
+PASS  QA-206 fail: the placeholder name, or another "Unnamed section" name, keeps Accept off
+PASS  QA-206 pass: once a name is typed, Accept is on
+PASS  QA-206 pass: it lands under the typed name, waiting for a second person
+PASS  B78 pass: Accept is reached by the keyboard
+locator.waitFor: Timeout 20000ms exceeded.
+Call log:
+  - waiting for getByText(/The library already holds a section of that name, so this part joins it; nothing new was added/).first() to be visible
+
+    at /home/runner/work/xpatready/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_forms_qa206_name_browser.cjs:85:127 {
+  log: [
+    '  - waiting for getByText(/The library already holds a section of that name, so this part joins it; nothing new was added/).first() to be visible'
+  ],
+  name: 'TimeoutError'
+}
+| check_forms_qa206_name_browser.cjs | failed twice | 88 s | exit 1:   name: 'TimeoutError' · 1st try exit 1:   name: 'TimeoutError' |
+retries: 1 · failed twice: check_forms_qa206_name_browser.cjs (one retry per failed suite, at most 2 a run; never in the nightly full set)
+
+## Scan: the last 45 ci runs (ci.yml, completed, newest first, read 20 Nov ~00:5x IST); every job's suite table line for this suite: run job | suite | result | time | last line
+44590079514 135795969794 | check_forms_qa206_name_browser.cjs | PASS | 19 s | 15 passed, 0 failed |
+44590054878 135795698258 | check_forms_qa206_name_browser.cjs | PASS | 21 s | 15 passed, 0 failed |
+44588335766 135789758918 | check_forms_qa206_name_browser.cjs | PASS | 15 s | 15 passed, 0 failed |
+44588174064 135789512385 | check_forms_qa206_name_browser.cjs | PASS | 14 s | 15 passed, 0 failed |
+44588167033 135816349364 | check_forms_qa206_name_browser.cjs | PASS | 19 s | 15 passed, 0 failed |
+44581989921 135767284028 | check_forms_qa206_name_browser.cjs | PASS | 21 s | 15 passed, 0 failed |
+44581888680 135766940133 | check_forms_qa206_name_browser.cjs | PASS | 21 s | 15 passed, 0 failed |
+44581879971 135766961295 | check_forms_qa206_name_browser.cjs | PASS | 17 s | 15 passed, 0 failed |
+44581869053 135816357005 | check_forms_qa206_name_browser.cjs | PASS | 17 s | 15 passed, 0 failed |
+44581869881 135766901714 | check_forms_qa206_name_browser.cjs | PASS | 22 s | 15 passed, 0 failed |
+44581859660 135766725938 | check_forms_qa206_name_browser.cjs | PASS | 17 s | 15 passed, 0 failed |
+44581827618 135766794712 | check_forms_qa206_name_browser.cjs | PASS | 21 s | 15 passed, 0 failed |
+44581803072 135766616744 | check_forms_qa206_name_browser.cjs | PASS | 19 s | 15 passed, 0 failed |
+44577119986 135751891976 | check_forms_qa206_name_browser.cjs | PASS | 17 s | 15 passed, 0 failed |
+44575972287 135746030061 | check_forms_qa206_name_browser.cjs | PASS | 23 s | 15 passed, 0 failed |
+44575863673 135745674866 | check_forms_qa206_name_browser.cjs | PASS | 19 s | 15 passed, 0 failed |
+
+Also: merge batch #2344, ci 44575502680 job 135744274446: PASS 17 s 15 passed (ci-44575502680-suites.txt).
+
+## #2268's changed files that are shared screens: only web/src/modules/front-office/sales/lead-page.tsx (17 files in all, GitHub API pulls/2268/files)

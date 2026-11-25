@@ -7,11 +7,12 @@
 //   zsh studio/tools/isolated.sh qa_382 4473 start && <load the configured checkpoint as user-A> \
 //     && tsx studio/tests/qa/check_qa382_on_file_after_own_upload.ts 4473 xr_studio_qa_382
 import { CLIENT, OFFICER, PORT, call, main, ok, prepare, run, sql } from "../../acceptance/lib/m3.ts";
+import { textPdf } from "../../acceptance/lib/fixtures.ts"; // a PDF that opens: the case doors read it whole since CS-D1t (#2253)
 
 type Openable = { combination_id: string; startable: boolean; stage?: { route: string; earlier: unknown[] } };
 type Line = { id: string; document_type?: string; state?: string; on_file?: { words: string } | null };
 const upload = async (lineId: string, name: string) => {
-  const fd = new FormData(); fd.append("file", new Blob([new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic document ${name}\n`)]), name);
+  const fd = new FormData(); fd.append("file", new Blob([new Uint8Array(textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", `Sample synthetic document ${name}`]))]), name);
   const res = await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: { "x-actor": OFFICER }, body: fd }).catch(() => null);
   return res?.status ?? 0;
 };

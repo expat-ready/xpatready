@@ -1,6 +1,7 @@
 // PF-18np (rows rev 16.31, 16.41; brief lead-b-briefs/PF-18np.md): the shared notification port, interface and fake only.
 // A caller tells one person, inside its own transaction, that one item needs them: ids only, no free text, names or
-// numbers (AG-7-39 rule 10). One notification per person per item (AG-7-39 rule 2; "Duplicate beats a miss", AG16-60).
+// numbers (AG-7-39 rule 10). One notification per person, item and kind (AG-7-39 rule 2; "Duplicate beats a miss", AG16-60):
+// a repeat marks it unread again with the new time (PF-18n part 1, brief PF-18n1.md), never a second one.
 // The call promises no delivery: the real adapter (PF-18n) checks preferences, builds the link and stores the row.
 // Consumers only ADD lines to NOTIFICATION_KIND, NOTIFICATION_GROUP and NOTIFICATION_ITEM_KIND, never reorder or rename.
 // This folder imports only zod and its own files.
@@ -12,14 +13,26 @@ export type NotificationGroup = z.infer<typeof NotificationGroup>;
 /** Kind names to kebab-case strings. Each consumer row adds its own line. */
 export const NOTIFICATION_KIND = {
   PORT_SELF_TEST: "port-self-test",
+  CASE_STAGE_DEADLINE: "case-stage-deadline", // CS-DL1 part 2: a cited stage deadline's reminder (AG-7-94 r5)
+  CASE_MILESTONE_DEADLINE: "case-milestone-deadline", // CS-DL3 part 1: a government step's due date, from IRCC's letter
+  PAYMENT_ACCOUNT_DISCONNECTED: "payment-account-disconnected", // FO-7c part 1: the firm's payment account broke; the Owner's home item (AG-16-16)
+  LEAD_ASSIGNED: "lead-assigned", // PF-18n part 2: a lead handed to me by the firm's rule or by someone's Assign (AG-16-10 test 1, AG-10-29a)
+  KEEP_PERIOD_PASSED: "keep-period-passed", // CS-D6 part 2: a closed client file is past the firm's keep period (SA-11-33; a reminder, weekly)
+  TRUST_TO_MOVE_WAITING: "trust-to-move-waiting", // FO-7t part 3: a "To move" line has waited more than 25 days (AG-6-73 rule 5); item: the firm
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 /** Each kind's group, from AG-16 §3.3 "What is in it": a kind without a group fails the type check. */
 export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   [NOTIFICATION_KIND.PORT_SELF_TEST]: "NEEDS_YOU",
+  [NOTIFICATION_KIND.CASE_STAGE_DEADLINE]: "MY_DEADLINES",
+  [NOTIFICATION_KIND.CASE_MILESTONE_DEADLINE]: "MY_DEADLINES",
+  [NOTIFICATION_KIND.PAYMENT_ACCOUNT_DISCONNECTED]: "FIRM_AND_CONNECTIONS",
+  [NOTIFICATION_KIND.LEAD_ASSIGNED]: "WORK_HANDED_TO_ME",
+  [NOTIFICATION_KIND.KEEP_PERIOD_PASSED]: "NEEDS_YOU",
+  [NOTIFICATION_KIND.TRUST_TO_MOVE_WAITING]: "PAYMENTS",
 };
 /** What a notification points at. Consumers add their own. */
-export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round"] as const;
+export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage", "case-milestone", "lead"] as const;   // lead: PF-18n part 2
 export type NotificationItemKind = (typeof NOTIFICATION_ITEM_KIND)[number];
 export const NotificationKindSchema = z.enum(NOTIFICATION_KIND);
 export const NotificationRecipient = z.strictObject({ staffId: Uuid });
@@ -39,17 +52,17 @@ export type FakeNotifications = NotificationPort<unknown> & {
   sent(): NotificationRecord[];
   markRead(staffId: string, item: NotificationItem): void;
 };
-/** In memory. A second notify for the same person and unread item replaces its kind and time and adds no record. */
+/** In memory. A second notify for the same person, item and kind marks its record unread with the new time and adds none. */
 export function fakeNotifications(opts: { now?: () => Date } = {}): FakeNotifications {
   const records: NotificationRecord[] = [], now = opts.now ?? (() => new Date());
-  const open = (staffId: string, item: NotificationItem) => records.find((r) => !r.read && r.staffId === staffId && r.item.kind === item.kind && r.item.id === item.id);
+  const of = (staffId: string, item: NotificationItem) => records.filter((r) => r.staffId === staffId && r.item.kind === item.kind && r.item.id === item.id);
   return {
     async notify(_tx, recipient, kind, item) {
-      const p = parseNotify(recipient, kind, item), same = open(p.recipient.staffId, p.item);
-      if (same) Object.assign(same, { kind: p.kind, at: now() });
+      const p = parseNotify(recipient, kind, item), same = of(p.recipient.staffId, p.item).find((r) => r.kind === p.kind);
+      if (same) Object.assign(same, { read: false, at: now() });
       else records.push({ staffId: p.recipient.staffId, kind: p.kind, item: p.item, at: now(), read: false });
     },
     sent: () => records.map((r) => ({ ...r, item: { ...r.item } })),
-    markRead(staffId, item) { const r = open(staffId, item); if (r) r.read = true; },
+    markRead(staffId, item) { for (const r of of(staffId, item)) r.read = true; },
   };
 }

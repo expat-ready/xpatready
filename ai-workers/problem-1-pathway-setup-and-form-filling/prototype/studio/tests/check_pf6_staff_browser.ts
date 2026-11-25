@@ -1,13 +1,13 @@
 // PF-6 part 2a (brief lead-b-briefs/PF-6p2.md; concept pf-6-staff r2 §3, §4, §6; R1.6): Team, Invite people with
 // Compare roles, and the Person panel in a real browser against PF-4/PF-4b/PF-6r's real routes on the local stand-in
-// (no fake API; one stubbed answer only for the step-up, whose 5 minutes a test cannot wait). DW1-DW4 and DW8, each a
-// pass and a fail; DW9 is the named suites run unchanged. Seeds the Sample firms. US$0.
+// (no fake API; one stubbed answer only for the step-up, whose 5 minutes a test cannot wait). DW1-DW4 and DW8 (part 2a), DW5-DW8 (part 2b:
+// Accept invitation, Licences, My account's licence, Security), each a pass and a fail; DW9 is the named suites run unchanged. Seeds the Sample firms. US$0.
 //   zsh studio/tools/isolated.sh screens_pf6s 4571 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf6_staff_browser.ts 4571 xr_studio_screens_pf6s
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
@@ -71,6 +71,8 @@ const posts = (p: Page, re: RegExp) => seen.filter((s) => s.page === p && s.meth
 const settle = async (p: Page, re: RegExp, n: number) => { for (let i = 0; i < 100 && posts(p, re).filter((s) => s.status !== undefined).length < n; i++) await p.waitForTimeout(100); };
 const signInCard = (p: Page) => p.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
 const clickProfile = (p: Page) => p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click();
+/** PF-18h: a sign-in hand-off lands on Home; My account (opened from the menu) then shows who signed in. */
+const landedAs = async (p: Page, email: string) => { await p.waitForURL(`${BASE}/home`, { timeout: 20_000 }); await clickProfile(p); await p.locator("[data-account]", { hasText: email }).waitFor({ timeout: 20_000 }); };
 
 const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status <> 'ENDED' limit 1`).split("|");
 const used = () => Number(sql(`select ((select count(*) from platform_staff s join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status in ('ACTIVE','SUSPENDED')) + (select count(*) from platform_invitation i join platform_firm f on f.id = i.firm_id where f.key = 'sample-firm' and accepted_at is null and revoked_at is null and expires_at > now()))`));
@@ -86,9 +88,9 @@ await team(p);
 ok("PF-6 DW1 pass: Team shows the seat line from the server", (await p.locator("[data-seat-line]").innerText()).startsWith(`${used()} of ${Number(plan[1]) + 100} seats used`));
 await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").fill(X);
 ok("PF-6 DW1/BR-1 pass: Case Officer is ticked first", await p.locator('[data-invite-row="1"] [data-role="CASE_OFFICER"]').isChecked());
-await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations$/, 1);
+await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, 1);
 const invX = sql(`select id from platform_invitation where email = '${X}'`);
-ok("PF-6 DW1 pass: Invite people sends one invitation for the row (Case Officer)", posts(p, /\/staff\/invitations$/).length === 1 && !!invX && sql(`select roles::text from platform_invitation where id = '${invX}'`) === "{CASE_OFFICER}");
+ok("PF-6 DW1 pass: Invite people sends one invitation for the row (Case Officer)", posts(p, /\/staff\/invitations\/batch$/).length === 1 && !!invX && sql(`select roles::text from platform_invitation where id = '${invX}'`) === "{CASE_OFFICER}");
 await p.locator('[data-chip="invited"]').click(); await row(p, X).waitFor({ timeout: 10_000 });
 ok("PF-6 DW1 pass: the Invited chip lists the pending invitation", (await row(p, X).innerText()).includes("Invited"));
 const Y = `pf6-y-${run}@example.com`, invY = (await (await staffCall(rTok, "POST", "/platform/staff/invitations", { email: Y, roles: ["READ_ONLY"] })).json() as { id: string }).id;
@@ -97,7 +99,7 @@ ok("PF-6 DW1 fail: Revoke asks first; Cancel leaves the invitation pending", (aw
 await p.locator("[data-act-confirm]").click(); await settle(p, /revoke$/, 1);
 await p.goto(`${BASE}/platform/team?view=invited&invitation=${invY}`); await p.locator("[data-seat-line]").waitFor(); await p.waitForTimeout(500);
 ok("PF-6 DW1 pass: Revoke confirmed revokes it; its address no longer opens a live-looking panel", sql(`select revoked_at is not null from platform_invitation where id = '${invY}'`) === "t" && (await p.locator("[data-person-invitation]").count()) === 0);
-const x = await newPage(); await x.goto(`${BASE}${await accept(invX)}`); await x.locator("[data-account]", { hasText: X }).waitFor({ timeout: 20_000 });
+const x = await newPage(); await x.goto(`${BASE}${await accept(invX)}`); await landedAs(x, X);
 const Xs = staffOf(`email = '${X}'`);
 await team(p); await row(p, X).waitFor({ timeout: 10_000 });
 ok("PF-6 DW1 pass: after the second browser accepts, Team shows the person Active", (await row(p, X).locator("[data-status]").innerText()) === "Active");
@@ -166,21 +168,33 @@ await staffCall(rTok, "PATCH", `/platform/staff/${T.id}/roles`, { roles: ["CASE_
 await team(p); await p.locator("[data-invite-open]").click();
 const ownerOffered = await p.locator('[data-invite-row="1"] [data-role]').evaluateAll((els) => els.map((e) => e.getAttribute("data-role")));
 ok("PF-6 DW2/BR-1 pass: an Owner's invite picker offers every role but Owner", !ownerOffered.includes("OWNER") && ownerOffered.length === 5, ownerOffered);
-// BR-3: the same email twice is flagged and nothing is sent; an existing staff member is flagged with the server's words.
-await p.getByLabel("Email, person 1").fill(O.email); await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(O.email.toUpperCase());
-const sentBefore = posts(p, /\/staff\/invitations$/).length;
-await p.locator("[data-send-invites]").click(); await p.waitForTimeout(500);
-ok("PF-6 DW2/BR-3 fail: a duplicate row is flagged on its row and nothing is sent", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row.") && posts(p, /\/staff\/invitations$/).length === sentBefore);
-await p.getByRole("button", { name: "Remove person 2" }).click(); await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations$/, sentBefore + 1);
-ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="1"]').innerText()).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
-// BR-2: over the limit nothing is sent; the whole form is counted.
+// BR-3 (QA-773, R1.20 "accepts the good rows"): the same email twice is named on the later row before Send, and Send still
+// goes: the server flags that row DUPLICATE_IN_FORM and invites the rest; an existing staff member keeps the server's words.
+// R1.20: the form is one call to staff/invitations/batch (P-727), so the posts counted are batch calls.
+const G = `pf6-dup-${run}@example.com`;
+await p.getByLabel("Email, person 1").fill(G); await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(G.toUpperCase());
+await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 3").fill(O.email);
+ok("PF-6 DW2/BR-3 pass: before Send the duplicate is named on the later row", (await p.locator('[data-invite-row="2"]').innerText()).includes("This email is already on another row."));
+const sentBefore = posts(p, /\/staff\/invitations\/batch$/).length;
+await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, sentBefore + 1);
+ok("PF-6 DW2/BR-3 fail (QA-773): Send answers within 10 s with the form's words (a timeout is this FAIL)", await p.locator("[data-invite-form-error]").waitFor({ timeout: 10_000 }).then(() => true, () => false));
+ok("PF-6 DW2/BR-3 fail (QA-773): a duplicate row does not stop Send: one batch call; the first row is invited once and leaves the form; the duplicate stays with the server's words",
+  posts(p, /\/staff\/invitations\/batch$/).length === sentBefore + 1 && sql(`select count(*) from platform_invitation where lower(email) = '${G}'`) === "1"
+  && (await p.getByLabel("Email, person 1").inputValue().catch(() => "")) === G.toUpperCase() && (await p.locator('[data-invite-row="1"]').innerText().catch(() => "")).includes("This email is also on an earlier row of this form, which counts for this person, so this row was not sent."));
+ok("PF-6 DW2/BR-3 fail: an existing staff member's row keeps the server's words; no invitation is made", (await p.locator('[data-invite-row="2"]').innerText().catch(() => "")).includes("This person is already on your firm's staff.") && sql(`select count(*) from platform_invitation where email = '${O.email}'`) === "0");
+// BR-2: the whole form is counted on the seat line. Over the limit, P-727 (the founder, 19 Nov) governs over the concept's
+// "nothing is sent until the form fits" (Lead 19 on #3370, R1.20): Send stays on, the free seats go to the rows in order and
+// the row past them stays in the form with the server's seat words, to send again.
 await p.keyboard.press("Escape"); limit(used() + 1);
 await team(p); await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").fill(`pf6-s1-${run}@example.com`);
 ok("PF-6 DW2/BR-2 pass: one more person fits: the seat line counts the form", (await p.locator("[data-invite-seats]").innerText()) === `${used() + 1} of ${used() + 1} seats after these invites`);
 await p.locator("[data-add-row]").click(); await p.getByLabel("Email, person 2").fill(`pf6-s2-${run}@example.com`);
-const before2 = posts(p, /\/staff\/invitations$/).length;
-await p.locator("[data-send-invites]").click({ force: true }); await p.waitForTimeout(500);
-ok("PF-6 DW2/BR-2 fail: over the limit it says \"Remove 1 person or upgrade\" and sends nothing", (await p.getByText("Remove 1 person or upgrade your plan.").count()) === 1 && posts(p, /\/staff\/invitations$/).length === before2);
+const before2 = posts(p, /\/staff\/invitations\/batch$/).length;
+ok("PF-6 DW2/BR-2 pass (P-727): over the limit the form says beforehand how many seats are free, and Send stays on", (await p.locator("[data-invite-seat-warning]").innerText()).includes("Your plan has 1 free seat.") && await p.locator("[data-send-invites]").isEnabled());
+await p.locator("[data-send-invites]").click(); await settle(p, /\/staff\/invitations\/batch$/, before2 + 1); await p.locator("[data-invite-form-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW2/BR-2 fail (P-727): the row past the free seat is not sent and stays with the server's seat words; the first row is invited",
+  sql(`select count(*) from platform_invitation where email = 'pf6-s1-${run}@example.com'`) === "1" && sql(`select count(*) from platform_invitation where email = 'pf6-s2-${run}@example.com'`) === "0"
+  && (await p.getByLabel("Email, person 1").inputValue()) === `pf6-s2-${run}@example.com` && (await p.locator('[data-invite-row="1"]').innerText()).includes("No seat left for this person"));
 await p.keyboard.press("Escape");
 await staffCall(rTok, "POST", `/platform/staff/${Xs.id}/deactivate`, { reason: "seat test" }); limit(used());
 await team(p); await p.locator('[data-chip="inactive"]').click(); await openPerson(p, X); await act(p, "reactivate", "Back again"); await p.locator("[data-act-error]").waitFor({ timeout: 10_000 });
@@ -232,6 +246,117 @@ for (const w of [375, 1024, 1440]) {
   const v = await newPage(w, await apiSignIn(R.email)); await team(v);
   await axe(`PF-6 DW8 Team (${w} px)`, v); await noSideways(`PF-6 DW8 Team (${w} px)`, v); await shot(v, `team-${w}`);
 }
+
+// ------------------------------------------------------------------------------------- part 2b: DW5, DW6, DW7, DW8
+/** Gives the invitation a token the test knows (the mail is in memory) and returns the email's link. */
+const linkOf = (invitationId: string) => { const known = randomBytes(32).toString("base64url"); sql(`update platform_invitation set token_hash = '${createHash("sha256").update(known).digest("hex")}' where id = '${invitationId}'`); return { known, url: `${BASE}/invitation#t=${known}` }; };
+// One session per person (AG-1-55): the width checks above signed the Owner in again, so part 2b takes its own session.
+const r2Tok = await apiSignIn(R.email), rp = await newPage(1440, r2Tok);
+const invite = async (email: string) => (await (await staffCall(r2Tok, "POST", "/platform/staff/invitations", { email, roles: ["READ_ONLY"] })).json() as { id: string }).id;
+// DW5 (BR-4): valid → Continue → signed in; the same link again, an expired one and a revoked one show the fixed words.
+const W = `pf6-w-${run}@example.com`, invW = await invite(W), lW = linkOf(invW);
+const wp = await newPage(); await wp.goto(lW.url); await wp.locator('[data-accept="valid"]').waitFor({ timeout: 20_000 });
+ok("PF-6 DW5/BR-4 pass: a valid link shows the firm, the invitee's email and \"Continue to set your password\"; the token leaves the address", (await wp.locator("[data-accept-email]").innerText()) === W && (await wp.locator("[data-accept-firm]").innerText()).length > 0 && (await wp.locator("[data-accept-continue]").innerText()) === "Continue to set your password" && !wp.url().includes(lW.known));
+await wp.locator("[data-accept-continue]").click(); await landedAs(wp, W);
+ok("PF-6 DW5/BR-4 pass: Continue accepts once and the hand-off signs the new person in (My account shows them)", sql(`select count(*) from platform_staff where email = '${W}'`) === "1" && posts(wp, /\/accept$/).length === 1);
+const again = await newPage(); await again.goto(lW.url); await again.locator('[data-accept="closed"]').waitFor({ timeout: 20_000 });
+ok("PF-6 DW5/BR-4 fail: the same link again (used) shows \"This invitation is no longer valid.\" and no Continue", (await again.locator("[data-accept-words]").innerText()) === "This invitation is no longer valid." && (await again.locator("[data-accept-continue]").count()) === 0);
+const E = `pf6-e-${run}@example.com`, invE = await invite(E), lE = linkOf(invE);
+sql(`update platform_invitation set created_at = now() - interval '73 hours', expires_at = now() - interval '1 hour' where id = '${invE}'`);   // inside the 72-hour check
+const ep = await newPage(); await ep.goto(lE.url); await ep.locator('[data-accept="closed"]').waitFor({ timeout: 20_000 });
+const expiredWords = await ep.locator("[data-accept-words]").innerText();
+ok("PF-6 DW5/BR-4 fail: an expired link shows \"This invitation has expired. Ask <firm> to send a new one.\" and makes no staff member", /^This invitation has expired\. Ask .+ to send a new one\.$/.test(expiredWords) && sql(`select count(*) from platform_staff where email = '${E}'`) === "0", expiredWords);
+await axe("PF-6 DW8 Accept invitation, expired (1440)", ep); await shot(ep, "accept-expired-1440");
+const V = `pf6-v-${run}@example.com`, invV = await invite(V), lV = linkOf(invV);
+await staffCall(r2Tok, "POST", `/platform/staff/invitations/${invV}/revoke`, {});
+const vp = await newPage(375); await vp.goto(lV.url); await vp.locator('[data-accept="closed"]').waitFor({ timeout: 20_000 });
+ok("PF-6 DW5/BR-4 fail: a revoked link shows \"This invitation is no longer valid.\"", (await vp.locator("[data-accept-words]").innerText()) === "This invitation is no longer valid.");
+await noSideways("PF-6 DW8 Accept invitation (375 px)", vp);
+const getsBefore = seen.filter((x) => x.page === vp && x.path.startsWith("/api/public/invitations/")).length;
+await vp.reload(); await vp.locator('[data-accept="closed"]').waitFor({ timeout: 20_000 });
+ok("PF-6 DW5 fail: a reload of the cleaned address sends nothing and asks for the email's link again", seen.filter((x) => x.page === vp && x.path.startsWith("/api/public/invitations/")).length === getsBefore && (await vp.locator("[data-accept-words]").innerText()) === "Open the invitation link from your email again.");
+// A valid link, before Continue, for the axe and width checks.
+const lQ = linkOf(await invite(`pf6-q-${run}@example.com`));
+for (const w of [375, 1024, 1440]) { const v = await newPage(w); await v.goto(lQ.url); await v.locator('[data-accept="valid"]').waitFor({ timeout: 20_000 }); await axe(`PF-6 DW8 Accept invitation, valid (${w} px)`, v); await noSideways(`PF-6 DW8 Accept invitation (${w} px)`, v); await shot(v, `accept-valid-${w}`); }
+
+// DW7: My account → Licence, the person's own; the two-step state and the Security line.
+// PF-4c part 2 (R1.92): the College's numbers are "R and 6 numbers" (college-ic.ca), so a College record here uses that shape: any
+// other shape now saves with the soft warning, and on Licences the panel then stays open (a later click would hit it). Each is
+// distinct per run, so the leak checks below still find only this run's numbers.
+const licBase = Date.now() % 900_000, licOf = (k: number) => `R${String(100_000 + ((licBase + k * 1009) % 900_000)).padStart(6, "0")}`;
+const LIC = licOf(0), LIC2 = licOf(1), LIC_OLD = licOf(2), LIC_NEW = licOf(3), LIC_A = licOf(4);
+sql(`delete from platform_staff_credential where staff_id = '${O.id}'`);   // the suite reruns on one copy
+const oTok = await apiSignIn(O.email), lp = await newPage(1440, oTok);
+await lp.goto(`${BASE}/account/licence`); await lp.locator("[data-licence-form]").waitFor({ timeout: 20_000 });
+ok("PF-6 DW7 pass: My account has a Licence entry for everyone, and the page shows the two-step state", (await lp.locator('nav[aria-label="My account"] [data-account-section="/account/licence"]').count()) === 1 && (await lp.locator("[data-two-step-state]").innerText()).length > 0);
+await lp.locator("[data-licence-type]").selectOption("College member (CICC)");
+ok("PF-6 DW7 pass: a College member's body is set to the College (the only body for that type)", (await lp.locator("[data-licence-body]").inputValue()) === "College of Immigration and Citizenship Consultants");
+await lp.locator("[data-licence-number]").fill("   "); await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW7 fail: a blank number shows the server's words and saves nothing", (await lp.locator("[data-licence-error]").innerText()) === "Give the licence number (1 to 100 characters)." && sql(`select count(*) from platform_staff_credential where staff_id = '${O.id}'`) === "0");
+await lp.locator("[data-licence-number]").fill(LIC); await lp.locator("[data-licence-save]").click();
+for (let i = 0; i < 100 && sql(`select count(*) from platform_staff_credential where staff_id = '${O.id}'`) === "0"; i++) await lp.waitForTimeout(100);
+const toastO = await lp.getByText("Your licence record was saved.").innerText({ timeout: 10_000 }).catch(() => "");
+ok("PF-6 DW7 pass: Save keeps the own licence (type, body, number) and the toast says so without the number", sql(`select representative_type || '|' || licensing_body || '|' || licence_number from platform_staff_credential where staff_id = '${O.id}'`) === `College member (CICC)|College of Immigration and Citizenship Consultants|${LIC}` && toastO.length > 0 && !toastO.includes(LIC));
+ok("PF-6 DW8 keyboard (review MJ-2): after Save the focus stays on Save (the form is not rebuilt)", await lp.evaluate(() => document.activeElement?.hasAttribute("data-licence-save") ?? false));
+const putsO = () => posts(lp, /\/me\/account$/).length, putsBefore = putsO();
+await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-note]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW7 fail (break m4): Save with nothing changed sends nothing and says so", putsO() === putsBefore && (await lp.locator("[data-licence-note]").innerText()) === "Nothing to save: the licence is as it was.");
+// Review MJ-1 / break M1: a form opened before someone else's save does not undo it.
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "Notary (Chambre des notaires du Québec)", licensingBody: "Chambre des notaires du Québec", licenceNumber: LIC2 } });
+await lp.locator("[data-licence-number]").fill(LIC_OLD); await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW7 fail (conflict): saving from an older read saves nothing, says someone else changed it, and shows the record as it is", (await lp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC2 && (await lp.locator("[data-licence-number]").inputValue()) === LIC2);
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: LIC } });
+await lp.reload(); await lp.locator("[data-licence-form]").waitFor({ timeout: 20_000 });
+await lp.locator("[data-licence-type]").selectOption("Lawyer (law society)");
+const lawBodies = await lp.locator("[data-licence-body] option").allInnerTexts();
+ok("PF-6 DW7 pass: a lawyer is offered the law societies only (marked Sample until read), not the College", !lawBodies.some((b) => b.startsWith("College")) && lawBodies.some((b) => b === "Law Society of Ontario (Sample)"), lawBodies);
+await axe("PF-6 DW8 My account, Licence (1440)", lp); await shot(lp, "my-licence-1440");
+await lp.reload(); await lp.locator("[data-licence-form]").waitFor({ timeout: 20_000 });
+await lp.locator("body").click({ position: { x: 5, y: 600 } });
+let kb = false;
+for (let i = 0; i < 30 && !kb; i++) { await lp.keyboard.press("Tab"); kb = await lp.evaluate(() => document.activeElement?.hasAttribute("data-licence-type") ?? false); }
+ok("PF-6 DW8 keyboard: Tab reaches the licence's type, body, number and Save, each named", kb && (await lp.getByLabel("Representative type").count()) === 1 && (await lp.getByLabel("Licensing body").count()) === 1 && (await lp.getByLabel("Licence number").count()) === 1);
+await lp.goto(`${BASE}/platform/security`); await lp.locator("[data-security-refused]").waitFor({ timeout: 20_000 });
+const secRefused = await staffCall(oTok, "GET", "/platform/settings/two-step");
+ok("PF-6 DW7 fail: a Case Officer opening Security by URL sees the server's refusal (403); no Security or Licences in their menu", secRefused.status === 403 && (await lp.locator("[data-security-refused]").innerText()) === (await secRefused.json() as { detail: string }).detail && (await lp.locator('[data-account-section="/platform/security"], [data-account-section="/platform/licences"]').count()) === 0);
+await rp.goto(`${BASE}/platform/security`); await rp.locator("[data-security-line]").waitFor({ timeout: 20_000 });
+ok("PF-6 DW7 pass: the Owner's Security shows only the line \"Two-step sign-in is required for everyone.\", no switch", (await rp.locator("[data-security-line]").innerText()) === "Two-step sign-in is required for everyone." && (await rp.locator("main input, main [role=switch]").count()) === 0 && (await rp.locator('nav[aria-label="My account"] [data-account-section="/platform/security"]').count()) === 1);
+await axe("PF-6 DW8 Security (1440)", rp); await shot(rp, "security-1440");
+
+// DW6 (BR-8): everyone's licences for agent/firm-credential:manage; the number never in a toast, a log line or an email.
+await lp.goto(`${BASE}/platform/licences`); await lp.locator("[data-licences-refused]").waitFor({ timeout: 20_000 });
+ok("PF-6 DW6/BR-8 fail: a Case Officer opening Licences by URL sees the server's refusal and the API answers 403", seen.some((x) => x.page === lp && x.path === "/api/platform/licences" && x.status === 403) && (await lp.locator("[data-licence-row]").count()) === 0);
+ok("PF-6 DW6/BR-8 fail: a Case Officer's crafted change of another's licence is refused (403)", (await staffCall(oTok, "PUT", `/platform/staff/${R.id}/credential`, { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: "X1" })).status === 403);
+await rp.goto(`${BASE}/platform/licences`); await rp.locator(`[data-licence-row="${O.id}"]`).waitFor({ timeout: 20_000 });
+ok("PF-6 DW6/BR-8 pass: the Owner's Licences shows the Case Officer's record with the number in full", (await rp.locator(`[data-licence-row="${O.id}"] [data-licence-number-cell]`).innerText()) === LIC);
+await rp.locator(`[data-licence-row="${O.id}"] [data-licence-change]`).click(); await rp.locator("[data-licence-form]").waitFor();
+// Review MJ-1 / break M1: another tab saves first; this panel's save changes nothing and shows the newer record.
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: LIC_NEW } });
+await rp.locator("[data-licence-number]").fill(LIC2); await rp.locator("[data-licence-save]").click(); await rp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW6 fail (conflict): the Owner's panel opened before the person's own save changes nothing and shows the newer number", (await rp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC_NEW && (await rp.locator("[data-licence-number]").inputValue()) === LIC_NEW);
+await rp.locator("[data-licence-number]").fill(LIC2); await rp.locator("[data-licence-save]").click();
+for (let i = 0; i < 100 && !sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`).includes(LIC2); i++) await rp.waitForTimeout(100);
+const toastR = await rp.getByText(`The licence record for ${O.name} was saved.`).innerText({ timeout: 10_000 }).catch(() => "");
+ok("PF-6 DW6/BR-8 pass: the Owner changes another's licence in the panel; the toast names the person, not the number", sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC2 && toastR.length > 0 && !toastR.includes(LIC2));
+const aId = staffOf(`email = '${A}'`).id;
+ok("PF-6 DW6 pass: a person with no record is listed with Add licence", (await rp.locator(`[data-no-licence="${aId}"] [data-licence-add]`).count()) === 1);
+await rp.locator(`[data-no-licence="${aId}"] [data-licence-add]`).click(); await rp.locator("[data-licence-form]").waitFor();
+await rp.locator("[data-licence-type]").selectOption("College member (CICC)"); await rp.locator("[data-licence-number]").fill(LIC_A); await rp.locator("[data-licence-save]").click();
+await rp.locator(`[data-licence-row="${aId}"]`).waitFor({ timeout: 10_000 }); await rp.waitForTimeout(300);
+ok("PF-6 DW8 keyboard (review MJ-2): after Add licence and Save, focus is on that person's new Change button, not the page", await rp.evaluate((id) => !!document.activeElement?.closest(`[data-licence-row="${id}"]`) && document.activeElement?.hasAttribute("data-licence-change"), aId));
+await rp.locator(`[data-licence-row="${aId}"] [data-licence-change]`).click(); await rp.locator("[data-licence-number]").fill("typed, not saved");
+let asked = false; rp.once("dialog", (d) => { asked = d.message() === "Discard the licence you typed?"; });
+await rp.keyboard.press("Escape"); await rp.waitForTimeout(300);
+ok("PF-6 DW6 fail (break m6): closing the panel with typed changes asks first", asked);
+await axe("PF-6 DW8 Licences (1440)", rp); await shot(rp, "licences-1440");
+for (const w of [375, 1024]) { const v = await newPage(w, await apiSignIn(R.email)); await v.goto(`${BASE}/platform/licences`); await v.locator(`[data-licence-row="${O.id}"]`).waitFor({ timeout: 20_000 }); await axe(`PF-6 DW8 Licences (${w} px)`, v); await noSideways(`PF-6 DW8 Licences (${w} px)`, v); await shot(v, `licences-${w}`); }
+const leaks = [LIC, LIC2].map((n) => sql(`select (select count(*) from audit_event a where a::text like '%${n}%') + (select count(*) from module_event m where m::text like '%${n}%') + (select count(*) from msg_outbox o where o::text like '%${n}%')`));
+const inUrl = seen.some((x) => x.path.includes(LIC) || x.path.includes(LIC2));
+// The copy's own API log (tools/isolated.sh writes var/isolated-<name>/api.log); staff mail is held in the API's memory,
+// which no saving path here reaches (a licence save sends no mail), so the stored rows and the log are what can be read.
+const LOG = join(STUDIO, "var", `isolated-${DBNAME.replace(/^xr_studio_/, "")}`, "api.log");
+const log = existsSync(LOG) ? readFileSync(LOG, "utf8") : null;
+ok("PF-6 DW6/BR-8 fail: neither number is in an audit line, an event, an outbox row, the API log or any request's address", leaks.every((n) => n === "0") && !inUrl && log !== null && !log.includes(LIC) && !log.includes(LIC2), { leaks, inUrl, log: log === null ? `no log at ${LOG}` : "read" });
 ok("PF-6: no page error in any browser", errors.length === 0, errors);
 } finally {
   limit(Number(plan[1]));

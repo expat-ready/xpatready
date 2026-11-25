@@ -48,16 +48,24 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 //     runs the handler in it again);
 //   * a job: its JobRun.firmId (withFirm);
 //   * anything else, a public door, a configuration or case request with no platform firm: no firm, so a walled table
-//     reads nothing and takes no write. A door resolves its firm first (asBypass, on the named list), then sets it.
+//     reads nothing and takes no write. A door resolves its firm first through a narrow definer lookup (PF-12b part 2,
+//     migration pf12b2_door_lookups: firm id only), reads its own row as that firm (withFirm), then sets it (enterFirm).
 // A query sets app.firm_id (and the role) on its pooled connection before it runs, so no firm can leak from one checkout
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
+import { dirname, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { logPort } from "./observability/log.ts";
+import { logPort, requestScope } from "./observability/log.ts";
+import { currentJobFirm } from "./jobs/pgboss-jobs.ts";
+import { auditEvent, platformAuditWorkspaceId } from "./audit/audit-event.ts";
+import { auditContext } from "./audit/context.ts";
+import type { AuditPort } from "../../../ports/audit.ts";
+import type { PrismaClient } from "@prisma/client";
 
 /** The role the API connects as (migration pf12_firm_walls). */
 export const APP_ROLE = "xr_app";
-/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES. */
+/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES or declared (defineBypassUse). */
 export const BYPASS_ROLE = "xr_staff_bypass";
 
 type Scope = { firmId?: string; bypass?: string; route?: string };
@@ -70,12 +78,35 @@ export function currentBypass(): string | undefined { return scope.getStore()?.b
 
 // Each helper awaits fn inside its scope: a Prisma query is lazy (it runs on its first then), so one handed back
 // unawaited would otherwise run in the caller's scope.
-/** Runs fn as one firm's code (a job's firm; a test). */
+/** Runs fn as one firm's code (a job's firm; a test; the case opening's own platform firm, CS-K1 part 2). */
 export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T> {
   const firm = firmScope(firmId).firmId;
   return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
 }
-/** A door (a sign-in, a public page, a link): the firm it resolved through asBypass, for the rest of its request.
+/** PF-8b F8 (Amazon RDS: a seed run by the database's owner, neither superuser nor BYPASSRLS): the firm whose rows this
+ *  transaction reads and writes, set in the transaction itself (set_config's is_local: it ends at commit or rollback, so a
+ *  pooled connection never keeps it). PF-12's walls (app.firm_id) then accept that firm's rows and no other, with no bypass
+ *  role; for a superuser or BYPASSRLS runner nothing changes (the walls and the firm gate let it through anyway). */
+export async function firmInTransaction(tx: { $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<number>; $queryRaw: <T>(q: TemplateStringsArray, ...v: unknown[]) => Promise<T> }, firmId: string | null): Promise<void> {
+  // Only a seed command or the start-up seed (no scope), or a bypass use, sets its own firm (review B1 on #3097): inside a
+  // request's, job's (with or without a firm: break r2 m2) or firm's scope the caller's firm stands, so a wrong firm id is
+  // still refused by the walls; and never on the app's own role, whatever the scope (review r2 m7).
+  const s = scope.getStore();
+  if ((s && !s.bypass) || currentJobFirm() !== undefined) throw new FirmScopeError("firmInTransaction: only a seed command sets its firm; inside a request, job or firm scope the caller's firm stands");
+  const [{ app }] = await tx.$queryRaw<{ app: boolean }[]>`select current_user = ${APP_ROLE} as app`;
+  if (app) throw new FirmScopeError("firmInTransaction: only a seed command sets its firm; never the app's role");
+  await tx.$executeRaw`select set_config('app.firm_id', ${firmId === null ? "" : firmScope(firmId).firmId}, true)`;
+}
+/** PF-8b F8: a firm key → its firm id across the walls, through PF-12b's narrow definer lookup (platform_firm_of_key: the id
+ *  only, null for an unknown key); on a database migrated only up to before that lookup (a check's earlier schema), the
+ *  caller's own read. */
+export async function firmOfKey(tx: { $queryRaw: <T>(q: TemplateStringsArray, ...v: unknown[]) => Promise<T> }, key: string, fallback: () => Promise<string | null>): Promise<string | null> {
+  const [{ has }] = await tx.$queryRaw<{ has: boolean }[]>`select to_regprocedure('platform_firm_of_key(text)') is not null as has`;
+  if (!has) return fallback();
+  const [{ id }] = await tx.$queryRaw<{ id: string | null }[]>`select platform_firm_of_key(${key})::text as id`;
+  return id;
+}
+/** A door (a sign-in, a public page, a link): the firm it resolved through its narrow lookup, for the rest of its request.
  *  Refused inside a job's or a bypass's scope; on a direct call with no scope (a suite, a tool) there is nothing to set
  *  and the caller's own client decides what it reads. */
 export function enterFirm(firmId: string) {
@@ -90,28 +121,125 @@ export function enterFirm(firmId: string) {
  *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
  *  job). `direct: true` lets a door's use run on a direct call with no scope at all (a suite or a tool calling the
  *  service with its own client; never inside a request or a job). Anything else is refused (BypassRefused) before any
- *  query runs. */
-export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean }>> = Object.freeze({
-  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i] },
-  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true },
-  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true },
-  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i], direct: true },
-  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true },
-  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true },
-  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
-  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
-  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true },
-  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true },
-  "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true },
-  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
-  "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true },
-  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true },
+ *  query runs.
+ *  PF-12b part 1 (QA-499; R1.4 "every use writes an audit line"; P-607, P-571 (1), AG-1-45): `audit` says how each use
+ *  is audited. "per-firm": the use calls touchFirm(tx, firmId) for each firm whose rows it reads or writes, in that
+ *  firm's transaction, and touchFirm writes one `platform.bypass` line to that firm's trail (fail-closed). "platform"
+ *  (PF-12b part 3, Lead 15's ruling on #2752, Lead 70's on #1999: every use writes a line): the use touches no firm's rows
+ *  and calls touchPlatform(tx) in its own transaction, which writes one firm-less `platform.bypass` line (fail-closed). The seven own-firm doors left the list in PF-12b part 2: each
+ *  finds its firm through a narrow definer lookup and runs as it (tests/check_pf12b_doors.ts). A use added without `audit` does not compile, and tests/check_pf12b_bypass_audit.ts reads the list. */
+export type BypassAudit = "per-firm" | "platform";
+/** `inside`: the only outer uses this use may run within (one bypass use at a time otherwise, break M1). Only a use that
+ *  touches no firm's rows ("platform") may name one: it then crosses under its own name, and the outer use's lines stand. */
+export type BypassEntry = { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit; inside?: readonly string[] };
+/** The list as it stood when P-785 (2) moved new uses beside their modules (22 Nov). Frozen: a new use is declared with
+ *  defineBypassUse in its module's own `<name>.bypass.ts` file, never added here (tests/check_bypass_uses.ts refuses it). */
+export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze({
+  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
+  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
+  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5); a private link's page and form, R1.90 (the link has no firm until it is used)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i, /^(GET|POST) \/api\/public\/signup\/[^/]{1,400}$/i], direct: true, audit: "per-firm" },
+  "platform.billing.stripe-webhook": { why: "Stripe's event names a customer or subscription, not our firm: the door finds the firm, then updates it as that firm (PF-5 part 2)", routes: [/^POST \/api\/hooks\/stripe$/i], direct: true, audit: "per-firm" },
+  "job:platform.billing.webhook_sweep": { why: "Stripe events whose handling did not finish, every firm's (PF-5 part 2)", routes: [], outside: true, audit: "per-firm" },
+  "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "platform" },
+  "platform.entitlements.limit-change": { why: "our team lowers a plan's limit for every firm on the plan, and each firm's Owners are told (PF-15 part 2, SA-3-43); PF-4s's system routes once on main, and the service on a direct call", routes: [/^(POST|PATCH) \/api\/system\/plans\//i], direct: true, audit: "per-firm" },
+  "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true, audit: "per-firm" },
+  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b), and the firm-less PLATFORM_ACCOUNT rows due a retry (PF-19p; their firm-less line: PF-12b part 4)", routes: [], outside: true, audit: "per-firm" },
+  "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "platform" },
+  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p; R1.90's invited form too)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i, /^POST \/api\/public\/signup\/[^/]{1,400}$/i], outside: true, direct: true, audit: "platform", inside: ["platform.firms.signup"] },
+  "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm, never on this use; the link jobs are queued after it) (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
+  "job:platform.billing.exit_notices": { why: "the payment-hold notices list every firm on hold, then send each its due notice in its own firm scope (PF-5 part 4, SA-2-6)", routes: [], outside: true, audit: "per-firm" },
+  "job:platform.entitlements.booking_daily": { why: "the daily job lists every firm with a booked plan change now due, then applies each in its own firm scope (PF-15 part 1b, SA-3-60)", routes: [], outside: true, audit: "per-firm" },
+  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
-/** A job with no firm (a platform-wide sweep): on the named list as "job:<queue>" it runs on the bypass; otherwise with no
+/** A job with no firm (a platform-wide sweep): on the named list, or declared, as "job:<queue>" it runs on the bypass; otherwise with no
  *  firm, so it reads no firm's rows (platform-jobs.ts). */
 export function asJob<T>(queue: string, fn: () => Promise<T>): Promise<T> {
-  return Object.prototype.hasOwnProperty.call(BYPASS_USES, `job:${queue}`) ? asBypass(`job:${queue}`, fn) : fn();
+  const name = `job:${queue}`, mine = declared.get(name);
+  return Object.prototype.hasOwnProperty.call(BYPASS_USES, name) ? asBypass(name, fn) : mine ? asBypass(mine, fn) : fn();
+}
+
+// ------------------------------------------------------------------- P-785 (2): uses declared beside their modules
+/** A use declared by its module (defineBypassUse): the value its caller hands to asBypass. */
+export type BypassUse = { readonly name: string; readonly entry: Readonly<BypassEntry> };
+const declared = new Map<string, BypassUse>();
+/** A declared use's routes as source and flags (never a RegExp anyone else holds). */
+const routeSpecs = new WeakMap<BypassUse, readonly { source: string; flags: string }[]>();
+let closed = false;
+const USE_NAME = /^(job:)?[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/;
+/** P-785 (2): a module declares its own bypass use in its own `<name>.bypass.ts` file (only there: tests/check_bypass_uses.ts),
+ *  so no lane edits this file to add one. The same rules as the named list: a reason, its routes, how it is audited
+ *  (required, as on the list). Refused (BypassRefused) once the API has started (closeBypassUses), for a name already on
+ *  the list or declared, or a malformed one. A job's use is named "job:<queue>", as on the list (asJob finds it). */
+export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
+  // Only a <name>.bypass.ts file may declare (review M1): the calling file is read from the call stack, so an alias, a
+  // namespace import or a call through a variable from any other file is refused at run time, not only by the check.
+  const from = callerFile();
+  if (!from || !/\.bypass\.ts$/.test(from) || !from.startsWith(API_SRC)) throw new BypassRefused(`defineBypassUse: "${String(name)}" declared in ${from ?? "an unknown file"}; only a <name>.bypass.ts file under api/src may declare a bypass use`);
+  if (closed) throw new BypassRefused(`defineBypassUse: "${name}" declared after start-up; the list closed when the API started (declare it in a <name>.bypass.ts file its module imports at load)`);
+  if (typeof name !== "string" || !USE_NAME.test(name)) throw new BypassRefused(`defineBypassUse: "${String(name)}" is not a use name (area.what, or job:<queue>)`);
+  if (Object.prototype.hasOwnProperty.call(BYPASS_USES, name) || declared.has(name)) throw new BypassRefused(`defineBypassUse: "${name}" is already a bypass use`);
+  // Read once (breaker M2): a getter answers once, and only the copies below are kept.
+  const given = typeof entry === "object" && entry !== null ? { ...entry } : ({} as Partial<BypassEntry>);
+  if (given.audit !== "per-firm" && given.audit !== "platform") throw new BypassRefused(`defineBypassUse: "${name}" names no audit (per-firm or platform)`);
+  const routes = Array.isArray(given.routes) ? [...given.routes] : null, inside = given.inside === undefined ? undefined : Array.isArray(given.inside) ? [...given.inside] : null;
+  if (typeof given.why !== "string" || !given.why.trim() || !routes || !routes.every((r) => r instanceof RegExp) || inside === null || (inside && !inside.every((u) => typeof u === "string"))) throw new BypassRefused(`defineBypassUse: "${name}" needs a reason and a list of routes`);
+  // The routes are kept as their source and flags, and each check builds its own RegExp (breaker M2): a RegExp handed out
+  // could be recompiled (.compile) to match anything, so nothing anyone holds can widen a declared use.
+  const spec = routes.map((r) => ({ source: r.source, flags: r.flags.replace(/[gy]/g, "") }));
+  const copy: BypassEntry = { why: given.why, routes: Object.freeze(spec.map((x) => new RegExp(x.source, x.flags))), audit: given.audit,
+    ...(given.outside === true ? { outside: true } : {}), ...(given.direct === true ? { direct: true } : {}), ...(inside ? { inside: Object.freeze(inside) } : {}) };
+  const use: BypassUse = Object.freeze({ name, entry: Object.freeze(copy) });
+  declared.set(name, use);
+  routeSpecs.set(use, Object.freeze(spec.map((x) => Object.freeze(x))));
+  return use;
+}
+/** The file that called defineBypassUse: the first stack frame outside this file, read as structured frames (review n1:
+ *  no text parsing, so any path works), or undefined when it cannot be known. A frame of evaluated code (eval, new
+ *  Function: it can name any file it likes) counts as unknown (review n2). */
+function callerFile(): string | undefined {
+  const here = fileURLToPath(import.meta.url);
+  const holder: { stack?: unknown } = {};
+  const keepPrepare = Error.prepareStackTrace, keepLimit = Error.stackTraceLimit;
+  let raw: unknown;
+  try {
+    Error.stackTraceLimit = 20;
+    Error.prepareStackTrace = (_e, frames) => frames;
+    Error.captureStackTrace(holder, callerFile);
+    raw = holder.stack;   // formatted when first read: read it while our prepareStackTrace is in place
+  } finally { Error.prepareStackTrace = keepPrepare; Error.stackTraceLimit = keepLimit; }
+  const frames = Array.isArray(raw) ? (raw as NodeJS.CallSite[]) : [];
+  for (const f of frames) {
+    if (f.isEval()) return undefined;
+    const name = f.getFileName();
+    if (!name) return undefined;
+    const file = name.startsWith("file://") ? fileURLToPath(name) : name;
+    if (file !== here) return file;
+  }
+  return undefined;
+}
+/** The folder whose <name>.bypass.ts files may declare: api/src, worked out from this file's own place (review round 2). */
+const API_SRC = dirname(dirname(fileURLToPath(import.meta.url))) + sep;
+/** The API's start-up loads every <name>.bypass.ts file under `root` (api/src) before it closes the list (review M2): a
+ *  use whose module is imported only later, at request time, is declared all the same. Returns the files loaded. */
+export async function loadBypassUseFiles(root: string): Promise<string[]> {
+  const { readdirSync } = await import("node:fs"), { join } = await import("node:path"), { pathToFileURL } = await import("node:url");
+  const files: string[] = [];
+  const walk = (d: string) => { for (const e of readdirSync(d, { withFileTypes: true })) { if (e.name === "node_modules") continue; const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith(".bypass.ts")) files.push(p); } };
+  walk(root);
+  for (const f of files.sort()) await import(pathToFileURL(f).href);
+  return files;
+}
+/** The API's start-up closes the list (features/platform-firm-walls.ts, once every module is loaded): from then on no use
+ *  can be declared, so nothing loaded later grants itself the bypass. */
+export function closeBypassUses() { closed = true; }
+/** Every bypass use: the frozen list and the declared ones (a copy; readers such as the audit check iterate it). */
+export function bypassUses(): Readonly<Record<string, Readonly<BypassEntry>>> {
+  return Object.freeze({ ...BYPASS_USES, ...Object.fromEntries([...declared].map(([k, u]) => [k, u.entry])) });
+}
+/** One use's entry by name, on the list or declared; undefined otherwise. */
+function entryOf(name: string): Readonly<BypassEntry> | undefined {
+  return Object.prototype.hasOwnProperty.call(BYPASS_USES, name) ? BYPASS_USES[name] : declared.get(name)?.entry;
 }
 
 /** What a query with no scope at all runs as. In the API server (FirmWallsInterceptor at start-up: wallUnscopedQueries)
@@ -123,28 +251,168 @@ export function wallUnscopedQueries() { unscoped = "walled"; }
 export const unscopedMode = () => unscoped;
 let saidDirect = false;
 
-/** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
+/** A bypass use that is neither on BYPASS_USES nor declared, or not for this route. A programming error: the request stops (500). */
 export class BypassRefused extends Error {}
 
-/** The audit line for a bypass use: one platform_bypass line through the one logger (PF-23: redacted, with the request's
- *  correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be in it. */
+/** The operations line for a bypass use (PF-23): one platform_bypass line through the one logger (redacted, with the
+ *  request's correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be
+ *  in it. Since PF-12b it is the operations line only; the audit is touchFirm's platform.bypass line. */
 let bypassLine: (use: string, route: string | undefined) => void = (use, route) => {
   logPort.info("platform_bypass", { use, method: route ? route.slice(0, route.indexOf(" ")) : "none" });
 };
 /** A test or the logger replaces where bypass lines go. Returns the one before. */
 export function onBypassLine(f: (use: string, route: string | undefined) => void) { const was = bypassLine; bypassLine = f; return was; }
 
-/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
- *  a route on that use's list; every use writes one audit line (platform.bypass). */
-export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
-  const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
+/** The one nesting rule (PF-12b, merge of PF-19p): a use runs inside an outer use only when it touches no firm's rows
+ *  ("platform") and names that outer use in `inside`. Exported for the suite's per-firm stand-in (review m1, 20 Nov). */
+export function mayRunInside(entry: { audit: BypassAudit; inside?: readonly string[] }, outer: string): boolean {
+  return entry.audit === "platform" && (entry.inside ?? []).includes(outer);
+}
+/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES (by
+ *  its name) or a declared one (by the value defineBypassUse returned: review m1, a declared use never runs by name), and
+ *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
+ *  per firm it touches (touchFirm). */
+export async function asBypass<T>(given: string | BypassUse, fn: () => Promise<T> | T): Promise<T> {
+  // A declared use is honoured only as the very value defineBypassUse returned (a look-alike object is refused).
+  if (typeof given !== "string" && (typeof given !== "object" || given === null || declared.get(given.name) !== given)) throw new BypassRefused(`asBypass: "${String((given as { name?: unknown } | null)?.name)}" is not a declared bypass use`);
+  const use = typeof given === "string" ? given : given.name;
+  const entry = typeof given === "string" ? (Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined) : given.entry;
   const store = scope.getStore(), route = store?.route;
-  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES)`);
+  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES) nor passed as a declared use (defineBypassUse)`);
   // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
-  const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
+  const spec = typeof given === "string" ? undefined : routeSpecs.get(given);
+  const matches = (r: string) => (spec ? spec.some((x) => new RegExp(x.source, x.flags).test(r)) : entry.routes.some((x) => x.test(r)));
+  const allowed = route !== undefined ? matches(route) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
+  // PF-12b (break M1): one use at a time. A use inside another would cross the walls under the outer use's name, with the
+  // outer use's lines only; it is refused before any query runs.
+  // A use inside its own scope (a job handler that names its use again under asJob, e.g. the storage measure) runs where
+  // it is: the same use, the same lines. Any other use inside it is refused.
+  if (store?.bypass === use) return await fn();
+  // The one named exception (merge of PF-19p): sign-up's emails open platform.account.mail inside platform.firms.signup.
+  // A use that touches no firm's rows may run inside an outer use it names; the outer use comes back after it.
+  const within = !!store?.bypass && mayRunInside(entry, store.bypass);
+  if (store?.bypass && !within) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
+}
+
+// ------------------------------------------------------------------------------------- PF-12b: the bypass audit line
+/** Where touchFirm records (the one trail, audit_event through AuditPort; P-571 (1)). A test replaces it. Read when a line
+ *  is written, never at load: audit-event.ts reaches this file again through audit/context.ts and jobs/pgboss-jobs.ts. */
+let bypassAudit: AuditPort<unknown> | null = null;
+const recorder = (): AuditPort<unknown> => bypassAudit ?? auditEvent;
+/** A test replaces the port bypass lines are recorded through. Returns the one before. */
+export function onBypassAudit(port: AuditPort<unknown> | null) { const was = recorder(); bypassAudit = port; return was; }
+
+/** A bypass use's audit line could not be written, so the use did not happen (P-607): its transaction rolls back. A
+ *  request answers 500 in plain words; a job fails and is retried by the job runner. */
+export class BypassNotRecorded extends HttpException {
+  constructor(readonly use: string, cause: unknown) {
+    super({ type: "https://expatready.local/problems/not-recorded", title: "Not done", status: 500, detail: "This could not be written to the firm's activity record, so nothing was done. Try again in a minute." }, HttpStatus.INTERNAL_SERVER_ERROR, { cause });
+    this.name = "BypassNotRecorded";
+  }
+}
+
+const touched = new WeakMap<object, Set<string>>();
+/** The correlation id kept in an audit line: ours (a uuid, or job:<id>) only. A caller's X-Request-Id can hold any text,
+ *  personal data too, and the trail keeps it for good (break M2, review M1): only a uuid, alone or after job:, is kept;
+ *  any other shape is kept as null. */
+const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;   // observability/jobs.ts makes job:<pg-boss uuid>
+/** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
+ *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor and the
+ *  correlation id. The actor is system:<use>, except in a request our own staff make (PF-4s's /api/system routes: a
+ *  firm's staff session never runs a bypass use), where it is the request's own ourstaff:<id>, as an ordinary entry on
+ *  that firm's trail (AUD-3c, Lead B's point 1 on #3040: AUD-3a refuses any other word in such a request). A failed write
+ *  throws BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
+export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
+  const s = scope.getStore(), use = s?.bypass;
+  if (!use) return;
+  const id = firmScope(firmId).firmId;
+  // A client is not a transaction (break m3): its line would commit on its own. A Prisma transaction has no $disconnect.
+  if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchFirm: give the caller's transaction, not the client");
+  const seen = touched.get(tx) ?? new Set<string>();
+  touched.set(tx, seen);
+  if (seen.has(id)) return;
+  seen.add(id);   // before the await: touches of one firm at the same moment in one transaction write one line (break m4)
+  const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
+  const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
+  try {
+    const ours = ourStaffActor();
+    await recorder().record(tx, { firmId: id, actor: ours ?? `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
+      summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
+  } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
+}
+/** AUD-3c: the request's own ourstaff:<id> when this is a request our own staff make, else undefined. */
+const ourStaffActor = (): string | undefined => { const c = auditContext(); return c?.actorType === "OUR_STAFF" && c.actor?.startsWith("ourstaff:") ? c.actor : undefined; };
+
+/** PF-12b part 3: inside a "platform" bypass use, one firm-less platform.bypass line in `tx` (once per transaction), on
+ *  the platform's own audit workspace (never reset, P-571 (1)): the use, the method (never the path) and the correlation
+ *  id. A failed write throws BypassNotRecorded, so `tx` rolls back (P-607). Outside a "platform" use it does nothing.
+ *  A recorded departure (review m3): AuditPort's AuditEntry requires a firm, so the line goes through the case/configuration
+ *  entry shape (it names the platform workspace, no case, no firm) rather than a port change (P-423; a firm-less platform
+ *  entry is the tech lead's later row; AUD-3c built it for our own staff's requests, below). That shape takes the
+ *  request's or job's firm when one is in scope, so a "platform" use in a firm's scope is refused here (fail-closed)
+ *  rather than land its line on that firm's trail (break m3). */
+/** `step` (Lead 15's ruling on #2814): a per-firm use's step that touches no firm (sign-up's new-email lookup and pending
+ *  row; a refused verify) names itself and writes the same firm-less line; `key` is a pending id, never a secret, code
+ *  or email. Without a step, only a "platform" use writes. */
+export async function touchPlatform(tx: unknown, at?: { step: string; key?: string | null }): Promise<void> {
+  const s = scope.getStore(), use = s?.bypass;
+  if (!use || (entryOf(use)?.audit !== "platform" && !at?.step)) return;
+  if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchPlatform: give the caller's transaction, not the client");
+  if (requestScope.getStore()?.firmId?.() || currentJobFirm()) throw new BypassNotRecorded(use, new FirmScopeError("touchPlatform: a platform use's line names no firm, but this request or job acts for one"));
+  const seen = touched.get(tx) ?? new Set<string>();
+  touched.set(tx, seen);
+  if (seen.has("")) return;
+  seen.add("");
+  const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
+  const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
+  try {
+    const detail = { use, method, correlationId, ...(at ? { step: at.step, key: at.key ?? null } : {}) };
+    // AUD-3c (Lead 10's ruling on #3040): in a request our own staff make, the line is the port's firm-less kind under the
+    // request's own ourstaff:<id> (no workspace: the adapter finds it), never a case-side line, never a system: word.
+    const ours = ourStaffActor();
+    if (ours) await recorder().record(tx, { firmId: null, actor: ours, action: "platform.bypass", entity: "plat_bypass_use", entityKey: use,
+      summary: `ExpatReady staff used the bypass role for the platform's own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail });
+    else {
+      const workspaceId = await platformAuditWorkspaceId(tx as Parameters<typeof platformAuditWorkspaceId>[0]);
+      await recorder().record(tx, { workspaceId, actor: `system:${use}`, action: "platform.bypass", entity: "bypass use", entityKey: use,
+        summary: `Our platform used the bypass role for its own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail });
+    }
+  } catch (e) { seen.delete(""); throw new BypassNotRecorded(use, e); }
+}
+/** For a use that only reads firms' rows (a sweep's read, a lookup): each firm's line in a transaction of its own. Returns
+ *  the firms whose line could not be written (their work must not go ahead) and the first such error; never throws. */
+export async function touchEachFirm(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<{ failed: Set<string>; error: BypassNotRecorded | null }> {
+  const ids = [...new Set([...firmIds].map((f) => firmScope(f).firmId))], failed = new Set<string>();
+  let error: BypassNotRecorded | null = null;
+  if (!currentBypass()) return { failed, error };
+  for (const f of ids) {
+    try { await db.$transaction(async (tx) => { await touchFirm(tx, f); }); }
+    catch (e) { failed.add(f); error ??= e instanceof BypassNotRecorded ? e : new BypassNotRecorded(currentBypass() ?? "unknown", e); }
+  }
+  return { failed, error };
+}
+/** An AuditPort that writes the firm's platform.bypass line first, in the same transaction, then the caller's own line
+ *  (the web-address catch-up, whose lines are written by firm-created.ts). The entries pass through unchanged: their
+ *  literal objects stay where check_case_feed's sweep reads them, at their source.
+ *  A case-side line (AUD-1m's CaseEntry: a workspace; since R1.8 it may name its firm, which it then touches) naming no firm to write the bypass line for: on a bypass
+ *  use it is refused (fail-closed, P-607); outside one it passes through, as touchFirm writes nothing there. */
+export function touchingAudit<Tx>(inner: AuditPort<Tx>): AuditPort<Tx> {
+  return { record: async (tx, entry) => {
+    // R1.8 (QA-595): a case line may now name its firm (optional); a line naming one touches it, one naming none is
+    // refused on a bypass use as before (fail-closed, P-607).
+    const firmId = "firmId" in entry ? entry.firmId : undefined;
+    if (firmId) await touchFirm(tx, firmId);
+    else if (currentBypass()) throw new FirmScopeError("touchingAudit: a case line names no firm, so a bypass use cannot record the firm it touches");
+    await inner.record(tx, entry);
+  } };
+}
+/** The same, all or nothing: throws the first failure (the use stops) once every firm has been tried. */
+export async function touchFirms(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<void> {
+  const { error } = await touchEachFirm(db, firmIds);
+  if (error) throw error;
 }
 
 // ----------------------------------------------------------------------------------------------- the request's firm
@@ -157,8 +425,10 @@ const routeOf = (req: ScopedReq) => {
 };
 /** PF-4's guard, first thing in every request, before any await: a fresh scope (its route, and no firm unless the host
  *  routing found the firm whose address this is) for the rest of the
- *  request. PF-4's guard is reached synchronously from Nest's router (core.ts's ConfigReadGuard returns a boolean), so
- *  the handler, its pipes and every query it makes continue in this scope; nothing of an earlier request survives. */
+ *  request. Since CS-W3 part 1, the case side's door (features/case-firm-door.ts) runs before PF-4's guard and awaits a
+ *  lookup, so this guard is no longer reached synchronously: nothing may rely on the scope entered here. The handler's
+ *  scope is FirmWallsInterceptor's (inRequest, from the request's tag), opened after every guard; nothing of an earlier
+ *  request survives, because each request's own tag decides it. */
 export function enterRequest(req: object) {
   const firmId = (req as ScopedReq)[REQ_FIRM];   // a firm's own web address: the firm the host routing found (setRequestFirm)
   scope.enterWith({ route: routeOf(req as ScopedReq), firmId: typeof firmId === "string" ? firmId : undefined });
@@ -191,6 +461,112 @@ export function appDatabaseUrl(databaseUrl: string, env: NodeJS.ProcessEnv = pro
 
 const SET = Symbol("pf12.set"), swallow = () => undefined;   // swallow: pg rejects the query in flight and drops the client; this only stops a late 'error' killing the API
 type Tagged = pg.PoolClient & { [SET]?: string };
+/** P1 (PF-4bc round-3 break; Lead 23, 24 Nov): a client may come back with a transaction still open. Prisma 7.8's
+ *  adapter-pg drops a transaction whose start came after the engine gave up (maxWait) by `release()` alone, never sending
+ *  ROLLBACK, so the next caller ran inside it: its writes were lost at the next rollback, and a rollback undid its
+ *  set_config while the tag above still named its firm (the next query ran as the earlier firm). The server tells pg the
+ *  transaction state after every statement (ReadyForQuery: 'I' idle, 'T' in a transaction, 'E' failed); a client that is
+ *  not idle (not 'I', or a statement sent and not yet answered) when released is destroyed, never kept, and its tag cleared (fail closed). And at checkout (Lead B 5): a
+ *  client the pool cannot prove idle has its tag cleared and is destroyed, and another is taken (one more try; then the
+ *  checkout fails). Clearing the tag alone would not do: the lost write would stay. tests/check_pool_tx_return.ts. */
+export const notIdleWords = "a pooled connection came back busy or inside a transaction: destroyed, not reused";
+const notIdleError = () => new Error(notIdleWords);
+/** What pg 8 keeps per client (@types/pg does not declare it): the server's last transaction state, the statement in
+ *  flight, the queue, and whether the server's ready message for the last statement has been read. Idle means 'I' with
+ *  nothing sent and unanswered (review m1: a BEGIN still in flight reads 'I') and that ready message read (Lead B 6: after
+ *  an error pg clears the statement before the ready message, so for that moment the state is the one before it). */
+type PgState = { getTransactionStatus(): "I" | "T" | "E" | null; _getActiveQuery(): unknown; _queryQueue: unknown[]; readyForQuery: boolean };
+const proto = pg.Client.prototype as unknown as Partial<PgState>, unconnected = new pg.Client() as unknown as Partial<PgState>;
+if (typeof proto.getTransactionStatus !== "function" || typeof proto._getActiveQuery !== "function" || !Array.isArray(unconnected._queryQueue))
+  throw new Error("P1: pg no longer reports a connection's transaction state (Client.getTransactionStatus, _getActiveQuery, _queryQueue), so the pool cannot refuse an open transaction (firm-scope.ts; pg changed)");
+// readyForQuery is set at the first ready message, so a client not yet connected cannot show it; busy() requires it to be
+// true, so if pg renamed it every client would read busy and be destroyed (fail closed).
+const busy = (c: object) => { const s = c as unknown as PgState; return !!s._getActiveQuery() || !Array.isArray(s._queryQueue) || s._queryQueue.length > 0 || s.readyForQuery !== true; };
+function idleNow(c: object): boolean { return (c as unknown as PgState).getTransactionStatus() === "I" && !busy(c); }
+/** P1 break m6: a client released with a statement still in flight is judged once pg has had every answer (its 'drain'),
+ *  at most this long; destroying it at once killed a caller's statement that had not failed. */
+export const RELEASE_SETTLE_MS = 10_000;
+function closeOnOpenTransaction(c: Tagged): void {
+  const release = c.release;   // pg-pool gives each checkout its own release-once function
+  const judge = () => { if (idleNow(c)) return release(); c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed" }); return release(notIdleError()); };
+  let released = false;   // review m1: a second release while the first settles throws to its caller, as pg-pool's own does
+  c.release = ((err?: Error | boolean) => {
+    if (released) throw new Error("Release called on client which has already been released to the pool.");
+    released = true;
+    if (err) return release(err);
+    if (!busy(c)) return judge();
+    let done = false;
+    // Called from pg's socket handler: an error here would end the process, so it is logged, never thrown (review m1).
+    const settle = (fn: () => void) => () => { if (done) return; done = true; clearTimeout(t); c.removeListener("drain", onDrain); c.removeListener("end", onEnd); try { fn(); } catch (e) { logPort.error("platform_pool_release_failed", e); } };
+    const onDrain = settle(judge), onEnd = settle(() => release(notIdleError()));
+    const t = setTimeout(settle(() => { c[SET] = undefined; logPort.warn("platform_pool_open_transaction", { use: "destroyed-unsettled" }); release(notIdleError()); }), RELEASE_SETTLE_MS);
+    c.on("drain", onDrain); c.on("end", onEnd);
+    return undefined;
+  }) as typeof c.release;
+}
+
+/** M1 (P1-pool round-1 break; Lead 24 and 25): a checkout that has sent COMMIT or ROLLBACK refuses any later query before
+ *  it is sent. A Prisma interactive transaction's timeout queues its ROLLBACK behind a running statement; the same
+ *  operation's next statement then went out after it and ran on its own (autocommit), so half a write stayed while the
+ *  caller was told it failed (tests/check_tx_end_guard.ts). A transaction's end counts in a plain string, a config object
+ *  or a prepared statement (and a prepared name seen ending one before); a savepoint's rollback or release, COMMIT or
+ *  ROLLBACK PREPARED, and words inside quotes, dollar-quoted bodies or comments do not. The state is new at each checkout. */
+const ENDED = Symbol("m1.ended"), END_NAMES = Symbol("m1.endNames"), GUARDED = Symbol("m1.guarded");
+type Guarded = Tagged & { [ENDED]?: boolean; [END_NAMES]?: Set<string>; [GUARDED]?: true };
+/** The statements of a SQL text with their quoted parts, comments and dollar-quoted bodies removed, read left to right in
+ *  one pass as PostgreSQL reads them (breaker m2, m3): '…' with '' inside, E'…' with backslash escapes, "…" identifiers,
+ *  $tag$…$tag$ (any tag), -- to the end of the line, and nested /* … *\/. An unclosed quote or comment runs to the end. */
+function statementsOf(sql: string): string[] {
+  const out: string[] = []; let cur = "", k = 0;
+  const n = sql.length;
+  while (k < n) {
+    const ch = sql[k], nx = sql[k + 1];
+    if (ch === "-" && nx === "-") { const e = sql.indexOf("\n", k); k = e < 0 ? n : e; cur += " "; continue; }
+    if (ch === "/" && nx === "*") { let depth = 1; k += 2; while (k < n && depth > 0) { if (sql[k] === "/" && sql[k + 1] === "*") { depth++; k += 2; } else if (sql[k] === "*" && sql[k + 1] === "/") { depth--; k += 2; } else k++; } cur += " "; continue; }
+    if ((ch === "E" || ch === "e") && nx === "'" && !/[\w$]/.test(sql[k - 1] ?? "")) { k += 2; while (k < n) { if (sql[k] === "\\") k += 2; else if (sql[k] === "'" && sql[k + 1] === "'") k += 2; else if (sql[k] === "'") { k++; break; } else k++; } cur += " "; continue; }
+    if (ch === "'") { k++; while (k < n) { if (sql[k] === "'" && sql[k + 1] === "'") k += 2; else if (sql[k] === "'") { k++; break; } else k++; } cur += " "; continue; }
+    if (ch === '"') { k++; while (k < n) { if (sql[k] === '"' && sql[k + 1] === '"') k += 2; else if (sql[k] === '"') { k++; break; } else k++; } cur += " x "; continue; }
+    if (ch === "$" && !/[\w$]/.test(sql[k - 1] ?? "")) {
+      const m = /^\$((?:[A-Za-z_\u0080-\uffff][\w\u0080-\uffff]*)?)\$/u.exec(sql.slice(k, k + 64));   // a tag is empty or an identifier
+      if (m) { const end = sql.indexOf(m[0], k + m[0].length); k = end < 0 ? n : end + m[0].length; cur += " "; continue; }
+    }
+    if (ch === ";") { out.push(cur); cur = ""; k++; continue; }
+    cur += ch; k++;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim().toLowerCase()).filter(Boolean);
+}
+export function endsTransaction(sql: string): boolean {
+  return statementsOf(sql).some((x) => (/^(commit|end|abort|rollback)\b/.test(x) && !/^rollback(\s+(work|transaction))?\s+to\b/.test(x) && !/^(commit|rollback)\s+prepared\b/.test(x)) || /^prepare\s+transaction\b/.test(x));
+}
+function refuseAfterEnd(c: Guarded): void {
+  c[ENDED] = false;   // new at each checkout
+  if (c[GUARDED]) return;
+  c[GUARDED] = true;
+  const query = c.query;
+  (c as { query: unknown }).query = function (this: unknown, ...a: unknown[]) {
+    const cfg = a[0] as { text?: unknown; name?: unknown; callback?: unknown } | string | undefined;
+    const text = typeof cfg === "string" ? cfg : typeof cfg?.text === "string" ? cfg.text : undefined;
+    const name = typeof cfg === "object" && cfg && typeof cfg.name === "string" ? cfg.name : undefined;
+    if (c[ENDED]) {
+      const err = new Error("M1: a query after this connection's COMMIT or ROLLBACK is refused: it would run outside the transaction");
+      const cb = typeof a[a.length - 1] === "function" ? a[a.length - 1] as (e: Error) => void : typeof cfg === "object" && typeof cfg?.callback === "function" ? cfg.callback as (e: Error) => void : undefined;
+      if (cb) { process.nextTick(() => cb(err)); return undefined; }
+      // A Submittable (a query object pg drives itself) gets the error the way pg gives it one (review m2).
+      if (typeof cfg === "object" && cfg && typeof (cfg as { submit?: unknown }).submit === "function") {
+        const sub = cfg as { handleError?: (e: Error) => void };
+        process.nextTick(() => sub.handleError?.(err));
+        return cfg;
+      }
+      return Promise.reject(err);
+    }
+    const ends = text !== undefined ? endsTransaction(text) : name !== undefined && !!c[END_NAMES]?.has(name);
+    if (ends && name !== undefined) (c[END_NAMES] ??= new Set()).add(name);
+    if (ends) c[ENDED] = true;
+    return (query as (...x: unknown[]) => unknown).apply(this, a);
+  };
+}
+
 /** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
 export class WalledPool extends pg.Pool {
   override connect(): Promise<pg.PoolClient>;
@@ -199,8 +575,18 @@ export class WalledPool extends pg.Pool {
     const s = scope.getStore(), direct = !s && unscoped === "direct";
     if (direct && !saidDirect) { saidDirect = true; logPort.info("platform_bypass", { use: "direct-process", method: "none" }); }
     const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
-    const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
+    const idle = async (tries: number): Promise<Tagged> => {
+      const c = (await super.connect()) as Tagged;
+      if (idleNow(c)) return c;
+      c[SET] = undefined; c.release(notIdleError());   // P1 (Lead B 5): not provably idle at checkout: destroyed, never handed out
+      logPort.warn("platform_pool_open_transaction", { use: "destroyed-at-checkout" });
+      if (tries <= 0) throw notIdleError();
+      return idle(tries - 1);
+    };
+    const p = idle(1).then(async (c: Tagged) => {
       if (!c.listeners("error").includes(swallow)) c.on("error", swallow);   // a dropped socket fails its query, never the process (Devin review)
+      refuseAfterEnd(c);           // M1: nothing more after this checkout's COMMIT or ROLLBACK
+      closeOnOpenTransaction(c);   // P1: a client released inside a transaction is destroyed
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }
       catch (e) { c.release(e as Error); throw e; }
@@ -219,14 +605,30 @@ export class WalledPool extends pg.Pool {
 
 /** Prisma merges findUnique calls made in the same tick into one query, sent from the first caller's scope: two firms'
  *  lookups would run as one firm, and the other's row would read "not found" (tests/check_pf12_walls.ts shows it). Outside
- *  a transaction each call is sent on its own, in its own caller's firm; a transaction's batch is one caller's and stays
- *  as it is. Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
+ *  a transaction each call is sent on its own, in its own caller's firm; an interactive transaction's queries run on its own
+ *  connection and stay batched; an array batch is refused (M2, below). Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
 export function oneQueryPerCaller(client: object): void {
   type Loader = { batchBy?: (r: { transaction?: unknown }) => string | undefined };
   const o = (client as { _requestHandler?: { dataloader?: { options?: Loader } } })._requestHandler?.dataloader?.options;
   if (typeof o?.batchBy !== "function") throw new Error("PF-12: Prisma's request batching was not found, so firms' lookups could be merged (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
   const by = o.batchBy;
   o.batchBy = (r) => (r.transaction ? by(r) : undefined);
+  // M2 (P1-pool round-2 break; Lead 24, 24 Nov): an array batch, `$transaction([...])`, is dispatched with every other
+  // batch queued in that tick from one process.nextTick set up by the first request, so it checks out the pool in that
+  // first caller's scope: another firm's, or the bypass role (tests/check_no_array_tx.ts). No array batch through this
+  // client: it is refused before anything in it runs. An interactive transaction takes its connection in its own
+  // caller's scope when it starts, and is kept.
+  const c = client as { $transaction?: (arg: unknown, opts?: unknown) => Promise<unknown> };
+  if (typeof c.$transaction !== "function") throw new Error("M2: Prisma's $transaction was not found on the client (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
+  // Review B1: the receiver is kept, never bound: a transaction client reads $transaction from this client, and Prisma
+  // nests a call made on a transaction client (`this`) inside that transaction. Anything but a function is refused, as
+  // Prisma's own test for the interactive form is `typeof arg === "function"` (review m1: an array-like is a batch too).
+  const transaction = c.$transaction;
+  c.$transaction = function (this: unknown, arg: unknown, opts?: unknown) {
+    return typeof arg !== "function"
+      ? Promise.reject(new Error("M2: an array batch ($transaction([...])) is refused on the app's client: Prisma would send it in another caller's firm. Use the interactive form, $transaction(async (tx) => ...)."))
+      : transaction.call(this, arg, opts);
+  };
 }
 
 /** The API's pool (core.ts Db): xr_app, UTC session time zone. */

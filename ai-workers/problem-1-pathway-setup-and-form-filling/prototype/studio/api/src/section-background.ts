@@ -166,7 +166,7 @@ export async function withdrawApprovedBackground(tx: Prisma.TransactionClient, a
   }
   const done = await tx.libraryChange.updateMany({ where: { id: c.id, status: "APPROVED" }, data: { status: "WITHDRAWN", decidedBy: actor.id, decidedAt: new Date(), decisionNote: why } });
   if (!done.count) throw problem(409, "Changed meanwhile", "This change was released or decided at the same moment. Refresh to see it.");
-  await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "withdrawn", entity: "section", entityKey: c.key, summary: `${actor.name} withdrew the approved change "${c.label ?? c.key}" before its release: the section keeps the mark it had. Why: ${why}`.slice(0, 600) } });
+  await new Audit(tx as never).log(c.workspaceId, actor.id, "withdrawn", "section", c.key, `${actor.name} withdrew the approved change "${c.label ?? c.key}" before its release: the section keeps the mark it had. Why: ${why}`.slice(0, 600));
 }
 
 /** At a release (publishLibraryChanges): an approved change whose section draft this release published is released. */

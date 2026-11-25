@@ -67,7 +67,10 @@ if [[ "$ACTION" == "stop" ]]; then
   rm -rf "$VARDIR"
   echo "stopped $NAME (database and files removed$log)"; exit 0
 fi
-pg_ctl -D "$ROOT/.tools/solution-1-prototype/pg18-data" status >/dev/null 2>&1 || { echo "start the demo database first (studio/start.sh)"; exit 1; }
+# The demo database must be up. pg_isready connects over TCP, so it also works inside a sandbox that cannot see the
+# server's process (18 Nov: pg_ctl status failed in sandboxed qa sessions, so gate A could not run there); pg_ctl stays
+# as the fallback for a copy without pg_isready on the PATH.
+pg_isready -q -h 127.0.0.1 -p 54329 2>/dev/null || pg_ctl -D "$ROOT/.tools/solution-1-prototype/pg18-data" status >/dev/null 2>&1 || { echo "start the demo database first (studio/start.sh)"; exit 1; }
 if [[ "$ACTION" == "start" ]]; then dropdb -h 127.0.0.1 -p 54329 -U xr_studio --if-exists "$DB"; createdb -h 127.0.0.1 -p 54329 -U xr_studio "$DB"; rm -rf "$VARDIR"; fi
 mkdir -p "$VARDIR"
 cd "$STUDIO"
@@ -80,7 +83,10 @@ DATABASE_URL="$URL" ./node_modules/.bin/prisma migrate deploy >/dev/null
 # The schema is a folder, one file per area (DB-SPLIT): any .prisma file under prisma/ newer than the client, or a folder
 # changed since (an area file added with an old date, or deleted: the folder's own time moves), regenerates it.
 [[ ! -e node_modules/.prisma/client/index.js || -n "$(find prisma \( -name '*.prisma' -o -type d \) -newer node_modules/.prisma/client/index.js 2>/dev/null)" ]] && ./node_modules/.bin/prisma generate >/dev/null
-env DATABASE_URL="$URL" STUDIO_PORT="$PORT" STUDIO_VAR="$VARDIR" "$@" nohup ./node_modules/.bin/tsx --tsconfig api/tsconfig.json api/src/main.ts >> "$VARDIR/api.log" 2>&1 &
+# CS-W1 (Lead 61, #1872): the Sample firms exist on every copy (an argument PLATFORM_SAMPLE_SEED=off still wins).
+# PF-24w: PLATFORM_ENVIRONMENT is required (no default in the app): a lane copy is local unless the caller's exported or
+# passed value says otherwise (break m1, #2635: an exported test or production is never silently turned into local).
+env DATABASE_URL="$URL" PLATFORM_ENVIRONMENT="${PLATFORM_ENVIRONMENT:-local}" STUDIO_PORT="$PORT" STUDIO_VAR="$VARDIR" PLATFORM_SAMPLE_SEED="${PLATFORM_SAMPLE_SEED:-on}" "$@" nohup ./node_modules/.bin/tsx --tsconfig api/tsconfig.json api/src/main.ts >> "$VARDIR/api.log" 2>&1 &
 # Who serves this database (#745 review M1): prune-test-dbs.sh keeps a database whose recorded server is alive, since an
 # idle server holds no connection (its pool closes them after 10 s); stop ends it. Never fails the start.
 SPID=$!

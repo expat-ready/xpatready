@@ -129,7 +129,7 @@ const PART1 = ["C7.5-1 ", "C7.5-2 ", "C7.5-3 ", "C7.5-4 ", "C7.5-10 ", "C7.5-11 
   ({ fs } = await list());
   const res = fs.find((x) => x.id === again?.id);
   ok("C7.5 breaker M1: resolved by the rules, and who acknowledged it, when and why are kept", res?.state === "resolved" && res.resolved_by === "rules" && !!res.resolved_at && res.state_by === officer && res.state_reason === "Renewal booked (Sample)" && !!res.state_at, res);
-  ok("C7.5 breaker m8: the rules' resolve writes an audit line", Number(sql(`select count(*) from audit_event where entity='case' and entity_key='${c.id}' and action='resolved' and actor='rules'`)) >= 1);
+  ok("C7.5 breaker m8: the rules' resolve writes an audit line (actor system:rules since AUD-1m: the bare word is typed)", Number(sql(`select count(*) from audit_event where entity='case' and entity_key='${c.id}' and action='resolved' and actor='system:rules'`)) >= 1);
 
   // Breaker m9: the database refuses a dismissed CRITICAL and a blank reason, whatever writes it.
   const refusedSql = (q: string) => { try { return sql(q) === null; } catch { return true; } };

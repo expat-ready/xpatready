@@ -1,0 +1,47 @@
+PASS  J-28 axe: the web form, filled: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the web form, filled: no sideways page scroll
+PASS  J-28 1024 px: the web form, filled: no sideways page scroll
+PASS  J-28 axe: the web form's thank-you: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the web form's thank-you: no sideways page scroll
+PASS  J-28 1024 px: the web form's thank-you: no sideways page scroll
+PASS  J-28 W1: the visitor sends the web form with its consent ticked (the thank-you shows), and the tick's words are the firm's form wording — {"words":"Yes, Sample J-28 firm may email me news and offers. I can stop at any time. (Sample wording mwnqvzr7)","thanks":true}
+PASS  J-28 W1 pass: underneath, exactly one consent row for the visitor: EMAIL MARKETING, source WEB_FORM, the wording the form showed, recorded by the web form, live — ["EMAIL|MARKETING|WEB_FORM|060beb56-90f7-46dc-81ac-46d5e44c3be3|system:web-form|true"]
+PASS  J-28 W1 pass: the row's time is the moment of sending (after the page was opened, not in the future) — "2026-11-19 11:08:52.86-05"
+PASS  J-28 W1 pass: no row for any other purpose (WhatsApp opt-in, WhatsApp marketing) was written by the tick
+PASS  J-28 W1 pass: the consent's audit line names the web form as recorder
+PASS  J-28 W1 fail: a visitor who leaves the tick empty is still taken (a lead and a person) but no consent row is written — {"thanks":true,"person":true,"rows":[]}
+PASS  J-28 axe: the booking page: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the booking page: no sideways page scroll
+PASS  J-28 1024 px: the booking page: no sideways page scroll
+PASS  J-28 axe: the booking details form: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the booking details form: no sideways page scroll
+PASS  J-28 1024 px: the booking details form: no sideways page scroll
+PASS  J-28 axe: the booking confirmation: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the booking confirmation: no sideways page scroll
+PASS  J-28 1024 px: the booking confirmation: no sideways page scroll
+PASS  J-28 W2: the same visitor (same email) books on the booking page with the booking tick, and is booked — {"words":"Yes, Sample J-28 firm may email me news about consultations. I can stop at any time. (Sample booking wording mwnqvzr7)","booked":true}
+PASS  J-28 W2 pass: underneath, one BOOKING_FORM consent row for that purpose (EMAIL MARKETING), with the wording the page showed (the firm's newest, not the web form's), recorded by the booking page, live — {"bRows":["EMAIL|MARKETING|BOOKING_FORM|3e8458cc-cab8-4cab-9c92-49a32605413a|system:booking-page|true"],"shownBooking":"3e8458cc-cab8-4cab-9c92-49a32605413a","words":"Yes, Sample J-28 firm may email me news about consultations. I can stop at any time. (Sample 
+PASS  J-28 W2: the booking's person is a new record flagged as a possible match of the web-form visitor, never linked (AG-2-84)
+PASS  J-28 W2: the web form's row is untouched by the booking (still one row, live)
+PASS  J-28 W2 fail: a booking with the tick off is booked and records no consent row (QA-511) — {"booked":true,"rows":[]}
+PASS  J-28 W5 fail half (before the unsubscribe): a marketing send to the visitor is allowed by their live consent and delivered to the demo inbox, with List-Unsubscribe one-click headers — {"before":{"allowed":true,"reason":"CONSENT","consentId":"56807a3b-85ef-4540-8c51-e505ce1e36ed","purpose":"MARKETING"},"state":"QUEUED","mails":1,"link":"http://localhost:4428/api/public/unsubscribe/<token>"}
+PASS  J-28 axe: the unsubscribe page: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the unsubscribe page: no sideways page scroll
+PASS  J-28 1024 px: the unsubscribe page: no sideways page scroll
+PASS  J-28 W3: the mail's link opens one page with one Unsubscribe button, and opening it records nothing — "Unsubscribe from Sample J-28 firm's marketing email?"
+PASS  J-28 axe: the unsubscribed page: no WCAG 2.2 A/AA violation — []
+PASS  J-28 1440 px: the unsubscribed page: no sideways page scroll
+PASS  J-28 1024 px: the unsubscribed page: no sideways page scroll
+PASS  J-28 W3: the visitor presses Unsubscribe → 'You are unsubscribed' — [200,"You are unsubscribed"]
+PASS  J-28 W3 pass: underneath, the web form's EMAIL MARKETING row is withdrawn via UNSUBSCRIBE, once, with a withdrawal row of its own — ["EMAIL|MARKETING|WEB_FORM|060beb56-90f7-46dc-81ac-46d5e44c3be3|system:web-form|false","WHATSAPP|SERVICE|STAFF_RECORDED|4be58a38-c218-4307-a20b-d599addc8611|staff:92213872-312b-451e-b3f3-ce10d020f867|true"]
+PASS  J-28 W3 pass: the visitor's other purpose stays granted: the WhatsApp opt-in row is live and the gate still allows it — ["EMAIL|MARKETING|WEB_FORM|060beb56-90f7-46dc-81ac-46d5e44c3be3|system:web-form|false","WHATSAPP|SERVICE|STAFF_RECORDED|4be58a38-c218-4307-a20b-d599addc8611|staff:92213872-312b-451e-b3f3-ce10d020f867|true"]
+PASS  J-28 W3 pass: the withdrawal changed only the withdrawal columns (channel, purpose, wording, source and time as before)
+PASS  J-28 W3 fail: the same link a second time → 404, and nothing more is recorded — 404
+PASS  J-28 W4 fail: editing a live consent row is refused by the database (only the withdrawal is ever set) — "ERROR:  msg_consent 6ff09797-45ac-4cd9-961e-f87c8d7ae11d: only the withdrawal is ever set on a consent"
+PASS  J-28 W4 fail: editing or un-withdrawing a withdrawn consent row is refused by the database — ["ERROR:  msg_consent 56807a3b-85ef-4540-8c51-e505ce1e36ed: a withdrawn consent never changes (withdrawn at 2026-11-19 11:09:06.531-05)","ERROR:  msg_consent 56807a3b-85ef-4540-8c51-e505ce1e36ed: a withdrawn consent never changes (withdrawn at 2026-11-19 11:09
+PASS  J-28 W4 fail: deleting a consent row is refused by the database — "ERROR:  msg_consent is evidence: DELETE refused"
+PASS  J-28 W4: after the refused statements both rows are exactly as they were
+PASS  J-28 W4 pass: a new grant of the same purpose is a new row; the old row is unchanged, and the gate now names the new one — {"waDecision":{"allowed":true,"reason":"CONSENT","consentId":"c95f10c9-9bb6-4373-b4ed-705757226edc","purpose":"SERVICE"},"new":"c95f10c9-9bb6-4373-b4ed-705757226edc"}
+PASS  J-28 W5 pass: a marketing send to the withdrawn purpose is blocked by the gate: SUPPRESSED, its reason kept (no live EMAIL MARKETING consent) — {"blocked":{"outboxId":"a7225f20-c15c-4f0a-9010-484b195b66a9","state":"SUPPRESSED","reason":"WITHDRAWN: MARKETING","repeated":false},"gate":{"allowed":false,"reason":"WITHDRAWN","purpose":"MARKETING"}}
+PASS  J-28 W5 pass: asked to deliver, the blocked send still reaches nothing: the visitor's inbox holds only the one mail sent before the unsubscribe, and the row stays SUPPRESSED
+PASS  J-28: no error in the browser — []

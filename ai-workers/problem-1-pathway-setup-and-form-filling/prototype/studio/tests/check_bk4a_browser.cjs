@@ -119,7 +119,12 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   const [tab] = await Promise.all([p.context().waitForEvent("page"), toCases.click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] })]);
   await tab.waitForLoadState("domcontentloaded"); await p.waitForTimeout(500);
   step("frame: a Ctrl-click opens a new tab and changes nobody", await stored(p) === "user-A", await stored(p));
-  await tab.close();
+  // page.close() has no time limit and can hang (CI run 45429673590, a probe on a busy machine: 2 of 6,416 closes of a tab just opened were not back in 20 s).
+  await tab.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+  if (await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 15000, "late"))]) === "late") {
+    const note = "NOTE  check_bk4a_browser.cjs: the new tab was not closed after 15 s; going on"; console.log(note);
+    if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${note}\n`);   // a green run shows no suite log
+  }
   await toCases.click(); await p.waitForURL((u) => u.pathname === "/cases", { timeout: 15000 }).catch(() => {});
   step("frame: a plain click opens the case list as the case officer, said once", await stored(p) === "user-O" && await said(p, /Now: Case officer \(simulated\)/) && await p.getByRole("button", { name: "Open a case" }).isVisible().catch(() => false));
   await p.context().close();
@@ -158,8 +163,11 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   // author's card lands on Immigration programs, not on a page with nothing to do (the session's answer changed in the
   // browser only, as check_bk5_start_browser does).
   await p.route("**/api/session", async (r) => { const res = await r.fetch(); const j = await res.json(); j.workspace = { ...j.workspace, demo: false }; await r.fulfill({ response: res, json: j }); });
+  // Wait for the session answer from before the navigation: it arrives 1-4 ms after [data-sign-in] shows (on main too), so a
+  // wait started after the page could miss it, sit out 15 s, and leave a later request in flight at the unroute (PF-31, Lead 13).
+  const sessionAnswered = p.waitForResponse((r) => new URL(r.url()).pathname === "/api/session", { timeout: 15000 }).catch(() => {});
   await p.goto(`${BASE}/sign-in`); await p.locator("[data-sign-in]").waitFor({ timeout: 15000 });
-  await p.waitForResponse((r) => new URL(r.url()).pathname === "/api/session", { timeout: 15000 }).catch(() => {});
+  await sessionAnswered;
   await p.locator('[data-sign-in-as="user-A"]').click(); await p.waitForURL((u) => u.pathname !== "/sign-in", { timeout: 15000 });
   step("BK-5 PR 2 fail side (break m1): outside the demo workspace the author lands on Immigration programs, not Starting points", new URL(p.url()).pathname === "/" && await stored(p) === "user-A", p.url());
   await p.unroute("**/api/session");

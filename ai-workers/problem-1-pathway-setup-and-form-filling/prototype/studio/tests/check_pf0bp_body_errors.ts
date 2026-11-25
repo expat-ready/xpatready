@@ -36,7 +36,7 @@ const post = (path: string, body: string | Buffer, token?: string, extra: Record
 let log = "";
 const p = spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "api", "src", "main.ts")], {
   cwd: STUDIO, stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, DATABASE_URL: urlOf(DB), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf0bp-check-${process.pid}`), PLATFORM_IDENTITY: "local", PLATFORM_SAMPLE_SEED: "on" },
+  env: { ...process.env, PLATFORM_ENVIRONMENT: "local", DATABASE_URL: urlOf(DB), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf0bp-check-${process.pid}`), PLATFORM_IDENTITY: "local", PLATFORM_SAMPLE_SEED: "on" },
 });
 p.stdout.on("data", (b: Buffer) => (log += b.toString())); p.stderr.on("data", (b: Buffer) => (log += b.toString()));
 try {
@@ -69,7 +69,7 @@ try {
   // ---------------------------------------------------------------------------------------------------------- DW2
   const big = Buffer.from(JSON.stringify({ note: "x".repeat(6 * 1024 * 1024) }));
   const tooBig = await post("/api/front-office/leads", big, token);
-  ok("PF-0bp DW2 pass: a 6 MB JSON body on a staff route → 413 BODY_TOO_LARGE, its words unchanged", tooBig.status === 413 && tooBig.body?.code === "BODY_TOO_LARGE" && tooBig.body?.detail === "This request is larger than the 5 MB the server takes. Nothing was saved or started.", tooBig.body);
+  ok("PF-0bp DW2 pass: a 6 MB JSON body on a staff route → 413 BODY_TOO_LARGE, in size-neutral words (PF-28: the limit depends on the address)", tooBig.status === 413 && tooBig.body?.code === "BODY_TOO_LARGE" && tooBig.body?.detail === "This request is larger than this address takes. Nothing was saved or started.", tooBig.body);
   const formBig = await post("/api/public/forms/pf0bp-token/submissions", Buffer.from(JSON.stringify({ message: "x".repeat(33 * 1024) })));
   ok("PF-0bp DW2 fail→pass: the web-form door's 33 KB body still answers FO-2's own 413 (TOO_LARGE), not the 5 MB words", formBig.status === 413 && formBig.body?.code === "TOO_LARGE" && formBig.body?.detail === "This form is too long. Please shorten your message and try again.", formBig.body);
 
@@ -85,10 +85,28 @@ try {
   ok("PF-0bp DW3 pass (bare marker): a body that is only secret-marker-123 → 400 BODY_NOT_JSON; neither the answer nor the log repeats it",
     notJson(bare) && !bare.text.includes("secret-marker-123") && !log.includes("secret-marker-123"), { answer: bare.text, log: log.slice(logAt).slice(-600) });
 
+  // ------------------------------------------------------------------------------- DW5 (QA-507, R1.10): the parser's 415s
+  // A charset or Content-Encoding the parser cannot read was a 500; each is its own 415 in words, neither the answer nor
+  // the log repeats the sent value, and the encoding answer names the encodings it reads (RFC 9110 15.5.16).
+  const cs = await post("/api/front-office/leads", "{}", token, { "content-type": "application/json; charset=klingon", "idempotency-key": "pf0bp-cs" });
+  await new Promise((r) => setTimeout(r, 300));   // the log line, if any, has arrived (as DW3)
+  ok(`PF-0bp DW5 ${cs.status === 415 ? "pass" : "fail"}: a JSON body in charset=klingon → 415 BODY_CHARSET in words, the charset not repeated (QA-507)`,
+    cs.status === 415 && /application\/problem\+json/.test(cs.type) && cs.body?.code === "BODY_CHARSET" && /UTF-8/.test(cs.body?.detail ?? "") && !/klingon/i.test(cs.text) && !/klingon/i.test(log.slice(logAt)), cs);
+  const enc = await new Promise<Res & { accept: string }>((done, failed) => {
+    const rq = request({ host: "127.0.0.1", port: PORT, path: "/api/front-office/leads", method: "POST", headers: { "content-type": "application/json", "content-encoding": "zstd-nope", "content-length": "2", authorization: `Bearer ${token}`, "idempotency-key": "pf0bp-enc" } }, (rs) => {
+      let d = ""; rs.setEncoding("utf8"); rs.on("data", (c) => (d += c));
+      rs.on("end", () => { let body: any = null; try { body = JSON.parse(d); } catch { /* not JSON */ } done({ status: rs.statusCode ?? 0, type: String(rs.headers["content-type"] ?? ""), body, text: d, accept: String(rs.headers["accept-encoding"] ?? "") }); });
+    });
+    rq.on("error", failed); rq.end("{}");
+  });
+  await new Promise((r) => setTimeout(r, 300));
+  ok(`PF-0bp DW5 ${enc.status === 415 ? "pass" : "fail"}: a JSON body with Content-Encoding zstd-nope → 415 BODY_ENCODING in words with Accept-Encoding, the encoding not repeated (QA-507)`,
+    enc.status === 415 && enc.body?.code === "BODY_ENCODING" && /gzip/.test(enc.accept) && !/zstd-nope/i.test(enc.text) && !/zstd-nope/i.test(log.slice(logAt)), enc);
+
   // ---------------------------------------------------------------------------------------------------------- DW4
   const after = rows();
   ok("PF-0bp DW4: neither error reached a handler (no lead and no complaint written by the broken, oversized or marked bodies; the valid ones were refused by their handlers)", after === before, { before, after });
-  ok("PF-0bp DW4 fail: no answer above was a 500, and the server logged no 500 for them", !/"status":\s*500|statusCode":\s*500/.test(log.slice(logAt)) && !/Something went wrong on the server/.test([anon, tooBig, formBig, marked, bare].map((x) => x.text).join("")), log.slice(logAt).slice(-600));
+  ok("PF-0bp DW4 fail: no answer above was a 500, and the server logged no 500 for them", !/"status":\s*500|statusCode":\s*500/.test(log.slice(logAt)) && !/Something went wrong on the server/.test([anon, tooBig, formBig, marked, bare, cs, enc].map((x) => x.text).join("")), log.slice(logAt).slice(-600));
 } finally {
   p.kill("SIGTERM");
   await new Promise((r) => setTimeout(r, 500));

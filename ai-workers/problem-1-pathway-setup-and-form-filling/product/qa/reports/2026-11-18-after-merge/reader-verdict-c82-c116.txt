@@ -1,0 +1,18 @@
+Fresh qa reader (Opus, high effort, ran nothing; P-303, P-432), 18 Nov 16:3x IST, on main 39c1203cd.
+Inputs: RULES.md P-339 and P-348c, rules/works.md, the C8.2 and C11.6 rows and packs, open bugs, first run 44256761591 and re-run 44260362078 pack logs, gate A screenshots and gatea-database.txt.
+
+C8.2: WORKS
+ - Run 44256761591 job 134640396986: head 39c1203cd; GATE_B_DATA checkpoint; "C8.2.test.ts on the checkpoint: exit 0, 19/19 passed"; "Gate B: passed."
+ - Re-run 44260362078 job 134668185255: head 39c1203cd (another runner region); "exit 0, 19/19 passed"; "Gate B: passed."
+ - The pack covers the text: application number per filing (C8.2-6), portal, reference and UCI per person (C8.2-7), refusals (-3, -4, 403, 409), read-only (-9), Correct a number keeps the history (-10, -11).
+ - Gate A: field refusals, one record for a double click, read-only, next capability C9.2's task after filing.
+ - No open Major or Critical names C8.2; QA-397 closed. Notes: QA-430 (Minor) not re-checked; walk at 800 px only, no axe.
+
+C11.6: WORKS
+ - Run 44256761591 job 134640397274 and re-run 44260362078 job 134668185047: head 39c1203cd; checkpoint; "14/14 passed"; "Gate B: passed."
+ - The pack covers the text: read-only portal (-1, -2), default channel (-3), IRCC-accepted list (-4), refused choice with IRCC's line (-6, -8a), Paper reason (-8b), one person only (-9), audit (-10), stale version 409 (-11), combination unchanged (-12).
+ - Scope: Visitor visa journey (P-380 Q1); permanent-residence answer sheets are breadth rows S1-S5; the "PDF copy, not for filing" part is C7.7's pack (Works).
+ - Gate A: only-PDF line, Paper reason refused on the field, one change for one person, next capability C7.1's prepare steps.
+ - No open Major or Critical names C11.6. Notes: walk at 800 px only, no axe.
+
+C8.2: WORKS · C11.6: WORKS

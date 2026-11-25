@@ -87,6 +87,13 @@ try {
   const leadsBefore = count("fo_lead"), receiptsBefore = count("fo_arrival_receipt");
   const bot = await post({ ...lena, website: "http://spam.example" });
   ok("FO-2 fail: the honeypot filled → answered like any other (the thank-you text), nothing stored", bot.thankYouText.length > 0 && count("fo_lead") === leadsBefore && count("fo_arrival_receipt") === receiptsBefore, bot);
+  // PF-28 A3 (R1.10): the trap field takes any text but no other type; the message's own length (text()'s count) is read at
+  // the parse, so it is named even when the names' rules would answer first.
+  const trapObj = await refusal(() => post({ ...lena, website: { pf28: 1 } })), fields = (a: typeof trapObj) => (a?.body.fields ?? {}) as Record<string, string>;
+  ok("PF-28 A3 fail: a trap field that is not text → 422 naming website in plain words, nothing stored", trapObj?.status === 422 && fields(trapObj).website === "This must be text." && count("fo_lead") === leadsBefore, trapObj?.body);
+  const longMsg = await refusal(() => post({ message: "a".repeat(5001) })), wideMsg = await refusal(() => post({ message: "\u{1F600}".repeat(5000) }));
+  ok("PF-28 A3 fail: a 5001-character message with no name → 422 naming message in its own words (before the names' rules)", longMsg?.status === 422 && fields(longMsg).message === "at most 5000 characters.", longMsg?.body);
+  ok("PF-28 A3 pass: 5000 characters of 2 UTF-16 units each pass the parse (counted as characters): the names' rule answers, not the message's", wideMsg?.status === 422 && !!fields(wideMsg).givenNames && !fields(wideMsg).message && count("fo_lead") === leadsBefore, wideMsg?.body);
   const quick = await forms.read(tokenA, req());
   clock += 1000;
   const fast = await forms.submit(tokenA, { submissionId: quick.submissionId, loadStamp: quick.loadStamp, ...lena }, req());
@@ -122,7 +129,8 @@ try {
   ok("FO-2 fail: no tick → the lead with no consent row", !!anaLead && noTick.thankYouText === first.thankYouText && count("msg_consent c join fo_lead l on l.person_id = c.subject_id", `l.id = '${anaLead}'`) === 0);
   ok("FO-2 fail: no email and no phone → refused at the field", (await refusal(() => post({ givenNames: "Nobody" })))?.status === 422);
   ok("FO-2 fail (break m4): a name with a direction override or a zero-width space → refused at the field", (await refusal(() => post({ givenNames: "Le\u202ena", email: "rlo@example.org" })))?.status === 422 && (await refusal(() => post({ givenNames: "Le\u200bna", email: "zw@example.org" })))?.status === 422);
-  ok("FO-2 fail: an unknown field in the body → refused with no internal detail", (await refusal(() => post({ ...lena, isAdmin: true })))?.body.detail === "We could not read this form. Please reload the page and try again.");
+  const unk = await refusal(() => post({ ...lena, isAdmin: true }));   // PF-28 part 3b: 422 naming the field sent, nothing internal
+  ok("FO-2 fail: an unknown field in the body → refused 422 naming only the field sent, no internal detail", unk?.status === 422 && Object.keys((unk.body.fields ?? {}) as object).join() === "isAdmin" && !/stack|prisma|sql|Error/i.test(JSON.stringify(unk.body)), unk?.body);
   const big = await refusal(() => post({ ...lena, message: "x".repeat(33 * 1024) }));
   ok("FO-2 fail: a body over 32 KB → 413 and nothing saved", big?.status === 413 && count("fo_person", `email = 'lena@example.org'`) === 1, big);
 
@@ -188,7 +196,16 @@ try {
   ok("FO-2 fail: a lead that arrived with no campaign facts has no attribution (nothing guessed)", ((await leads.read(R, anaLead)) as { attribution: unknown }).attribution === null);
   await post({ givenNames: "Long", email: "long@example.org", attribution: { landingPage: `https://maple.example/?q=${"x".repeat(2100)}` } });
   ok("FO-2 pass (Devin): a captured landing page over 2,000 characters is cut to length, the enquiry kept", sql(`select length(a.landing_page) from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'long@example.org'`) === "2000");
-  ok("FO-2 fail: an attribution field outside the list → refused", (await refusal(() => post({ givenNames: "X", email: "x@example.org", attribution: { fbp: "1" } })))?.status === 400);
+  ok("FO-2 fail: an attribution field outside the list → refused (422)", (await refusal(() => post({ givenNames: "X", email: "x@example.org", attribution: { fbp: "1" } })))?.status === 422);   // PF-28 part 3b: a field error is 422
+  // PF-28 part 3b, break M1, m1, m2: a body nested too deep to measure is unreadable (400), never a 500; a captured landing
+  // page longer than the old 32 000 bound is still cut and kept; a "__proto__" inside attribution is refused like any other key.
+  let deep: unknown = []; for (let k = 0; k < 100_000; k++) deep = [deep];
+  const deepR = await refusal(() => post({ givenNames: "Deep", email: "deep@example.org", zz: deep }));
+  ok("PF-28 part 3b fail (break M1): a body nested 100 000 deep → 400 BAD_REQUEST, never a 500", deepR?.status === 400 && deepR.body.code === "BAD_REQUEST", deepR?.status);
+  await post({ givenNames: "Longer", email: "longer@example.org", attribution: { landingPage: `https://maple.example/?q=${"x".repeat(32_001)}` } });
+  ok("PF-28 part 3b pass (break m1): a landing page of 32 001 characters is cut to 2 000 and the enquiry kept (captured, never refused for length)", sql(`select length(a.landing_page) from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'longer@example.org'`) === "2000");
+  const protoR = await refusal(() => post({ givenNames: "Proto", email: "proto@example.org", attribution: JSON.parse('{"__proto__":{"polluted":1},"utmSource":"x"}') }));
+  ok("PF-28 part 3b fail (break m2): attribution.__proto__ → 422 naming it, nothing stored", protoR?.status === 422 && !!(protoR.body.fields as Record<string, string> | undefined)?.["attribution.__proto__"] && sql(`select count(*) from fo_person where email = 'proto@example.org'`) === "0", protoR?.body);
 
   // ------------------------------------------------------------------------------------------- lists and visibility
   const unassigned = await leads.list(R, "unassigned");

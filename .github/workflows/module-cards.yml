@@ -1,14 +1,19 @@
 # Module cards (P-615 (3)): a PR that changes files in a module of the reference app
 # (api/src, web/src) also changes that module's MODULE card, unless its body has a line `Card unchanged: <reason>`.
 # The map is .claude/rules/modules/*.md (each a symlink to its card; the card's `paths:` are the module's files).
-# Runs on every PR and on an edit of its body; a few seconds, US$0, no secrets. Its own test runs first. No concurrency
-# group: a waiting run would be cancelled by a newer one, and a CI run is never cancelled.
+# Runs on every PR and on an edit of its body; a few seconds, US$0, no secrets. Its own test runs first. One concurrency
+# group per PR: a newer push or body edit supersedes the older run (SPD-2 item 5, P-802; a merge-queue batch never).
 name: module-cards
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, ready_for_review]
 permissions:
   contents: read
+concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
+  group: module-cards-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 jobs:
   module-cards:
     # A merge-queue batch PR carries no body of its own; each PR in it passed this check already.
@@ -26,6 +31,7 @@ jobs:
       - name: this PR changes a module's card when it changes the module
         env:
           BODY: ${{ github.event.pull_request.body }}
+          BASE: HEAD^1   # P-712: the frozen Tests./Tables./Entry points. lines are compared with the base
         run: |
           # The checkout is GitHub's test merge: its first parent is the base, so this is what the PR brings.
           git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed"

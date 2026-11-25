@@ -6,6 +6,9 @@ import { HttpException, HttpStatus, Inject, Injectable, SetMetadata, type CanAct
 import { Reflector } from "@nestjs/core";
 import { PLATFORM_ACCESS, type PlatformAccess } from "./platform/identity/keys.ts";
 import { oneQueryPerCaller, walledPool } from "./platform/firm-scope.ts";
+import type { Prisma } from "@prisma/client";
+import { auditEvent } from "./platform/audit/audit-event.ts";
+import { CASE_ENTITIES, caseOf } from "./case-feed.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -92,6 +95,7 @@ export class ConfigReadGuard implements CanActivate {
     // refused, never read as nobody or mixed with a simulated person.
     const auth = req.headers.authorization, path = req.path ?? req.url ?? "";
     if (/^\/api\/(platform|front-office)(\/|$)/.test(path)) return true;   // PF-4 (Lead 43 OK on #1744): these paths belong to the platform guard (api/src/platform/identity/guard.ts)
+    if (/^\/api\/system(\/|$)/i.test(path)) return true;   // PF-4s (Lead 1's OK on #2885, 22 Nov): our own staff's paths, in any letter case, belong to the system guard (api/src/platform/system-identity/guard.ts)
     if (path.startsWith("/api/runtime/") && this.reflector.getAllAndOverride<PlatformAccess>(PLATFORM_ACCESS, [ctx.getHandler(), ctx.getClass()])?.kind === "keys") return true;   // CS-C1a (Lead 58's OK, #1818 comment 6892215478): a case route declaring permission keys (never AnyStaff or StaffSignIn) is the platform guard's; exact case only (PF-4 break M1)
     if (typeof auth === "string" && /^bearer\s/i.test(auth) && !path.startsWith("/api/link/")) throw new HttpException({ type: "https://expatready.local/problems/link-only", title: "Not for a link session", status: 403, detail: "A person's own link reaches only their own questions, never the firm's or the client's pages." }, HttpStatus.FORBIDDEN);
     const scope = this.reflector.getAllAndOverride<string>(READ_SCOPE, [ctx.getHandler(), ctx.getClass()]);
@@ -136,12 +140,39 @@ export class Workspace {
   forget() { this.cached = null; }
 }
 
+/** AUD-1m: the two bare actor words case-side callers pass today (the form finder's "system"; findings.ts's and
+ *  review-runs.ts's "rules"), as AuditPort's typed words. Readers that name them use actorWordOf (below). */
+const TYPED_WORD: Readonly<Record<string, string>> = { system: "system:studio", rules: "system:rules" };
+/** The word a reader shows for a stored actor: a mapped word reads as its bare word, as before AUD-1m. */
+export const actorWordOf = (actor: string) => Object.keys(TYPED_WORD).find((k) => TYPED_WORD[k] === actor) ?? actor;
+/** AUD-1m: the case a line is about, as a full id. Its 8 characters are read as case-feed.ts's caseOf reads them (the
+ *  "case" entity keyed by the case id, else the first "case <8>" in its words); the full id is the one case of the
+ *  line's workspace whose id starts with them, read in the caller's transaction (one indexed range on the primary key).
+ *  None, or more than one, gives no case id: never guessed (the trail has no foreign key, SA-11 BR-8). R1.8 (breaker M1 on
+ *  #2527): only a case entity (case-feed.ts CASE_ENTITIES) is read for its case; a configuration line's words ("… see case
+ *  bbbbbbbb", a reason or a note anyone types) never name a case, so they never put the line on that case's firm trail. */
+export async function caseIdOf(db: Pick<Db, "case">, workspaceId: string, entity: string, entityKey: string | null, summary: string): Promise<string | undefined> {
+  if (!CASE_ENTITIES.has(entity)) return undefined;
+  const short = caseOf({ entity, entityKey, summary });
+  if (!short || !/^[0-9a-f]{8}$/.test(short) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceId)) return undefined;
+  const found = await db.case.findMany({ where: { workspaceId, id: { gte: `${short}-0000-0000-0000-000000000000`, lte: `${short}-ffff-ffff-ffff-ffffffffffff` } }, select: { id: true }, take: 2 });
+  return found.length === 1 ? found[0].id.toLowerCase() : undefined;
+}
+
 @Injectable()
 export class Audit {
+  /** db is the API's client, or the caller's transaction (`new Audit(tx)`): the line is written inside a transaction only
+   *  when the caller passes one. */
   constructor(@Inject(Db) private readonly db: Db) {}
-  /** combinationId: the configuration row an edit belongs to (review derives every draft author from these events). */
+  /** combinationId: the configuration row an edit belongs to (review derives every draft author from these events).
+   *  AUD-1m: the signature is unchanged; the line goes through AuditPort (platform/audit/audit-event.ts) as a CaseEntry,
+   *  with the request's or job's firm, correlation and actor type, and its case id when its entity or words name one. */
   async log(workspaceId: string, actor: string, action: string, entity: string, entityKey: string | null, summary: string, detail?: unknown, combinationId?: string) {
-    await this.db.auditEvent.create({ data: { workspaceId, actor, action, entity, entityKey, summary: summary.slice(0, 600), detail: detail === undefined ? undefined : (detail as any), combinationId: combinationId ?? null } });
+    const words = summary.slice(0, 600), caseId = await caseIdOf(this.db, workspaceId, entity, entityKey, words);
+    await auditEvent.record(this.db as unknown as Prisma.TransactionClient, {
+      workspaceId, actor: TYPED_WORD[actor] ?? actor, action, entity, entityKey, summary: words, combinationId: combinationId ?? null,
+      ...(detail === undefined ? {} : { detail }), ...(caseId ? { caseId } : {}),
+    });
   }
 }
 

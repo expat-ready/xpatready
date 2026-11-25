@@ -1,0 +1,13 @@
+Tue Nov 24 04:09:08 AM UTC 2026
+no header:
+
+aws: [ERROR]: An error occurred (AccessDenied) when calling the PutObject operation: User: arn:aws:iam::581508167097:root is not authorized to perform: s3:PutObject on resource: "arn:aws:s3:::xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9/proof-r165/run24.txt" with an explicit deny in a resource-based policy
+rc=254
+AES256:
+
+aws: [ERROR]: An error occurred (AccessDenied) when calling the PutObject operation: User: arn:aws:iam::581508167097:root is not authorized to perform: s3:PutObject on resource: "arn:aws:s3:::xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9/proof-r165/run24.txt" with an explicit deny in a resource-based policy
+rc=254
+aws:kms:
+rc=0 version=wf6hFnpQQVJjfl80Ru_svMRSP2lC6cFi
+wf6hFnpQQVJjfl80Ru_svMRSP2lC6cFi
+0

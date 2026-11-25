@@ -73,7 +73,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   const plan0 = (await api(`/combinations/${vv}/forms/find/plan`, { method: "POST", data: { mode: "replay" } })).body;
   const run0 = await api(`/combinations/${vv}/forms/find`, { method: "POST", data: { mode: "replay", planSha256: plan0.plan_sha256, idempotencyKey: `lcb-${Date.now()}` } });
   for (let i = 0; i < 240 && run0.body?.id; i++) { const r = await api(`/runs/${run0.body.id}`); if (!["queued", "running", "stopping"].includes(r.body?.status)) break; await p.waitForTimeout(250); }
-  const ws = sql("select id from workspace limit 1");
+  const ws = sql("select id from workspace where key <> 'platform-audit' limit 1");
   const lib = sql(`select d.form_key from gov_form_def d where d.workspace_id='${ws}' and d.form_kind='data_form' and d.retired_at is null and exists (select 1 from form_edition e where e.gov_form_def_id=d.id and e.channel <> 'ONLINE') and d.form_key not in (select lineage_key from combination_form where combination_id='${vv}') order by d.form_key limit 1`);
   await go(vv, "forms");
   await p.getByRole("button", { name: "Add a form from the library" }).click();

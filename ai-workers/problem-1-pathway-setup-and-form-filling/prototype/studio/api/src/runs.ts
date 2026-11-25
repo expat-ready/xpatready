@@ -50,7 +50,7 @@ export class Runs {
     return defs.map((d, i) => {
       const j = [FINDER_OPERATION, UPLOAD_OPERATION, WHO_OPERATION, QD_OPERATION].includes(b.operation) ? b.jobs.find((x) => x.kind === d.kind) : b.jobs[i];
       const c = j?.detail && typeof j.detail === "object" ? (j.detail as { done?: number; total?: number }) : null;
-      return { n: i + 1, kind: d.kind, label: d.label, uses: d.ai && !(j?.status === "COMPLETED" && !(j.costUsd ?? 0) && /no ai call/i.test(j.message ?? "")) ? "ai" : "rules", status: j?.status ?? "WAITING", message: plainRunText(j?.message ?? null), usd: j?.costUsd ?? 0, started_at: j && j.status !== "WAITING" && j.status !== "QUEUED" ? j.startedAt : null, finished_at: j?.finishedAt ?? null, details: detailsOf(j?.detail), counts: c?.total ? { done: c.done ?? 0, total: c.total, unit: b.operation === FINDER_OPERATION ? "forms" : "parts" } : null };
+      return { n: i + 1, kind: d.kind, label: d.label, uses: d.ai && !(j?.status === "COMPLETED" && !(j.costUsd ?? 0) && /no ai call/i.test(j.message ?? "")) ? "ai" : "rules", status: j?.status ?? "WAITING", message: plainRunText(j?.message ?? null, j?.id), usd: j?.costUsd ?? 0, started_at: j && j.status !== "WAITING" && j.status !== "QUEUED" ? j.startedAt : null, finished_at: j?.finishedAt ?? null, details: detailsOf(j?.detail), counts: c?.total ? { done: c.done ?? 0, total: c.total, unit: b.operation === FINDER_OPERATION ? "forms" : "parts" } : null };
     });
   }
 
@@ -76,10 +76,10 @@ export class Runs {
     const failedStep = b.operation === FIELD_MAP_OPERATION ? latestFailed(b.jobs, steps) : steps.find((s) => ["FAILED", "BLOCKED", "NEEDS_PERSON"].includes(s.status));
     // Where the run's card is: the library for an upload; its own page otherwise (S5 points a finder run at its Forms tab).
     const href = b.operation === UPLOAD_OPERATION ? "/library/forms" : b.operation === WHO_OPERATION ? `/c/${(b.plan as { combination?: { id?: string } } | null)?.combination?.id ?? ""}/questionnaires` : `/ai/${b.id}`;
-    return { id: b.id, operation: b.operation, label: LABEL[b.operation] ?? b.operation, scope: b.operation === FINDER_OPERATION ? (b.scopeLabel.includes("|") ? b.scopeLabel.slice(b.scopeLabel.indexOf("|") + 1) : null) : b.scopeLabel /* break m3: a "|" in a name never cuts the place */, status: st.code, status_word: st.word, message: plainRunText(b.message),
+    return { id: b.id, operation: b.operation, label: LABEL[b.operation] ?? b.operation, scope: b.operation === FINDER_OPERATION ? (b.scopeLabel.includes("|") ? b.scopeLabel.slice(b.scopeLabel.indexOf("|") + 1) : null) : b.scopeLabel /* break m3: a "|" in a name never cuts the place */, status: st.code, status_word: st.word, message: plainRunText(b.message, b.id),
       step: cur ? { n: cur.n, m: steps.length, label: cur.label } : null, steps, started_at: b.startedAt, finished_at: b.finishedAt, elapsed_ms: (b.finishedAt ?? new Date()).getTime() - b.startedAt.getTime(), usual_ms: usual.ms, last_activity_at: new Date(last),
       usd: { spent: Math.round(b.jobs.reduce((a, j) => a + (j.costUsd ?? 0), 0) * 100) / 100, worst: b.worstCaseUsd, usual: usual.usd, about: b.operation === FINDER_OPERATION ? statedUsd(b, usual.usd).about : usual.usd }, can_stop: ACTIVE.includes(b.status) && !b.cancelRequested,
-      error: failedStep ? { what: b.operation === FIELD_MAP_OPERATION ? errorWhat(plainRunText(b.message), failedStep) : b.message && plainRunText(b.message) !== failedStep.message ? plainRunText(b.message)! : `${failedStep.label}: see the step above.`, next: (await this.savedInstead(b)) ?? this.nextOf(b, href, failedStep.status) } : null, href };
+      error: failedStep ? { what: b.operation === FIELD_MAP_OPERATION ? errorWhat(plainRunText(b.message, b.id), failedStep) : b.message && plainRunText(b.message, b.id) !== failedStep.message ? plainRunText(b.message, b.id)! : `${failedStep.label}: see the step above.`, next: (await this.savedInstead(b)) ?? this.nextOf(b, href, failedStep.status) } : null, href };
   }
 
   /** P-227 (D2 part 4): a Live field-map run that failed offers Saved when a valid saved result exists for a form it

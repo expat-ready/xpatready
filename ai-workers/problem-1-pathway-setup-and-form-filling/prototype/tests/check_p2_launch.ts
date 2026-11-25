@@ -10,7 +10,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpendLedger } from "../p2/ledger.ts";
-import { EXPERIMENT_CAP_USD, PROTOTYPE, SOLUTION } from "../p2/policy.ts";
+import { EXPERIMENT_CAP_USD, PROTOTYPE, ROOT, SOLUTION } from "../p2/policy.ts";
 import { runDrafting, type Caller } from "../p2/runner.ts";
 
 const results: [string, boolean][] = [];
@@ -20,6 +20,7 @@ const t = (name: string, pass: boolean) => results.push([name, pass]);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "p2-launch-")));
 const sol = join(root, "ai-workers", "problem-1-pathway-setup-and-form-filling");
 const proto = join(sol, "prototype");
+cpSync(join(ROOT, "AGENTS.md"), join(root, "AGENTS.md")); // policy.ts finds the copy's root by it (clean-up stage 2a)
 mkdirSync(join(proto, "p1"), { recursive: true });
 cpSync(join(SOLUTION, "official-sources"), join(sol, "official-sources"), { recursive: true });
 for (const d of ["contracts", "expected"]) cpSync(join(PROTOTYPE, d), join(proto, d), { recursive: true });

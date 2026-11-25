@@ -3,12 +3,15 @@
 // caller's own transaction, so a transaction that rolls back keeps no line (fail-closed); a refused entry (no firm, an
 // actor that is not staff:/system:/seed:, an entity outside the areas, an email address in detail) throws and records
 // nothing; the trail is per firm (the firm id travels with each line) and only grows: a new line never changes an
-// earlier one.
+// earlier one. A given caseId is kept on the line (AUD-1b). R1.8 (QA-594): a line's before and after are kept, in the one
+// shape `<field>_before` / `<field>_after` (ports/audit.ts flattenValues), personal values in full; a secret is refused.
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import type { AuditEntry, AuditPort } from "../audit.ts";
 
 /** One line as the trail holds it (the parts every adapter keeps). */
-export type AuditLine = { actor: string; action: string; entity: string; entityKey: string; summary: string };
+export type AuditLine = { actor: string; action: string; entity: string; entityKey: string; summary: string; caseId?: string | null;
+  /** R1.8: the line's before and after values as `<field>_before` / `<field>_after` (none: an empty object). */
+  values?: Record<string, unknown> };
 
 /** What an audit adapter's test hands the contract. */
 export type AuditHarness<Tx> = {
@@ -66,6 +69,26 @@ export const auditPortContract = defineContract("AuditPort", (make: () => Promis
     },
   },
   {
+    name: "a given caseId is kept on the line; a line without one has none (AUD-1b)",
+    async run() {
+      const h = await make(), t = tag(), caseId = "0c0c0c0c-0000-4000-8000-0000000000c3";
+      await h.commit((tx) => h.audit.record(tx, entry(`${t}-1`, { caseId })));
+      await h.commit((tx) => h.audit.record(tx, entry(`${t}-2`)));
+      const got = await h.lines(FIRM_A, t);
+      expect(got.length === 2 && got[0].caseId?.toLowerCase() === caseId && !got[1].caseId, "the first line keeps its case, the second has none", got);
+    },
+  },
+  {
+    name: "a line's before and after are kept in full, personal values included; a secret in them is refused (R1.8, QA-594)",
+    async run() {
+      const h = await make(), t = tag();
+      await h.commit((tx) => h.audit.record(tx, entry(`${t}-1`, { before: { phone: "+1 416 555 0100" }, after: { phone: "+1 416 555 0199" } })));
+      await expectRefused(() => h.commit((tx) => h.audit.record(tx, entry(`${t}-2`, { before: null, after: { resetToken: "x" } }))), "a token in after");
+      const got = await h.lines(FIRM_A, t);
+      expect(got.length === 1 && Object.keys(got[0].values ?? {}).sort().join() === "phone_after,phone_before" && got[0].values?.phone_before === "+1 416 555 0100" && got[0].values?.phone_after === "+1 416 555 0199", "the change kept in full; the secret line not written", got);
+    },
+  },
+  {
     name: "a refused entry throws and records nothing (no firm, a bad actor, a case entity, an email in detail)",
     async run() {
       const h = await make(), t = tag();
@@ -74,6 +97,7 @@ export const auditPortContract = defineContract("AuditPort", (make: () => Promis
       await expectRefused(() => h.commit((tx) => h.audit.record(tx, entry(`${t}-x`, { actor: "alice" }))), "an actor that is not staff:, system: or seed:");
       await expectRefused(() => h.commit((tx) => h.audit.record(tx, entry(`${t}-x`, { entity: "case" }))), "a case entity");
       await expectRefused(() => h.commit((tx) => h.audit.record(tx, entry(`${t}-x`, { detail: { to: "client.a@example.com" } }))), "an email address in detail");
+      await expectRefused(() => h.commit((tx) => h.audit.record(tx, entry(`${t}-x`, { caseId: "case-1" }))), "a case id that is not a uuid");
       expect((await h.lines(FIRM_A, t)).length === 0, "nothing recorded", await h.lines(FIRM_A, t));
     },
   },

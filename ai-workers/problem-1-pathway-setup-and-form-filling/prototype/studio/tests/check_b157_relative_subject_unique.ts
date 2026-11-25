@@ -24,7 +24,7 @@ async function race(party: string, kind: string, n = 8) {
   const out = await Promise.all(Array.from({ length: n }, one));
   return { ok: out.filter((x) => x === "ok").length, refused: out.filter((x) => x === "refused").length, other: out.filter((x) => x !== "ok" && x !== "refused"), rows: Number(q(`select count(*) from answer_subject where party_id = '${party}' and subject_kind = '${kind}'`)) };
 }
-const party = () => q(`insert into party (id, workspace_id) select gen_random_uuid(), id from workspace order by created_at limit 1 returning id`).split("\n")[0];
+const party = () => q(`insert into party (id, workspace_id) select gen_random_uuid(), id from workspace where key <> 'platform-audit' order by created_at limit 1 returning id`).split("\n")[0];
 
 await main("B157", "one answer subject per person and relation, held by the database", async () => {
   if (PORT === 4400) { console.log("STOP  never the demo (:4400): this check resets its copy"); process.exit(2); }

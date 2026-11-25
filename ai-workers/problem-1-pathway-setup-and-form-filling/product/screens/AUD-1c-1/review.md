@@ -127,3 +127,66 @@ Reviewer: the same independent Opus 5.5. Commit reviewed: **60560e81617c72cf75d0
 Full CI on this sha. The PR body (notes m3, m6-m9 and the deviations). `check_s7_reset` and `check_d1_reset_to_six` on this sha (the forms library is not in this clone, as in round 1).
 
 Verdict: Approve 60560e81617c72cf75d03deef900debf06188ea0
+
+## Round 3 (diff-only, 2793a882)
+Diff-only re-review (P-277, P-270) of `cebeb0fa..2793a882`: merge 9fd20a3e3 (origin/main 63f5cc913) + 2793a882a. Not a screen: no browser walk, the journey score is N/A, and so are D1–D20.
+* **Unchanged apart from the folder name (blob hashes):**
+  * migration.sql: old `20261118150000_…` and new `20261125113000_aud1c_audit_chain` are the same blob, 501c955cd (`git diff -M`: 100% rename, 0 lines).
+  * audit.prisma: 20ae193ff on both.
+  * canonical.ts (line 2) and check_aud1c_chain.ts (line 17, `NEW`) each change one line, the folder name only.
+  * No reference to the old stamp is left in the PR's files.
+* **`git diff origin/main 2793a882 --stat`:** 8 files, all the PR's: the two records, MODULE.md (+1/−1), MODULE.rows/AUD-1c.md, canonical.ts, the migration, audit.prisma and the test.
+* **Stamp:** 20261125113000 is unique on main and on every origin branch I fetched (only this branch has it). It is later than main's newest, `20261124170000_aud3_audit_log_keys`, and is not more than two days ahead.
+* **Module card (P-712):**
+  * MODULE.md takes main's card whole. The only change is one sentence on the audit-trail bullet; the frozen Tests./Tables./Entry points. lines are untouched. The card is 39 of its 40 lines.
+  * `MODULE.rows/AUD-1c.md` has 3 lines (`Entry points:`, `Tables:`, `Tests:`).
+  * `module-cards.py tree`: PASS (15 cards). `BASE=origin/main module-cards.py pr <changed> <PR body>`: PASS (1 module touched). `check-module-cards.sh`: 44 fixtures pass.
+* **Main's new side since the merge base 628742f00 (18 Nov), against the chain's assumptions:**
+  * **Writers.** Every line still goes through `audit/audit-event.ts`'s three `tx.auditEvent.create` calls. The chain columns are `@ignore`, so no writer sets them, and no code reads or writes `chain_key`, `seq`, `prev_hash` or `entry_hash`. AUD-3/3c's firm-less `ourstaff:` lines go to `platform`. PF-12b's `touchPlatform` is unchanged in kind. The `fo3a_set_name_unique` migration's raw INSERT runs before this one, so the back-fill chains it.
+  * **Isolation (decision 5).** Main now has eight REPEATABLE READ transactions: case-prepare.ts:212, drafts.ts:186, reads/invoices.ts:96 and 155, parties.ts:106, payments.ts:87 and 97, tax/routes.ts:55. All are read-only: no audit write, directly or through a helper (`seen`, `withPaymentActions` → `refunds.standing`).
+    * AUD-3's access report (report.ts:164) and AUD-4's export (firm-read/service.ts:183) write `audit.exported` in their own READ COMMITTED transaction, then read in a RR read-only snapshot.
+    * There is no SERIALIZABLE anywhere. The decision holds, but the PR body's "only case-prepare.ts" is now stale (minor 1).
+  * **Deletes.** No new delete path for `audit_event`: `demo.ts` (wipe, sweep) is unchanged, and PF-21d's erasure does not touch the trail. No new `DISABLE TRIGGER` or `session_replication_role` outside tests.
+  * **BEFORE INSERT triggers.** None is new on `audit_event`. The new ones are all on other tables.
+  * **Columns.** audit.prisma is unchanged on main. `aud_event_canonical` covers all 15 data columns. `aud_ourstaff_actor_word` only redefines `aud_event_actor_type`, so `OUR_STAFF` reaches the hash as `actor_type::text`.
+  * **Sample firms.** `SAMPLE_FIRM_KEYS` and `samples/firms.json` are still `sample-firm` and `sample-solo`, the list in `aud_chain_key_of`.
+* **Test:** isolated copy `aud1crev` on :4612 (`xr_studio_aud1crev`) at 2793a882, then `check_aud1c_chain.ts 4612 xr_studio_aud1crev`: **33 passed, 0 failed**. The reset race waited 426 ms. The copy was stopped afterwards.
+* **CI at 2793a882: `fast` and `ci` are red.** Step "migration slots (SPD-2, P-802)" fails. Locally, `migration-slots.py check origin/main..2793a882` gives: `REFUSED 20261125113000_aud1c_audit_chain: its name carries no area … Fix: git mv …/20261125113000_aud1c_audit_chain …/20261125113000_audit__aud1c_audit_chain`.
+  * I tried the rename in a scratch worktree (not pushed): PASS. The SQL writes only `audit_event` and `aud_chain_check` (audit.prisma), so the area is `audit`, a barrier area.
+
+### Findings
+1. **Major — the migration folder breaks SPD-2's name rule, and CI is red** (`prisma/migrations/20261125113000_aud1c_audit_chain/`).
+   * Fix: `git mv` it to `20261125113000_audit__aud1c_audit_chain` (same stamp, SQL byte-identical).
+   * Update the folder name in `tests/check_aud1c_chain.ts:17` (`NEW`) and `api/src/platform/audit/canonical.ts:2`.
+   * Re-run `migration-slots.py check` and `check_aud1c_chain.ts`, then get a green `fast`/`ci`.
+2. minor — decision 5 in the PR body says "On main only case-prepare.ts reads under REPEATABLE READ". Main now has eight read-only RR transactions and two RR export snapshots, none writing an audit line. Correct the sentence.
+
+Majors: `prisma/migrations/20261125113000_aud1c_audit_chain/` (folder name; SPD-2 refusal), `tests/check_aud1c_chain.ts:17`, `api/src/platform/audit/canonical.ts:2`.
+Reviewer: Changes 2793a882a3c22f49018907956c231b34d3b73c86
+
+## Round 4 (diff-only, d2146aad)
+Diff-only re-review (P-277) of `2793a882..d2146aad`: 6 files. Not a screen: no browser walk, journey score N/A, D1–D20 N/A.
+* **Rename (round 3 Major 1): fixed.**
+  * `git diff -M` shows a 100% rename to `20261125113000_audit__aud1c_audit_chain`. migration.sql has sha256 0e7012fa…d92683 at both heads, so it is byte-identical.
+  * `migration-slots.py check origin/main..HEAD` (main 63f5cc913, still an ancestor): **PASS**, 1 new migration against main's newest, 20261124170000.
+  * canonical.ts:2 and check_aud1c_chain.ts:17 (`NEW`, which DW5's stamp check and the bare-database apply use) carry the new name. No code file still names the old folder.
+* **`check_aud4_firm_log.ts`, `keepAliveTimeout = 60_000`: the right fix, test-only.**
+  * The cause is the test's own `execFileSync` psql (line 168). It blocks the process that hosts the in-process Nest server. When the loop unblocks, the pending 5 s keep-alive timer closes the pooled socket just as the next `fetch` writes on it, so the request gets ECONNRESET.
+  * The product server never runs synchronous database work on its loop, and `api/src` sets no keep-alive. Nothing in the product changes, and no check in this suite depends on HTTP sockets closing (DW6 M1 counts database connections).
+  * A cleaner option would have been the suite's existing `psqlAsync` for that insert (nit, optional).
+  * Run at d2146aad: **33 passed, 0 failed** (80 s, own scratch database, dropped after).
+* **Does it hide a product cost? No. Measured on a scratch database (all migrations, then dropped):**
+
+| Insert | Chain on | Chain off | Cost of the chain |
+|---|---|---|---|
+| 5,000 single-line autocommit inserts | 2.58 s (empty chain), 2.37 s (head at 125k) | 1.46 s | about +0.2 ms per line, flat as the chain grows |
+| One 120,000-line insert | 11.3 s | 2.0 s | about 77 µs per line, which pushes the test past 5 s |
+
+  * The head read is an `Index Scan Backward` on `audit_event_chain_key_seq_key` (4 buffers, 0.03 ms). After the runs the chain held 130,000 lines, 130,000 distinct `seq` values, with max 130,000.
+  * A real write adds one line per request, so 0.2 ms is negligible. Bulk inserts happen only in tests and in the one-time back-fill. The lock-wait figures (at most 39 ms) are in break-report round 2.
+* **Records:** review round 3 and break-report round 2 are the earlier rounds' records. They are consistent with this diff. The breaker's two notes (`plat_system_audit` not chained, the closure archive copy without hashes) are for the lead or part 2, not this PR.
+* **Still open from round 3:** minor 2. Decision 5 in the PR body still says "On main only case-prepare.ts reads under REPEATABLE READ". Correct it before merge (not blocking).
+* **CI at d2146aad:** `fast`, `types` and parts 1–12 were still in progress when I checked. Merging needs them green as usual.
+
+No open Blocker or Major.
+Reviewer: Approve d2146aadfcada9e1ab617788c11162afc977c3f4

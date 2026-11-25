@@ -70,14 +70,14 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 * **P-610 (15 Nov, founder): fix each found problem the narrowest, most efficient way:** touch only affected parts, run only dependent checks; anything that would lower quality goes to the founder first. New briefs keep a row's PR under 800 changed lines (split otherwise); re-review reads only new commits (P-277); library refreshed only where a feed changed.
 * **P-611 (15 Nov, founder): nothing gets lost, enforced not remembered:** each Lead rule has a script, hook or CI enforcer where possible; every lane report, question, blocker or approval sits in one queue with owner, ack and timeout (45 min ACT, 90 min to the founder; no hand-over with an un-acked item); Monday weekly "what's new" check into `cockpit/whats-new.json`, shown as a board box. Rows G-1 to G-5; research `design/governance-research-2026-11-15.md`.
 * **P-612 (15 Nov, founder): licence apart:** the three sign-off keys need an active licence record in the platform guard (403 `NOT_LICENSED`); a recorded departure from SA-6-27 (Unconfirmed: no counsel).
-* **P-609 (15 Nov, founder): Release 1 = all 101 together, committed date 29 Nov** (was 24 Nov, P-599); 17 Nov day-3 check re-forecasts; under 50% → options to him at once.
+* **P-609 (15 Nov, founder): Release 1 = all 101 together, committed date 29 Nov, moved to 12 Dec by P-815 (24 Nov)** (was 24 Nov, P-599); 17 Nov day-3 check re-forecasts; under 50% → options to him at once.
 * **P-608 (15 Nov, founder): model and effort at every start:** Opus 5.5 medium for Leads, standbys, builders and qa; Opus 5.5 high only for reviewers, breakers, qa's fresh reader and money, schema, permissions or security rows; Fable 5.2 medium for specifying lanes, challenges and planning reads (desk Fable high, P-597); every local start passes `effort`; cloud starts name effort in the brief.
 * **P-557 (13 Nov, hard rule): always committed, always resumable.** Every session commits and pushes at every step; the repository is the memory (STATE "Start here" + hand-over block say what is true, in flight and next, updated with every change of state); private material moves to a private GitHub home (proposed `ours/notes` of his private API copy); local notes, auto-memory, cron checks and account-bound artifacts are never the only record (AGENTS.md rule 10).
 
 ## Index lists (moved word for word from RULES.md, 11:07 IST 16 Nov, to keep it under 25 KB; P-611, P-188)
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions), detail in the side file: P-434, P-438, P-450, P-459, P-460, P-463, P-466, P-469, P-471, P-472, P-474, P-475, P-481, P-489, P-494, P-499; with P-435, P-447 to P-449, P-451 to P-457, P-476, P-482 to P-484, P-495. | prose | 12 Nov |
 | IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched): P-477, P-492, P-493, P-540, P-560 to P-562, P-564, P-567, P-568, P-570 to P-572, P-575, P-577 to P-579, P-581, P-584, P-585, P-598, P-603, P-612; with P-573, P-574, P-586. | prose | 15 Nov |
-| IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched): P-441, P-443, P-444, P-487, P-490, P-491, P-496 to P-498, P-510, P-525, P-538, P-548, P-588; with P-72, P-78, P-148, P-154, P-242, P-411; holds P-235 to P-248 lifted (P-316). | prose | 14 Nov |
+| IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched): P-687 (AUD-4s full values), P-441, P-443, P-444, P-487, P-490, P-491, P-496 to P-498, P-510, P-525, P-538, P-548, P-588; with P-72, P-78, P-148, P-154, P-242, P-411; holds P-235 to P-248 lifted (P-316). | prose | 14 Nov |
 
 Folded into IDX-2 by Lead 65 at 11:08 IST 16 Nov (one-time directions; rows word for word):
 | IDX-2 | One-time or time-boxed directions, done or standing as recorded in the side file: P-485, P-506, P-507, P-533, P-537, P-545, P-569 (integration stopped). | prose | 14 Nov |
@@ -99,3 +99,38 @@ Moved word for word from RULES.md by Lead 73, 08:4x IST 17 Nov (25 KB limit; IDX
 | P-625 | Staging on AWS's own address until a domain is needed; base domain is a setting; no second host. | prose | 16 Nov |
 | P-629 | PF-13 branding adds favicon, banner and an 80-character tagline; emails and PDFs keep logo, name and footer. | prose | 16 Nov |
 | P-630 | The Lead chooses build or adopt through the STANDARDS §1 gate; templates on React Email, Gotenberg with conditions. | prose | 16 Nov |
+
+
+## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
+
+| P-606 | Finish whole: each Done when names its test; no new capability while a started one has parts missing (amended P-613 (1)); qa scores when all parts merged. | CI: pr-rules brief-check.sh (part: Done when names its test; not yet a required check) | 15 Nov |
+
+| IDX-7 | Dated rulings (P-616, P-619, P-620, P-621, P-643, P-631, P-633, P-634, P-626, P-627, P-638, P-640, P-645, P-650, P-653, P-655, P-658, P-659) stand as recorded; word for word in `rules/tech-lead.md` › Dated rulings. | prose | 17 Nov |  (moved word for word by Lead 80, 19:1x IST 18 Nov)
+
+| IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched; P-624, P-625, P-629, P-630 moved there 17 Nov); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 15 Nov |  (moved word for word by Lead 80, 19:0x IST 18 Nov)
+
+Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-698, P-700 process rulings, P-701 product ruling, P-702 one-time evaluation):
+| P-698 | A part that finishes a started Partial counts as finishing work under P-663; PF-12b holds the bypass audit line; PF-F3 port lands before AWS. | prose | 18 Nov |
+| P-700 | qa walks run on GitHub's machines with recordings (item #224); the Mac keeps 1-2 exploratory qa sessions; a reviewed recorded walk counts as gate A. | prose | 18 Nov |
+| P-701 | Release 1 invoices charge GST/HST only (no PST, RST or Quebec); Unconfirmed: no accountant or counsel. | prose | 18 Nov |
+| P-702 | 21 Nov: an independent Opus reviewer evaluates the adopted changes (plan #181), 14-17 Nov vs 19-21 Nov on measured numbers; keep, fix or drop each. | prose | 18 Nov |
+
+## Rows moved word for word from RULES.md by Lead 87, 10:4x IST 19 Nov (RULES.md under 25 KB, P-611)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-723 | Drain to ~13:30 IST 19 Nov: only merging approved PRs; then journey by journey (P-348). | prose | 19 Nov |
+| P-722 | Proof per item, never at the end; qa never blocks merging; proof goes automatic. | prose (qa skill) | 19 Nov |
+| P-721 | Protect the merge path: #2195 first; a dequeued PR re-merges main within 30 min; a failed batch is split at once. | prose | 19 Nov |
+| P-539 | Repository stays public; integration and strategy content only private; full row `rules/tech-lead.md`. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
+| IDX-6 | One-time exceptions (P-617, P-652, P-654, P-672, P-684, P-711 size #2169 in DECISIONS) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
+| P-608 | Model and effort at every start: Opus 5.5 medium; high for reviewers, breakers, fresh reader, risky rows; Fable 5.2 medium for specifying. Full row: `rules/tokens-money-account.md`. | hook: lane-preflight.sh | 15 Nov |
+| P-597 | The strategy desk runs on Fable 5.2 at high effort, set after the start, with five rules. | prose | 14 Nov |
+| P-599 | Ready rows at least two per lane; first-time green; at most two review rounds; day-3 check 17 Nov (date per P-609). | prose | 14 Nov |
+| P-613 | Plan C: lanes may be added for nearly-done capabilities; a feeding Lead; non-urgent asks batched at 09:00 and 21:00 IST; qa per module group. | prose | 15 Nov |
+| P-614 | Target kept: all 101 by 29 Nov; no gate lowered; the 17 Nov check reports the forecast with the same measures. | prose | 15 Nov |
+| P-595 | Every Release 1 backlog row carries a Source:; a shaped row with no source should fail CI (no such step found 15 Nov). | prose | 14 Nov |
+| P-596 | Every board number carries its source, sha and time; full row `rules/tech-lead.md`. | script: cockpit-data.py, cockpit-reconcile.py; CI: cockpit-tests.yml | 14 Nov |
+
+## Moved 20 Nov (Lead 96, from RULES.md, word for word)
+| P-724 | Factory (detail: DECISIONS P-724): journeys A client case and B firm set-up in parallel on disjoint files; ≤6 items in flight per journey; start one only when one is Proven; automatic proof. | prose (WIP check owed) | 19 Nov |
+| P-719 | Finish by capability: a lane owns one R1 item's whole chain (parts, J-row, qa); ~8 in flight, parallel, disjoint files; fewest parts left first; next starts when one is Proven. | prose | 19 Nov |

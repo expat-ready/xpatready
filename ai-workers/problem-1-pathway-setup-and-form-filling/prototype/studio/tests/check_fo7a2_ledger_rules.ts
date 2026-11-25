@@ -61,14 +61,14 @@ try {
     sql(PRE, `select pg_get_constraintdef(oid) from pg_constraint where conname = 'money_trust_entry_balance_check'`).includes("balance_after_minor >= 0) AND (seq >= 1"));
 
   const firmA = sql(T, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'firm-a2', 'A2', 'CA', 'office@firm-a2.example.com', now()) returning id`);
-  sql(T, `insert into money_payment_settings (firm_id, updated_by, updated_at, trust_enabled) values ('${firmA}', 'user-O', now(), true)`);
+  sql(T, `insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${firmA}', 'user-O', now()); update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'user-O' where firm_id = '${firmA}'`);
   let n = 0; const key = () => `key-fo7a2-${String(++n).padStart(6, "0")}`;
   const invoice = (total: number, pid: string) => { const id = randomUUID();
     sql(T, `insert into money_invoice (id, firm_id, person_id, currency, due_date, created_by, updated_at) values ('${id}', '${firmA}', '${pid}', 'CAD', '2026-12-15', 'user-R', now());
       insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, currency) values ('${firmA}', '${id}', 1, 'FEE', 'Work permit application', 1, ${total}, ${total}, 'CAD');
       update money_invoice set issued_at = now(), issued_by = 'user-R' where id = '${id}'`); return id; };
   const entry = (kind: string, amount: number, pid: string, x: { inv?: string; pay?: string; corrects?: string; reason?: string; ck?: string } = {}) =>
-    `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, correction_kind, reason, created_by) values ('${firmA}', '${pid}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, 'user-R') returning id`;
+    `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, correction_kind, reason, ${kind === "REFUND_TO_CLIENT" ? "refund_method, refunded_on, " : ""}created_by) values ('${firmA}', '${pid}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, ${kind === "REFUND_TO_CLIENT" ? "'E_TRANSFER', current_date, " : ""}'user-R') returning id`;
   const deposit = (amount: number, pid: string, method = "E_TRANSFER", cleared = true) => { const p = randomUUID();
     return last(T, `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${p}', '${firmA}', '${method}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R', ${cleared}); ${entry("DEPOSIT", amount, pid, { pay: p })}`); };
   const reverse = (dep: string, amount: number, pid: string, ck = "RETURNED") => entry("CORRECTION", -amount, pid, { corrects: dep, ck, reason: ck === "OTHER" ? "Cheque stopped by the client" : "Reversed" });

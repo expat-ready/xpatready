@@ -1,0 +1,1 @@
+Tests: tests/qa/check_qa520_fee_receipt_damaged_pdf.ts (QA-520, R1.67: the fee-receipt and signed-scan doors judge a file by `checkedCaseFile`, PF-F4's one check plus the PDF reader, before anything is written).

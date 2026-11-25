@@ -21,6 +21,7 @@ Official forms in the library: editions, form fields and their maps, drafted mas
 
 **Tables.** libraryChange, draftingJob, combination, canonicalField, combinationForm, formFieldMap, govFormDef, formEdition, aiBatch, answerList, documentRequirement, proposalItem, sectionQuestion.
 **Tests.** `tests/check_c1113_draft_fields.ts`, `tests/check_forms_c411_draft_qd.ts`, `tests/check_forms_b88_fill.ts`, `tests/check_b107_form_field_gates.ts`, `tests/check_b84_fill_intact.ts`, `tests/check_forms_pdf_hardening.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.forms.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Write a form value outside `fill.ts`'s writer, or type a signature.

@@ -1,0 +1,131 @@
+NOTICE:  database "xr_studio_pf4_scratch_27461" does not exist, skipping
+PASS  setup: PF-3's Sample seed in the scratch database (2 firms, 4 staff)
+{"time":"2026-11-21T16:06:04.623Z","level":"info","event":"platform_bypass","use":"direct-process","method":"none"}
+PASS  PF-4 pass: the feature's own routes all declare their access, so the app starts
+PASS  PF-4 pass: the feature registers the guard after core.ts's own (APP_GUARD) and the routes
+PASS  PF-4 fail: a platform route with no declared keys stops the start-up, naming it
+PASS  PF-4 fail: a firm route declaring a system/* key stops the start-up, naming it (firm routes accept only agent/* keys)
+PASS  PF-4 pass: the rule itself accepts declared agent/* routes and refuses none of them
+PASS  PF-0c DW2 IdentityPort LocalIdentity: a token the adapter accepts says who it is: its via, the lookup, the sign-in time in seconds and the second step
+PASS  PF-0c DW2 IdentityPort LocalIdentity: a sign-in without the second step says so (secondStep false)
+PASS  PF-0c DW2 IdentityPort LocalIdentity: an altered token, a token of nothing and an empty token are refused (IdentityRefused, with a reason)
+PASS  PF-0c DW2 IdentityPort LocalIdentity: a token whose session has ended is refused (TOKEN_EXPIRED)
+PASS  PF-0c DW2 IdentityPort LocalIdentity: passes its contract (4 of 4 cases)
+NOT TESTED  PF-0c DW2 IdentityPort CognitoIdentity: AWS credentials, but no Cognito pool and test sign-in tokens (PLATFORM_COGNITO_USER_POOL_ID, PLATFORM_COGNITO_CLIENT_ID, PF0C_COGNITO_SUBJECT, PF0C_COGNITO_ACCESS_TOKEN, PF0C_COGNITO_EXPIRED_TOKEN) (never counted green, P-405)
+PASS  PF-4 fail: PLATFORM_IDENTITY=local is refused in the test environment and in production
+PASS  PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)
+PASS  QA-476 fail: a wrong firm key and a wrong work email get the same 401 UNKNOWN_STAFF, in the form's words
+PASS  PF-4 fail: two-step is required — a sign-in without the second step is refused (401 TWO_STEP_REQUIRED)
+PASS  PF-4 fail: a stand-in token that says the second step was not done is refused by the guard
+PASS  PF-4 pass: the firm switch "Require two-step sign-in for all staff" reads on, and it cannot be turned off (fixed, not a choice)
+PASS  PF-4 pass: user-R signs in through the local stand-in as a Case Manager with a licence, and its duties include represent
+PASS  PF-4 fail: user-O (Case Officer, no licence) has the case duty but neither represent nor firm_admin
+PASS  PF-4 pass: every key the guard reads is a firm key (agent/*); none is system/*
+PASS  PF-4 fail (Lead 43's condition on core.ts's line): the simulated-person header alone (X-Actor: user-R, its persona name, a configuration person) is refused 401 on a platform route
+PASS  PF-4 fail (Lead 43's condition on core.ts's line): a link-session Bearer token on GET /api/platform/me is refused 401 (also with a simulated person beside it)
+PASS  PF-4 fail: a route's declared key that the person lacks is refused 403 (default deny)
+PASS  PF-4 pass: an existing route still reads the simulated-person header (user-A 200)
+PASS  PF-4 fail: an existing route still refuses nobody (401), a case person on a configuration read (403), and any Bearer header (403 link-only), so a staff session gives no access outside the platform paths
+PASS  PF-4 pass: Cognito path — an access token signed by the pool's (test) key, right issuer and client, maps to its staff member
+PASS  PF-4 fail: Cognito path — wrong issuer → 401
+PASS  PF-4 fail: Cognito path — wrong client (audience) → 401
+PASS  PF-4 fail: Cognito path — expired → 401
+PASS  PF-4 fail: Cognito path — an ID token for an access token → 401
+PASS  PF-4 fail: Cognito path — unknown subject → 401
+PASS  PF-4 fail: Cognito path — signed with another key → 401
+PASS  PF-4 pass/fail: Cognito path — a newer sign-in works and ends the older session ("You signed in on another device")
+PASS  PF-4 fail (review r2-m1): a never-used account's first sign-ins — device B (newer) calls first, then device A (older, never used) is refused "You signed in on another device"
+PASS  PF-4 fail: PLATFORM_POOL_MFA_REQUIRED=false makes every Cognito sign-in refused, saying why
+PASS  PF-4 fail: a pool outside ca-central-1, or none, is not set up (every token refused, saying why)
+PASS  PF-4 fail: POST /api/platform/session/local is refused when PLATFORM_IDENTITY is not local
+PASS  PF-4 pass: the new sign-in's session works
+PASS  PF-4 fail: a second sign-in revokes the first session — its next call is 401 "You signed in on another device"
+PASS  PF-4 fail: nobody changes their own roles (403 OWN_ROLES)
+PASS  PF-4 pass: an Owner changes another person's roles (user-O: Case Officer + Admin); one audit line and one staff.roles_changed event
+PASS  PF-4 fail: an Admin cannot give a role holding a key it lacks (Case Manager: 4 sign-off keys beyond the Admin's) — 403 ROLE_BEYOND_OWN_KEYS
+PASS  PF-4 pass: an Admin gives a role whose every key it holds (READ_ONLY)
+PASS  PF-4 fail: only an Owner gives the Owner role (an Admin → 403 OWNER_ONLY)
+PASS  PF-4 fail: giving the Owner role without a reason is refused (400 REASON_REQUIRED)
+PASS  PF-4 fail: giving the Owner role with an identity check older than 5 minutes is refused (401 STEP_UP_REQUIRED: sign in again, PF-4b)
+PASS  PF-4 pass: an Owner gives the Owner role with a reason and a fresh identity check (sign-in under 5 minutes ago); the reason is on the audit line
+PASS  PF-4 fail: deactivating the firm's only active Owner → 403 with the fixed message, and an audit line (kept although refused)
+PASS  PF-4 fail: two Owners deactivating each other at once — one wins, the other is refused (only-Owner 403, or 401 its sender deactivated); one active Owner remains
+PASS  PF-4 fail: a deactivated person's next request → 401 at once (same token that worked a moment ago)
+PASS  PF-4 fail: a deactivated person cannot sign in
+PASS  PF-4 fail: a reason over 200 characters is refused (400)
+PASS  PF-4 pass: an Owner reactivates them (seat checked: 4 of 5 used); they sign in again
+PASS  PF-4 fail: the session from before the deactivation stays dead after reactivation
+PASS  PF-4 fail: firm A's Owner acting on firm B's staff → 404 (never 403), nothing changed
+PASS  PF-4 pass: the same call on firm A's own staff works
+PASS  PF-4 fail (PF-3 review m9): an email with a space, an em space, a direction mark, a soft hyphen, an ideographic space, or no @ is refused (400)
+PASS  PF-4 pass (m9): an ordinary email is accepted and kept in lower case
+PASS  PF-4 pass: an invitation within the seat limit (5th of 5: 4 active + 1 invited); no token in the answer (only its hash is stored)
+PASS  PF-4 pass (PF-3 review m6): the 72 hours run from the database's clock (created_at = now(), expires_at = created_at + 72 h), whatever the app's clock says
+PASS  PF-4 fail: an invitation over the seat limit → 409 PLAN_LIMIT_REACHED (active + suspended + pending count)
+PASS  PF-4 fail: the same person invited twice → 409 ALREADY_INVITED (resend instead)
+PASS  PF-4 pass: resend makes a new link and voids the old one (old row revoked, a new hash, 72 h from now)
+PASS  PF-4 fail: the voided invitation cannot be resent or used again (409 INVITATION_CLOSED)
+PASS  PF-4 pass: a revoked invitation frees the seat (the refused invitation now goes through)
+PASS  PF-4 pass: the list shows each invitation's state by the database's clock; an expired one holds no seat
+PASS  PF-4 fail: the role rules hold for invitations too (an Admin cannot invite an Owner)
+PASS  PF-4 fail: reactivation is seat-checked (the freed seat went to an invitation) → 409 PLAN_LIMIT_REACHED
+PASS  PF-4 fail: an invitation that is not the firm's → 404
+PASS  PF-4 pass: a person saves their own licence record (no key needed); the answer does not echo the number
+PASS  PF-4 pass/fail: another person's licence record needs agent/firm-credential:manage (user-T, Owner by now, holds it; the refusal itself is proven with a Read-only person below)
+PASS  PF-4 fail (break M1): a platform route in other letter case is still guarded — no session → 401 (never the handler, never a 500), a simulated person → 401; a staff session there is refused by core's link-only rule (403), never answered
+PASS  PF-4 fail (break M2): an Admin cannot resend an Owner invitation (403 OWNER_ONLY); the invitation stays as it was
+PASS  PF-4 pass (M2): an Owner resends it, with a reason and a fresh identity check
+PASS  PF-4 fail (break M3): reactivating an Owner with an identity check older than 5 minutes → 401 STEP_UP_REQUIRED (deactivating them with a fresh one passed)
+PASS  PF-4 fail (break M3): deactivating an Owner with an identity check older than 5 minutes → 401 STEP_UP_REQUIRED (reactivating with a fresh one passed)
+PASS  PF-4 fail (break m1): eight sign-ins at once leave exactly one live session (each ends the one before it)
+PASS  PF-4 fail (break m2): a request already past the guard when its session ended changes nothing (re-checked under the firm lock: 401)
+PASS  PF-4 fail (break m3, m4, m7): a reason of invisible characters only, with a NUL, or with broken text → 400 (never a 404 or a save)
+PASS  PF-4 fail (break m5): an accent typed as a separate mark, full-width letters, <script> or a comma in an email → 400
+PASS  PF-4 pass (m5): the same address with its accent as one letter is a valid email
+PASS  PF-4 fail (break m6): another firm's staff id on the licence route → 404 even without the key (never 403)
+PASS  PF-4 fail (break m7): a stand-in token with junk after its signature → 401
+PASS  PF-4 fail (review m2): a person without agent/firm-credential:manage cannot change another person's licence record (403); their own saves (200)
+PASS  PF-4 fail (review m2): a suspended person holds a seat (4 active + 1 suspended = 5 of 5 → 409); deactivated, the seat is free (201)
+PASS  PF-4 fail (review m2): the stand-in refuses a changed payload under the old signature, and a token signed with another key; it accepts its own
+PASS  PF-4 fail (review m2): the stand-in refuses its own token after its hour (TOKEN_EXPIRED)
+PASS  PF-4 fail (review m3): a change sent with roles that changed meanwhile (read again under the firm lock) is refused 409 ROLES_CHANGED, nothing saved
+{"time":"2026-11-21T16:06:07.011Z","level":"error","event":"audit_write_failed","firmId":"f77fe610-0a08-406c-8876-2e2b17e6a0a5","entity":"platform_staff","entityKey":"be5badb4-41f1-4b8d-9da3-136faa0409bf","attempts":1,"Service":"studio-api","AuditWriteFailures":1,"_aws":{"Timestamp":1795277167011,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Service"]],"Metrics":[{"Name":"AuditWriteFailures","Unit":"Count"}]}]}}
+{"time":"2026-11-21T16:06:07.011Z","level":"error","event":"audit_write_error","error":{"errorName":"DriverAdapterError","frames":["at PgTransaction.onError (file:///home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/adapter-pg/dist/index.mjs:642:11)","at PgTransaction.performIO (file:///home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/adapter-pg/dist/index.mjs:637:12)","at process.processTicksAndRejections (node:internal/process/task_queues:103:5)","at async PgTransaction.queryRaw (file:///home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/adapter-pg/dist/index.mjs:568:30)","at async e.interpretNode (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:186:26)","at async e.interpretNode (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:213:41)","at async e.interpretNode (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:272:41)","at async e.run (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:94:23)"]},"rule":"BR-5","firmId":"f77fe610-0a08-406c-8876-2e2b17e6a0a5","entity":"platform_staff","entityKey":"be5badb4-41f1-4b8d-9da3-136faa0409bf"}
+{"time":"2026-11-21T16:06:07.012Z","level":"error","event":"alert","alert":"audit_write_failed","rule":"BR-5","firmId":"f77fe610-0a08-406c-8876-2e2b17e6a0a5","entity":"platform_staff","entityKey":"be5badb4-41f1-4b8d-9da3-136faa0409bf","AlertKind":"audit_write_failed","Alerts":1,"_aws":{"Timestamp":1795277167012,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+PASS  PF-4 fail: a forced audit failure rolls the change back (status, session revocation and event all unwritten)
+PASS  PF-4 pass: every change above wrote its audit line (51 lines: sign-ins, roles, deactivations, reactivations, licence records, invitations)
+PASS  PF-4 pass: platform audit lines carry the platform's own audit workspace (never the demo workspace's)
+PASS  PF-4 pass (B164; ports/events.ts): every staff event is named from EVENT and its payload is ids only (staffId), as its zod shape says
+PASS  PF-4 fail: a payload with more than ids (a role word, a name) is refused by the shape
+PASS  PF-4 fail: a refused change writes no event (the refused role changes and deactivations above left none)
+PASS  PF-4 pass: no licence number (4 known: the Sample ones and the one saved above) in any log line this run printed, any audit line or any event payload; this row sends no email (PF-4b's MailPort)
+PASS  PF-4 fail: the scan finds a planted number (it is not blind)
+PASS  PF-4 fail (PF-3 review m10; PF-4 review m6): a time zone in other capitals is refused (America/TORONTO, AMERICA/Toronto, Asia/KOLKATA, Asia/KolKata, ETC/GMT+5)
+PASS  PF-4 pass (m10): IANA's own spellings are accepted (America/Toronto, Asia/Kolkata, Europe/Kyiv, Etc/GMT+5, America/Port-au-Prince, Asia/Ho_Chi_Minh, UTC)
+PASS  PF-4 pass (PF-3 review m4): the stored value_schema is as strict as JSON Schema can say (time zone pattern, two-step const true) and names the code's other checks
+PASS  PF-4 fail (m4): a value the stored pattern refuses is refused by the code too (Mars/Olympus fits the pattern but no zone: code refuses)
+{"time":"2026-11-21T16:06:07.413Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-4 pass (P-571 (1)): the reset returns the Sample firms' settings to their seed values through the settings write path (a value already at its seed value is left alone)
+PASS  PF-4 pass (B-6): each reset change has one audit line (actor system, reason "demo reset"), and no platform line was deleted
+PASS  PF-4 fail (B-6): after the reset no setting value is without its trail (each value's newest audit line names it)
+PASS  PF-4 pass (B-6, AUD-1m part 2c): that check covers a value over 200 characters: firm A's business hours' newest line keeps it as toJson pieces (more than one)
+{"time":"2026-11-21T16:06:07.506Z","level":"info","event":"platform_bypass","use":"platform.demo.reset","method":"none"}
+PASS  PF-4 fail (B-6): a second reset changes nothing and writes no line
+platform: Sample seed refused: PLATFORM_ENVIRONMENT=production never seeds Sample firms
+PASS  PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on
+PASS  PF-4 fail: the setting defaults off (unset → no seed)
+PASS  PF-4 fail: an unknown value of the setting stops the start-up with its name (never the value, PF-24w)
+PASS  PF-4 pass: PLATFORM_SAMPLE_SEED=on (outside production) runs it
+PASS  PF-4 pass: main.ts runs it in one line after the features register (migrations ran before the API starts) and before the app is made
+PASS  PF-4 pass: the demo reset's platform step is one call, after the wipe
+PASS  PF-4 pass (P-571 (2)): the copy started with PLATFORM_SAMPLE_SEED=on, so the seed line ran after its migrations (both Sample firms)
+PASS  PF-4 pass: on the real server, user-R signs in through the local stand-in as a Case Manager with a licence; duties include represent
+PASS  PF-4 pass (CI skeleton at 808b68c9): the skeleton smoke's sign-in and /me step passes on the real server
+PASS  PF-4 fail: the smoke's me step still fails when the sign-in is refused (a firm that does not exist → 401, no token)
+PASS  PF-4 fail (the root cause, kept refused): the old smoke body {"email"} alone — no firm, no second step — is refused 400 FIRM_REQUIRED
+PASS  PF-4 pass: the container test (deploy/compose.test.yml) runs the app with the local stand-in and the Sample seed, never as test or production
+PASS  PF-4 fail: on the real server, a link-shaped Bearer token or the simulated-person header alone on /api/platform/me → 401; the staff session on an existing route → 403 link-only, as before
+PASS  PF-4 pass/fail: existing routes behave as before on the real server (who-am-I opens; a configuration read without a person is 401)
+PASS  PF-4 pass (P-571 (1), B-6): the real demo reset keeps every platform audit line, returns the setting to its seed value and leaves one line (system, "demo reset")
+
+120/120 passed

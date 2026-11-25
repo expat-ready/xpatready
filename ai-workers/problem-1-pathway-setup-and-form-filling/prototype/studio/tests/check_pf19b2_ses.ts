@@ -238,6 +238,24 @@ try {
   const { r: e10, res: res10 } = fakeRes(); await routes.notice({}, req() as never, res10 as never);
   ok("DW10 fail: an unverified SNS notice (changed, other key, foreign or http certificate, no version, empty) → 400, nothing stored, no certificate fetched from a foreign host",
     all400 && e10.code === 400 && (await db.msgSuppression.count({ where: { address: x10 } })) === 0 && (await db.msgEvent.count({ where: { outboxId: s10.outboxId, kind: "BOUNCED" } })) === 0 && certFetches - before10 <= 0, bad.map((b) => b[0]));
+  // PF-28 (R1.10): the envelope through the one rule after the signature. A notice SNS signed whose Timestamp is not a time
+  // → 422 naming Timestamp, nothing applied; the same envelope unsigned (changed after signing) → 400 first (signature first).
+  const shapeBad: Record<string, string> = { ...good10, Timestamp: "yesterday" };
+  shapeBad.Signature = createSign("RSA-SHA256").update(snsStringToSign(shapeBad)).sign(sns.privateKey, "base64");
+  const { r: e22, res: res22 } = fakeRes(); await routes.notice(shapeBad, req() as never, res22 as never);
+  const { r: e22u, res: res22u } = fakeRes(); await routes.notice({ ...good10, Timestamp: "yesterday" }, req() as never, res22u as never);
+  ok("PF-28 fail: a signed notice whose envelope breaks the schema (Timestamp \"yesterday\") → 422 naming Timestamp, after the signature, nothing stored; the same unsigned → 400 (the signature first)",
+    e22.code === 422 && JSON.parse(e22.body)?.fields?.Timestamp !== undefined && e22u.code === 400 && (await db.msgSuppression.count({ where: { address: x10 } })) === 0, [e22, e22u.code]);
+  // Review m2 (#3039): AWS's documented shapes pass the schema: a Notification with Subject and UnsubscribeURL, and an
+  // UnsubscribeConfirmation with a 256-character Token (a later tightening that refused real notices fails here).
+  const awsNote = signed(notice("Bounce", firmA, randomUUID(), "aws-doc-shape", box("dw10aws")), { extra: { Subject: "Amazon SES Email Event Notification", UnsubscribeURL: "https://sns.ca-central-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:ca-central-1:000000000000:ses-notices:2bcfbf39-05c3-41de-beaa-fcfcc21c8f55" } });
+  const awsUnsub = signed({}, { extra: { Type: "UnsubscribeConfirmation", Token: "sample-token-".repeat(20).slice(0, 256), SubscribeURL: "https://sns.ca-central-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=arn:aws:sns:ca-central-1:000000000000:ses-notices&Token=x" } });
+  awsUnsub.Message = "You have chosen to deactivate subscription arn:aws:sns:ca-central-1:000000000000:ses-notices:2bcfbf39.";
+  awsUnsub.Signature = createSign("RSA-SHA256").update(snsStringToSign(awsUnsub)).sign(sns.privateKey, "base64");
+  const { r: eAws, res: resAws } = fakeRes(); await routes.notice(awsNote, req() as never, resAws as never);
+  const { r: eUnsub, res: resUnsub } = fakeRes(); await routes.notice(awsUnsub, req() as never, resUnsub as never);
+  ok("PF-28 pass: AWS's documented Notification (Subject, UnsubscribeURL) and UnsubscribeConfirmation (256-character Token) pass the schema → 200",
+    eAws.code === 200 && eUnsub.code === 200, [eAws, eUnsub]);
   const { r: ok10, res: res10b } = fakeRes(); await routes.notice(good10, req() as never, res10b as never);
   ok("DW10 pass: the same notice, signed, → 200 and the address is suppressed", ok10.code === 200 && (await db.msgSuppression.count({ where: { address: x10 } })) === 1, ok10);
   const topics = new SesNotices({ db, consent, fetchCert, topics: ["arn:aws:sns:ca-central-1:000000000000:other"] });
@@ -331,11 +349,13 @@ try {
   await jobs.runDue();
   const row13 = await db.msgOutbox.findUniqueOrThrow({ where: { id: m13.messageId } });
   ok("DW13 pass: staff and system mail sent through MailPort lands in the outbox as TRANSACTIONAL and is sent", row13.class === "TRANSACTIONAL" && row13.address === x13 && row13.state === "SENT", row13);
-  // Held (review M1, question to Lead B): the outbox stores every body (Lead B's ruling), and staff mail carries invitation
-  // tokens and codes PF-4b never stores; until a ruling on such bodies, the app keeps PF-4b's LocalMail for MAIL_PORT.
+  // Was held (review M1): staff mail carries invitation links and codes. PF-19r (Build Lead C's approved brief, 18 Nov:
+  // "the rendered message under msg/<firm>/outbox/ holds the link and the code") binds the app's MAIL_PORT to MESSAGES_MAIL.
+  process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: the features below read the loader at import (required, no default)
   const staffRead = (await import("../api/src/features/platform-staff-read.ts")).default, { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
+  const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");
   const bound = (staffRead.providers as { provide?: unknown; useExisting?: unknown; useFactory?: unknown }[]).find((p) => p.provide === MAIL_PORT);
-  ok("DW13 held (review M1): the app's MAIL_PORT stays PF-4b's own adapter, so no invitation token or code is stored in the outbox until Lead B rules", !!bound?.useFactory && bound?.useExisting === undefined, bound);
+  ok("DW13 pass (PF-19r): the app's MAIL_PORT is MailPort over MessagePort (MESSAGES_MAIL), so staff and system mail goes through the outbox", bound?.useExisting === MESSAGES_MAIL && bound?.useFactory === undefined, bound);
   const refused13 = await mail.send({ firmId: firmA, to: box("dw13s"), replyTo: "no-reply@expatready.example", class: "SERVICE", subject: "Reminder", text: "x" }).then(() => "sent", (e: Error) => e.name);
   ok("DW13 fail: a service email without its person is refused, nothing in the outbox", refused13 === "MessageRefused" && (await db.msgOutbox.count({ where: { address: { contains: "dw13s" } } })) === 0, refused13);
 

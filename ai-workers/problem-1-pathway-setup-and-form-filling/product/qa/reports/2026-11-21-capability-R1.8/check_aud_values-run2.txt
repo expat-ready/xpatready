@@ -1,0 +1,16 @@
+PASS  pass: personal values in full are accepted in before and after (a phone number, an email address, a long address; P-687)
+PASS  fail: the same email address in detail is still refused (detail stays ids only)
+PASS  fail: a secret is never stored: a password, a token, a hash or a one-time code in before or after is refused
+PASS  fail: a value longer than 4000 characters, a nested object, or 61 fields is refused
+PASS  fail: a `<field>_before` or `<field>_after` key in detail is refused (before and after have one place)
+PASS  pass: a change keeps only the fields that changed, as <field>_before and <field>_after
+PASS  pass: AUD-4's reader (changesOf) shows it as "phone: old → new"
+PASS  pass: a create gives lone _after values (an addition), a delete lone _before values (a removal), each read by changesOf
+PASS  fail: a field set to empty is shown, never dropped (null → value, value → null)
+PASS  pass (QA-595): a case entity's line names its case by its words ("… on case bbbbbbbb")
+PASS  fail (breaker M1): a configuration line (a field retired, a form role, a note) whose words say "case bbbbbbbb" names no case, so it never lands on that case's firm
+PASS  sweep pass (made-up source): a write with before and after, and a case line (workspaceId), are not listed
+PASS  sweep fail (made-up source): a write with no after, one with neither, and one whose object it cannot read are listed
+PASS  sweep: every platform and front-office audit write in api/src passes before and after (QA-594)
+
+14 passed, 0 failed

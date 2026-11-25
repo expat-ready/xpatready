@@ -1,0 +1,113 @@
+NOTICE:  database "xr_studio_pf12_empty_3310" does not exist, skipping
+NOTICE:  database "xr_studio_pf12_demo_3310" does not exist, skipping
+NOTICE:  database "xr_studio_pf12_bare_3310" does not exist, skipping
+PASS  PF-12: the migration has its own stamp, later than every one before it and unique (newest before it: 20261115234500_fo3pa_booking_type_flags; P-348 (8), P-600 (4))
+PASS  PF-12 (brief): policies and roles only — no CREATE/DROP TABLE, no column, key or index change; every ALTER TABLE only enables or forces row-level security
+PASS  PF-12 (rows rev 15.2): every function the migration creates carries the area prefix platform_
+PASS  PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN
+PASS  PF-12 fail: before the migration the firm tables have no wall (the guard lists them)
+PASS  PF-12 pass: right after the migration every table of the families has its forced policy (62 tables; exceptions platform_plan, platform_role_permission, platform_setting_definition, platform_permission_key, platform_terms_version, platform_signup_pending)
+PASS  PF-12: the catalogues on the exception list stay outside the walls (no firm_id: platform_plan, platform_role_permission, platform_setting_definition, platform_permission_key, platform_terms_version)
+PASS  PF-12 pass: a pending sign-up (no firm yet) is forced with no policy: xr_app reads none even naming no firm, the bypass role reads them
+PASS  PF-12 pass: every migration applies in order to an empty database
+PASS  PF-12 guard pass: with every migration on main, no platform_*, fo_*, money_*, msg_*, auto_* or plat_complaint* table is without its forced policy
+PASS  PF-12 guard pass: every firm table's policy for the app names the session's firm, and every trigger function on a firm table runs as xr_wall_reader
+PASS  PF-12 guard fail: an open policy added to a walled table, and a plain trigger function on a firm table, are each named
+PASS  PF-12 guard fail: a new fo_, auto_ or plat_complaint table with no policy, a money_ table whose policy is not forced, and our own register given a policy, are each named
+PASS  PF-12: a later migration's table gets the app's table rights by default privileges (xr_app may read it, so the policy is what walls it)
+PASS  PF-12 pass: xr_app can log in and is not a superuser, has no BYPASSRLS, cannot create roles or databases
+PASS  PF-12 fail: the migration role (xr_studio, the tables' owner) is the superuser that the app must not be
+PASS  PF-12: the migration role owns every table; xr_app owns none (nor any role it is a member of)
+PASS  PF-12 start-up check pass: as xr_app nothing is wrong
+PASS  PF-12 start-up check fail: as the owner it names the superuser and the owned tables
+PASS  PF-12 start-up check fail: a plain role that owns one table is refused (not only a superuser)
+PASS  PF-12 (FO-13 break 4) fail: xr_app cannot set session_replication_role (triggers and keys stay on)
+PASS  PF-12 (FO-13 break 4) fail: xr_app cannot disable a trigger (owner only)
+PASS  PF-12 fail: xr_app cannot create a table, so it can never own one
+PASS  PF-12 fail: xr_app cannot become the owner, the case lookup role or the wall reader (SET ROLE refused)
+PASS  PF-12 fail (breaker m7): xr_app cannot setval a shared sequence (every firm's next write would fail); nextval still works
+PASS  PF-12: xr_wall_reader cannot log in; it owns the firm tables' trigger functions and the address lookup, no table
+PASS  PF-12 start-up check fail (breaker m6): a function owned by a role xr_app may become (the bypass role) is named
+PASS  PF-12 fail: xr_app cannot turn row-level security off for itself (row_security = off is refused for a policied table)
+PASS  PF-12 pass: xr_app may SET ROLE to the bypass role only (SET, not inherited: without it xr_app has no BYPASSRLS)
+PASS  PF-12 (FO-13 break 11): xr_app logs terse errors, so a refused row's DETAIL never repeats its values in the log
+PASS  PF-12 (rev 16.34): xr_case_lookup cannot log in, owns no table and holds no table grant
+PASS  PF-12 (rev 16.34) fail: signing in as xr_case_lookup is refused
+PASS  PF-12 pass (CI packs): four sessions run the roles part at the same moment, and each succeeds (no tuple concurrently updated)
+PASS  PF-12: the roles part runs again with every role already there, changing nothing
+{"time":"2026-11-21T13:43:08.995Z","level":"error","event":"audit_write_failed","firmId":"29532c2b-a53d-43f3-bd7a-da24defc0000","entity":"msg_consent_wording","entityKey":"75c07b52-8d59-464e-9f0a-140be4f5f46d","attempts":1,"Service":"studio-api","AuditWriteFailures":1,"_aws":{"Timestamp":1795268588995,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Service"]],"Metrics":[{"Name":"AuditWriteFailures","Unit":"Count"}]}]}}
+{"time":"2026-11-21T13:43:08.996Z","level":"error","event":"audit_write_error","error":{"errorName":"PrismaClientKnownRequestError","code":"P2022","frames":["at zr.handleRequestError (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/RequestHandler.ts:237:13)","at zr.handleAndLogRequestError (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/RequestHandler.ts:183:12)","at zr.request (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/RequestHandler.ts:152:12)","at process.processTicksAndRejections (node:internal/process/task_queues:103:5)","at async a (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:963:24)","at async writeAuditWithAlarm.attempts (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/audit-event.ts:59:7)","at async writeAuditWithAlarm (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/observability/alerts.ts:86:18)","at async AuditEventAdapter.record (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/audit-event.ts:47:5)"]},"rule":"BR-5","firmId":"29532c2b-a53d-43f3-bd7a-da24defc0000","entity":"msg_consent_wording","entityKey":"75c07b52-8d59-464e-9f0a-140be4f5f46d"}
+{"time":"2026-11-21T13:43:08.997Z","level":"error","event":"alert","alert":"audit_write_failed","rule":"BR-5","firmId":"29532c2b-a53d-43f3-bd7a-da24defc0000","entity":"msg_consent_wording","entityKey":"75c07b52-8d59-464e-9f0a-140be4f5f46d","AlertKind":"audit_write_failed","Alerts":1,"_aws":{"Timestamp":1795268588997,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+{"time":"2026-11-21T13:43:09.032Z","level":"error","event":"audit_write_failed","firmId":"30cc55e2-63c9-4c43-a56b-e44d004e7e9b","entity":"msg_consent_wording","entityKey":"bd7e47f5-4181-4f34-bc69-0b8e5cb71059","attempts":1,"Service":"studio-api","AuditWriteFailures":1,"_aws":{"Timestamp":1795268589032,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Service"]],"Metrics":[{"Name":"AuditWriteFailures","Unit":"Count"}]}]}}
+{"time":"2026-11-21T13:43:09.032Z","level":"error","event":"audit_write_error","error":{"errorName":"PrismaClientKnownRequestError","code":"P2022","frames":["at zr.handleRequestError (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/RequestHandler.ts:237:13)","at zr.handleAndLogRequestError (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/RequestHandler.ts:183:12)","at zr.request (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/RequestHandler.ts:152:12)","at process.processTicksAndRejections (node:internal/process/task_queues:103:5)","at async a (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:963:24)","at async writeAuditWithAlarm.attempts (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/audit-event.ts:59:7)","at async writeAuditWithAlarm (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/observability/alerts.ts:86:18)","at async AuditEventAdapter.record (/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/audit/audit-event.ts:47:5)"]},"rule":"BR-5","firmId":"30cc55e2-63c9-4c43-a56b-e44d004e7e9b","entity":"msg_consent_wording","entityKey":"bd7e47f5-4181-4f34-bc69-0b8e5cb71059"}
+{"time":"2026-11-21T13:43:09.032Z","level":"error","event":"alert","alert":"audit_write_failed","rule":"BR-5","firmId":"30cc55e2-63c9-4c43-a56b-e44d004e7e9b","entity":"msg_consent_wording","entityKey":"bd7e47f5-4181-4f34-bc69-0b8e5cb71059","AlertKind":"audit_write_failed","Alerts":1,"_aws":{"Timestamp":1795268589032,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["AlertKind"]],"Metrics":[{"Name":"Alerts","Unit":"Count"}]}]}}
+PASS  PF-12 pass: the migration applies on the demo-data copy and changes no row (owner's counts the same on every family table)
+PASS  PF-12 pass: a raw query with no app.firm_id reads nothing from any walled table that has rows (14 tables)
+PASS  PF-12 fail: the same tables do have rows (the owner reads them), and a catalogue outside the walls still reads with no firm
+PASS  PF-12 pass: firm A's session reads its own platform_staff rows
+PASS  PF-12 fail: firm A's session reading firm B's platform_staff row by id gets nothing (and no B row by firm)
+PASS  PF-12 fail: firm A's session cannot change or delete firm B's platform_staff row (0 rows; still there for the owner)
+PASS  PF-12 pass: firm A's session reads its own fo_reason rows
+PASS  PF-12 fail: firm A's session reading firm B's fo_reason row by id gets nothing (and no B row by firm)
+PASS  PF-12 fail: firm A's session cannot change or delete firm B's fo_reason row (0 rows; still there for the owner)
+PASS  PF-12 pass: firm A's session reads its own money_number_series rows
+PASS  PF-12 fail: firm A's session reading firm B's money_number_series row by key gets nothing (and no B row by firm)
+PASS  PF-12 fail: firm A's session cannot change or delete firm B's money_number_series row (0 rows; still there for the owner)
+PASS  PF-12 pass: firm A's session reads its own msg_firm rows
+PASS  PF-12 fail: firm A's session reading firm B's msg_firm row by key gets nothing (and no B row by firm)
+PASS  PF-12 fail: firm A's session cannot change or delete firm B's msg_firm row (0 rows; still there for the owner)
+PASS  PF-12 pass: firm A's session reads its own platform_firm rows
+PASS  PF-12 fail: firm A's session reading firm B's platform_firm row by id gets nothing (and no B row by firm)
+PASS  PF-12 fail: firm A's session cannot change or delete firm B's platform_firm row (0 rows; still there for the owner)
+PASS  PF-12: one table of each family was found with both firms' rows (platform_staff, fo_reason, money_number_series, msg_firm, platform_firm)
+PASS  PF-12 fail: firm A's session cannot write a row naming firm B (WITH CHECK refuses it)
+PASS  PF-12 pass: firm A's session changes its own rows
+PASS  PF-12 fail: with no firm a write is refused
+PASS  PF-12 fail: an app.firm_id that is not a uuid is an error, never a match
+PASS  PF-12 pass: a firm reads a platform-owned template (firm_id null)
+PASS  PF-12 fail: with no firm the platform template reads nothing; a firm cannot change or add one
+PASS  PF-12 fail (breaker M1): firm A cannot add a template version on firm B's template (msg_template_version_in_firm sees B's row again)
+PASS  PF-12 pass: firm B adds a version on its own template
+PASS  PF-12 fail (breaker M2): firm B cannot take the address firm A holds for its redirect (platform_web_address_held_by_other sees A's row again)
+PASS  PF-12 fail (breaker R2-1): firm A's row naming firm B's invoice gets the wall's refusal only, never B's currency from its trigger (the bypass role still gets the trigger's)
+PASS  PF-12 fail (breaker R3-1): with no firm set, a row with no firm is refused by the gate before any other trigger
+PASS  PF-12 pass: the address lookup tells a firm which addresses another firm has or holds, never a firm id, and not its own
+PASS  PF-12 pass: the bypass role reads both firms' rows
+PASS  PF-12 pass: in a suite or tool process a query with no scope runs on the bypass (the process holds the owner's address anyway)
+{"time":"2026-11-21T13:43:14.920Z","level":"info","event":"platform_bypass","use":"direct-process","method":"none"}
+PASS  PF-12 pass: so a suite seeding through the app's client still reads every firm
+{"time":"2026-11-21T13:43:14.925Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  PF-12 pass: in a suite or tool process a direct use runs on a call with no scope (a suite calling the service with its own client; PF-12b part 2: the demo inbox, the doors left the list)
+PASS  PF-12 pass: the API server's start-up (FirmWallsInterceptor, registered by api/src/features/platform-firm-walls.ts) walls every unscoped query from then on
+PASS  PF-12 pass: the API's pool with no firm reads no staff
+PASS  PF-12 pass: the API's pool as firm A reads only firm A's staff
+PASS  PF-12 fail: the next query on the same connection with no firm reads nothing again (no firm leaks from one checkout to the next)
+PASS  PF-12 fail (Devin review): a connection dropped mid-query fails that query only; the process and the pool carry on
+PASS  PF-12 fail: firm A's pool reads firm B's staff member by id as not found
+PASS  PF-12 pass: an interactive transaction runs as the firm that opened it
+PASS  PF-12 pass: 40 queries at once from two firms each read only their own firm's rows
+PASS  PF-12 fail: a plain Prisma client merges 20 findUnique calls from two firms into one query, so one firm's staff read as not found
+PASS  PF-12 pass: with oneQueryPerCaller (core.ts Db) the 20 calls each find their own firm's staff member
+PASS  PF-12 pass: the API's client (core.ts Db) sends each call outside a transaction on its own
+PASS  PF-12 fail: a bypass use that is not on the named list is refused before any query
+PASS  PF-12 fail: a request's bypass use (sign-up) is refused outside a request in the API server (start-up, a job)
+PASS  PF-12 fail: a request's use is refused inside a job's scope (a job runs as its firm, never on a request's bypass)
+PASS  PF-12 pass: a sweep job on the named list (job:messages.outbox_sweep) reads every firm's rows
+PASS  PF-12 fail: a job with no firm and no named use reads no firm's rows
+PASS  PF-12 fail (breaker m8): in the API server a direct use is refused on a call with no scope
+PASS  PF-12 pass (breaker m3): a use also runs on HEAD and with a trailing slash (the router's own matching)
+PASS  PF-12 fail: the bypass role is refused on a route not on its list (a page outside /api/)
+PASS  PF-12 fail: the sign-up bypass is refused on a staff route, and the demo inbox's on the booking page (each use only on its own routes)
+PASS  PF-12 pass: on a route on its list the bypass reads both firms
+PASS  PF-12 pass: every bypass use writes one line with the use and the route; a refused one writes none
+PASS  PF-12 pass: a handler runs as the firm the guard set (setRequestFirm, in lower case)
+PASS  PF-12 fail: a request whose guard set no firm reads nothing
+PASS  PF-12 fail (review R2): on firm A's own address a door that resolves firm B answers not found
+PASS  PF-12 fail: the guard cannot set a firm id that is not a uuid
+PASS  PF-12 fail: the API refuses to start when it connects as the table owner (it names the reason)
+PASS  PF-12 pass: the API starts as xr_app (DATABASE_URL's user changed to xr_app)
+PASS  PF-12 pass (review B1): a firm's own web address answers its public site through the walls; fail: an unknown address is 404
+PASS  PF-12 pass: a staff member signs in through the walled server and reads their own firm's staff member; fail: another firm's by id is 404
+PASS  PF-12 pass (review M2): the booking page list (FO-3pa) answers through its named use, with its firm's page
+
+100 passed, 0 failed

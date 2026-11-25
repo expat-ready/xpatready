@@ -1,0 +1,46 @@
+PASS  FO-2p3 setup: both Sample firms have both pipelines
+PASS  FO-2p3 DW1 pass: Engage makes one INDIVIDUAL prospect in the Individual pipeline's Engaged stage, the subject the lead's person, owned by the lead's owner (T), the lead ENGAGED; not marked as a second one
+PASS  FO-2p3 DW1 pass: lead.engaged in the outbox (Individual, the person as subject), one audit line on the prospect and one on the lead, one move from nowhere
+PASS  FO-2p3 DW1 pass: a second Engage of the same lead makes a second prospect and says so, naming the first
+PASS  FO-2p3 DW1 pass: Engage on an Unassigned lead gives the prospect and the lead to the clicker, with the take line
+PASS  FO-2p3 DW1 fail: Engage on a closed lead → 409 LEAD_CLOSED, nothing made
+PASS  FO-2p3 DW1 fail: firm B engaging firm A's lead → 404, nothing made
+PASS  FO-2p3 DW2 pass: a person's move with its cause is saved (stage, a PERSON move from Engaged), audited once, and in the outbox; the version moves on
+PASS  FO-2p3 DW2 pass: back to an earlier open stage is a move too (AG-2-26 rule 1)
+PASS  FO-2p3 DW2 fail: a stale version → 409 STALE naming who moved it and where, nothing changed
+PASS  FO-2p3 DW2 fail: a person's move into the WON stage → 422 with AG-2-26 rule 3's words; nothing moved (BR-8)
+PASS  FO-2p3 DW2 fail: into LOST (Mark lost), NURTURE (Park), another pipeline's stage, no version or a system cause → 422, nothing moved
+PASS  FO-2p3 DW2 fail (break M1): four moves at once on the same version → one saved, three 409 STALE, none 404
+PASS  FO-2p3 DW4 fail (break M1): three Converts at once → one, the others 409 ALREADY_WON
+PASS  FO-2p3 pass (break m1): a version counts this prospect's own moves only
+PASS  FO-2p3 DW2 fail: a forced audit failure rolls the move back (stage, move and event unchanged)
+PASS  FO-2p3 DW2 fail: with "everyone sees all" off, moving another person's prospect → 404 (the read's answer)
+PASS  FO-2p3 DW3 fail: Mark lost without a reason → 400 at the field; a reason from the lead list, another firm's or a merge's → 400; nothing changed
+PASS  FO-2p3 DW3 pass: Mark lost with a prospect reason (the system's Duplicate one may be chosen) → the LOST stage with the reason and note; audited; prospect.lost with the key, never the note
+PASS  FO-2p3 DW3 pass: a parked (NURTURE) prospect can be marked lost
+PASS  FO-2p3 DW3 pass: the default list leaves a lost prospect out; the Lost filter lists it
+PASS  FO-2p3 DW3 fail: a lost prospect does not move and is not lost twice (409)
+PASS  FO-2p3 DW3 fail: an unknown stage filter → 400 naming the stages
+PASS  FO-2p3 DW4 pass: Convert to client → WON, wonVia CONVERTED, the "Retainer not signed" warning; one CONVERT move into WON; prospect.won with the PERSON subject
+PASS  FO-2p3 DW4 fail: Convert twice → 409 ALREADY_WON, no second prospect.won
+PASS  FO-2p3 DW4 fail: a won prospect does not move back by hand (409, AG-2-26 rule 2)
+PASS  FO-2p3 DW4 fail: Undo convert without a reason → 422 at the field, still WON
+PASS  FO-2p3 DW4 pass: Undo convert while the client is empty → back to the stage before WON (Engaged), WON cleared, the reason kept as an INTERNAL note (not in the audit line), prospect.unconverted
+PASS  FO-2p3 DW4 fail: Undo convert on a prospect that is not won → 409
+PASS  FO-2p3 DW4 fail: after a signed retainer, Undo convert → 409 SIGNED saying so; still WON
+PASS  FO-2p3 DW4 pass: with the retainer signed, the read shows it and drops the warning
+PASS  FO-2p3 DW4 fail: a lost prospect cannot be converted (409)
+PASS  FO-2p3 DW5 pass: the Individual board through FO-2b's route carries totals per currency, CAD and USD apart, per stage and over the open stages
+PASS  FO-2p3 DW5 fail: no total ever adds CAD to USD (no line of 500400 or 500900), and a Corporate prospect is not on the Individual board
+PASS  FO-2p3 DW5 fail: with "everyone sees all" off, T's totals count only T's prospects (CAD 2500.00 of Una's, USD 5.00 of Dov's)
+PASS  FO-2p3 DW6 pass: the owner filter lists only that person's leads
+PASS  FO-2p3 DW6 pass: the date filter reads the arrival day in the firm's zone (23:30 Toronto is 1 Nov; 00:30 is 2 Nov)
+PASS  FO-2p3 DW6 fail: the filters narrow inside the visibility: own-only O filtering on R's leads or prospects gets none
+PASS  FO-2p3 DW6 fail: firm B never sees firm A's leads or prospects, and naming firm A's staff as owner → 400
+PASS  FO-2p3 DW6 fail: a date that is not a day, from after to, or a year outside 1900-2999 (break m2: was 500) → 400
+PASS  FO-2p3 DW6 pass: the prospects list filters by owner and engaged day too
+PASS  FO-2p3 DW6 fail: firm B reading firm A's prospect → 404
+PASS  FO-2p3 pass: every new route declares its seeded agent/prospect:* key
+PASS  FO-2p3 fail: a Read-only person holds none of the write keys (403 at the guard)
+
+FO-2p3 Individual prospects: 44 passed, 0 failed

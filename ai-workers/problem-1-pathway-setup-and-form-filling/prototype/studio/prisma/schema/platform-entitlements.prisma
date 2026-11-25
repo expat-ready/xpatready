@@ -1,0 +1,102 @@
+// platform-entitlements.prisma — plan limits and the storage-over mark (PF-15; SA-3-4, SA-3-39, SA-3-40). Owner: Lead B.
+// Seats stay on platform_plan.seats_limit. Rules and Sample rows: migration 20261118213000_pf15_plan_limits. Read and
+// written only through api/src/platform/entitlements/.
+
+/// The metrics a plan limits besides seats. Modes are fixed (SA-3-39): cases hard, storage warn.
+enum PlatformLimitMetric {
+  ACTIVE_INDIVIDUAL_CASES
+  ACTIVE_CORPORATE_CASES
+  STORAGE_MB
+
+  @@map("platform_limit_metric")
+}
+
+/// One plan's limit on one metric (a catalogue). null = Unlimited, 0 = none; no row reads as 0. Sample values.
+model PlatformPlanLimit {
+  planId     String              @map("plan_id") @db.Uuid
+  metric     PlatformLimitMetric
+  limitValue Int?                @map("limit_value")
+  updatedAt  DateTime            @default(now()) @map("updated_at") @db.Timestamptz
+
+  plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([planId, metric])
+  @@map("platform_plan_limit")
+}
+
+/// A firm's storage-over mark (SA-3-40): hard while back_under_at is null and first_over_at is 14 days or more ago.
+model PlatformStorageOver {
+  firmId      String    @id @map("firm_id") @db.Uuid
+  firstOverAt DateTime  @map("first_over_at") @db.Timestamptz
+  alertedAt   DateTime? @map("alerted_at") @db.Timestamptz
+  backUnderAt DateTime? @map("back_under_at") @db.Timestamptz
+  usedBytes   BigInt    @map("used_bytes")
+  limitMb     Int?      @map("limit_mb")
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("platform_storage_over")
+}
+
+/// Our team's change of one plan's limit (PF-15 part 2; SA-3-43, SA-3-62). Insert-only; its insert writes the new value
+/// (a definer trigger) and keeps the old one here. metric: SEATS or a PlatformLimitMetric (text, so seats fit).
+model PlatformLimitChange {
+  id         String   @id @default(uuid()) @db.Uuid
+  planId     String   @map("plan_id") @db.Uuid
+  metric     String
+  oldValue   Int?     @map("old_value")
+  newValue   Int?     @map("new_value")
+  lowered    Boolean  @default(false)
+  reason     String
+  approvedBy String   @map("approved_by")
+  approvedAt DateTime @map("approved_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  plan  PlatformPlan              @relation(fields: [planId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  firms PlatformLimitChangeFirm[]
+
+  @@index([planId, metric])
+  @@map("platform_limit_change")
+}
+
+/// For a lowered limit, when it reaches each firm then on the plan: its first renewal at least 30 days after approval
+/// (SA-3-43). Written only by the change's trigger; insert-only; behind PF-12's wall.
+model PlatformLimitChangeFirm {
+  changeId    String   @map("change_id") @db.Uuid
+  firmId      String   @map("firm_id") @db.Uuid
+  effectiveAt DateTime @map("effective_at") @db.Timestamptz
+
+  change PlatformLimitChange @relation(fields: [changeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  firm   PlatformFirm        @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([changeId, firmId])
+  @@index([firmId])
+  @@map("platform_limit_change_firm")
+}
+
+/// A firm's booked move to another plan (PF-15 part 1b; SA-3-58..61). Stamped by the database at insert (time,
+/// subscription, from plan, effective date; a trial's move applied at once); afterwards only withdrawn_at or applied_at,
+/// once. One open per firm (partial unique index); while open every limit is the lower of the two plans' (SA-3-59).
+/// Rules: migration 20261121130000_pf15b_plan_booking. Behind PF-12's wall.
+model PlatformSubscriptionChange {
+  id             String    @id @default(uuid()) @db.Uuid
+  firmId         String    @map("firm_id") @db.Uuid
+  subscriptionId String    @map("subscription_id") @db.Uuid
+  fromPlanId     String    @map("from_plan_id") @db.Uuid
+  toPlanId       String    @map("to_plan_id") @db.Uuid
+  bookedBy       String    @map("booked_by")
+  bookedAt       DateTime  @map("booked_at") @db.Timestamptz
+  effectiveAt    DateTime  @map("effective_at") @db.Timestamptz
+  withdrawnAt    DateTime? @map("withdrawn_at") @db.Timestamptz
+  appliedAt      DateTime? @map("applied_at") @db.Timestamptz
+
+  firm         PlatformFirm         @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  subscription PlatformSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fromPlan     PlatformPlan         @relation("changeFrom", fields: [fromPlanId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  toPlan       PlatformPlan         @relation("changeTo", fields: [toPlanId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([firmId])
+  @@index([effectiveAt])
+  @@map("platform_subscription_change")
+}

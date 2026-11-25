@@ -10,7 +10,9 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.argv[2] ?? 4466), DB = process.argv[3] ?? "xr_studio_runtime_wsfirst", NAME = DB.replace(/^xr_studio_/, "");
 const STUDIO = join(dirname(fileURLToPath(import.meta.url)), ".."), BASE = `http://localhost:${PORT}/api`;
-const H = { "x-actor": "user-A", "content-type": "application/json" };
+// Each call on its own connection: fresh() restarts the API while this process is blocked (execFileSync), so a kept connection
+// to the old server is sent on before its close is seen ("other side closed"; batches #3436, #3437, runs 45347486222, 45347964397).
+const H = { "x-actor": "user-A", "content-type": "application/json", connection: "close" };
 let pass = 0, fail = 0;
 const ok = (name: string, good: boolean, detail?: unknown) => { good ? pass++ : fail++; console.log(`${good ? "PASS" : "FAIL"}  ${name}${detail === undefined ? "" : ` — ${JSON.stringify(detail).slice(0, 400)}`}`); };
 const sql = (q: string) => execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", DB, "-tAc", q], { encoding: "utf8" }).trim();
@@ -26,7 +28,7 @@ for (let round = 1; round <= ROUNDS; round++) {
   const refused = said.filter((x) => x.status === 409 || x.status >= 500);
   ok(`round ${round} pass: on an empty database the sample load and 24 first calls at once all answer; none 409 "Already in progress or already exists" or 500`, refused.length === 0, refused);
   ok(`round ${round} pass: the sample load answers 201`, said[0].status === 201, said[0]);
-  ok(`round ${round} fail-guard: one workspace and its six starting person roles, never two`, sql("select count(*) from workspace") === "1" && sql("select count(*) from person_role where built_in") === "6", { workspaces: sql("select count(*) from workspace"), roles: sql("select count(*) from person_role where built_in") });
+  ok(`round ${round} fail-guard: one workspace and its six starting person roles, never two`, sql("select count(*) from workspace where key <> 'platform-audit'") === "1" && sql("select count(*) from person_role where built_in") === "6", { workspaces: sql("select count(*) from workspace where key <> 'platform-audit'"), roles: sql("select count(*) from person_role where built_in") });
 }
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

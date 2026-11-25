@@ -1,0 +1,3 @@
+Entry points: AUD-1c part 1: the insert trigger `aud_event_zchain` (sets `chain_key`, `seq`, `prev_hash`, `entry_hash`; a writer's values are replaced), `aud_event_canonical(line)` (SQL) and its mirror `audit/canonical.ts` (`canonical`, `entryHash`, `jsonbText`, the shared `VECTOR`).
+Tables: AUD-1c part 1 adds auditChainCheck (the checker's last verified place per chain; part 2 writes it) and four `@ignore` chain columns on auditEvent.
+Tests: `tests/check_aud1c_chain.ts` (AUD-1c part 1: DW1-DW5, gap-free concurrent chains, TS = SQL canonical form, back-fill, demo reset restart, migration rev 16.7).

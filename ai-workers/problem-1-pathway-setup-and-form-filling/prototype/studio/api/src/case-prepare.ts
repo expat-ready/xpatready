@@ -47,7 +47,7 @@ import { copyStateOf, readinessOfCase, waitingFactsKey, type PreparedForm, type 
 import { lowestOf } from "../../engine/runtime/readiness-figure.ts";
 import { pdfMapInUse } from "../../engine/programs.ts";
 import { draftNote, releaseOutOfDate, reviewCounts, touchedFilings } from "../../engine/runtime/release-update.ts";
-import { caseName, releaseLabel, type Readiness } from "../../contracts/runtime.ts";
+import { caseName, nothingStored, PdfCopyBody, releaseLabel, type Readiness } from "../../contracts/runtime.ts";
 import { caseInputs, diffCache, pinReleases, targetRelease } from "./release-context.ts";
 /** B171 (B169 review M1): the IRCC account in words, from the Forms tab's own contract (contracts/forms.ts), for every
  *  account: "through PR Portal", "on paper, with no IRCC account"; never the raw key (only "APR Portal" had words). */
@@ -209,7 +209,7 @@ export class CasePrepare {
       q.filingItem.findMany({ where: { caseId: c.id, filing: { stageId: c.stage.id } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     ] as const;
     const sync = async (tx: Tx | Db, write: boolean) => {
-      const [g0, filings0, items0] = write ? await Promise.all(read(tx)) : await this.db.$transaction([...read(this.db)], { isolationLevel: "RepeatableRead", maxWait: 10_000 }); // C7.6: as the write path (C6.12 B1, 120 reads at once)
+      const [g0, filings0, items0] = write ? await Promise.all(read(tx)) : await this.db.$transaction((snap) => Promise.all(read(snap)), { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 5_000 }); // C7.6: as the write path (C6.12 B1, 120 reads at once); M2: interactive, one snapshot on one connection
       let groups = g0;
       // BK-17 (BK-15 breaker M3): a filing recorded as submitted is kept as recorded: never made inactive, its mode, people
       // and items never changed by a later answer. A person on it stays on it: the derivation makes no other filing for
@@ -678,10 +678,11 @@ export class CasePrepare {
       const ask = l.missing.filter((m) => !m.answered).map((m) => m.question);
       return filing ? [{ subject: p.subject, person: p.label, filing, document_type: l.document.key, label: l.label, required: false, never_waivable: true, waiting: ask.length ? ask.join(", ") : "the questions its condition reads" }] : [];
     }));
+    const flagWarn = await flagWarningsOf(this.db, people.map((p) => p.subjectId), (s as { document_types?: { key: string; name: string }[] }).document_types ?? []); // CS-D7 (4)
     const readiness = await readinessOfCase(this.db, { workspaceId: c.workspaceId, caseId: c.id, filings: filings.map((f) => f.id), forms: formItems, reviewAfterMove, releaseUpdate,
       byHand: (form, subject) => handOf.get(`${form}|${subject}`) ?? [],
       copy: copyOf,
-      documents: docItems.map((d) => ({ subject: d.subject, person: d.person, filing: d.filing, item: d.id, document_type: d.document_type, label: d.label, required: docLine(d.subject, d.document_type)?.required ?? true, never_waivable: docLine(d.subject, d.document_type)?.never_waivable ?? false, ...(docLine(d.subject, d.document_type)?.never_if?.length ? { waiting: docLine(d.subject, d.document_type)!.never_if!.join(", ") } : {}) }) as ReadinessInputs["documents"][number]).concat(waitingNever), // M3-S4
+      documents: docItems.map((d) => ({ subject: d.subject, person: d.person, filing: d.filing, item: d.id, document_type: d.document_type, label: d.label, ...(flagWarn.get(`${d.subject}|${d.document_type}`)?.length ? { flag_warnings: flagWarn.get(`${d.subject}|${d.document_type}`) } : {}), required: docLine(d.subject, d.document_type)?.required ?? true, never_waivable: docLine(d.subject, d.document_type)?.never_waivable ?? false, ...(docLine(d.subject, d.document_type)?.never_if?.length ? { waiting: docLine(d.subject, d.document_type)!.never_if!.join(", ") } : {}) }) as ReadinessInputs["documents"][number]).concat(waitingNever), // M3-S4
       factsOf: (form, subject) => formReady(form, subject),
       // C7.9 (P-242): the must-verify facts this form writes from an unchecked client-given value.
       unverifiedOf: (form, subject) => unverifiedOf(s, answers, formCoverage(s, people, answers, rows, form, subject)?.facts ?? [], reading), owesFact: (fact, subject) => (subject !== REPRESENTATIVE && isClientField(s, fact) ? "client" : "staff"), // B107: the representative's facts are the firm record's
@@ -775,14 +776,15 @@ export class CasePrepare {
    *  queued copy marked "Copy, not for filing" (never an item, never counted, never locked or filed). A PDF upload or
    *  Paper item has no separate copy: its own PDF is the deliverable. */
   async pdfCopy(actor: Actor, itemId: string, body: unknown) {
+    const b = PdfCopyBody.safeParse(body ?? {}); // CS-V1 part 3: only idempotencyKey, checked before anything is read
+    if (!b.success) throw new HttpException(nothingStored(b.error), HttpStatus.BAD_REQUEST);
     const item = await this.db.filingItem.findUnique({ where: { id: idOf(itemId, "item") } });
     if (!item) fail("No such item.", HttpStatus.NOT_FOUND);
     const c = await this.r.reach(actor, item!.caseId, "officer");
     if (item!.kind !== "form" || !item!.active) refuse(422, "item", "Only a form on this application has a PDF copy.");
     const now = itemIn(await this.build(actor, c), item!.id) as { channel?: string } | undefined;
     if (now?.channel !== "ONLINE") refuse(409, "item", `${item!.itemKey} is filed as ${CHANNEL_WORDS[(now?.channel ?? "PDF_UPLOAD") as keyof typeof CHANNEL_WORDS]}: its own PDF is what is filed, so there is no separate copy. Make its copy from the form.`);
-    const b = (body ?? {}) as { idempotencyKey?: unknown };
-    return this.forms.generate(actor, c.id, item!.itemKey, item!.subjectId, typeof b.idempotencyKey === "string" ? { idempotencyKey: b.idempotencyKey } : {});
+    return this.forms.generate(actor, c.id, item!.itemKey, item!.subjectId, b.data.idempotencyKey ? { idempotencyKey: b.data.idempotencyKey } : {});
   }
 
   /** C7.3: the answer sheet of an Online form item, for the case officer (a client never reads it). */
@@ -861,9 +863,9 @@ export class CasePrepare {
       // Break M1: the audit line is written in the same transaction: a tick never comes off without its record (who,
       // when, why). The same row Audit.log writes.
       const who = c.participants.find((p) => p.subjectId === item.subjectId);
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "unentered", entity: "item", entityKey: item.id, combinationId: null,
-        summary: [`${actor.name} took the tick "Entered in the portal" off "${sec!.title}" of ${item.itemKey} for the ${ROLE[who?.role ?? ""] ?? "person"} on case ${short(c.id)}; it counts as still to tick. Reason: ${b.reason}`].map((t) => Array.from(t).slice(0, 600).join(""))[0], // by character, never half an emoji
-        detail: { section: key, reason: b.reason, ticked_by: row.enteredBy, ticked_at: row.enteredAt.toISOString() } } });
+      await new Audit(tx as never).log(c.workspaceId, actor.id, "unentered", "item", item.id,
+        [`${actor.name} took the tick "Entered in the portal" off "${sec!.title}" of ${item.itemKey} for the ${ROLE[who?.role ?? ""] ?? "person"} on case ${short(c.id)}; it counts as still to tick. Reason: ${b.reason}`].map((t) => Array.from(t).slice(0, 600).join(""))[0], // by character, never half an emoji
+        { section: key, reason: b.reason, ticked_by: row.enteredBy, ticked_at: row.enteredAt.toISOString() });
       return row;
     });
     return { section: key, entered: null };
@@ -998,6 +1000,7 @@ export async function storedVersion(tx: Tx | Db, caseId: string) {
 const withRevision = (v: string, revision: number) => (revision > 1 ? `${v}~r${revision}` : v);
 export { busyWords } from "./busy.ts";
 import { busyWords } from "./busy.ts";
+import { flagWarningsOf } from "./case-document-flags.ts"; // CS-D7 (4)
 /** The version of a set of current filings and items (the same rule for the view and for a write's check). */
 function versionOf(filings: { id: string; submissionGroupId: string }[], items: { id: string; channel?: string | null; version: number }[]) {
   const groups = [...new Set(filings.map((f) => f.submissionGroupId))].map((id) => ({ id, filings: filings.filter((f) => f.submissionGroupId === id).map((f) => f.id) }));

@@ -31,6 +31,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
 execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = URL;   // read by core.ts at import: every app import below comes after it
+process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { NestFactory } = await import("@nestjs/core");
 const { Module } = await import("@nestjs/common");

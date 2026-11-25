@@ -6,8 +6,10 @@
 // never deleted. Code SOR/2022-128 s. 24(3)(r), s. 29, s. 37; legal reading Unconfirmed: no counsel; every field, list
 // and period Sample until the College's by-laws are read.
 // Who (Lead 47 on #1753): agent/complaint:record (Owner, Admin, Case Manager) records a complaint; agent/complaint:read
-// (Owner, Admin) reads every one; record + read act on any; the handler reads and handles their own (steps, response,
-// close) without either key. Anyone else gets the same 404 as for another firm's complaint (an id leaks nothing).
+// (Owner, Admin) reads every one; record + read act on any; the handler reads their own without either key and handles
+// it (steps, response, close) only while they hold the record key (PF-21j, QA-517: a handler who lost it, say made
+// Read-only, still reads it but gets 403 on a change). Only a person whose roles grant the record key can be made
+// handler (422 otherwise). Anyone else gets the same 404 as for another firm's complaint (an id leaks nothing).
 // Every change is one transaction: the event first, then the row (the database refuses a row change without its event),
 // one AuditPort line (a failing audit rolls everything back). Job calls run after the commit (JobPort takes no
 // transaction): a rolled-back change never cancels a reminder. The reminder's mail is sent inside its run, after its
@@ -17,15 +19,19 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { PlatComplaint, PlatComplaintEvent, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import type { AuditPort } from "../../../../ports/audit.ts";
+import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { ComplaintClosed, ComplaintReceived, EVENT } from "../../../../ports/events.ts";
+import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
-import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../settings.ts";
-import { acknowledgeBy, BusinessDayTally, businessDaysBetween, type FirmCalendar } from "./business-days.ts";
+import { lockRequestKey, requestHash } from "../idempotency.ts";
+import { mailIn } from "../messages/send/mail.ts";
+import { readSetting, TIME_ZONE } from "../settings.ts";
+import { BusinessDayTally, businessDaysBetween, readFirmCalendar, type FirmCalendar } from "../calendar/working-days.ts";
+import { acknowledgeBy } from "./business-days.ts";
 
 export const COMPLAINT_KEYS = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const ACK_REMINDER_JOB = "platform.complaint.ack_reminder";
@@ -41,7 +47,7 @@ export type ComplaintDeps = { db: PrismaClient; audit: AuditPort<Tx>; jobs: JobP
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, detail, code: code.toUpperCase().replace(/-/g, "_"), ...extra }, status as HttpStatus);
 };
-const notFound = (): never => problem(404, "not-found", "Not found", "No such complaint.");
+export const notFound = (): never => problem(404, "not-found", "Not found", "No such complaint.");
 /** Field errors, one message per field (the screen shows each at its field). */
 const fieldErrors = (fields: Record<string, string>): never => problem(422, "complaint-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
 const closedRefused = (): never => problem(409, "complaint-closed", "This complaint is closed", "A closed complaint is not changed: add a note instead.");
@@ -77,7 +83,7 @@ export function isInstant(s: string): boolean {
 const instant = z.string({ error: "a date and time is needed" }).refine(isInstant, "a real date and time from 2000 on, e.g. 2026-11-16T14:00:00Z").transform((s) => new Date(s));
 /** The same uuid rule as the shared event shapes (ports/events.ts, zod's uuid): an id that passes here never fails there. */
 const UUID_SHAPE = z.string().uuid();
-const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
+export const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
 const uuid = z.string().refine(isUuid, "an id").transform((s) => s.toLowerCase());
 
 export const SUBJECT_KINDS = ["FRONT_OFFICE_PERSON", "CASE_PARTY", "OTHER_PERSON"] as const;
@@ -104,13 +110,13 @@ export const RecordComplaint = z.object({
 export type RecordComplaint = z.input<typeof RecordComplaint>;
 
 const At = z.object({ at: instant, note: text(4000).optional() }).strict();
-const Step = z.object({ kind: z.enum(["STEP", "NOTE"]), note: text(4000), at: instant.optional() }).strict();
+const Step = z.object({ kind: z.enum(["STEP", "NOTE"], { error: "Choose STEP (a step taken) or NOTE (a note)." }), note: text(4000), at: instant.optional() }).strict();
 const Handler = z.object({ handlerStaffId: uuid, note: text(4000).optional() }).strict();
 const Close = z.object({ outcome: z.enum(OUTCOMES, { error: "choose the outcome" }), at: instant, note: text(4000) }).strict();
 export const LIST_VIEWS = ["open", "overdue", "closed", "all"] as const;
 export type ListView = (typeof LIST_VIEWS)[number];
 
-function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
+export function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const r = schema.safeParse(input ?? {});
   if (r.success) return r.data;
   const fields: Record<string, string> = {};
@@ -125,7 +131,7 @@ function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
  *  closed. `people`: the display name of every staff id in the answer (handler, recorder, event actors, a handler
  *  change's from and to; staff of any status; names only), keyed by the bare id (an actor "staff:<id>" is <id>).
  *  `firmTimeZone`: the firm's zone setting. */
-export type ComplaintView = Omit<PlatComplaint, "firmId"> & { overdue: boolean; businessDaysLeft: number | null; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
+export type ComplaintView = Omit<PlatComplaint, "firmId" | "requestKey" | "requestHash"> & { overdue: boolean; businessDaysLeft: number | null; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
 export type People = Record<string, string>;
 export type ComplaintPage = { items: ComplaintView[]; next: string | null; people: People; firmTimeZone: string };
 export type ComplaintDetail = ComplaintView & { people: People; firmTimeZone: string };
@@ -138,8 +144,14 @@ function daysLeft(c: PlatComplaint, now: Date, d: Days): number | null {
   if (isOverdue(c, now)) return -Math.max(1, businessDaysBetween(d.cal, c.acknowledgeBy, now, d.tally));
   return businessDaysBetween(d.cal, now, c.acknowledgeBy, d.tally);
 }
+/** R1.8 (QA-594, P-687): a complaint's values as its audit line's before and after, in full (the complainant's name and
+ *  contact included; the firm's log shows them to holders of the audit permission). */
+const valuesOf = (c: PlatComplaint): AuditValues => ({ subjectKind: c.subjectKind, subjectId: c.subjectId, complainantName: c.complainantName, complainantContact: c.complainantContact,
+  receivedAt: c.receivedAt.toISOString(), channel: c.channel, category: c.category, summary: c.summary.slice(0, 4000), handlerStaffId: c.handlerStaffId, acknowledgeBy: c.acknowledgeBy.toISOString(),
+  acknowledgedAt: c.acknowledgedAt?.toISOString() ?? null, responseSentAt: c.responseSentAt?.toISOString() ?? null, status: c.status, outcome: c.outcome, closedAt: c.closedAt?.toISOString() ?? null });
+
 const view = (c: PlatComplaint, now: Date, d: Days, events?: PlatComplaintEvent[]): ComplaintView => {
-  const { firmId: _f, ...rest } = c;
+  const { firmId: _f, requestKey: _k, requestHash: _h, ...rest } = c;   // PF-21i: the request key stays inside
   return { ...rest, overdue: isOverdue(c, now), businessDaysLeft: daysLeft(c, now, d), ...(events ? { events: events.map(({ firmId: _ef, seq: _s, ...e }) => e) } : {}) };
 };
 /** The staff ids an answer names: the handler, the recorder and each staff actor ("staff:<id>"), and a handler
@@ -170,6 +182,14 @@ function readCursor(s: unknown): { at: Date; id: string } {
 const outbox = (tx: Tx, c: PlatComplaint, e: ComplaintReceived | ComplaintClosed) =>
   tx.moduleEvent.create({ data: { firmId: c.firmId, type: e.type, subjectId: c.id, payload: e } });
 
+/** PF-21i: set (not sent: a symbol is no JSON key) on record's answer when it repeats an earlier request with the same
+ *  Idempotency-Key and body, so the route answers 200 instead of 201. */
+export const REPEATED = Symbol("complaint.repeated");
+export const KEY_LOCK = "plat-complaint-key";
+/** PF-21j: the field error for a handler who may not record complaints. */
+export const HANDLER_NEEDS_KEY = "This person cannot handle complaints. Choose someone who may record them.";
+const keyReused = (): never => problem(422, "idempotency-key-reused", "Request key already used", "This request key was already used for a different complaint.");
+
 /** Work to run after the transaction commits (job and mail calls). */
 type After = (() => Promise<unknown>)[];
 
@@ -181,8 +201,8 @@ export class ComplaintsService {
   private handles = (ctx: StaffContext, c: PlatComplaint) => c.handlerStaffId === ctx.staffId.toLowerCase();
   /** Read: the read key, or the handler. */
   private canRead = (ctx: StaffContext, c: PlatComplaint) => this.has(ctx, COMPLAINT_KEYS.read) || this.handles(ctx, c);
-  /** Act: the handler, or someone who holds both keys. */
-  private canAct = (ctx: StaffContext, c: PlatComplaint) => this.handles(ctx, c) || (this.has(ctx, COMPLAINT_KEYS.read) && this.has(ctx, COMPLAINT_KEYS.record));
+  /** Act (PF-21j): the record key, and either being the handler or the read key too. */
+  private canAct = (ctx: StaffContext, c: PlatComplaint) => this.has(ctx, COMPLAINT_KEYS.record) && (this.handles(ctx, c) || this.has(ctx, COMPLAINT_KEYS.read));
   private actor = (ctx: StaffContext) => `staff:${ctx.staffId.toLowerCase()}`;
 
   /** The names behind the staff ids of rows the reader may already see: one read, the firm's staff of any status. */
@@ -194,17 +214,24 @@ export class ComplaintsService {
   }
   private async days(db: Tx | PrismaClient, firmId: string): Promise<Days> { const cal = await this.calendar(db, firmId); return { cal, tally: new BusinessDayTally(cal) }; }
 
-  private async calendar(db: Tx | PrismaClient, firmId: string): Promise<FirmCalendar> {
-    return {
-      zone: await readSetting<string>(db, firmId, TIME_ZONE.key),
-      hours: await readSetting<FirmCalendar["hours"]>(db, firmId, BUSINESS_HOURS.key),
-      closedDays: await readSetting<string[]>(db, firmId, CLOSED_DAYS.key),
-    };
-  }
+  private calendar(db: Tx | PrismaClient, firmId: string): Promise<FirmCalendar> { return readFirmCalendar(db, firmId); }
 
   /** The handler must be an active staff member of the firm (the foreign key proves the firm; this the state). */
   private async activeStaff(tx: Tx, firmId: string, staffId: string): Promise<boolean> {
     return !!(await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: staffId, status: "ACTIVE" as const }), select: { id: true } }));
+  }
+
+  /** PF-21j: the firm's active staff whose current roles (grants not ended) grant the record key: who can handle one. */
+  private async mayHandle(db: Tx | PrismaClient, firmId: string, extra: Prisma.PlatformStaffWhereInput = {}): Promise<Prisma.PlatformStaffWhereInput> {
+    const roles = (await db.platformRolePermission.findMany({ where: { permissionKey: COMPLAINT_KEYS.record }, select: { role: true } })).map((r) => r.role);
+    return firmScope(firmId, { ...extra, status: "ACTIVE" as const, grants: { some: { endedAt: null, role: { in: roles } } } });
+  }
+
+  /** The handler being set: an active staff member of the firm (422 at the field otherwise, as before), who may record
+   *  complaints (PF-21j: 422 with its own sentence otherwise). */
+  private async checkHandler(tx: Tx, firmId: string, staffId: string) {
+    if (!(await this.activeStaff(tx, firmId, staffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
+    if (!(await tx.platformStaff.findFirst({ where: await this.mayHandle(tx, firmId, { id: staffId }), select: { id: true } }))) fieldErrors({ handlerStaffId: HANDLER_NEEDS_KEY });
   }
 
   /** Locks one complaint of the firm for the rest of the transaction, or the 404 (another firm's, none, or not an id). */
@@ -232,28 +259,47 @@ export class ComplaintsService {
   /** Records a complaint (key agent/complaint:record): the row, its RECEIVED event, one audit line, the outbox event;
    *  after the commit, the reminder job (keyed by the complaint, so it never queues twice). The complaint is recorded
    *  once committed: a job queue that fails afterwards is answered with `reminderScheduled: false` (never a 500 that
-   *  would make the person record it twice); the overdue list still shows the complaint when its date passes. */
-  async record(ctx: StaffContext, input: unknown): Promise<ComplaintView> {
+   *  would make the person record it twice); the overdue list still shows the complaint when its date passes.
+   *  PF-21i: with `key` (the route's Idempotency-Key, required at the door), the key is locked for the transaction and
+   *  looked up in the firm: found with the same body (canonical SHA-256) and the same recorder → that complaint as it
+   *  was recorded (open, not acknowledged, the first handler: never its later state), marked REPEATED, and nothing is written (no event, audit line, outbox row or reminder job); found with another body,
+   *  or recorded by someone else → 422 IDEMPOTENCY_KEY_REUSED; not found → recorded as before, keeping the key and hash.
+   *  Without `key` (in-process callers only, e.g. PF-21's suite) it records as before. */
+  async record(ctx: StaffContext, input: unknown, key?: string): Promise<ComplaintView & { reminderScheduled?: boolean; [REPEATED]?: true }> {
     if (!this.has(ctx, COMPLAINT_KEYS.record)) problem(403, "not-allowed", "Not allowed", "Recording a complaint needs the permission to record complaints.");
     const v = parse(RecordComplaint, input);
     this.notFuture({ receivedAt: v.receivedAt });
     const firmId = firmScope(ctx.firmId).firmId, now = this.d.clock.now();
     let reminderScheduled = true;
+    const hash = key === undefined ? null : requestHash(input);
+    let repeated = false;
     const recorded = await this.commit(async (tx, after) => {
-      if (!(await this.activeStaff(tx, firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
+      if (key !== undefined) {
+        await lockRequestKey(tx, KEY_LOCK, firmId, key);
+        const first = await tx.platComplaint.findFirst({ where: firmScope(firmId, { requestKey: key }) });
+        if (first) {
+          if (first.requestHash !== hash || first.recordedBy !== this.actor(ctx)) keyReused();
+          repeated = true;
+          // The answer to the first request, never the complaint's later state (review M1): a recorder who may not read
+          // it learns nothing of an acknowledgement, response, close or handler change made since.
+          const asRecorded: PlatComplaint = { ...first, handlerStaffId: v.handlerStaffId, acknowledgedAt: null, responseSentAt: null, status: "OPEN", outcome: null, closedAt: null, updatedAt: first.createdAt };
+          return view(asRecorded, now, await this.days(tx, firmId));
+        }
+      }
+      await this.checkHandler(tx, firmId, v.handlerStaffId);
       const days = await this.days(tx, firmId), due = acknowledgeBy(v.receivedAt, days.cal);
       const c = await tx.platComplaint.create({ data: {
         firmId, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, complainantName: v.complainantName ?? null, complainantContact: v.complainantContact ?? null,
         receivedAt: v.receivedAt, channel: v.channel, category: v.category, summary: v.summary, handlerStaffId: v.handlerStaffId,
-        acknowledgeBy: due, recordedBy: this.actor(ctx),
+        acknowledgeBy: due, recordedBy: this.actor(ctx), requestKey: key ?? null, requestHash: hash,
       } });
       await tx.platComplaintEvent.create({ data: { firmId, complaintId: c.id, kind: "RECEIVED", at: v.receivedAt, actor: this.actor(ctx), detail: { channel: v.channel, category: v.category, handlerStaffId: v.handlerStaffId } } });
-      await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "complaint.record", entity: "plat_complaint", entityKey: c.id, summary: `Complaint recorded (${v.category.toLowerCase()}, by ${v.subjectKind.toLowerCase().replace(/_/g, " ")}); acknowledge by ${due.toISOString()}`, detail: { complaintId: c.id, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, handlerStaffId: v.handlerStaffId } });
+      await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "complaint.record", entity: "plat_complaint", entityKey: c.id, summary: `Complaint recorded (${v.category.toLowerCase()}, by ${v.subjectKind.toLowerCase().replace(/_/g, " ")}); acknowledge by ${due.toISOString()}`, detail: { complaintId: c.id, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, handlerStaffId: v.handlerStaffId }, before: null, after: valuesOf(c) });
       await outbox(tx, c, ComplaintReceived.parse({ type: EVENT.COMPLAINT_RECEIVED, firmId, complaintId: c.id, subjectKind: c.subjectKind, subjectId: c.subjectId, receivedAt: c.receivedAt.toISOString() }));
       after.push(() => this.d.jobs.schedule(ACK_REMINDER_JOB, due, { firmId, complaintId: c.id }, { key: ackReminderKey(c.id), firmId }).then(() => undefined, () => { reminderScheduled = false; }));
       return view(c, now, days);
     });
-    return { ...recorded, reminderScheduled };
+    return repeated ? { ...recorded, [REPEATED]: true as const } : { ...recorded, reminderScheduled };
   }
 
   /** One complaint with its events in order, for a person who may read it; otherwise the same 404 as another firm's. */
@@ -292,26 +338,30 @@ export class ComplaintsService {
     };
   }
 
-  /** PF-21v: who can be made handler (key agent/complaint:record): the firm's active staff, by name then id; the id and
-   *  the name only. */
+  /** PF-21v: who can be made handler (key agent/complaint:record): the firm's active staff who may record complaints
+   *  (PF-21j), by name then id; the id and the name only. */
   async handlers(ctx: StaffContext): Promise<HandlerChoices> {
     if (!this.has(ctx, COMPLAINT_KEYS.record)) problem(403, "not-allowed", "Not allowed", "Choosing a handler needs the permission to record complaints.");
-    const items = await this.d.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { status: "ACTIVE" as const }), select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
+    const items = await this.d.db.platformStaff.findMany({ where: await this.mayHandle(this.d.db, ctx.firmId), select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
     return { items };
   }
 
   /** One change to a complaint by a person who may act on it: lock, check, event, row, audit — one transaction; its
    *  after-commit work (a job cancel) only once it committed. */
-  private change(ctx: StaffContext, id: string, act: (tx: Tx, c: PlatComplaint, after: After) => Promise<{ action: string; summary: string; detail?: Record<string, string | number | boolean | null>; event?: ComplaintReceived | ComplaintClosed }>): Promise<ComplaintView> {
+  private change(ctx: StaffContext, id: string, act: (tx: Tx, c: PlatComplaint, after: After) => Promise<{ action: string; summary: string; detail?: Record<string, string | number | boolean | null>; event?: ComplaintReceived | ComplaintClosed; added?: AuditValues }>): Promise<ComplaintView> {
     const firmId = firmScope(ctx.firmId).firmId;
     return this.commit(async (tx, after) => {
       const c = await this.lock(tx, firmId, id);
       if (!this.canRead(ctx, c)) return notFound();
-      if (!this.canAct(ctx, c)) problem(403, "not-allowed", "Not allowed", "Changing a complaint needs the permissions to read and record complaints, or being its handler.");
+      if (!this.canAct(ctx, c)) problem(403, "not-allowed", "Not allowed", "Changing a complaint needs the permission to record complaints, as its handler or with the permission to read every complaint.");
       const r = await act(tx, c, after);
-      await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: r.action, entity: "plat_complaint", entityKey: c.id, summary: r.summary, detail: { complaintId: c.id, ...(r.detail ?? {}) } });
+      const fresh = (await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: c.id }) }))!;
+      // R1.8 (QA-594): the complaint's values before and after (only what changed is kept); a step or note adds an event row
+      // and changes no field, so its line's after is that row (added).
+      await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: r.action, entity: "plat_complaint", entityKey: c.id, summary: r.summary, detail: { complaintId: c.id, ...(r.detail ?? {}) },
+        before: r.added ? null : valuesOf(c), after: r.added ?? valuesOf(fresh) });
       if (r.event) await outbox(tx, c, r.event);
-      return view((await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: c.id }) }))!, this.d.clock.now(), await this.days(tx, firmId));
+      return view(fresh, this.d.clock.now(), await this.days(tx, firmId));
     });
   }
 
@@ -346,7 +396,7 @@ export class ComplaintsService {
       const at = v.at ?? this.d.clock.now();
       if (at < c.receivedAt) fieldErrors({ at: "a step comes after the complaint was received" });
       await this.event(tx, ctx, c, v.kind, at, v.note);
-      return { action: v.kind === "NOTE" ? "complaint.note" : "complaint.step", summary: v.kind === "NOTE" ? "Note added to a complaint" : "Handling step added to a complaint" };
+      return { action: v.kind === "NOTE" ? "complaint.note" : "complaint.step", summary: v.kind === "NOTE" ? "Note added to a complaint" : "Handling step added to a complaint", added: { kind: v.kind, at: at.toISOString(), note: v.note?.slice(0, 4000) ?? null } };
     });
   }
 
@@ -364,17 +414,17 @@ export class ComplaintsService {
     });
   }
 
-  /** A new handler (both keys): an active staff member of the firm. */
+  /** A new handler (both keys): an active staff member of the firm who may record complaints (PF-21j). */
   changeHandler(ctx: StaffContext, id: string, input: unknown) {
     const v = parse(Handler, input);
     return this.change(ctx, id, async (tx, c) => {
       if (!this.has(ctx, COMPLAINT_KEYS.record) || !this.has(ctx, COMPLAINT_KEYS.read)) problem(403, "not-allowed", "Not allowed", "Changing the handler needs the permissions to read and record complaints.");
       if (c.status === "CLOSED") closedRefused();
       if (v.handlerStaffId === c.handlerStaffId) fieldErrors({ handlerStaffId: "this person already handles it" });
-      if (!(await this.activeStaff(tx, c.firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
+      await this.checkHandler(tx, c.firmId, v.handlerStaffId);
       await this.event(tx, ctx, c, "HANDLER_CHANGED", this.d.clock.now(), v.note, { from: c.handlerStaffId, to: v.handlerStaffId });
       await tx.platComplaint.update({ where: this.where(c), data: { handlerStaffId: v.handlerStaffId } });
-      return { action: "complaint.handler", summary: "Complaint handler changed", detail: { from: c.handlerStaffId, to: v.handlerStaffId } };
+      return { action: "complaint.handler", summary: "Complaint handler changed" };   // R1.8: the handler before and after are on the line
     });
   }
 
@@ -405,34 +455,56 @@ export class ComplaintsService {
    *  them is active either (never a reminder to nobody). The mail names no complainant and no summary (the handler
    *  opens the record) and gives the date in the firm's zone. It is sent inside the run's transaction, after the
    *  REMINDER_SENT event and its audit line: a failed send rolls them back and the job runs again (at least once,
-   *  never recorded as sent when it was not; a commit that fails after a send can repeat the mail). */
+   *  never recorded as sent when it was not). PF-19r: through MessagePort (MessagesMail), each email is written into
+   *  the outbox in the same transaction and sent after the commit, so a rolled-back run sends nothing. A SERVICE email
+   *  names its person: the handler or each Owner and Admin (STAFF); a tier nobody in can be reached falls to the next. The firm's contact address is the firm's, not a
+   *  person's: that last-resort reminder goes as TRANSACTIONAL (a duty the firm cannot opt out of; question to the tech
+   *  lead on the PF-19r PR). */
   async runAckReminder(payload: unknown): Promise<"sent" | "skipped"> {
     const p = z.object({ firmId: uuid, complaintId: uuid }).safeParse(payload);
     if (!p.success) return "skipped";
     const { firmId, complaintId } = p.data;
-    return this.commit(async (tx) => {
+    return this.commit(async (tx, after) => {
       await tx.$queryRaw`SELECT id FROM "plat_complaint" WHERE firm_id = ${firmId}::uuid AND id = ${complaintId}::uuid FOR UPDATE`;
       const c = await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: complaintId }) });
       if (!c || c.status === "CLOSED" || c.acknowledgedAt) return "skipped" as const;
       if (await tx.platComplaintEvent.findFirst({ where: firmScope(firmId, { complaintId, kind: "REMINDER_SENT" as const }), select: { id: true } })) return "skipped" as const;
-      const handler = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: c.handlerStaffId, status: "ACTIVE" as const }), select: { email: true } });
-      const admins = handler ? [] : (await tx.platformStaff.findMany({
-        where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { role: { in: ["OWNER", "ADMIN"] as ("OWNER" | "ADMIN")[] }, endedAt: null } } }), select: { email: true }, orderBy: { email: "asc" },
-      })).map((s) => s.email);
+      // PF-21j (break M2): the handler is reminded only while they may still act on it (active, with the record key);
+      // one who lost the key could not acknowledge, so the reminder goes to the Owners and Admins instead.
+      const handler = await tx.platformStaff.findFirst({ where: await this.mayHandle(tx, firmId, { id: c.handlerStaffId }), select: { id: true, email: true } });
+      const admins = await tx.platformStaff.findMany({
+        where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { role: { in: ["OWNER", "ADMIN"] as ("OWNER" | "ADMIN")[] }, endedAt: null } } }), select: { id: true, email: true }, orderBy: { email: "asc" },
+      });
       const firm = await tx.platformFirm.findFirstOrThrow({ where: { id: firmScope(firmId).firmId }, select: { contactEmail: true } });
-      const sentTo: "handler" | "owners_admins" | "firm_contact" = handler ? "handler" : admins.length ? "owners_admins" : "firm_contact";
-      const to = handler ? [handler.email] : admins.length ? admins : [firm.contactEmail];
       const zone = await readSetting<string>(tx, firmId, TIME_ZONE.key);
       const due = new Intl.DateTimeFormat("en-CA", { timeZone: zone, dateStyle: "long", timeStyle: "short" }).format(c.acknowledgeBy);
       const now = this.d.clock.now();
-      await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, sentTo, recipients: to.length } } });
+      type Tier = { sentTo: "handler" | "owners_admins" | "firm_contact"; to: { address: string; staffId: string | null }[]; text: string };
+      const reach = handler ? "cannot be reached by email" : "is no longer active or can no longer handle complaints";
+      const tiers: Tier[] = [
+        ...(handler ? [{ sentTo: "handler" as const, to: [{ address: handler.email, staffId: handler.id }], text: `A complaint you handle was due to be acknowledged by ${due} (${zone}). Open it in Complaints (reference ${complaintId}) and record the acknowledgement.` }] : []),
+        { sentTo: "owners_admins", to: admins.filter((a) => a.id !== handler?.id).map((a) => ({ address: a.email, staffId: a.id })), text: `A complaint was due to be acknowledged by ${due} (${zone}), and its handler ${reach}. Open it in Complaints (reference ${complaintId}), choose a new handler if needed and record the acknowledgement.` },
+        { sentTo: "firm_contact", to: [{ address: firm.contactEmail, staffId: null }], text: `A complaint was due to be acknowledged by ${due} (${zone}), and neither its handler nor an Owner or Admin can be reached. Open it in Complaints (reference ${complaintId}), choose a new handler and record the acknowledgement.` },
+      ];
+      // Tier by tier (PF-19r, break m3): the handler, else each active Owner and Admin, else the firm's contact address.
+      // An address the firm's suppression list holds is skipped; for these emails (SERVICE and TRANSACTIONAL email) that
+      // is the only thing the consent gate refuses (ports/consent.ts decide). The first tier that reaches anyone is
+      // recorded; then the event and its audit line, then the emails, in that order, so a run that rolls back sends nothing
+      // (and a refused send, e.g. an address suppressed meanwhile, rolls the run back and the job tries again).
+      const all = tiers.flatMap((t) => t.to.map((r) => r.address.toLowerCase()));
+      const suppressed = new Set((await tx.msgSuppression.findMany({ where: firmScope(firmId, { channel: "EMAIL" as const, address: { in: all } }), select: { address: true } })).map((x) => x.address));
+      const used = tiers.map((t) => ({ ...t, to: t.to.filter((r) => !suppressed.has(r.address.toLowerCase())) })).find((t) => t.to.length);
+      if (!used) throw new MessageRefused("not sent: no handler, Owner, Admin or firm contact address takes email (each is suppressed)");
+      const recipients = used.to.length, sentTo = used.sentTo;
+      await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, sentTo, recipients } } });
       await this.d.audit.record(tx, { firmId, actor: SYSTEM_ACTOR, action: "complaint.reminder", entity: "plat_complaint", entityKey: complaintId,
-        summary: sentTo === "handler" ? "Acknowledgement reminder sent to the handler" : sentTo === "owners_admins" ? "Acknowledgement reminder sent to the firm's Owners and Admins (the handler is not active)" : "Acknowledgement reminder sent to the firm's contact address (no active handler, Owner or Admin)",
-        detail: { complaintId, handlerStaffId: c.handlerStaffId, sentTo, recipients: to.length } });
-      const text = handler
-        ? `A complaint you handle was due to be acknowledged by ${due} (${zone}). Open it in Complaints (reference ${complaintId}) and record the acknowledgement.`
-        : `A complaint was due to be acknowledged by ${due} (${zone}), and its handler is no longer active. Open it in Complaints (reference ${complaintId}), choose a new handler and record the acknowledgement.`;
-      for (const address of to) await this.d.mail.send({ firmId, to: address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text, class: "SERVICE", templateKey: "platform.complaint.ack_reminder" });
+        summary: sentTo === "handler" ? "Acknowledgement reminder sent to the handler" : sentTo === "owners_admins" ? `Acknowledgement reminder sent to the firm's Owners and Admins (the handler ${reach})` : "Acknowledgement reminder sent to the firm's contact address (no handler, Owner or Admin could be reached)",
+        detail: { complaintId, handlerStaffId: c.handlerStaffId, sentTo, recipients }, before: null, after: { sentTo, recipients, at: now.toISOString() } });
+      for (const r of used.to) after.push((await mailIn(this.d.mail, tx, {
+        firmId, to: r.address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text: used.text, templateKey: "platform.complaint.ack_reminder",
+        ...(r.staffId ? { class: "SERVICE" as const, person: { kind: "STAFF" as const, id: r.staffId } } : { class: "TRANSACTIONAL" as const }),
+        idempotencyKey: `complaint.ack_reminder:${complaintId}:${r.staffId ?? "firm-contact"}`,
+      })).dispatch);
       return "sent" as const;
     });
   }

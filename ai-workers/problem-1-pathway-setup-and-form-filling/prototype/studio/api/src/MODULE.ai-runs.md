@@ -22,6 +22,7 @@ AI steps, their runs and costs, the one form intake and the one review queue. Re
 
 **Tables.** draftingJob, aiBatch, formEdition, sourceAttachment, proposalItem, canonicalField, govFormDef, combination, intakeItem, libraryChange, officialDownload, approvedSource.
 **Tests.** `tests/check_ai_drafting.ts`, `tests/check_ai_live_switch.ts`, `tests/check_ai_orchestration.ts`, `tests/check_c91_impact_ai.ts`, `tests/check_c117_intake_edition.ts`, `tests/check_cost_override.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.ai-runs.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Call a model with the live switch off, or in tests and CI (live AI off).

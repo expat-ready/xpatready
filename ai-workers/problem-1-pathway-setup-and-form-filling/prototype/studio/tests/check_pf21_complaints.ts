@@ -112,7 +112,8 @@ try {
   const R = staffOf("user-R"), T = staffOf("user-T"), O = staffOf("user-O"), S = staffOf("user-S");
   const BOTH = [COMPLAINT_KEYS.record, COMPLAINT_KEYS.read];
   const owner: StaffContext = fakeStaff({ staffId: R, firmId: firmA, firmKey: "sample-firm", roles: ["OWNER"], keys: BOTH });
-  const handlerT: StaffContext = fakeStaff({ staffId: T, firmId: firmA, firmKey: "sample-firm", roles: ["CASE_MANAGER"], keys: [] });
+  // PF-21j: a handler acts only while holding agent/complaint:record (a Case Manager's, not the read key).
+  const handlerT: StaffContext = fakeStaff({ staffId: T, firmId: firmA, firmKey: "sample-firm", roles: ["CASE_MANAGER"], keys: [COMPLAINT_KEYS.record] });
   const officerO: StaffContext = fakeStaff({ staffId: O, firmId: firmA, firmKey: "sample-firm", roles: ["CASE_OFFICER"], keys: [] });
   const readerOnly: StaffContext = fakeStaff({ staffId: O, firmId: firmA, firmKey: "sample-firm", roles: ["ADMIN"], keys: [COMPLAINT_KEYS.read] });
   const ownerB: StaffContext = fakeStaff({ staffId: S, firmId: firmB, firmKey: "sample-solo", roles: ["OWNER"], keys: BOTH });
@@ -142,7 +143,7 @@ try {
   const extra = await answer(() => svc.record(owner, { ...base, firmId: firmB }));
   ok("PF-21 fail: a handler from firm B → 422 at handlerStaffId; an unknown field (a firm id) → 422; nothing written",
     handlerB !== "ok" && !!handlerB.fields?.handlerStaffId && extra !== "ok" && extra.status === 422 && count("plat_complaint") === "0", { handlerB, extra });
-  const noKey = await answer(() => svc.record(handlerT, base));
+  const noKey = await answer(() => svc.record(officerO, base));   // PF-21j: the handler now holds the record key; the Case Officer does not
   ok("PF-21 fail: recording without agent/complaint:record → 403", noKey !== "ok" && noKey.status === 403, noKey);
 
   const c1 = await svc.record(owner, base);
@@ -200,17 +201,24 @@ try {
   ok("PF-21 fail (line 4): a case officer who is not the handler cannot read it (404, the same as another firm's) nor see it in the list",
     asOfficer !== "ok" && asOfficer.status === 404 && (await svc.list(officerO, "all")).items.length === 0, asOfficer);
   const asHandler = await svc.get(handlerT, c1.id);
-  ok("PF-21 pass (line 4): the handler (no complaint keys) reads it with its events; the list shows the handler's own; Owner reads every one",
+  ok("PF-21 pass (line 4): the handler (record key, no read key) reads it with its events; the list shows the handler's own; Owner reads every one",
     asHandler.id === c1.id && (asHandler.events?.length ?? 0) >= 5 && (await svc.list(handlerT, "all")).items.length === 2 && (await svc.list(owner, "all")).items.length === 2 && (await svc.get(owner, c2.id)).id === c2.id);
   const readerAct = await answer(() => svc.addStep(readerOnly, c2.id, { kind: "NOTE", note: "x" }));
   ok("PF-21 pass/fail: the read key alone reads every complaint but changes none (403)", (await svc.get(readerOnly, c2.id)).id === c2.id && readerAct !== "ok" && readerAct.status === 403, readerAct);
   const officerAct = await answer(() => svc.close(officerO, c2.id, { outcome: "RESOLVED", at: clock.now().toISOString(), note: "x" }));
   ok("PF-21 fail: a staff member who may not read it cannot change it either (404)", officerAct !== "ok" && officerAct.status === 404, officerAct);
   const handOver = await answer(() => svc.changeHandler(handlerT, c2.id, { handlerStaffId: R }));
-  ok("PF-21 fail: the handler without the keys cannot pass the complaint on (403)", handOver !== "ok" && handOver.status === 403, handOver);
-  const moved = await svc.changeHandler(owner, c2.id, { handlerStaffId: O });
+  ok("PF-21 fail: the handler without the read key cannot pass the complaint on (403)", handOver !== "ok" && handOver.status === 403, handOver);
+  // PF-21j: the new handler must be someone who may record complaints: a Case Officer (O) is refused, a second Case
+  // Manager (M, made here) is taken.
+  const toOfficer = await answer(() => svc.changeHandler(owner, c2.id, { handlerStaffId: O }));
+  ok("PF-21j fail: Owner cannot make a Case Officer (no agent/complaint:record) the handler (422 at handlerStaffId)", toOfficer !== "ok" && toOfficer.status === 422 && !!toOfficer.fields?.handlerStaffId, toOfficer);
+  const M = sql(DEMO, `insert into platform_staff (id, firm_id, email, display_name, updated_at) values (gen_random_uuid(), '${firmA}', 'manager-m@sample-firm.example.com', 'Manager M', now()) returning id`);
+  sql(DEMO, `insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${firmA}', '${M}', 'CASE_MANAGER', 'seed:pf21')`);
+  const managerM: StaffContext = fakeStaff({ staffId: M, firmId: firmA, firmKey: "sample-firm", roles: ["CASE_MANAGER"], keys: [COMPLAINT_KEYS.record] });
+  const moved = await svc.changeHandler(owner, c2.id, { handlerStaffId: M });
   ok("PF-21 pass: Owner changes the handler; the new handler reads it and the old one no longer does",
-    moved.handlerStaffId === O && (await svc.get(officerO, c2.id)).id === c2.id && (await answer(() => svc.get(handlerT, c2.id))) !== "ok");
+    moved.handlerStaffId === M && (await svc.get(managerM, c2.id)).id === c2.id && (await answer(() => svc.get(handlerT, c2.id))) !== "ok");
 
   // --------------------------------------------------------------------------- firm walls (contracts §0.2)
   const crossGet = await answer(() => svc.get(ownerB, c2.id)), crossClose = await answer(() => svc.close(ownerB, c2.id, { outcome: "RESOLVED", at: clock.now().toISOString(), note: "x" }));
@@ -244,7 +252,7 @@ try {
   ok("PF-21 fail (database): a staff member who handles a complaint (and nothing else) cannot be deleted or change id (RESTRICT: 23001)",
     refusedCode(DEMO, `delete from platform_staff where id='${handlerOnly}'`, "23001", /plat_complaint_firm_id_handler_staff_id_fkey/) && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id='${handlerOnly}'`, "23001", /plat_complaint_firm_id_handler_staff_id_fkey/));
   ok("PF-21 pass: the three foreign keys of the register are RESTRICT on delete and on update",
-    sql(DEMO, `select string_agg(conname || ':' || confdeltype::text || confupdtype::text, ',' order by conname) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'plat\\_%'`)
+    sql(DEMO, `select string_agg(conname || ':' || confdeltype::text || confupdtype::text, ',' order by conname) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'plat\\_complaint%'`)
       === "plat_complaint_event_firm_id_complaint_id_fkey:rr,plat_complaint_firm_id_fkey:rr,plat_complaint_firm_id_handler_staff_id_fkey:rr");
 
   // -------------------------------------------------------------------- line 6: every change through AuditPort
@@ -252,8 +260,11 @@ try {
   ok("PF-21 pass (line 6): every change wrote one AuditPort line (record ×3, acknowledge, step, response, close, note, handler, reminder), each on plat_complaint with the complaint's id",
     ["complaint.record", "complaint.acknowledge", "complaint.step", "complaint.response", "complaint.close", "complaint.note", "complaint.handler", "complaint.reminder"].every((a) => actions.includes(a))
     && actions.filter((a) => a === "complaint.record").length === 3 && audit.entries.every((e) => e.entity === "plat_complaint" && e.entityKey === e.detail.complaintId), actions);
-  ok("PF-21 pass: no audit line carries the complaint's words or a person's name (ids only in detail; summaries are fixed phrases)",
-    audit.entries.every((e) => !/study permit|sponsor disputes|Client A|Called the client/.test(JSON.stringify(e))));
+  // R1.8 (QA-594, P-687): the complaint's values are on its lines' before and after in full (AG-13-43); never in the summary
+  // or the ids-only detail.
+  ok("PF-21 pass: no audit line's summary or detail carries the complaint's words or a person's name (ids only in detail; summaries are fixed phrases); before and after carry them (P-687)",
+    audit.entries.every((e) => !/study permit|sponsor disputes|Client A|Called the client/.test(JSON.stringify({ ...e, before: undefined, after: undefined })))
+    && audit.entries.some((e) => /study permit|sponsor disputes|Client A|Called the client/.test(JSON.stringify([e.before, e.after]))));
   ok("PF-21 fail: refused calls wrote no audit line (exactly the changes above)", audit.entries.length === actions.length && actions.length === 10, actions);
   const failing = fakeAudit({ failOn: (e) => e.action === "complaint.record" || e.action === "complaint.close" });
   const svc2 = new ComplaintsService({ db, audit: failing, jobs, clock, mail });
@@ -363,14 +374,18 @@ try {
   const named = await svc3.record(owner, { ...base, subjectKind: "OTHER_PERSON", subjectId: undefined, complainantName: NAME, complainantContact: CONTACT, receivedAt: at3(-1), summary: `Says we ${WORDS}.` });
   ok("PF-21 pass: the named person's name and contact are on the record itself", named.complainantName === NAME && named.complainantContact === CONTACT);
   await clock3.advance(5 * DAY);
-  const leak = JSON.stringify([...audit3.entries, ...mail3.sent, ...jobs3.jobs]);
-  ok("PF-21 fail (no leak): the reminder for it went out, and no audit line, job payload or mail carries the name, the contact or the summary's words",
-    mail3.sent.some((m) => m.text.includes(named.id)) && !leak.includes(NAME) && !leak.includes(CONTACT) && !leak.includes(WORDS), mail3.sent.length);
+  // R1.8 (QA-594, P-687): an audit line's before and after hold the record's values in full; everything else stays clean.
+  const leak = JSON.stringify([...audit3.entries.map((e) => ({ ...e, before: undefined, after: undefined })), ...mail3.sent, ...jobs3.jobs]);
+  const recordLine = audit3.entries.find((e) => e.action === "complaint.record" && e.entityKey === named.id);
+  ok("PF-21 fail (no leak): the reminder for it went out, and no audit summary or detail, job payload or mail carries the name, the contact or the summary's words; the record's line holds them in after (P-687)",
+    mail3.sent.some((m) => m.text.includes(named.id)) && !leak.includes(NAME) && !leak.includes(CONTACT) && !leak.includes(WORDS)
+    && recordLine?.before === null && recordLine?.after?.complainantName === NAME && recordLine?.after?.complainantContact === CONTACT, mail3.sent.length);
   ok("PF-21 pass (break m10): the reminder gives the date in the firm's zone (America/Toronto) and a Reply-To of the firm's contact address",
     mail3.sent.filter((m) => m.text.includes(named.id)).every((m) => m.text.includes("America/Toronto") && m.replyTo === sql(DEMO, `select contact_email from platform_firm where id = '${firmA}'`)));
 
   // A deactivated handler (break m10): the reminder goes to the firm's active Owners and Admins instead.
   const gone = sql(DEMO, `insert into platform_staff (id, firm_id, email, display_name, updated_at) values (gen_random_uuid(), '${firmA}', 'leaver@sample-firm.example.com', 'Leaver', now()) returning id`);
+  sql(DEMO, `insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${firmA}', '${gone}', 'CASE_MANAGER', 'seed:pf21')`);   // PF-21j: a handler may record complaints
   const orphan = await svc3.record(owner, { ...base, receivedAt: clock3.now().toISOString(), handlerStaffId: gone });
   sql(DEMO, `update platform_staff set status = 'DEACTIVATED', deactivation_reason = 'Left the firm' where id = '${gone}'`);
   const before10 = mail3.sent.length;
@@ -508,6 +523,7 @@ try {
 
   // Review R2-m1, break R2-m8: no active handler, Owner or Admin → the firm's contact address, never "sent" to nobody.
   const solo = sql(DEMO, `insert into platform_staff (id, firm_id, email, display_name, updated_at) values (gen_random_uuid(), '${firmB}', 'temp@sample-solo.example.com', 'Temp', now()) returning id`);
+  sql(DEMO, `insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${firmB}', '${solo}', 'CASE_MANAGER', 'seed:pf21')`);   // PF-21j: a handler may record complaints
   const soloC = await svc4.record(ownerB, { ...base, receivedAt: at4(-100), handlerStaffId: solo });
   sql(DEMO, `update platform_staff set status = 'DEACTIVATED', deactivation_reason = 'Left' where firm_id = '${firmB}'`);
   const m0b = mail4.sent.length, soloRun = await svc4.runAckReminder({ firmId: firmB, complaintId: soloC.id });

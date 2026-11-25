@@ -118,10 +118,10 @@ try {
   const bad = { n81: await T("POST", "", P.OWNER, { name: n81, minutes: 30, modes: ["VIDEO"] }), m4: await T("POST", "", P.OWNER, { name: "X four", minutes: 4, modes: ["VIDEO"] }),
     m481: await T("POST", "", P.OWNER, { name: "X 481", minutes: 481, modes: ["VIDEO"] }), d1001: await T("POST", "", P.OWNER, { name: "X desc", minutes: 30, modes: ["VIDEO"], description: "D".repeat(1001) }),
     colour: await T("POST", "", P.OWNER, { name: "X colour", minutes: 30, modes: ["VIDEO"], colour: "PINK" }) };
-  ok("FO-3a DW1 fail: an 81-character name → 400 on field name with \"Name must be 1 to 80 characters.\"", bad.n81.status === 400 && bad.n81.body.fields?.name === "Name must be 1 to 80 characters." && bad.n81.body.detail === "Name must be 1 to 80 characters.", bad.n81);
-  ok("FO-3a DW1 fail: lengths 4 and 481 → 400 \"Length must be 5 to 480 minutes.\"; a 1,001-character description and a colour outside the eight → 400; nothing saved",
-    bad.m4.status === 400 && bad.m4.body.fields?.minutes === "Length must be 5 to 480 minutes." && bad.m481.status === 400 && bad.m481.body.fields?.minutes === "Length must be 5 to 480 minutes."
-      && bad.d1001.status === 400 && !!bad.d1001.body.fields?.description && bad.colour.status === 400 && !!bad.colour.body.fields?.colour && await typeRows() === before1, bad);
+  ok("FO-3a DW1 fail: an 81-character name → 422 on field name with \"Name must be 1 to 80 characters.\"", bad.n81.status === 422 && bad.n81.body.fields?.name === "Name must be 1 to 80 characters." && bad.n81.body.detail === "Name must be 1 to 80 characters.", bad.n81);
+  ok("FO-3a DW1 fail: lengths 4 and 481 → 422 \"Length must be 5 to 480 minutes.\"; a 1,001-character description and a colour outside the eight → 422; nothing saved",
+    bad.m4.status === 422 && bad.m4.body.fields?.minutes === "Length must be 5 to 480 minutes." && bad.m481.status === 422 && bad.m481.body.fields?.minutes === "Length must be 5 to 480 minutes."
+      && bad.d1001.status === 422 && !!bad.d1001.body.fields?.description && bad.colour.status === 422 && !!bad.colour.body.fields?.colour && await typeRows() === before1, bad);
 
   // ------------------------------------------------------------------------------------------ DW2: slugs (rule 2)
   const free1 = await make(), free2 = await make();
@@ -129,14 +129,14 @@ try {
   ok("FO-3a DW2 pass: \"Free consultation\" gets free-consultation, a second gets free-consultation-2, \"Manage\" gets manage-2", free1.slug === "free-consultation" && free2.slug === "free-consultation-2" && manage.slug === "manage-2", [free1.slug, free2.slug, manage.slug]);
   const usedSlug = await T("PATCH", `/${free2.id}`, P.OWNER, { slug: "free-consultation", version: free2.version });
   const reserved = [await T("PATCH", `/${free2.id}`, P.OWNER, { slug: "manage", version: free2.version }), await T("POST", "", P.OWNER, { name: "Mine", slug: "manage", minutes: 30, modes: ["VIDEO"] })];
-  ok("FO-3a DW2 fail: editing a slug to a used one → 409 \"This web address is already used.\"; the slug manage → 400 \"This web address is reserved.\" (edit and create)",
-    usedSlug.status === 409 && usedSlug.body.fields?.slug === "This web address is already used." && reserved.every((r) => r.status === 400 && r.body.fields?.slug === "This web address is reserved.")
+  ok("FO-3a DW2 fail: editing a slug to a used one → 409 \"This web address is already used.\"; the slug manage → 422 \"This web address is reserved.\" (edit and create)",
+    usedSlug.status === 409 && usedSlug.body.fields?.slug === "This web address is already used." && reserved.every((r) => r.status === 422 && r.body.fields?.slug === "This web address is reserved.")
       && (await db.foConsultationType.findUniqueOrThrow({ where: { id: free2.id } })).slug === "free-consultation-2", [usedSlug, reserved]);
   const delFree1 = await T("DELETE", `/${free1.id}`);
   const reuse = await T("PATCH", `/${free2.id}`, P.OWNER, { slug: "free-consultation", version: free2.version });
   ok("FO-3a DW2 pass: a deleted type's slug can be used again (free-consultation freed by deleting the first)", delFree1.status === 200 && reuse.status === 200 && reuse.body.slug === "free-consultation", [delFree1, reuse]);
   const badShape = await T("PATCH", `/${free2.id}`, P.OWNER, { slug: "Free Consultation", version: reuse.body.version });
-  ok("FO-3a DW2 fail: a slug that is not lower-case words joined by - → 400 on field slug", badShape.status === 400 && !!badShape.body.fields?.slug, badShape);
+  ok("FO-3a DW2 fail: a slug that is not lower-case words joined by - → 422 on field slug", badShape.status === 422 && !!badShape.body.fields?.slug, badShape);
   const pub1 = reuse.body;   // "Free consultation", slug free-consultation, public
 
   // --------------------------------------------------------------------------------------- DW3: duplicate (rule 3)
@@ -159,7 +159,7 @@ try {
   const nowListed = await listedSlugs();
   ok("FO-3a DW4 fail: a switched-off or deleted type cannot be booked by staff (404, the type's not-found) nor by the public door (the one not-found); a switched-off type leaves the public list",
     offR.status === 200 && offR.body.active === false && goneR.status === 200 && goneR.body.futureBookings === 1 && wasListed && !nowListed.includes("switch-me") && !nowListed.includes("delete-me")
-      && afterOff.every((r) => r.status === 404) && afterOff[2].body.detail === "This booking page or link is not available.", { offR, goneR, afterOff, nowListed });
+      && afterOff.every((r) => r.status === 404) && afterOff[2].body.detail === "This page is not available.", { offR, goneR, afterOff, nowListed });
   const offShow = await staff("GET", `/${offBooking.body.id}`), goneShow = await staff("GET", `/${goneBooking.body.id}`);
   const goneMove = await staff("POST", `/${goneBooking.body.id}/reschedule`, P.OWNER, { startsAt: iso("2026-10-29 11:00") });
   ok("FO-3a DW4 pass: their bookings stay; the deleted type's future booking still shows and can be rescheduled (AG-4-9 test 4)",
@@ -190,13 +190,13 @@ try {
     racers.filter((r) => r.status === 200).length === 1 && racers.filter((r) => r.status === 409).length === 5 && (await db.foConsultationType.findUniqueOrThrow({ where: { id: pub1.id } })).version === cur + 1, racers.map((r) => r.status));
   first.body.version = cur + 1;
   const noVersion = await T("PATCH", `/${pub1.id}`, P.OWNER, { name: "No version" });
-  ok("FO-3a DW6 fail: a save without a version → 400", noVersion.status === 400 && !!noVersion.body.fields?.version, noVersion);
+  ok("FO-3a DW6 fail: a save without a version → 422", noVersion.status === 422 && !!noVersion.body.fields?.version, noVersion);
 
   // ------------------------------------------------------------------------------------------- DW7: purpose (AG-4-10)
   const cr = await make({ name: "Document review call", purpose: "CASE_REVIEW" }), fu = await make({ name: "Follow up call", purpose: "FOLLOW_UP" });
   const crPage = await pubBook(cr.slug, "2026-10-27 14:00", "p3"), fuPage = await pubBook(fu.slug, "2026-10-27 14:00", "p4");
   ok("FO-3a DW7 pass: CASE_REVIEW and FOLLOW_UP save and are never on the booking page (not listed; their link is the one not-found)",
-    !(await listedSlugs()).some((s) => s === cr.slug || s === fu.slug) && crPage.status === 404 && fuPage.status === 404 && crPage.body.detail === "This booking page or link is not available." && cr.onBookingPage === false, [crPage, fuPage]);
+    !(await listedSlugs()).some((s) => s === cr.slug || s === fu.slug) && crPage.status === 404 && fuPage.status === 404 && crPage.body.detail === "This page is not available." && cr.onBookingPage === false, [crPage, fuPage]);
   const sw = await make({ name: "Public then case" });
   const swB = await staffBook(sw.id, "2026-10-30 10:00");
   const wasPub = (await listedSlugs()).includes(sw.slug);
@@ -205,7 +205,7 @@ try {
     wasPub && toCase.status === 200 && !(await listedSlugs()).includes(sw.slug) && (await db.foBooking.findUniqueOrThrow({ where: { id: swB.body.id } })).status === "SCHEDULED", toCase);
   const before7 = await typeRows();
   const paid = [await T("POST", "", P.OWNER, { name: "Strategy session", purpose: "PAID_CONSULT", minutes: 60, modes: ["VIDEO"] }), await T("PATCH", `/${sw.id}`, P.OWNER, { purpose: "PAID_CONSULT", version: toCase.body.version })];
-  ok("FO-3a DW7 fail: PAID_CONSULT → 400 on field purpose until map row 44, nothing saved", paid.every((r) => r.status === 400 && r.body.code === "PAID_NOT_AVAILABLE" && !!r.body.fields?.purpose) && await typeRows() === before7
+  ok("FO-3a DW7 fail: PAID_CONSULT → 422 on field purpose until map row 44, nothing saved", paid.every((r) => r.status === 422 && r.body.code === "PAID_NOT_AVAILABLE" && !!r.body.fields?.purpose) && await typeRows() === before7
     && (await db.foConsultationType.findUniqueOrThrow({ where: { id: sw.id } })).purpose === "CASE_REVIEW", paid);
 
   // ---------------------------------------------------------------------------------------------- DW8: keys (C5)
@@ -245,7 +245,7 @@ try {
     pvFull.body.days.find((x: { date: string }) => x.date === "2026-10-29")?.reason === "Fully booked" && dubai.status === 200 && dubai.body.timeZone === "Asia/Dubai" && /Asia\/Dubai/.test(dubai.body.days.find((x: { slots: unknown[] }) => x.slots.length)?.slots[0].label ?? ""), [pvFull.body?.days, dubai.body?.days?.[0]]);
   ok("FO-3a DW9 fail: a preview writes no row (bookings, types, tokens, audit, outbox counted before and after)", await counts() === c1 && c0 !== "", [c1, await counts()]);
   const badRange = await T("GET", `/${solo.id}/preview?from=${encodeURIComponent(iso("2026-10-27 00:00"))}&to=${encodeURIComponent(iso("2027-01-27 00:00"))}`);
-  ok("FO-3a DW9 fail: more than 62 days → 400", badRange.status === 400, badRange);
+  ok("FO-3a DW9 fail: more than 62 days → 422", badRange.status === 422, badRange);
   const past = await T("GET", `/${solo.id}/preview?from=${encodeURIComponent(iso("2026-10-24 00:00"))}&to=${encodeURIComponent(iso("2026-10-26 00:00"))}`);
   const offPv = await T("GET", `/${officerOnly.id}/preview${q}`);
   ok("FO-3a DW9 pass: days before now say \"In the past\"; a preview answer says whether visitors see the type (onBookingPage)",
@@ -258,8 +258,8 @@ try {
   const before0 = await typeRows();
   const nul = [await T("POST", "", P.OWNER, { name: "Nul text", minutes: 30, modes: ["VIDEO"], description: "a\u0000b" }), await T("PATCH", `/${solo.id}`, P.OWNER, { description: "bidi \u202e here", version: solo.version }),
     await T("POST", "", P.OWNER, { name: "Joined\u2060name", minutes: 30, modes: ["VIDEO"] }), await T("POST", "", P.OWNER, { name: "Lone \ud800 half", minutes: 30, modes: ["VIDEO"] })];
-  ok("FO-3a break M2 fail: a NUL byte or bidi override in a description, a word joiner or a lone surrogate in a name → 400 on that field, nothing saved",
-    nul[0].status === 400 && !!nul[0].body.fields?.description && nul[1].status === 400 && !!nul[1].body.fields?.description && nul[2].status === 400 && !!nul[2].body.fields?.name && nul[3].status === 400 && await typeRows() === before0, nul.map((r) => [r.status, r.body?.fields]));
+  ok("FO-3a break M2 fail: a NUL byte or bidi override in a description, a word joiner or a lone surrogate in a name → 422 on that field, nothing saved",
+    nul[0].status === 422 && !!nul[0].body.fields?.description && nul[1].status === 422 && !!nul[1].body.fields?.description && nul[2].status === 422 && !!nul[2].body.fields?.name && nul[3].status === 422 && await typeRows() === before0, nul.map((r) => [r.status, r.body?.fields]));
   const lines2 = await T("POST", "", P.OWNER, { name: "Multi line", minutes: 30, modes: ["VIDEO"], description: "Line one\nLine two\tend" });
   const emoji = await T("POST", "", P.OWNER, { name: "🙂".repeat(80), minutes: 30, modes: ["VIDEO"] });
   ok("FO-3a break M2/m3 pass: a description with line breaks and tabs saves; a name of 80 emoji counts 80 characters and saves", lines2.status === 201 && emoji.status === 201, [lines2.status, emoji.body?.detail]);
@@ -274,7 +274,7 @@ try {
     noop.every((r) => r.status === 200 && r.body.version === v0) && await db.auditEvent.count({ where: { entityKey: other.id } }) === a0, noop.map((r) => [r.status, r.body?.version]));
   await db.platformStaff.update({ where: { id: P.READ_ONLY.id }, data: { status: "SUSPENDED" } });
   const susp = [await T("POST", "", P.OWNER, { name: "Suspended host", minutes: 30, modes: ["VIDEO"], hostStaffIds: [P.READ_ONLY.id] }), await T("PATCH", `/${other.id}`, P.OWNER, { hostStaffIds: [P.OWNER.id, P.READ_ONLY.id], version: v0 })];
-  ok("FO-3a break m6 fail: a suspended staff member cannot be added as a host (create and edit → 400 on hostStaffIds)", susp.every((r) => r.status === 400 && !!r.body.fields?.hostStaffIds), susp.map((r) => [r.status, r.body?.fields]));
+  ok("FO-3a break m6 fail: a suspended staff member cannot be added as a host (create and edit → 422 on hostStaffIds)", susp.every((r) => r.status === 422 && !!r.body.fields?.hostStaffIds), susp.map((r) => [r.status, r.body?.fields]));
   const withSusp = await make({ name: "Two hosts", hostStaffIds: [P.OWNER.id, P.ADMIN.id] });
   await db.platformStaff.update({ where: { id: P.ADMIN.id }, data: { status: "SUSPENDED" } });
   const dupSusp = await T("POST", `/${withSusp.id}/duplicate`);
@@ -301,7 +301,7 @@ try {
   ok("FO-3a DW10 fail: firm A never reads, previews, edits, deletes, duplicates or switches firm B's type (404), and it is unchanged",
     cross.every((r) => r.status === 404) && bRow.name === "B free" && bRow.active && !bRow.deletedAt && bRow.version === 1 && !((await T("GET", "")).body.types as { id: string }[]).some((t) => t.id === bType.id), cross.map((r) => r.status));
   const hostB = await T("POST", "", P.OWNER, { name: "Borrowed host", minutes: 30, modes: ["VIDEO"], hostStaffIds: [BO.id] });
-  ok("FO-3a DW10 fail: another firm's staff member as a host → 400 on hostStaffIds", hostB.status === 400 && !!hostB.body.fields?.hostStaffIds, hostB);
+  ok("FO-3a DW10 fail: another firm's staff member as a host → 422 on hostStaffIds", hostB.status === 422 && !!hostB.body.fields?.hostStaffIds, hostB);
   const bList = await T("GET", "", BO);
   ok("FO-3a DW10 pass: firm B's Owner lists only firm B's type", bList.status === 200 && bList.body.types.length === 1 && bList.body.types[0].id === bType.id, bList.body);
 

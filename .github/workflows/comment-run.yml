@@ -13,6 +13,12 @@
 # Commands (first line of the comment, exactly):
 #   /run nightly C7.3 [C5.4 …] [six|checkpoint]   nightly.yml on main, re-testing those capabilities' packs (1 to 8),
 #                                                  on the six (default) or the checkpoint, as the Lead does (P-439)
+#   /run full                                      CI-PRE (P-731, founder 19 Nov): ci.yml on main (workflow_dispatch), every
+#                                                  suite a merge batch runs, on this PR's head merged with main's head;
+#                                                  `review: approved` needs that run green on the head (queue-gate.sh).
+#                                                  Only a branch of this repository, and only a head the owner's
+#                                                  account or a known reviewer has approved. A red run of the same head: its
+#                                                  failing parts are named and only they re-run
 #   /rerun failed                                  re-runs only the failed parts of the PR's newest ci run for its
 #                                                  head (P-371: never cancel; only when the log shows no code cause)
 # The reply names the run, or why it was refused. Test: product/tools/check-comment-run.sh (in check-guards.sh).
@@ -52,13 +58,15 @@ jobs:
           re_run='^/run nightly(( C[1-9][0-9]?\.[1-9][0-9]?){1,8})( (six|checkpoint))?$'   # no leading zero: C07.3 is not C7.3 (#1658 m6)
           if [ "$line" = "/rerun failed" ]; then
             out action rerun
+          elif [ "$line" = "/run full" ]; then
+            out action full
           elif [[ "$line" =~ $re_run ]]; then
             caps=$(printf '%s\n' ${BASH_REMATCH[1]} | sort -u | tr '\n' ' '); caps=${caps% }
             out action nightly; out caps "$caps"; out data "${BASH_REMATCH[4]:-six}"
           elif [[ "$line" == "/run nightly" ]]; then
             refuse "name 1 to 8 capabilities, e.g. \`/run nightly C7.3 C5.4\`; the full nightly set runs every night at 01:53 IST (ask the tech lead for an extra one)"
           else
-            refuse "not a known command. Use \`/run nightly C7.3 [C5.4 …] [six|checkpoint]\` (1 to 8 capability ids; data six or checkpoint, nightly.yml's choices; a pack with no run on that data uses its fixture by itself) or \`/rerun failed\`, alone on the comment's first line"
+            refuse "not a known command. Use \`/run nightly C7.3 [C5.4 …] [six|checkpoint]\` (1 to 8 capability ids; data six or checkpoint, nightly.yml's choices; a pack with no run on that data uses its fixture by itself), \`/run full\` (every suite a merge batch runs, on this head; P-731) or \`/rerun failed\`, alone on the comment's first line"
           fi
       - id: act
         name: start the run and reply on the pull request
@@ -72,6 +80,7 @@ jobs:
           DATA: ${{ steps.p.outputs.data }}
           REASON: ${{ steps.p.outputs.reason }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          REVIEWERS: ${{ vars.REVIEWERS }}
           THIS_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           export LC_ALL=C
@@ -119,6 +128,52 @@ jobs:
               else
                 reply "could not re-run $url (GitHub refused; see [this run]($THIS_RUN)). Ask the tech lead."; exit 1
               fi;;
+            full)
+              # CI-PRE (P-731): main's copy of ci.yml (ref main) on this PR's head. The two inputs are this PR's number and
+              # its head as GitHub gives it now: nothing of the comment goes in. ci.yml checks both again before any test.
+              [[ "$PR" =~ ^[1-9][0-9]*$ ]] || { reply "refused: no PR number. ([this run]($THIS_RUN))"; exit 1; }
+              pr=$(gh api "repos/$REPO/pulls/$PR" --jq '"\(.head.sha):\(.head.repo.full_name // ""):\(.state)"') || pr=""
+              IFS=: read -r head hrepo state <<< "$pr"
+              [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { reply "could not read the PR's head. ([this run]($THIS_RUN))"; exit 1; }
+              # A fork's code would run in a run of main (main's side of the Actions cache): never started from here.
+              if [ "$hrepo" != "$REPO" ]; then reply "refused: a full run is only for a branch of this repository, not a fork. ([this run]($THIS_RUN))"; exit 0; fi
+              if [ "$state" != open ]; then reply "refused: the PR is not open. ([this run]($THIS_RUN))"; exit 0; fi
+              # Only a reviewed head (breaker M3): its code runs in a run of main, so the owner's account or a known reviewer
+              # (REVIEWERS, as queue-gate.sh) with write access has first written "Reviewer: Approve <this head>" on the PR.
+              export HEAD="$head" WHO="${REPO%%/*} ${REVIEWERS:-}"
+              ok=$(gh api --paginate "repos/$REPO/issues/$PR/comments?per_page=100" --jq '[.[] | select(.user.login as $l | (env.WHO | split(" ")) | index($l)) | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+                | select((.body // "") | gsub("[*_`]"; "") | test("(^|\n)\\s*reviewer:\\s*approve[sd]?\\s+" + env.HEAD + "\\b"; "i"))] | length') || { reply "could not read the PR's comments. ([this run]($THIS_RUN))"; exit 1; }
+              if ! grep -qx '[1-9][0-9]*' <<< "$ok"; then reply "refused: a full run starts only on a reviewed head: no \"Reviewer: Approve ${head:0:9}...\" line (the full commit id) by the owner's account or a known reviewer yet. ([this run]($THIS_RUN))"; exit 0; fi
+              export TITLE="full-run PR #$PR $head"
+              run=$(gh api -X GET "repos/$REPO/actions/workflows/ci.yml/runs" -f event=workflow_dispatch -f branch=main -f per_page=100 \
+                --jq '[.workflow_runs[] | select(.display_title == env.TITLE)][0] // empty | [.id, .status, (.conclusion // "none"), .html_url] | @tsv') || { reply "could not list the full runs. ([this run]($THIS_RUN))"; exit 1; }
+              if [ -n "$run" ]; then
+                IFS=$'\t' read -r id status conclusion url <<< "$run"
+                [[ "$id" =~ ^[0-9]+$ ]] || { reply "could not read the full run. ([this run]($THIS_RUN))"; exit 1; }
+                if [ "$status" != completed ]; then reply "a full run for ${head:0:9} is already $status: $url. Nothing started. ([this run]($THIS_RUN))"; exit 0; fi
+                if [ "$conclusion" = success ]; then reply "the full run for ${head:0:9} is already green: $url. Nothing started. ([this run]($THIS_RUN))"; exit 0; fi
+                # Red on this same head: its failing parts by name (the run's jobs; letters, digits and plain marks only,
+                # as a matrix value is worked out from the PR's files), and only they run again (P-371).
+                failed=$(gh api -X GET "repos/$REPO/actions/runs/$id/jobs" -f filter=latest -f per_page=100 \
+                  --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "ci")' | tr -cd 'A-Za-z0-9 ().,_\n-' | cut -c1-120 | sed -n '1,20p' | sed 's/.*/`&`/' | paste -sd ';' - | sed 's/;/; /g') || failed=""
+                if gh api -X POST "repos/$REPO/actions/runs/$id/rerun-failed-jobs" >/dev/null; then
+                  reply "the full run for ${head:0:9} ended $conclusion. Failing: ${failed:-not readable}. Only those parts run again, on today's main: $url. A fault in the code needs a fix and a push, then \`/run full\` on the new head. ([this run]($THIS_RUN))"
+                else
+                  reply "the full run for ${head:0:9} ended $conclusion (failing: ${failed:-not readable}) and could not be re-run: $url (GitHub refused; see [this run]($THIS_RUN)). Ask the tech lead."; exit 1
+                fi
+                exit 0
+              fi
+              since=$(date -u -d '-60 seconds' +%Y-%m-%dT%H:%M:%SZ)
+              if ! gh api -X POST "repos/$REPO/actions/workflows/ci.yml/dispatches" -f ref=main -f "inputs[pr]=$PR" -f "inputs[head]=$head" >/dev/null; then
+                reply "could not start the full run (GitHub refused the dispatch; see [this run]($THIS_RUN)). Ask the tech lead."; exit 1
+              fi
+              url=""
+              for _ in 1 2 3 4 5 6 7 8 9 10; do
+                url=$(gh api -X GET "repos/$REPO/actions/workflows/ci.yml/runs" -f event=workflow_dispatch -f branch=main -f "created=>=$since" -f per_page=30 --jq '[.workflow_runs[] | select(.display_title == env.TITLE)][0].html_url // empty' 2>/dev/null) || url=""
+                [ -n "$url" ] && break; sleep 3
+              done
+              where=${url:-"the newest \"$TITLE\" on [ci's page]($GITHUB_SERVER_URL/$REPO/actions/workflows/ci.yml)"}
+              reply "started the full run for ${head:0:9}: every suite a merge batch runs, on this head merged with main's head: $where. \`review: approved\` needs it green on this head (P-731); the queue gate posts the result here when it ends. ([this run]($THIS_RUN))";;
             *) echo "::error::unknown action"; exit 1;;
           esac
       - id: oops

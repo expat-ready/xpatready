@@ -7,9 +7,11 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Req, Res, 
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { OwnOrAll, PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { idParam } from "../../platform/http/input.ts";
 import { PlatformClock } from "../../platform/identity/port.ts";
 import { FileLinks, LocalFiles } from "../files.ts";
 import { OFFLINE_PDF_MAX_BYTES, Retainers, TEMPLATE_MAX_BYTES, type Upload } from "./service.ts";
+import { asksESigned, RetainerSignedFiles } from "./e-signed-files.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
@@ -22,7 +24,10 @@ const file = (max: number) => UseInterceptors(FileInterceptor("file", { limits: 
 @Controller("api/front-office")
 export class RetainersController {
   constructor(@Inject(Retainers) private readonly svc: Retainers, @Inject(LocalFiles) private readonly files: LocalFiles,
-    @Inject(FileLinks) private readonly links: FileLinks, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
+    @Inject(FileLinks) private readonly links: FileLinks, @Inject(PlatformClock) private readonly clock: PlatformClock,
+    // FO-6 part 4d: the e-signed copy and its evidence (the feature binds it; a test that builds the controller by hand
+    // passes it only when it asks for those files).
+    @Inject(RetainerSignedFiles) private readonly signed?: RetainerSignedFiles) {}
 
   @Get("retainer-templates/placeholders") @PermissionKeys("agent/retainer:list")
   placeholders() { return this.svc.placeholders(); }
@@ -33,6 +38,10 @@ export class RetainersController {
     res.setHeader("Content-Disposition", `attachment; filename="${s.filename}"`).setHeader("X-Sample-Note", s.note).type(s.contentType).send(Buffer.from(s.bytes));
   }
 
+  /** FO-5b: the template's Code s. 24(3) checklist (never refuses a send). */
+  @Get("retainer-templates/:id/checklist") @PermissionKeys("agent/retainer:list")
+  checklist(@Req() r: R, @Param("id") id: string) { return this.svc.templateChecklist(staffOf(r), id); }
+
   @Get("retainer-templates") @PermissionKeys("agent/retainer:list")
   templates(@Req() r: R) { return this.svc.listTemplates(staffOf(r)); }
 
@@ -40,7 +49,7 @@ export class RetainersController {
   upload(@Req() r: R, @Body() b: B, @UploadedFile() f: F) { return this.svc.uploadTemplate(staffOf(r), b ?? {}, up(f)); }
 
   @Post("retainer-templates/:id/versions") @file(TEMPLATE_MAX_BYTES) @PermissionKeys("agent/retainer:configure-template")
-  newVersion(@Req() r: R, @Param("id") id: string, @UploadedFile() f: F) { return this.svc.newTemplateVersion(staffOf(r), id, up(f)); }
+  newVersion(@Req() r: R, @Param("id") id: string, @Body() b: B, @UploadedFile() f: F) { return this.svc.newTemplateVersion(staffOf(r), id, up(f), b ?? {}); }
 
   @Patch("retainer-templates/:id") @PermissionKeys("agent/retainer:configure-template")
   changeTemplate(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.changeTemplate(staffOf(r), id, b ?? {}); }
@@ -50,6 +59,10 @@ export class RetainersController {
 
   @Post("prospects/:id/retainers") @PermissionKeys("agent/retainer:draft")
   draft(@Req() r: R, @Param("id") prospectId: string, @Body() b: B) { return this.svc.draft(staffOf(r), prospectId, b ?? {}); }
+
+  /** FO-5s: the prospect's retainers (its card on the prospect page). */
+  @Get("prospects/:id/retainers") @PermissionKeys("agent/retainer:list")
+  listForProspect(@Req() r: R, @Param("id") prospectId: string) { return this.svc.listForProspect(staffOf(r), idParam(prospectId, "prospect")); }   // PF-28: a malformed id is the one not-found (404), never a field error
 
   @Get("retainers/:id") @PermissionKeys("agent/retainer:show") @OwnOrAll("agent/prospect")
   read(@Req() r: R, @Param("id") id: string) { return this.svc.read(staffOf(r), id); }
@@ -66,10 +79,11 @@ export class RetainersController {
   @Post("retainers/:id/signed-offline") @HttpCode(200) @file(OFFLINE_PDF_MAX_BYTES) @PermissionKeys("agent/retainer:offline-sign")
   signedOffline(@Req() r: R, @Param("id") id: string, @Body() b: B, @UploadedFile() f: F) { return this.svc.signedOffline(staffOf(r), id, b ?? {}, up(f)); }
 
-  /** A short-lived link to one of the retainer's files (BR-15). */
+  /** A short-lived link to one of the retainer's files (BR-15); `file: "signed"` or `"evidence"` names the e-signed
+   *  copy or its audit file (FO-6 part 4d, `e-signed-files.ts`). */
   @Post("retainers/:id/download-link") @HttpCode(200) @PermissionKeys("agent/retainer:download")
   async link(@Req() r: R, @Param("id") id: string, @Body() b: B) {
-    const ctx = staffOf(r), key = await this.svc.fileKey(ctx, id, b ?? {});
+    const ctx = staffOf(r), key = asksESigned(b) ? await this.signed!.fileKey(ctx, id, b) : await this.svc.fileKey(ctx, id, b ?? {});
     const l = this.links.sign(ctx.firmId, ctx.staffId, key, this.clock.now());
     return { url: `/api/front-office/files/${l.token}`, expiresAt: l.expiresAt };
   }
@@ -79,9 +93,11 @@ export class RetainersController {
   async download(@Req() r: R, @Param("token") token: string, @Res() res: Response) {
     const ctx = staffOf(r), c = this.links.check(token, ctx.firmId, ctx.staffId, this.clock.now());
     if ("refused" in c) return c.refused === "expired" ? problem(410, "Link expired", "This download link has expired. Open the agreement again.", { code: "LINK_EXPIRED" }) : problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
-    await this.svc.assertFileVisible(ctx, c.key);   // still sees the retainer (404 otherwise)
+    const eSigned = c.key.startsWith("signing/");   // FO-6 part 4d: the e-signed copy or its audit file
+    await (eSigned ? this.signed!.assertKeyVisible(ctx, c.key) : this.svc.assertFileVisible(ctx, c.key));   // still sees the retainer (404 otherwise)
     const f = await this.files.get(ctx.firmId, c.key);
     if (!f) return problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
-    res.setHeader("Content-Disposition", `attachment; filename="${c.key.split("/").pop()}"`).setHeader("Cache-Control", "no-store").setHeader("X-Content-Type-Options", "nosniff").type(f.contentType).send(Buffer.from(f.bytes));
+    const name = eSigned ? (c.key.endsWith("/sealed.pdf") ? "signed-agreement.pdf" : "signing-evidence.pdf") : c.key.split("/").pop();
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`).setHeader("Cache-Control", "no-store").setHeader("X-Content-Type-Options", "nosniff").type(f.contentType).send(Buffer.from(f.bytes));
   }
 }

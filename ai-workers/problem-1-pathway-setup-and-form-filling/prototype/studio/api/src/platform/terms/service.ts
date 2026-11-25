@@ -12,10 +12,12 @@
 // email check, break M2), or none was and it was published after the person (privacy notice) or the firm (firm terms)
 // joined. A version already current when a person joined and never accepted is not asked by this row (sign-up accepts
 // it for the Owner, PF-5); see the PR's question on invited staff.
-// "Current" is the newest version of each kind published at or before now (the same rule as PF-5's currentTerms).
+// "Current" is the newest version of each kind published at or before now: one rule, `currentVersions` below, which
+// sign-up (PF-5's currentTerms) and this gate both read (PF-5tv).
 import { Inject, Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { Db } from "../../core.ts";
 import { auditEvent } from "../audit/audit-event.ts";
 import { firmScope } from "../firm-scope.ts";
@@ -35,6 +37,15 @@ export const SAMPLE_NOTE = "Wording Sample. Unconfirmed: no counsel.";
 type Row = { id: string; kind: TermsKind; version: string; url: string; published_at: Date };
 const view = (r: Row) => ({ id: r.id, kind: r.kind, version: r.version, url: r.url, publishedAt: r.published_at.toISOString() });
 
+/** PF-5tv: the one rule for "the current terms", read by sign-up and by the gate alike. The newest version of each kind
+ *  published at or before `now`, ordered `published_at desc, version desc, id desc`: the last key makes the order total,
+ *  so two versions published at the same instant are never ordered by chance (#1957 point 3: the two reads disagreed). */
+const currentSql = (now: number) => Prisma.sql`select distinct on (kind) id, kind::text as kind, version, url, published_at from platform_terms_version
+  where published_at <= ${new Date(now)} order by kind, published_at desc, version desc, id desc`;
+export function currentVersions(q: Pick<Tx, "$queryRaw">, now: number): Promise<Row[]> {
+  return q.$queryRaw<Row[]>`select id::text as id, kind, version, url, published_at from (${currentSql(now)}) c order by kind`;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const AcceptBody = z.strictObject({ versionIds: z.array(z.string().regex(UUID, "versionIds: version ids (uuid)")).min(1, "versionIds: at least one version").max(10, "versionIds: at most 10") });
 const isOwner = (s: StaffContext) => s.roles.includes("OWNER");
@@ -44,16 +55,12 @@ export class PlatformTerms implements TermsGate {
   constructor(@Inject(Db) private readonly db: Db, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
 
   /** The current version of each kind. */
-  private async current(q: Q): Promise<Row[]> {
-    return q.$queryRaw<Row[]>`select distinct on (kind) id::text as id, kind::text as kind, version, url, published_at from platform_terms_version
-      where published_at <= ${new Date(this.clock.now())} order by kind, published_at desc, version desc`;
-  }
+  private current(q: Q): Promise<Row[]> { return currentVersions(q, this.clock.now()); }
 
   /** The versions this person must accept now: one read (the guard's per-request check and GET /me/terms). */
   async pending(s: StaffContext, q: Q = this.db): Promise<Row[]> {
     const firmId = firmScope(s.firmId).firmId;
-    return q.$queryRaw<Row[]>`with cur as (select distinct on (kind) id, kind::text as kind, version, url, published_at from platform_terms_version
-        where published_at <= ${new Date(this.clock.now())} order by kind, published_at desc, version desc)
+    return q.$queryRaw<Row[]>`with cur as (${currentSql(this.clock.now())})
       select c.id::text as id, c.kind, c.version, c.url, c.published_at from cur c
         join platform_staff p on p.id = ${s.staffId}::uuid and p.firm_id = ${firmId}::uuid
         join platform_firm f on f.id = p.firm_id
@@ -75,11 +82,11 @@ export class PlatformTerms implements TermsGate {
    *  and a firm version is recorded once. A replay writes nothing and answers the same. */
   async accept(s: StaffContext, body: unknown) {
     const parsed = AcceptBody.safeParse(body ?? {});
-    if (!parsed.success) return problem(400, "Check the request", "Some answers need changing.", { code: "CHECK_FIELDS", errors: parsed.error.issues.map((i) => i.message) });
+    if (!parsed.success) return problem(FIELD_ERROR_STATUS, "Check the request", "Some answers need changing.", { code: "CHECK_FIELDS", errors: parsed.error.issues.map((i) => i.message), fields: fieldsOf(parsed.error) });   // PF-28 part 2b: 422, fields named
     const ids = [...new Set(parsed.data.versionIds.map((x) => x.toLowerCase()))].sort();
     const firmId = firmScope(s.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as identity's inFirm: never deadlocks with the person's own sign-in (J-5 B1)
       // The person is checked again under the lock, as PlatformSession.inFirm does (Devin review on #1957): a deactivation,
       // a revoked session or a role change committed while this waited is never accepted past.
       const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: s.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
@@ -98,7 +105,7 @@ export class PlatformTerms implements TermsGate {
         await tx.platformTermsAcceptance.createMany({ data: fresh.map((r) => ({ firmId, staffId: s.staffId, versionId: r.id, acceptedAt })) });
         await auditEvent.record(tx, { firmId, actor: actorWord(s.staffId), action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: s.staffId,
           summary: `A staff member accepted ${fresh.map((r) => `${r.kind.toLowerCase().replace(/_/g, " ")} ${r.version}`).join(", ")}`.slice(0, 600),
-          detail: { staffId: s.staffId, versionIds: fresh.map((r) => r.id) } });
+          detail: { staffId: s.staffId, versionIds: fresh.map((r) => r.id) }, before: null, after: { versionIds: fresh.map((r) => r.id), acceptedAt: acceptedAt.toISOString() } });
       }
       return { accepted: rows.map(view), pending: (await this.pending(s, tx)).map(view), note: SAMPLE_NOTE };
     });
@@ -107,11 +114,11 @@ export class PlatformTerms implements TermsGate {
   /** GET /api/platform/terms/acceptances: the firm's acceptances, newest first: who, when and which version. */
   async acceptances(s: StaffContext, q: { cursor?: unknown; limit?: unknown } = {}) {
     const limit = q.limit === undefined ? 50 : Number(q.limit);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return problem(400, "Check the request", "limit: a whole number from 1 to 200.", { code: "CHECK_FIELDS" });
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return problem(FIELD_ERROR_STATUS, "Check the request", "limit: a whole number from 1 to 200.", { code: "CHECK_FIELDS", fields: { limit: "A whole number from 1 to 200." } });
     const cursor = q.cursor === undefined || q.cursor === "" ? null : String(q.cursor);
-    if (cursor !== null && !UUID.test(cursor)) return problem(400, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS" });
+    if (cursor !== null && !UUID.test(cursor)) return problem(FIELD_ERROR_STATUS, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS", fields: { cursor: "The nextCursor of the page before." } });
     const from = cursor ? await this.db.platformTermsAcceptance.findFirst({ where: firmScope(s.firmId, { id: cursor.toLowerCase() }), select: { id: true } }) : null;
-    if (cursor && !from) return problem(400, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS" });
+    if (cursor && !from) return problem(FIELD_ERROR_STATUS, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS", fields: { cursor: "The nextCursor of the page before." } });
     const page = await this.db.platformTermsAcceptance.findMany({
       where: firmScope(s.firmId), orderBy: [{ acceptedAt: "desc" }, { id: "asc" }], take: limit + 1, ...(from ? { cursor: { id: from.id }, skip: 1 } : {}),
       include: { staff: { select: { id: true, displayName: true } }, version: { select: { id: true, kind: true, version: true, url: true } } },

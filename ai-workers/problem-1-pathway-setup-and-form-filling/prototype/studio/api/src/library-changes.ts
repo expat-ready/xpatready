@@ -11,7 +11,7 @@ import type { LibraryChange, Origin, Prisma } from "@prisma/client";
 import { normalizeLabel } from "../../contracts/programs.ts";
 import { factName } from "../../engine/fact-name.ts";
 import { isRuleWhy } from "../../engine/near.ts";
-import { ACTORS, type Actor, type Db } from "./core.ts";
+import { ACTORS, Audit, type Actor, type Db } from "./core.ts";
 import { isLifecycleKind, publishLifecycle, withdrawLifecycle } from "./lifecycle.ts";
 import { isItemLifecycle, lockItem } from "./library-items.ts";
 import { fieldReaders, readerWords, type FieldReader } from "./where-used.ts";
@@ -27,20 +27,21 @@ import { releaseSets, setsView, withdrawApprovedSets } from "./document-sets.ts"
 import { SETS_KIND } from "../../contracts/document-sets.ts";
 import { mustVerifyView, refuseNotExpert, releaseMustVerify, withdrawApprovedMustVerify } from "./must-verify.ts";
 import { PROVIDERS_KIND, providersView, releaseProviders, withdrawApprovedProviders } from "./document-providers.ts"; // C6.14
+import { DEFAULTS_KIND, defaultsView, releaseDefaults, withdrawApprovedDefaults } from "./document-type-defaults.ts"; // CS-D7c
 import { MUST_VERIFY_KIND } from "../../contracts/must-verify.ts";
 
 export const LIBRARY_KINDS = ["field", "section", "document_type", "check"] as const;
 export type LibraryKind = (typeof LIBRARY_KINDS)[number];
-export const KIND_NOUN: Record<string, string> = { library_form: "library form", answer_list: "answer list", form_accepts: "what IRCC accepts", form_role: "form", placement_fills: "a question", section_background: "section", placement_condition: "when a question is asked", form_field_condition: "when a form field is filled", document_supplies: "the facts a document supplies", document_sets: "a document's substitute sets", document_providers: "who provides a shared document", field_must_verify: "must verify before filing", field: "shared field", section: "section", document_type: "document type", check: "check", structure_node: "structure name", combination: "combination" };
+export const KIND_NOUN: Record<string, string> = { library_form: "library form", answer_list: "answer list", form_accepts: "what IRCC accepts", form_role: "form", placement_fills: "a question", section_background: "section", placement_condition: "when a question is asked", form_field_condition: "when a form field is filled", document_supplies: "the facts a document supplies", document_sets: "a document's substitute sets", document_providers: "who provides a shared document", document_defaults: "a document type's defaults", field_must_verify: "must verify before filing", field: "shared field", section: "section", document_type: "document type", check: "check", structure_node: "structure name", combination: "combination" };
 // The lifecycle words come from the one word set (contracts/lifecycle.ts, P-116 amended 28 Oct): Delete, Retire, Restore.
 // "Remove" is kept for a form line taken off a combination (it stays in the library, P-123).
 // QA-113: the action word already says "who fills", so its noun is "a question" ("Change who fills a question: …").
-const ACTION_WORD: Record<string, string> = { SET_MUST_VERIFY: "Change", SET_SETS: "Change", SET_PROVIDERS: "Change" /* C6.14 (review Major 1) */, ADD: "Add", DELETE: ACTION_LABEL.DELETE, RETIRE: ACTION_LABEL.RETIRE, RESTORE: ACTION_LABEL.RESTORE, EDIT_RULE: "Change the rule of", SET_ACCEPTS: "Set what IRCC accepts for", SET_ROLE: "Change the role of", SET_FILLS: "Change who fills", SET_BACKGROUND: "Change", SET_CONDITION: "Change when it is asked:", SET_FORM_FIELD_CONDITION: "Change", SET_FORM_FIELD_QUESTION: "Change", SET_FORM_FIELD_GATE: "Change", SET_FORM_FIELD_BY_HAND: "Change", SET_SUPPLIES: "Change", RENAME: "Rename" };
+const ACTION_WORD: Record<string, string> = { SET_MUST_VERIFY: "Change", SET_SETS: "Change", SET_PROVIDERS: "Change" /* C6.14 (review Major 1) */, SET_DEFAULTS: "Change" /* CS-D7c */, ADD: "Add", DELETE: ACTION_LABEL.DELETE, RETIRE: ACTION_LABEL.RETIRE, RESTORE: ACTION_LABEL.RESTORE, EDIT_RULE: "Change the rule of", SET_ACCEPTS: "Set what IRCC accepts for", SET_ROLE: "Change the role of", SET_FILLS: "Change who fills", SET_BACKGROUND: "Change", SET_CONDITION: "Change when it is asked:", SET_FORM_FIELD_CONDITION: "Change", SET_FORM_FIELD_QUESTION: "Change", SET_FORM_FIELD_GATE: "Change", SET_FORM_FIELD_BY_HAND: "Change", SET_SUPPLIES: "Change", RENAME: "Rename" };
 export const actionWord = (action: string, _kind?: string) => ACTION_WORD[action] ?? action;
 /** The same word inside a sentence ("approved delete …", "set what IRCC accepts for …"): only its first letter lowered. */
 export const actionVerb = (action: string, kind?: string) => { const w = actionWord(action, kind); return w[0].toLowerCase() + w.slice(1); };
 /** What the change is about, as a noun ("this library form", "this change to what IRCC accepts"). */
-const changeNoun = (kind: string) => (kind === "form_accepts" ? "change to what IRCC accepts" : kind === "form_role" ? "change of a form's role" : kind === "placement_fills" ? "change of who fills a question" : kind === BACKGROUND_KIND ? "change of whether a section holds background answers" : kind === "placement_condition" ? "change of when a question is asked" : kind === "form_field_condition" ? "change of when a form field is filled" : kind === SUPPLIES_KIND ? "change of the facts a document supplies" : kind === SETS_KIND ? "change of a document's substitute sets" : kind === PROVIDERS_KIND ? "change of who provides a shared document" : kind === MUST_VERIFY_KIND ? "change of \"must verify before filing\"" : KIND_NOUN[kind] ?? "change");
+const changeNoun = (kind: string) => (kind === "form_accepts" ? "change to what IRCC accepts" : kind === "form_role" ? "change of a form's role" : kind === "placement_fills" ? "change of who fills a question" : kind === BACKGROUND_KIND ? "change of whether a section holds background answers" : kind === "placement_condition" ? "change of when a question is asked" : kind === "form_field_condition" ? "change of when a form field is filled" : kind === SUPPLIES_KIND ? "change of the facts a document supplies" : kind === SETS_KIND ? "change of a document's substitute sets" : kind === PROVIDERS_KIND ? "change of who provides a shared document" : kind === DEFAULTS_KIND ? "change of a document type's defaults" : kind === MUST_VERIFY_KIND ? "change of \"must verify before filing\"" : KIND_NOUN[kind] ?? "change");
 const nameOf = (id: string | null | undefined) => (id ? ACTORS.find((a) => a.id === id)?.name ?? "A person" : null);
 const problem = (status: number, title: string, detail: string) => new HttpException({ type: `https://expatready.local/problems/${status}`, title, status, detail }, status);
 
@@ -78,7 +79,7 @@ export function changeView(c: LibraryChange) {
   return { id: c.id, kind: c.kind, kind_word: c.action === ASK_ACTION ? "the question a form field asks" : KIND_NOUN[c.kind] ?? c.kind, key: c.key, label: c.label ?? c.key, action: c.action, action_word: actionWord(c.action, c.kind), reason: c.reason,
     ai_verdict: c.aiVerdict, matches: c.matches, status: c.status, proposed_by: nameOf(c.proposedBy), proposed_by_id: c.proposedBy, proposed_at: c.proposedAt,
     decided_by: nameOf(c.decidedBy), decided_at: c.decidedAt, decision_note: c.decisionNote, released_in: c.releasedIn, combination_id: c.combinationId, batch_id: c.batchId ?? null, // QA-193
-    ...(c.kind === "form_accepts" ? { accepts: acceptsView(c) } : {}), ...(c.kind === "placement_fills" ? { fills: fillsView(c) } : {}), ...(c.kind === BACKGROUND_KIND ? { background: backgroundView(c) } : {}), ...(c.kind === COND_KIND ? { condition: conditionView(c) } : {}), ...(c.kind === FORM_FIELD_KIND ? { form_field: formFieldView(c) } : {}), ...(c.kind === SUPPLIES_KIND ? { supplies: suppliesView(c) } : {}), ...(c.kind === SETS_KIND ? { sets: setsView(c) } : {}), ...(c.kind === PROVIDERS_KIND ? { providers: providersView(c) } : {}), ...(c.kind === MUST_VERIFY_KIND ? { must_verify: mustVerifyView(c) } : {}),
+    ...(c.kind === "form_accepts" ? { accepts: acceptsView(c) } : {}), ...(c.kind === "placement_fills" ? { fills: fillsView(c) } : {}), ...(c.kind === BACKGROUND_KIND ? { background: backgroundView(c) } : {}), ...(c.kind === COND_KIND ? { condition: conditionView(c) } : {}), ...(c.kind === FORM_FIELD_KIND ? { form_field: formFieldView(c) } : {}), ...(c.kind === SUPPLIES_KIND ? { supplies: suppliesView(c) } : {}), ...(c.kind === SETS_KIND ? { sets: setsView(c) } : {}), ...(c.kind === PROVIDERS_KIND ? { providers: providersView(c) } : {}), ...(c.kind === DEFAULTS_KIND ? { defaults: defaultsView(c) } : {}), ...(c.kind === MUST_VERIFY_KIND ? { must_verify: mustVerifyView(c) } : {}),
     ...(c.action === "RENAME" ? { rename: renameView(c) } : {}) }; // C4.9 (runtime lane); G-CORE B2 rename
 }
 /** C11.13 (P-120: "a near duplicate needs a one-line reason, shown to the second person at release"): for each change
@@ -201,6 +202,7 @@ export async function resubmitChange(db: Db, actor: Actor, id: string, b: { labe
   if (c.kind === MUST_VERIFY_KIND) throw problem(409, "Propose it again", "A returned change of \"must verify before filing\" is not sent again: withdraw it, then propose it again on its field."); // C7.9
   if (c.kind === SETS_KIND) throw problem(409, "Propose it again", "A returned change of a document's substitute sets is not sent again: withdraw it, then propose the sets again on its document type."); // C6.15
   if (c.kind === PROVIDERS_KIND) throw problem(409, "Propose it again", "A returned change of who provides a shared document is not sent again: withdraw it, then propose the roles again on its document type."); // C6.14
+  if (c.kind === DEFAULTS_KIND) throw problem(409, "Propose it again", "A returned change of a document type's defaults is not sent again: withdraw it, then propose the defaults again with their official words."); // CS-D7c
   // B86 BR-7: likewise a form field's condition: proposing again runs its checks again.
   if (c.kind === FORM_FIELD_KIND) throw problem(409, "Propose it again", c.action === ASK_ACTION ? "A returned change of a form field is not sent again: withdraw it, then ask the Yes/No as its deciding question again." : "A returned change of a form field is not sent again: withdraw it, then confirm the form field again.");
   // B154 (review M3, break M1): likewise a section's background mark: proposing again runs its checks again.
@@ -318,8 +320,13 @@ export async function withdrawChange(db: Db, actor: Actor, id: string, note?: st
     if (why.length < 3 || why.length > 300) throw problem(400, "Say why", "Say why it is withdrawn (3 to 300 characters).");
     return db.$transaction(async (tx) => { await withdrawApprovedProviders(tx, actor, c, why); return changeView((await tx.libraryChange.findUnique({ where: { id } }))!); });
   }
+  if (c.kind === DEFAULTS_KIND && c.status === "APPROVED") { // CS-D7c: as the provider roles
+    const why = (note ?? "").trim();
+    if (why.length < 3 || why.length > 300) throw problem(400, "Say why", "Say why it is withdrawn (3 to 300 characters).");
+    return db.$transaction(async (tx) => { await withdrawApprovedDefaults(tx, actor, c, why); return changeView((await tx.libraryChange.findUnique({ where: { id } }))!); });
+  }
   // P-319 (review of #833, M2): a waiting or returned role change is withdrawn like a rename: nothing was applied.
-  const renaming = (c.action === "RENAME" || c.kind === "form_role" || c.kind === SUPPLIES_KIND || c.kind === SETS_KIND || c.kind === MUST_VERIFY_KIND || c.kind === PROVIDERS_KIND || c.kind === FORM_FIELD_KIND || c.kind === BACKGROUND_KIND) && ["WAITING", "RETURNED"].includes(c.status); // C4.5: nothing applied before approval
+  const renaming = (c.action === "RENAME" || c.kind === "form_role" || c.kind === SUPPLIES_KIND || c.kind === SETS_KIND || c.kind === MUST_VERIFY_KIND || c.kind === PROVIDERS_KIND || c.kind === DEFAULTS_KIND || c.kind === FORM_FIELD_KIND || c.kind === BACKGROUND_KIND) && ["WAITING", "RETURNED"].includes(c.status); // C4.5: nothing applied before approval
   if (!renaming && (c.kind !== "field" || c.action !== "ADD" || !["WAITING", "RETURNED"].includes(c.status))) throw problem(409, "Cannot withdraw", "Only a new shared field, a rename or a form's role change that is waiting or returned, or a change of the facts a document supplies that is not released yet, is withdrawn.");
   const why = (note ?? "").trim();
   if (why.length < 3 || why.length > 300) throw problem(400, "Say why", "Say why it is withdrawn (3 to 300 characters).");
@@ -363,7 +370,7 @@ export async function withdrawChange(db: Db, actor: Actor, id: string, note?: st
     for (const x of lists) await dropFieldList(tx, c.workspaceId, x.answerListKey); // C3.6: its own draft list goes with it
     // Breaker m8: BR-10 changes form fields, so the history says so. QA-263: a configuration line reaches every firm's staff
     // (case-feed.ts), so it says what happened and never the typed reason; that stays on the change, as its note.
-    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "decided", entity: "shared field", entityKey: c.key, summary: `${actor.name} withdrew the new field "${c.label ?? c.key}" (the reason is on the change). ${restored} form field${restored === 1 ? "" : "s"} back to worked out, ${maps.count} to no decision${readers.length ? `; still read by ${readers.map((r) => r.name).join("; ")}` : ""}`.slice(0, 600) } });
+    await new Audit(tx as never).log(c.workspaceId, actor.id, "decided", "shared field", c.key, `${actor.name} withdrew the new field "${c.label ?? c.key}" (the reason is on the change). ${restored} form field${restored === 1 ? "" : "s"} back to worked out, ${maps.count} to no decision${readers.length ? `; still read by ${readers.map((r) => r.name).join("; ")}` : ""}`.slice(0, 600));
     return { ...changeView((await tx.libraryChange.findUnique({ where: { id } }))!), form_fields_reopened: maps.count, form_fields_restored: restored, readers: readers.map((r) => r.name), taken_out_of: takenOut };
   }, { timeout: 30_000, maxWait: 10_000 }); // the readers are read under the lock, on a busy machine too (the same room as an ask)
 }
@@ -408,6 +415,7 @@ export async function publishLibraryChanges(tx: Prisma.TransactionClient, worksp
   out.push(...(await releaseSets(tx, workspaceId, pack))); // C6.15
   out.push(...(await releaseMustVerify(tx, workspaceId, pack))); // C7.9
   out.push(...(await releaseProviders(tx, workspaceId, pack))); // C6.14
+  out.push(...(await releaseDefaults(tx, workspaceId, pack))); // CS-D7c
   return out;
 }
 type Status = "DRAFT" | "PUBLISHED" | "SUPERSEDED" | "RETIRED";

@@ -1,0 +1,3 @@
+# Moved word for word by Lead 76, 12:05 IST 17 Nov (P-336 size)
+
+4. **PRs:** records **#2071** (stacked on #2058, carries P-642 to P-655 and #2058; Approve 6314ba2 on the founder's named yes) waits for CI; P-656 to P-660 go in the next records PR. **#2030** (Stuck now card) labelled 10:4x after the Lead read. #2014's failed shard re-run 10:4x. **#2069** quarantine: label on green (P-214). Approved but not queued (#1918, #1956, #2009, #2010): Mergify waits for `queue-fresh`, which waits for a machine; never set it by hand. lead-watch's "question unanswered" lines for #1959, #2001, #2009, #2054 are false: each is answered by a "Lead read" comment (script misses that form).

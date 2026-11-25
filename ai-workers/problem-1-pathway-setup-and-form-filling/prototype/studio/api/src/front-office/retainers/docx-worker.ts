@@ -63,7 +63,7 @@ function tags(bytes: Uint8Array): string[] {
     for (const m of text.matchAll(TAG)) {
       const t = m[1].trim(), sigil = t[0];
       const field = (n: string) => (stack.length && n.startsWith(`${stack.join(".")}.`) ? n : [...stack, n].join("."));
-      if (sigil === "#" || sigil === "^") { const n = t.slice(1).trim(); out.add(field(n)); stack.push(n); }
+      if (sigil === "#" || sigil === "^") { const n = t.slice(1).trim(); out.add(n === "conflict.disclosure" || n.startsWith("code.s24_") ? `${n}-as-a-section` : field(n)); stack.push(n); }   // FO-13c (break R2-M1): the disclosure is printed, never a condition; FO-5b: a clause marker is never a section (it would hide the clause)
       else if (sigil === "/") stack.pop();
       else if (t && !stack.length && /^fees\.(label|amount|when|due_on)$/.test(t)) out.add(`${t}-outside-the-fee-loop`);   // prints nothing there (m4)
       else if (t) out.add(field(t));

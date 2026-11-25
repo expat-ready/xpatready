@@ -10,6 +10,7 @@
 // visitor medical exam (VV-R16: a stay over 6 months AND a listed country, a public-health job or a super visa; FQ-11).
 //   tsx studio/acceptance/C6.4.test.ts 4440 xr_studio_accept
 import { CLIENT, FAMILY, OFFICER, answer, call, main, needVisitorVisa, ok, openCase, sql, yearsAgo } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 
 type Line = { id: string; document_type: string; label: string; state: string; reason: string; required: boolean; quote?: string | null; documents?: { id: string; current: boolean }[] };
 type Checklist = { stand_in?: string; people: { subject: string; lines: Line[] }[] };
@@ -127,7 +128,7 @@ await main("C6.4", "Document checklist per person (Visitor visa)", async () => {
   ok("C6.4-12 pass: the officer requests the principal's passport: state Requested", r.status === 200 && r.body?.state === "requested", r.body);
   ok("C6.4-13 fail: a client cannot request documents (403)", (await call("POST", `/runtime/checklist-lines/${pass?.id}/request`, {}, CLIENT)).status === 403);
   const up = async (lineId: string | undefined, name: string) => {
-    const fd = new FormData(); fd.append("file", new Blob([new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic passport ${name}\n`)]), name);
+    const fd = new FormData(); fd.append("file", new Blob([new Uint8Array(textPdf([`Sample synthetic passport ${name}`]))]), name);
     const res = await fetch(`http://127.0.0.1:${process.argv[2] ?? 4440}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: { "x-actor": OFFICER }, body: fd }).catch(() => null);
     return { status: res?.status ?? 0, body: await res?.json().catch(() => null) };
   };

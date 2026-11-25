@@ -8,6 +8,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { Lock, MoreHorizontal, TriangleAlert } from "lucide-react";
 import type { AnswerSource, BulkSourceResult, FactSourceRow, FactSourcesView, QuestionnaireQuestion } from "../../../../contracts/workspace";
 import { api, ApiError, useActorId } from "@/lib/api";
@@ -119,7 +120,7 @@ export function RowMenu({ name, items }: { name: string; items: MenuItem[] }) {
   const item = "flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-text/5 data-[disabled]:cursor-default";
   return (
     // Not modal: a modal menu hides the rest of the page from screen readers while focusable items stay in it.
-    <DropdownMenu.Root modal={false}>
+    <MenuRoot modal={false}>
       <DropdownMenu.Trigger asChild><Button size="sm" variant="ghost" aria-label={`Actions for ${name}`} data-row-menu><MoreHorizontal /></Button></DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} className="z-50 w-[300px] rounded-lg border border-border bg-surface-raised p-1 text-sm shadow-lg" data-row-menu-items>
@@ -133,7 +134,7 @@ export function RowMenu({ name, items }: { name: string; items: MenuItem[] }) {
           ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    </MenuRoot>
   );
 }
 

@@ -2,6 +2,9 @@
 // brief lead-b-briefs/J-rows.md J-6 with amendment A6 of P-626-order.md, A6 winning). It adds no feature: it walks
 // PF-6b (on main) and FO-4's Leads screen (on main) on an isolated copy of the running app (its own database and port,
 // never :4400), on screen and through the API. Names carry "P1-" so part 2 (the role editor) keeps the brief's W1..W5.
+// Part 2 (rows rev 16.54; PF-6 part 2a/2b on screen): J-6 DW1 (PF-6m's money line read back from the audit), DW2
+// (FO-2v's rule on Leads: the Owner with "everyone sees all" off sees only their own) and walk W1 (Team → Compare roles
+// → invite Billing and finance with its money line → accept → refused Team → a Case Officer with "own" → My account).
 //   P1-A1..A4: own versus all by the API, and PF-6b's checks with a pass and a fail per key class (GENERAL, MONEY, LICENCE);
 //   P1-W1..W5: the walk at 1440 px (an Owner sees every lead; a Case Officer with "own" sees only theirs; a wrong person
 //              or a wrong role by URL is refused on screen and by the API; ends at row 5's first step, Invite staff).
@@ -20,7 +23,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -193,6 +196,84 @@ ok("J-6 P1-W5 fail: a Case Officer inviting staff by API gets 403 (agent/staff:m
 const invite = await api(tok.R, "POST", "/platform/staff/invitations", { email: `j6-invitee-${run}@sample-firm.example.com`, roles: ["CASE_OFFICER"] });
 ok("J-6 P1-W5 pass: the Owner invites a Case Officer (row 5's first step): the invitation is pending", invite.status === 201 && invite.body?.status === "PENDING", invite);
 if (invite.body?.id) await api(tok.R, "POST", `/platform/staff/invitations/${invite.body.id}/revoke`, {});   // frees the seat: repeatable
+
+// ------------------------------------------------------------------ part 2 (rows rev 16.54): DW1, DW2 and walk W1
+// Now that PF-6 part 2a (Team, Invite people, Compare roles) and part 2b (Accept invitation) are on screen, the walk
+// takes row 6's role steps by screens, with the money line read back from the audit and FO-2v's rule on Leads.
+const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = '${A}' and s.status <> 'ENDED' limit 1`).split("|");
+sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 10} where id = '${plan[0]}'`);   // lent for the walk (the screenshots show the lent figure), given back in the finally
+const leavers: string[] = [];
+try {
+const moneyFor = (staffId: string) => sql(`select coalesce(json_agg(json_build_object('actor', actor, 'detail', detail))::text, '[]') from audit_event where action = '${MONEY}' and entity_key = '${staffId}'`);
+/** Gives the invitation a token the walk knows (the mail is held in memory; the token has the server's shape, 43 base64url). */
+const knownLink = (invitationId: string) => { const known = randomBytes(32).toString("base64url"); sql(`update platform_invitation set token_hash = '${createHash("sha256").update(known).digest("hex")}' where id = '${invitationId}'`); return `${BASE}/invitation#t=${known}`; };
+// W1 step 1: the Owner opens Team, then Compare roles: money permissions and licence actions in their own groups.
+await owner.goto(`${BASE}/platform/team`); await owner.locator("[data-seat-line]").waitFor({ timeout: 30_000 });
+await owner.locator("[data-invite-open]").click(); await owner.locator("[data-compare-roles]").click(); await owner.locator("[data-compare]").waitFor({ timeout: 10_000 });
+// Each role's two group counts equal PF-6r's class counts (review m1): Billing and finance 12 money; Case Manager 3 licence.
+const rolesApi = (await api(tok.R, "GET", "/platform/roles")).body?.roles as { role: string; moneyKeys: number; licenceKeys: number }[] ?? [];
+const groupCount = async (role: string, cls: string) => Number(/: (\d+)$/.exec(await owner.locator(`[data-compare-role="${role}"] [data-key-group="${cls}"] summary`).innerText())?.[1] ?? -1);
+const groups: Record<string, [number, number, number, number]> = {};
+for (const r of rolesApi) groups[r.role] = [await groupCount(r.role, "MONEY"), r.moneyKeys, await groupCount(r.role, "LICENCE"), r.licenceKeys];
+await shot(owner, "P2-W1-compare-roles-1440");
+ok("J-6 W1 step 1: the Owner's Team → Invite people → Compare roles shows each role's money permissions and licence actions in their own groups, counted as PF-6r's classes (Billing and finance 12 money; Case Manager 3 licence)",
+  rolesApi.length === 6 && Object.values(groups).every(([m, mApi, l, lApi]) => m === mApi && l === lApi) && groups.BILLING_FINANCE?.[0] === 12 && groups.CASE_MANAGER?.[2] === 3, groups);
+await owner.keyboard.press("Escape"); await owner.waitForTimeout(300);
+// W1 step 2: the Owner invites a Billing and finance person; the money line shows before Send.
+const BF = `j6-billing-${run}@sample-firm.example.com`;
+await owner.getByLabel("Email, person 1").fill(BF);
+const row1 = owner.locator('[data-invite-row="1"]');
+if (await row1.locator('[data-role="CASE_OFFICER"]').isChecked()) await row1.locator('[data-role="CASE_OFFICER"]').uncheck();
+await row1.locator('[data-role="BILLING_FINANCE"]').check();
+const moneyShown = await row1.locator("[data-money-line]").innerText().catch(() => "");
+await row1.locator("[data-money-line]").scrollIntoViewIfNeeded().catch(() => undefined);   // for the screenshot only; the line's words are checked just above
+await shot(owner, "P2-W1-invite-billing-money-line-1440");
+ok("J-6 W1 step 2: inviting Billing and finance shows its own money line naming the count before Send", moneyShown === `This gives ${BF} 12 money permissions.`, moneyShown);
+await owner.locator("[data-send-invites]").click();
+let invBF = ""; for (let i = 0; i < 100 && !invBF; i++) { invBF = sql(`select coalesce((select id::text from platform_invitation where email = '${BF}'), '')`); if (!invBF) await owner.waitForTimeout(100); }
+ok("J-6 W1 step 2: Send makes one invitation, Billing and finance only", !!invBF && sql(`select roles::text from platform_invitation where id = '${invBF}'`) === "{BILLING_FINANCE}");
+// The new person accepts on the Accept invitation page (PF-6 part 2b) and is signed in.
+const bfPage = await pageAs(null); await bfPage.goto(knownLink(invBF));
+await bfPage.locator("[data-accept-continue]").click(); await bfPage.locator("[data-account]", { hasText: BF }).waitFor({ timeout: 30_000 });
+const BFs = { id: sql(`select coalesce((select id::text from platform_staff where email = '${BF}'), '')`).split("\n")[0] };
+if (BFs.id) leavers.push(BFs.id);
+ok("J-6 W1 step 3: the invitee accepts on the Accept invitation page and is signed in (My account shows them)", !!BFs.id && (await bfPage.locator("[data-staff-name]").count()) === 1);
+// DW1: PF-6m's money line is real, read back from the audit: one line, by the inviter, Billing and finance's 12 keys.
+const bfLines = JSON.parse(moneyFor(BFs.id)) as { actor: string; detail: { roles?: string[]; moneyKeys?: string[] } }[];
+ok("J-6 DW1 pass: the accepted invitation wrote PF-6m's money-keys line, read back from the audit: by the Owner, Billing and finance, 12 money keys", bfLines.length === 1 && bfLines[0].actor === `staff:${R.id}` && bfLines[0].detail.roles?.join() === "BILLING_FINANCE" && (bfLines[0].detail.moneyKeys ?? []).length === 12, bfLines);
+const RO = `j6-readonly-${run}@sample-firm.example.com`, invRO = await api(tok.R, "POST", "/platform/staff/invitations", { email: RO, roles: ["READ_ONLY"] });
+const roAcc = await fetch(knownLink(String(invRO.body?.id)).replace("/invitation#t=", "/api/public/invitations/") + "/accept", { method: "POST" });
+const ROid = sql(`select coalesce((select id::text from platform_staff where email = '${RO}'), '')`);
+if (ROid) leavers.push(ROid);
+ok("J-6 DW1 fail: an accepted Read only invitation (no money key) writes no money-keys line", roAcc.status === 200 && !!ROid && JSON.parse(moneyFor(ROid)).length === 0, roAcc.status);
+// W1 step 4: the new person opens /platform/team: refused on screen and by the API.
+const bfTok = await bfPage.evaluate(() => (JSON.parse(sessionStorage.getItem("xr-staff-session") ?? "{}") as { token?: string }).token ?? "");
+await bfPage.goto(`${BASE}/platform/team`); await bfPage.locator("[data-team-refused]").waitFor({ timeout: 20_000 });
+const bfTeam = await api(bfTok, "GET", "/platform/staff");
+await shot(bfPage, "P2-W1-billing-team-refused-1440");
+ok("J-6 W1 step 4: the Billing and finance person opening /platform/team sees the server's refusal, and the API answers 403", bfTeam.status === 403 && (await bfPage.locator("[data-team-refused]").innerText()) === bfTeam.body?.detail && (await bfPage.locator('[data-account-section="/platform/team"]').count()) === 0, bfTeam.status);
+// DW2 (FO-2v's single rule on Leads): with "everyone sees all" off the Owner sees only their own leads; on, every lead.
+await seesAll(false);
+const ownerOff = await leadsOn(owner, "all", L.R.given); await shot(owner, "P2-DW2-owner-setting-off-1440");
+ok("J-6 DW2 pass: with \"everyone sees all\" off, the Owner's All open on Leads shows the Owner's lead and no Case Officer's", ownerOff.R && !ownerOff.O && !ownerOff.B, ownerOff);
+await seesAll(true);
+const ownerOn = await leadsOn(owner, "all", L.O.given);
+ok("J-6 DW2 fail: with it on, the same screen shows the Case Officer's lead too (the rule, not a fixed list)", ownerOn.R && ownerOn.O && !ownerOn.B, ownerOn);
+// W1 step 5: a Case Officer with "own" (the role without view.all) sees only their own leads.
+officerViewAll(false);
+const officerOwn = await leadsOn(officer, "all", L.O.given); await shot(officer, "P2-W1-case-officer-own-1440");
+ok("J-6 W1 step 5: a Case Officer with \"own\" sees only their own leads (not the Owner's, not firm B's)", officerOwn.O && !officerOwn.R && !officerOwn.B && !officerOwn.U, officerOwn);
+officerViewAll(true);
+// W1 step 6: ends at the next capability's first step, My account (row 5).
+await bfPage.locator('nav[aria-label="My account"] [data-account-section="/account"]').click(); await bfPage.locator("[data-account]", { hasText: BF }).waitFor({ timeout: 20_000 });
+ok("J-6 W1 step 6: the walk ends on My account (row 5's first step) for the new person", await bfPage.getByRole("heading", { name: "Profile" }).isVisible());
+await axeOf(bfPage, "W1 My account (Billing and finance)");
+} finally {
+  // Repeatable (review m2): the new people leave (seats freed) and the lent seats go back, whatever failed above.
+  const left = await Promise.all(leavers.map((id) => api(tok.R, "POST", `/platform/staff/${id}/deactivate`, { reason: "J-6 walk done (Sample)" })));
+  sql(`update platform_plan set seats_limit = ${Number(plan[1])} where id = '${plan[0]}'`);
+  ok("J-6 part 2 clean-up: the walk's new people are deactivated and the lent seats are given back", left.every((a) => a.status === 200) && sql(`select seats_limit from platform_plan where id = '${plan[0]}'`) === plan[1], left.map((a) => a.status));
+}
 ok("J-6: no page error in the browser", errors.length === 0, errors);
 await browser.close();   // before PF-6b's check: the copy, the browser and the check's own database together are too much for one small machine
 // P1-A4: PF-6b's own check, whole (its scratch database; no server), each Done-when line needing both its halves. The

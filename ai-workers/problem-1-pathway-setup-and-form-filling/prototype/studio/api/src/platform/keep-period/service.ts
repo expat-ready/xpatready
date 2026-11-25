@@ -5,13 +5,14 @@
 // allowed with a warning and a typed reason, both on the setting's audit line (Build Lead C's ruling). It is a reminder,
 // never a lock: nothing is deleted automatically in Release 1 (BR-7). The firm is always the session's (PF-4's guard),
 // never the request's. KeepPeriods is KeepPeriodPort's real adapter (CS-D6 reads forFirm; part 2 builds check()).
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { Db } from "../../core.ts";
 import {
-  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, NO_COUNSEL,
-  type FirmKeepPeriod, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
+  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, KeepCheckRefused, NO_COUNSEL,
+  subjectsFor, verdictOf, type FirmKeepPeriod, type HoldsForCheck, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
 } from "../../../../ports/keep-period.ts";
 import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
@@ -19,6 +20,11 @@ import { readSetting, registerSetting, writeSetting } from "../settings.ts";
 
 type Tx = Prisma.TransactionClient;
 export const LEGAL_SETTINGS_KEY = "agent/legal-settings:manage";
+/** The LegalHoldPort KeepPeriods.check asks first (BR-7). PF-21b part 2 provides the real adapter under this token; until
+ *  then nothing is wired and check() refuses (KeepCheckNotBuilt), never a silent OK. */
+export const KEEP_CHECK_HOLDS = Symbol("KeepPeriods.holds");
+/** The clock check() reads "now" from (the floor's and the reminder's end); a test passes its own. */
+export const KEEP_CHECK_NOW = Symbol("KeepPeriods.now");
 
 export const CLOSED_CLIENT_FILES = registerSetting({
   key: "legal.closed_client_files_years", ownerModule: "platform", changePermission: LEGAL_SETTINGS_KEY,
@@ -42,7 +48,7 @@ export async function seedSampleSettingValues(tx: Tx, firmId: string, values: Re
   return n;
 }
 
-const SaveBody = z.strictObject({ years: z.unknown(), reason: z.unknown().optional() });
+const SaveBody = z.strictObject({ years: z.unknown().optional(), reason: z.unknown().optional() });   // R1.10 A4: years is checked below with the reason, so both are named at once
 const REASON_MAX = 500;
 const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
 
@@ -51,12 +57,12 @@ const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
  *  Empty when none was given. */
 function reasonOf(raw: unknown): string {
   if (raw === undefined) return "";
-  if (typeof raw !== "string") problem(400, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON" });
+  if (typeof raw !== "string") problem(FIELD_ERROR_STATUS, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON", fields: { reason: "This must be text." } });
   const reason = raw.trim();
   // Line breaks and tabs inside a reason are kept (a reason box may have several lines: re-review n2); any other control
   // character, or broken text (a lone surrogate), cannot be stored and is refused in words (break m2).
-  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(400, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON" });
-  if ([...reason].length > REASON_MAX) problem(400, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON" });
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(FIELD_ERROR_STATUS, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON", fields: { reason: "This has a control character or broken text. Type it again." } });
+  if ([...reason].length > REASON_MAX) problem(FIELD_ERROR_STATUS, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON", fields: { reason: `This is too long: at most ${REASON_MAX} characters.` } });
   return /[\p{L}\p{N}]/u.test(reason.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, "")) ? reason : "";   // fillers that draw nothing are not letters
 }
 
@@ -71,15 +77,38 @@ function closedFilesView(y: number | null, s: StaffContext) {
 
 @Injectable()
 export class KeepPeriods implements KeepPeriodPort<Tx> {
-  constructor(@Inject(Db) private readonly db: PrismaClient) {}
+  constructor(
+    @Inject(Db) private readonly db: PrismaClient,
+    @Optional() @Inject(KEEP_CHECK_HOLDS) private readonly holds?: HoldsForCheck<Tx>,
+    @Optional() @Inject(KEEP_CHECK_NOW) private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async forFirm(firmId: string): Promise<FirmKeepPeriod> {
     const years = await readSetting<number | null>(this.db, firmId, CLOSED_CLIENT_FILES.key);
     return years === null ? { closedClientFilesYears: null, source: "not set" } : { closedClientFilesYears: years, source: "firm setting" };
   }
 
-  /** AUD-5 part 2 (after PF-21b). */
-  async check(_tx: Tx, _input: KeepCheckInput): Promise<KeepCheckResult> { throw new KeepCheckNotBuilt(); }
+  /** AUD-5 part 2: HELD | FLOOR | WARN | OK in BR-7's order, all inside the deleter's own open transaction `tx`: the hold
+   *  first (isHeld takes the shared hold lock through tx, kept until the deleter commits), then the floor, then the firm's
+   *  reminder, read through the same tx after the lock (so a setting saved mid-request is read as of that statement, never
+   *  from a second transaction). The reminder is never a lock: a setting saved after the check does not undo it (break m2;
+   *  SA-11-33 "a reminder, not a lock"). The College's number is never read here (REFERENCE rows are refused by subjectsFor). */
+  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> { if (!this.holds) { throw new KeepCheckNotBuilt(); }
+    if ((tx as unknown) === this.db || typeof (tx as { $connect?: unknown }).$connect === "function") throw new KeepCheckRefused("INVALID_INPUT", "The delete check runs inside the deleter's own transaction, never on the root client.");   // break m4
+    const { input: q, row, subjects } = subjectsFor(input);
+    const held = await this.holds.isHeld(tx, q.firmId, subjects);
+    const firm = held.held || row.kind !== "REMINDER" ? null : await readSetting<number | null>(tx, q.firmId, CLOSED_CLIENT_FILES.key);
+    return verdictOf(held, row, q.startedAt, firm, this.now());
+  }
+
+  /** The door a deleter calls: the firm is the session's, never the request's. `ask` is built by the deleter from the
+   *  STORED record (its class, the date its period starts, its own dates, its case and person), never a request body
+   *  passed through: a client choosing the class or the date could pick an OK (review m3). An ask that names a firm is
+   *  refused. */
+  async checkFor(tx: Tx, s: StaffContext, ask: unknown): Promise<KeepCheckResult> {
+    if (ask && typeof ask === "object" && "firmId" in ask) throw new KeepCheckRefused("INVALID_INPUT", "The firm is always your own; a delete check never names one.");
+    return this.check(tx, { ...(ask as object), firmId: s.firmId } as KeepCheckInput);
+  }
 
   /** GET /api/platform/keep-periods: the table in plain words and the firm's own number (read-only for most staff). */
   async read(s: StaffContext) {
@@ -97,12 +126,16 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
    *  the line too (review m4). The answer is built from the value this request saved, never re-read (break m5). */
   async save(s: StaffContext, body: unknown) {
     const b = SaveBody.safeParse(body ?? {});
-    if (!b.success) problem(400, "Not saved", "Send the number of years (and a reason when it is below 6); nothing else.", { code: "INVALID_BODY" });
+    if (!b.success) problem(FIELD_ERROR_STATUS, "Not saved", "Send the number of years (and a reason when it is below 6); nothing else.", { code: "INVALID_BODY", fields: fieldsOf(b.error) });   // PF-28 part 2b: 422, fields named
     const years = b.data.years;
-    if (typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success) problem(400, "Not saved", "Enter a whole number of years from 1 to 50.", { code: "INVALID_YEARS" });
+    // R1.10 A4: a reason that is not text is named with the years, never hidden behind them (every field that needs a change, at once).
+    const badReason = b.data.reason !== undefined && b.data.reason !== null && typeof b.data.reason !== "string";
+    const badYears = typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success;
+    if (badReason) problem(FIELD_ERROR_STATUS, "Not saved", badYears ? "Enter a whole number of years from 1 to 50, and the reason as text." : "The reason is a sentence of text.", { code: badYears ? "INVALID_YEARS" : "INVALID_REASON", fields: { ...(badYears ? { years: "A whole number of years from 1 to 50." } : {}), reason: "This must be text." } });
+    if (typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success) problem(FIELD_ERROR_STATUS, "Not saved", "Enter a whole number of years from 1 to 50.", { code: "INVALID_YEARS", fields: { years: "A whole number of years from 1 to 50." } });
     const below = years < COLLEGE_CLIENT_FILE_YEARS;
     const reason = reasonOf(b.data.reason);
-    if (below && !reason) problem(400, "A reason is needed", COLLEGE_WARNING, { code: "REASON_NEEDED", warning: COLLEGE_WARNING });
+    if (below && !reason) problem(FIELD_ERROR_STATUS, "A reason is needed", COLLEGE_WARNING, { code: "REASON_NEEDED", warning: COLLEGE_WARNING, fields: { reason: "This is required." } });
     const line = [below ? `Below the College's rule: ${WARNING_SHORT}` : "", reason ? `Reason given: ${reason}` : ""].filter(Boolean).join(" ");
     const saved = await writeSetting(this.db, {
       firmId: s.firmId, key: CLOSED_CLIENT_FILES.key, value: years, by: actorWord(s.staffId), workspaceId: await platformAuditWorkspaceId(this.db),

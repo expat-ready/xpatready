@@ -1,0 +1,36 @@
+# R1.8 audit trail: break report (permissions and data walls)
+
+PR #2527, branch `claude/awesome-pascal-8tfpp3`, head `e81b8cd51`. Scope: `studio/ports/audit.ts`, `studio/api/src/platform/audit/audit-event.ts`, the PF/FO callers' before/after (QA-594), and case lines taking their case's firm (QA-595). Run on an isolated copy (`isolated.sh brk 4471 … PLATFORM_IDENTITY=local`, database `xr_studio_brk`, stopped and dropped afterwards), never :4400. Probes were scratch scripts calling the real `Audit.log` / `auditEvent.record` against that database, plus HTTP on :4471. Test cases written as owner: A = sample-firm `5390b9ab…`, B = sample-solo `8401f843…`; case `bbbbbbbb-…` is B's; `cccccccc-…` has an unseeded firm key; `dddddddd-…` has firm_id null and B's key; `f1f1f1f1-…` belongs to a non-Sample firm. No code edited, nothing pushed.
+
+## Findings
+
+**M1 (Major): a configuration line can be put on any firm's trail by writing "case <8 hex>" in its words.** QA-595 sets a case line's firm from `caseIdOf` (core.ts:149-157, which reads the first `case xxxxxxxx` in the summary, case-feed.ts:54) and then `firmId = caseFirm ?? scope ?? named` (audit-event.ts:87). Configuration requests (X-Actor `user-A`) have no firm scope, so nothing stops a free-text note naming another firm's case.
+Repro (HTTP): add a published field `applicant.brk_probe` to the demo workspace, then `POST /api/library/fields/applicant.brk_probe/retire` with `x-actor: user-A` and `{"reason":"no longer asked; see case bbbbbbbb for the history"}`. Result: the line `proposed field applicant.brk_probe` is written with `firm_id = B` and `case_id = bbbbbbbb-…`. Firm B's Owner then calls `GET /api/platform/audit?from=2026-11-19&to=2026-11-21` and sees it under Configuration as "Staff member not on this firm's team list" (actorType FIRM_STAFF, actor `user-A`). Firm A sees nothing. Before R1.8 this line would have had no firm. Other free-text routes do the same: lifecycle.ts:265 (reason), review-proposals.ts:177 (note), intake.ts:180 (note), and every combination label. The scratch run showed the same thing (probe a5). Expected: a line about a configuration entity (no `case` entity) never takes a firm from words, or words only find a case when the line's own entity is a case entity.
+
+**M2 (Major if non-Sample firms open cases in the demo workspace; otherwise Minor): the demo reset breaks.** Case lines written with no firm scope (person links, public doors, jobs) now carry the case's firm. `aud_event_no_change` (migration `20261117124500_aud1a_audit_insert_only`, line 101 onward) lets the reset delete only lines whose firm is null or a Sample firm.
+Repro: a case with firm_id = non-Sample firm `f0f0…` in the demo workspace. Write a person-link line with `Audit.log(WS, "person:…", "code sent", "person", …, "… on case f1f1f1f1")`, which lands with `firm_id = f0f0…`. Then run demo.ts:560/573's delete in a transaction with `app.audit_sample_reset = on`. It fails with "DELETE refused", so the whole reset rolls back. Staff requests could already cause this before; QA-595 widens it to unscoped lines.
+
+**m1 (Minor): fail-closed does not hold for `Audit.log` on the shared client.** `Audit.log` (core.ts:166) records on `this.db`. When that is not a transaction, the change has already committed by the time QA-595's new refusals run (case of another firm, missing case at audit-event.ts:84-88, 103-106). Repro c3: inside firm A's scope, create a row, then `new Audit(db).log(WS,"user-A","x","case",<B's case>,…)`. The call throws `AuditRefused`, but the row stays committed with no line. lifecycle.ts:258→265 has the same shape (`libraryChange.create` before the log). I found no HTTP path that triggers the new refusal inside a firm-scoped request, so the impact is latent.
+
+**m2 (Minor): `CaseEntry.firmId` is trusted when there is no scope and no case.** Probes a3, a4 and a14: with no request firm, `firmId: B` is written on B's trail, including for a case whose firm key has no platform firm (a14). No caller passes `firmId` today (only core.ts:168 writes CaseEntry), so this is latent, but the port's comment promises a refusal.
+
+**m3 (Minor): the QA-595 wall covers case lines only.** Probe a12: an `AuditEntry` in firm A with `caseId` = B's case is written (`firm_id A`, `case_id` B's), and A's log shows B's case uuid under advanced.caseId. The one real caller (prospect-won.ts:208) passes its own new case.
+
+**m4 (Minor): `SECRET_FIELD` is easy to dodge.** ports/audit.ts:36 accepts `pwd`, `credential`, `bearer`, `sessionId`, `inviteLink`, `magicLink`, `resetUrl`, `jwt`, `cookie`, `authorization`, `pin`, `code`, `mfaSeed`, `recoveryCodes`, `passphrase`, `refresh`, `nonce`, `verifier`, `signature`, `accessKey` and `fileSha256`. A value-only secret under an innocent key (`link: "https://x/invite/<32 hex>"`) is also accepted, and `detail` has no secret check at all. I checked the real callers and none leaks a secret:
+- invitations: email, name, roles and expiry only, no token or link;
+- booking cancel by token: status only;
+- consent: ipHash and textHash are left out of the values (textHash stays in detail, as on main; it hashes public wording);
+- signup: emails and stripeCustomerId;
+- two-step: words only;
+- booking-type `meetingLink`: stored as "64 characters", so a Zoom `pwd=` link was masked.
+
+Free text in full is the remaining exposure (support `body`, suppression `note`, `lostNote`, `withdrawnReason`, identity `methodDetail`). It is allowed by P-687, but a pasted password would be stored forever.
+
+**m5 (Minor, AUD-1a, not new): xr_app can delete Sample lines.** `set_config('app.audit_sample_reset','on',true)` is open to any role. As xr_app, 6 demo-workspace lines with firm = sample-solo were deleted (including M1's line), then rolled back.
+
+## Held
+- (a) Firm A's request with B's case id (a1), mixed-case ids (a8), and a case with firm_id null but B's key (a11) are all refused. A missing case is refused (a9). Naming B with no case in A's request is refused (a2). With no scope, a case of B naming A is refused (a13). Upper-case caseId/firmId of A's own case is stored lower-case (a7). An unseeded firm key falls back to the request's firm (a10). Job scope was checked by reading context.ts only: the job's firm wins and a firm job is refused like a1.
+- (c) A refused case line inside `$transaction` rolls the change back and writes no line (c1). `attempts: 1` gives one alert with ids only and the alarm uses the request's firm. A refusal swallowed by the caller commits (c2), but no caller does that.
+- (d) As xr_app: UPDATE and TRUNCATE are refused (permission denied); DELETE outside the reset is refused by the trigger; DISABLE TRIGGER, DROP TRIGGER and `session_replication_role` are refused.
+- (e) `GET /api/platform/audit` and `/export` use `e.firm_id = <own firm>`. Firm A with `firmId=B`, `firmKey`, `firm` or an `x-firm-id` header still sees only A's lines; B's entityKey gives A nothing. A case officer gets 403 and `x-actor` alone gets 401. The CSV Changes cell starts with a field name, and csv.ts quotes formula starts.
+- QA-594 shape: `tests/check_aud_values.ts` passes 12/12 on this head. No array overflow: retainer placeholders are a de-duplicated set of known names, availability windows ≤ 42, fees ≤ 50.

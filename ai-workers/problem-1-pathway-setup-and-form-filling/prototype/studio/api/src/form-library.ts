@@ -273,13 +273,13 @@ export class FormLibrary {
     // Breaker M3, review r2 M1: the proposal and its Activity line are written together, or neither is.
     const c = await this.db.$transaction(async (tx) => {
       const made = await tx.libraryChange.create({ data: { workspaceId, kind: "form_role", key: code, label, action: "SET_ROLE", reason: b.reason, matches: { from: def.formRole, to: b.role }, status: "WAITING", proposedBy: actor.id } });
-      await tx.auditEvent.create({ data: { workspaceId, actor: actor.id, action: "proposed", entity: "form", entityKey: code, summary: `${actor.name} proposed ${label}: ${b.reason}`.slice(0, 600), detail: { from: def.formRole, to: b.role, reason: b.reason, change: made.id } } });
+      await new Audit(tx as never).log(workspaceId, actor.id, "proposed", "form", code, `${actor.name} proposed ${label}: ${b.reason}`.slice(0, 600), { from: def.formRole, to: b.role, reason: b.reason, change: made.id });
       return made;
     });
     // Two people proposing at once both pass the check above: the earlier stays, the later is refused (form_accepts pattern).
     const first = await this.db.libraryChange.findFirst({ where: { workspaceId, kind: "form_role", key: code, status: "WAITING" }, orderBy: [{ proposedAt: "asc" }, { id: "asc" }] });
     // AUD-1a (AG-13-41): its audit line stays; one reversing line says it was withdrawn at once, in the same transaction.
-    if (first && first.id !== c.id) { await this.db.$transaction([this.db.libraryChange.delete({ where: { id: c.id } }), this.db.auditEvent.create({ data: { workspaceId, actor: actor.id, action: "withdrawn", entity: "form", entityKey: code, summary: `${actor.name} withdrew ${label} at once: another change to this form already waits`.slice(0, 600), detail: { change: c.id } } })]); throw problem(409, "Already waiting", `A change to ${code}'s role already waits for a second person on To review.`); }
+    if (first && first.id !== c.id) { await this.db.$transaction(async (tx) => { await tx.libraryChange.delete({ where: { id: c.id } }); await new Audit(tx as never).log(workspaceId, actor.id, "withdrawn", "form", code, `${actor.name} withdrew ${label} at once: another change to this form already waits`.slice(0, 600), { change: c.id }); }); throw problem(409, "Already waiting", `A change to ${code}'s role already waits for a second person on To review.`); }
     return { id: c.id, status: c.status, label, waits: "A second person approves it on To review; it then goes out with each combination's next release, which the immigration expert signs off." };
   }
 

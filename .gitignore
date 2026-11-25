@@ -1,5 +1,7 @@
 .DS_Store
 node_modules/
+# A node_modules link (a second working copy sharing the first's packages) is never committed: node_modules/ matches folders only.
+node_modules
 # P-82: these stay on the Mac only — never tracked, never pushed
 sources/
 code/

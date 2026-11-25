@@ -10,6 +10,7 @@ import { ModePill, StatusPill } from "@/pages/combination";
 import { cn } from "@/lib/utils";
 import type { FormFieldsView } from "../../../contracts/screen02";
 import { OwnQuestions } from "@/components/own-questions";
+import { useTabActive } from "@/components/workspace";
 
 export const PERSON: Record<string, string> = { form_subject: "the form's subject", subject_spouse_or_partner: "the subject's spouse or partner", subject_parent_1: "the subject's first parent", subject_parent_2: "the subject's second parent", subject_child: "the subject's child", subject_sibling: "the subject's sibling", representative: "the representative", none: "the application" };
 /** DV-d1-3 (QA-94): a role's system key written inside stored prose ("holding the role subject_spouse_or_partner") is
@@ -48,7 +49,9 @@ export function JobPage() {
   const [focusDecisions, setFocusDecisions] = React.useState(false);
   const recompare = useAction(() => api(`/jobs/${jobId}/recompare`, { method: "POST" }), { success: (r: any) => `Compared again with the current library (no AI call): ${r.detail?.recompared?.kept ?? 0} decisions kept, ${r.detail?.recompared?.reopened ?? 0} to decide again`, invalidate: [["job", jobId]] });
   // Board view 4 keys: J / K move between proposals, A accepts the one in focus, N opens its new-field form.
+  const shownTab = useTabActive();   // PF-31: a hidden workspace tab's keys never act on the shown page (breaker m6 on 2fd5352aa)
   React.useEffect(() => {
+    if (!shownTab) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (e.metaKey || e.ctrlKey || e.altKey || (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable))) return;
@@ -60,7 +63,7 @@ export function JobPage() {
       else if ((k === "a" || k === "n") && at >= 0) { const b = cards[at].querySelector<HTMLButtonElement>(k === "a" ? "[data-accept]" : "[data-new]"); if (b && !b.disabled) { e.preventDefault(); b.click(); } }
     };
     window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [shownTab]);
   // C3.2 (P-121): only High exact reuse matches are accepted together, and one Undo takes the whole batch back.
   const [batch, setBatch] = React.useState<{ id: string; n: number; seconds: number } | null>(null);
   React.useEffect(() => { if (!batch) return; const t = window.setTimeout(() => setBatch(null), batch.seconds * 1000); return () => window.clearTimeout(t); }, [batch]);

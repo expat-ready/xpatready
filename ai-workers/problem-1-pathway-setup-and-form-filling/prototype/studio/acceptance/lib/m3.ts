@@ -373,6 +373,7 @@ export async function copyBytes(copyId: string, actor = OFFICER): Promise<Buffer
 // QA-165: the form's own Validate result written into the copy (tests/runtime/validated.ts), never bytes appended.
 // A re-export alone binds no local name, and validateRoundTrip below calls it (C7.6, C8.1, C9.2 crashed on #572's merge).
 import { adobeValidated, asValidated } from "../../tests/runtime/validated.ts";
+import { textPdf } from "./fixtures.ts";
 export { adobeValidated, asValidated };
 export async function sendFile(path: string, file: Buffer, name: string, actor = OFFICER) {
   const fd = new FormData(); fd.append("file", new Blob([new Uint8Array(file)]), name);
@@ -387,7 +388,8 @@ export async function validateRoundTrip(caseId: string, form: string, subject: s
   return r.status === 201 ? id : null;
 }
 /** A signed scan (P-143 "signed by hand and scanned"): a synthetic PDF standing in for the printed, signed, scanned page. */
-export const signedScan = (label: string) => Buffer.from(`%PDF-1.4\n% SYNTHETIC SPECIMEN: signed scan of ${label} (Sample)\n%%EOF\n`, "latin1");
+// QA-520: a real PDF (one that opens): the signed-scan door refuses a header-only "PDF" as damaged, as the Documents doors do.
+export const signedScan = (label: string) => textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", `Signed scan of ${label} (Sample)`]);
 /** A "signed by hand and scanned" item in its order (C8.1-3): generate the copy, print it, mark it signed, upload the
  *  scan. Returns the scan upload's status (201 when stored). */
 export async function signByHand(caseId: string, itemId: string | undefined, form: string, subject: string): Promise<number> {

@@ -11,7 +11,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { ZodError } from "zod";
 import { AuditEventAdapter, auditEvent, PLATFORM_AUDIT_WORKSPACE } from "../api/src/platform/audit/audit-event.ts";
-import { AuditEntry, AuditFailure, fakeAudit } from "../ports/audit.ts";
+import { AuditEntry, AuditFailure, fakeAudit, flattenValues } from "../ports/audit.ts";
 import { FAKE_NOW, FakeClock, systemClock } from "../ports/clock.ts";
 import { FileKeyTaken, fakeFiles } from "../ports/files.ts";
 import { cronMatches, fakeJobs, parseCron, type JobRun } from "../ports/jobs.ts";
@@ -40,11 +40,12 @@ const entry = (over: Record<string, unknown> = {}) => ({ firmId: FAKE_FIRM_ID, a
 
 // ------------------------------------------------------------------------------------------------- the folder's own rule
 /** The import lines of a ports file that are not zod or one of the folder's own files (case-side contract v0.1 §1 rule 3). */
-const foreignImports = (text: string) => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s*["']([^"']+)["']|\b(?:import|require)\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter((s) => s !== "zod" && !/^\.\/[a-z0-9-]+(\.port)?\.ts$/.test(s));
+const foreignImports = (text: string) => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s*["']([^"']+)["']|\b(?:import|require)\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter((s) => s !== "zod" && !/^\.\/(events\/)?[a-z0-9-]+(\.port)?\.ts$/.test(s));   // events/: the events contract's own folder (P-785 (2))
 const portFiles = readdirSync(PORTS).filter((f) => f.endsWith(".ts"));
 ok("PF-0p pass: the seven ports are in studio/ports/ (audit, staff, clock, jobs, mail, files, render)", ["audit", "staff", "clock", "jobs", "mail", "files", "render"].every((p) => portFiles.includes(`${p}.ts`)), portFiles);
 const bad = portFiles.flatMap((f) => foreignImports(readFileSync(join(PORTS, f), "utf8")).map((s) => `${f}: ${s}`));
 ok("PF-0p pass: every file in studio/ports/ imports only zod and its own files", bad.length === 0, bad);
+ok("PF-0p pass (P-785 (2)): ports/events.ts re-exporting the events folder (./events/<module>.ts) is its own files; a deeper or outside path is not", foreignImports(`import { FIRM_EVENT } from "./events/firms.ts";\nexport * from "./events/person-merge.ts";`).length === 0 && foreignImports(`export * from "./events/x/y.ts";\nimport { a } from "../events/firms.ts";`).length === 2);
 ok("PF-0p fail: the import check catches a Prisma, a Nest, a node, an app, a dynamic, a side-effect and a require import", foreignImports(`import { z } from "zod";\nimport { FirmId } from "./audit.ts";\nimport type { Prisma } from "@prisma/client";\nimport { Injectable } from "@nestjs/common";\nimport { createHash } from "node:crypto";\nexport { x } from "../api/src/core.ts";\nconst e = await import("../engine/runtime/team.ts");\nimport "../api/src/main.ts";\nconst r = require("pg");`).length === 7);
 
 // ------------------------------------------------------------------------------------------------------------- audit
@@ -238,7 +239,7 @@ await runContract(jobPortContract, "fakeJobs", fakeJobsHarness, ok);
 await runContract(filesPortContract, "fakeFiles", () => fakeFiles(), ok);
 await runContract(clockPortContract, "FakeClock", () => new FakeClock(), ok);
 await runContract(clockPortContract, "systemClock", () => systemClock, ok);
-await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)) }; }, ok);
+await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)).map((e) => ({ ...e, values: flattenValues(e.before, e.after) })) }; }, ok);
 await runContract(documentRenderPortContract, "fakeRender", () => ({ render: fakeRender({ templates: ["retainer.standard"] }), template: "retainer.standard", data: { client: { id: "p-1" }, fee: 1500 }, reordered: { fee: 1500, client: { id: "p-1" } }, other: { client: { id: "p-1" }, fee: 1600 }, text: (b: Uint8Array) => new TextDecoder().decode(b) }), ok);
 {
   // DW3: a JobPort fake that ignores the key (it queues each enqueue under a fresh one), so a keyed job runs twice.
@@ -351,7 +352,7 @@ try {
   } finally { for (const d of [...fresh, TPL]) execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", d]); }
 
   // PF-0c: the interim adapter runs AuditPort's shared contract (lines read back from audit_event by detail.firmId).
-  await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { workspaceId: (await db.workspace.findUnique({ where: { key: PLATFORM_AUDIT_WORKSPACE } }))?.id ?? "00000000-0000-4000-8000-000000000000", entityKey: { startsWith: prefix }, detail: { path: ["firmId"], equals: firm } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary })) }), ok);
+  await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { workspaceId: (await db.workspace.findUnique({ where: { key: PLATFORM_AUDIT_WORKSPACE } }))?.id ?? "00000000-0000-4000-8000-000000000000", entityKey: { startsWith: prefix }, detail: { path: ["firmId"], equals: firm } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary, caseId: e.caseId, values: Object.fromEntries(Object.entries((e.detail ?? {}) as Record<string, unknown>).filter(([k]) => /_(before|after)$/.test(k))) })) }), ok);
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);

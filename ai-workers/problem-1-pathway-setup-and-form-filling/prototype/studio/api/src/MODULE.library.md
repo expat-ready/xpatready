@@ -1,6 +1,6 @@
 ---
 paths:
-  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{library-*,document-providers,document-sets,document-supplies,document-type-names,document-values,must-verify,where-used,change-sets,rename-door,no-free-add}.ts"
+  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{library-*,document-providers,document-type-defaults,document-sets,document-supplies,document-type-names,document-values,must-verify,where-used,change-sets,rename-door,no-free-add}.ts"
 ---
 # Module card: api-library (P-615)
 The shared library: fields, sections, document types, and the one guarded change door for all of them. Read this before editing these files; update it in the same PR when an entry point, invariant, table or test below changes (or say `Card unchanged: <reason>` in the PR body).
@@ -20,6 +20,7 @@ The shared library: fields, sections, document types, and the one guarded change
 
 **Tables.** libraryChange, canonicalField, documentType, logicalSection, documentRequirement, sectionQuestion, auditEvent, combination, changeSet, formFieldMap, answerList.
 **Tests.** `tests/check_gcore_b2_door.ts`, `tests/check_c79_must_verify.ts`, `tests/check_s6_p149.ts`, `tests/check_sh2_where_used.ts`, `tests/check_c119_library_items.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.library.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Write a library row outside a LibraryChange, or let the proposer approve.

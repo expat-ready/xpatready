@@ -13,6 +13,7 @@ import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261116030000_fo7mv_move_list", FO7A = "20261115042334_fo7a_client_money_tables";
+const FO7TS = "20261118200000_fo7ts_money_settings";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7mv_t_${process.pid}`, BAD = `xr_studio_fo7mv_bad_${process.pid}`, EMPTY = `xr_studio_fo7mv_empty_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -76,7 +77,7 @@ try {
     return id;
   };
   const entry = (kind: string, amount: number, x: { inv?: string; pay?: string; corrects?: string; reason?: string; ck?: string; pid?: string; f?: string } = {}) =>
-    `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, ${x.ck ? "correction_kind, " : ""}reason, created_by) values ('${x.f ?? firmA}', '${x.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}', ` : ""}${x.reason ? `'${x.reason}'` : "null"}, 'user-R') returning id`;
+    `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, ${x.ck ? "correction_kind, " : ""}reason, ${kind === "REFUND_TO_CLIENT" ? "refund_method, refunded_on, " : ""}created_by) values ('${x.f ?? firmA}', '${x.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}', ` : ""}${x.reason ? `'${x.reason}'` : "null"}, ${kind === "REFUND_TO_CLIENT" ? "'E_TRANSFER', current_date, " : ""}'user-R') returning id`;
   const depositQ = (amount: number, pid = P1, f = firmA, method = "E_TRANSFER", cleared = true) => { const p = randomUUID();
     return `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${p}', '${f}', '${method}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R', ${cleared}); ${entry("DEPOSIT", amount, { pay: p, pid, f })}`; };
   const deposit = (amount: number, pid = P1, method = "E_TRANSFER", cleared = true) => last(T, depositQ(amount, pid, firmA, method, cleared));
@@ -105,7 +106,13 @@ try {
   const added = fns(T).filter((f) => !fnBefore.includes(f));
   ok("FO-7mv DW10 pass: right after its own migration the five functions it adds are all money_ (none of FO-7a's replaced)",
     added.length === 5 && added.every((f) => f.startsWith("money_")) && fnBefore.includes("money_trust_entry_write"), added);
-  for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
+  // FO-7ts part 1 replaces trust_enabled with the three-state answer and refuses a row still saying true: trust goes
+  // off for that one step, then the Owner's Yes turns it on again.
+  for (const d of all.filter((x) => x > NEW)) {
+    if (d === FO7TS) sql(T, `update money_payment_settings set trust_enabled = false`);
+    psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
+    if (d === FO7TS) sql(T, `update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'user-O'`);
+  }
   for (const d of all) psql(EMPTY, ["-1", "-f", join(MIG, d, "migration.sql")]);
   ok("FO-7mv DW10 pass: migrate diff names no money table or type, on the copy with rows and on the empty one", moneyDiff(T).length === 0 && moneyDiff(EMPTY).length === 0, [moneyDiff(T), moneyDiff(EMPTY)]);
   ok("FO-7mv pass: firm_id is first in every move index (primary keys aside), and every move key is RESTRICT and starts with firm_id",

@@ -1,0 +1,17 @@
+qa after-merge 18 Nov: tests/qa/check_qa507_body_charset.ts against copy qa_r28 of main 39c1203cd on :4473, run twice.
+
+Run 1:
+FAIL  QA-507 B1: an unknown charset → a 4xx problem answer, not 500 — [500,"Something went wrong on the server. Refresh to see the current state, then try again."]
+FAIL  QA-507 B2: an unknown Content-Encoding → a 4xx problem answer, not 500 — [500,"Something went wrong on the server. Refresh to see the current state, then try again."]
+PASS  QA-507 B3 (control): broken JSON still answers 400 BODY_NOT_JSON — [400,"BODY_NOT_JSON"]
+PASS  QA-507 B4: no answer quotes a stack, a server path or the parser's words
+
+2/4 passed
+
+Run 2: the same four lines, 2/4 passed.
+
+Hand probe before the check (curl -i, POST /api/platform/session/local):
+  body '{"email":'                                   → 400 application/problem+json, code BODY_NOT_JSON
+  body 'not json at all'                             → 400 application/problem+json, code BODY_NOT_JSON
+  content-type: application/json; charset=klingon   → 500 application/problem+json "Server error"
+  content-encoding: zstd-nope                        → 500 application/problem+json "Server error"

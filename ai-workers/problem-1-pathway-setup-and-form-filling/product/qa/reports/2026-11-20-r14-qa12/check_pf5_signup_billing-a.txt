@@ -1,0 +1,55 @@
+PASS  PF-5 the migration's stamp is later than every migration before it and its own (rows rev 16.7; newest before it: 20261115170000_fo3sa_booking_overlap_confirmed)
+PASS  PF-5 fail: before PF-5's migration the schema differs on its tables
+PASS  PF-5 pass: right after its own migration, migrate diff names none of its tables (measured before any later one)
+PASS  PF-5 pass: three Sample terms versions, one of each kind
+PASS  PF-5 fail: a terms version is never changed or removed
+PASS  PF-5 fail: one live pending sign-up per email (a second is refused)
+PASS  PF-5 fail: a pending sign-up changes only its used_at, once; a live one is never removed
+PASS  PF-5 fail: a pending sign-up lives at most 24 hours, names existing terms and keeps the email in lower case
+PASS  PF-5 pass: no password column anywhere in the pending sign-up
+PASS  PF-0c DW2 BillingPort fakeBilling: prices answer only the ids asked, with amount, currency and interval
+PASS  PF-0c DW2 BillingPort fakeBilling: a firm has one customer (the same firm twice gives the same id)
+PASS  PF-0c DW2 BillingPort fakeBilling: the trial's Checkout asks for no card and pauses at trial end, once per firm and price
+PASS  PF-0c DW2 BillingPort fakeBilling: a malformed input is refused before any call
+PASS  PF-0c DW2 BillingPort fakeBilling: passes its contract (4 of 4 cases)
+PASS  PF-0c DW2 BillingPort StripeBilling: prices answer only the ids asked, with amount, currency and interval
+PASS  PF-0c DW2 BillingPort StripeBilling: a firm has one customer (the same firm twice gives the same id)
+PASS  PF-0c DW2 BillingPort StripeBilling: the trial's Checkout asks for no card and pauses at trial end, once per firm and price
+PASS  PF-0c DW2 BillingPort StripeBilling: a malformed input is refused before any call
+PASS  PF-0c DW2 BillingPort StripeBilling: passes its contract (4 of 4 cases)
+PASS  PF-5 (Lead B, fact 3): the trial's Checkout turns Stripe Tax on and saves the address to the customer
+PASS  PF-5 pass: GET plans reads Stripe's prices through BillingPort, marked "+ applicable taxes", with the current terms
+PASS  PF-5 fail: a plan with no Stripe price shows no price (never an invented one)
+PASS  PF-5 fail: a sign-up without accepting every current terms version is refused at the field, nothing stored
+PASS  PF-5 fail: the honeypot or a too-fast fill is answered like any other sign-up, nothing stored or sent
+PASS  PF-5 pass/fail (break M2): a second sign-up for the same email while a link is live → still one live pending sign-up, the newest (the first link ends, so nobody holds another person's address), each with its one email
+PASS  PF-5 fail: the replaced sign-up's link → 404
+PASS  PF-5 fail: the password is never stored (not in the pending row, an audit line or an email)
+PASS  PF-5 fail: an unverified sign-up creates no firm
+PASS  PF-5 fail: a wrong code is refused and makes no firm
+PASS  PF-5 fail: a forced audit failure rolls the whole sign-up back (no firm, no Owner, the link still unused)
+PASS  PF-5 pass/fail: a double submit of the verification makes one firm (PROVISIONING) and one Owner; the other is the 404
+PASS  PF-5 pass: an acceptance row per current terms version records kind, version, time and who (the Owner)
+PASS  PF-5 pass (A46's weak point, tested): the trial starts through Checkout with no card (if_required), pause at trial end, the plan's 14 days and price, on the firm's own customer
+PASS  PF-5 pass: each change has its audit line in its transaction (PF-12b: the sign-up use's platform.bypass line too), and firm.created is in the outbox once (written last)
+PASS  PF-5 fail: a verification link used twice → 404
+PASS  PF-5 pass/fail: a sign-up for an email that already has an account → the same answer, an email saying "You already have an account. Sign in.", nothing stored
+PASS  PF-5v part 2 (review M1 of #2456): the "already have an account" email is our platform account email (no firm: never the firm's sender or its daily cap) and links to the firm sign-in card
+PASS  PF-5 fail (break m3): at most 3 sign-up emails to one address an hour (the 4th sends nothing, same answer)
+PASS  PF-5 fail (break m4): a mail failure never changes the answer (no 500 that tells a known email apart)
+PASS  PF-5 fail: an expired or unknown verification link → the same 404
+PASS  PF-5 pass/fail (Lead B (3)): the sweep removes expired pending sign-ups (used or not) and keeps the live ones
+PASS  PF-5 pass: a new email signs up and gets its one verification email
+PASS  PF-5 fail: Stripe unreachable → the plans still show, without prices, saying so
+PASS  PF-5 fail: Stripe unreachable after the commit → the firm stays setting up (PROVISIONING), no checkout, a plain next step
+PASS  PF-5 pass/fail: the door's per-IP limit answers 429 after 10 tries in 10 minutes; another address is not held
+PASS  PF-5 fail (break M3): a form older than 2 hours or stamped by another server asks for a reload (never a silent drop)
+PASS  PF-5 fail (break m1, m8): a password of spaces is refused, and each field error names its field
+PASS  PF-5 fail (break m5): 5 wrong codes end the link (the right code after them → 404)
+PASS  PF-5 fail (break m7): a plan switched off before the verification → 409, no firm
+PASS  PF-5 fail (break m6): no NULL terms, no date in the future, no TRUNCATE; the end time is the database's now
+PASS  PF-5 fail: three sign-ups for one email at once → one live pending sign-up
+PASS  PF-5 pass/fail (Lead B (3)): the hourly platform.signup.purge job through JobPort removes an expired sign-up
+PASS  PF-5 fail (review Major 1): a server without the identity provider's sign-up or Stripe answers 503, never a "check your email" that sends nothing; local runs the stand-ins
+PASS  PF-5 fail: the verification is POST only (opening the email's link changes nothing)
+54 passed, 0 failed

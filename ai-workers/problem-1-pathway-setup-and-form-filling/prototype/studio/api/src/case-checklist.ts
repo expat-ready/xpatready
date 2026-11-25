@@ -10,28 +10,34 @@
 // document type, the person's role and the case by its short id, never a file's contents (RT-17).
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, UploadedFiles, UseGuards, UseInterceptors, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HttpException } from "@nestjs/common";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { ChangeProviders, cleanName, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, MEDIA, mediaOf, NOT_APPLICABLE_FROM, NotApplicable, REQUEST_FROM, SeenVersion, STATE_WORDS, UPLOAD_FROM, WAIVE_FROM, Waive, type LineState, type StoredDocument } from "../../contracts/documents.ts";
+import { ChangeProviders, MAX_DOCUMENT_BYTES, NOT_APPLICABLE_FROM, NotApplicable, REQUEST_FROM, SeenVersion, STATE_WORDS, UPLOAD_FROM, WAIVE_FROM, Waive, type LineState, type StoredDocument } from "../../contracts/documents.ts";
 import { candidatesOf, caseChecklist, chosenProviders, mayProvide, roleWords, type PersonLine } from "../../engine/runtime/case-checklist.ts";
 import { fmtDate, onFileFrom } from "../../engine/runtime/stages.ts";
 import { readSpec } from "./routes-data.ts";
 import { lineKeys, pickMember, setMet, setStatus, type SetStatus } from "../../engine/document-sets.ts";
 import { checkValue, knownOf } from "../../engine/runtime/case.ts";
-import { actorOf, Audit, CaseRead, Db, fail, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
+import { actorOf, Audit, CaseRead, Db, fail, PY, STUDIO, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { caseName, releaseLabel } from "../../contracts/runtime.ts";
+import { checkFile, KINDS, NOTHING_STORED, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
+import { flagsOf, translationLines, type DocFlags, type TranslationLine } from "./case-document-flags.ts"; // CS-D7
+import type { SnapTypeDefaults } from "../../engine/snapshot.ts";
 
 type H = string | undefined;
-type Upload = { fieldname?: string; originalname?: string; buffer?: Buffer; size?: number };
+type Upload = { fieldname?: string; originalname?: string; mimetype?: string; buffer?: Buffer; size?: number };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const short = (id: string) => id.slice(0, 8);
 /** A checklist line as the API answers it: the derived line with its stored id, state and documents (M3-CONTRACT C6.4). */
 export type StoredLine = Omit<PersonLine, "state" | "documents"> & { state: LineState; state_words: string; state_reason: string | null; state_by: string | null; state_at: string | null;
-  version: number; documents: StoredDocument[]; kept: boolean; derived_id: string;
+  version: number; documents: (StoredDocument & { flags?: DocFlags })[]; kept: boolean; derived_id: string;
+  /** CS-D7 (map row 70): the warnings its current files' flags give (expired, too old): never a block. */
+  flag_warnings: string[];
   /** C6.15: on a line with a substitute set, whether the person's current files meet it, by member, in words. */
   set_status: SetStatus | null;
   /** C6.14 BR-6: the officer's last change of providers on a shared line (also a return to the defaults), else null. */
@@ -45,6 +51,69 @@ export function utf8Name(name: string | undefined): string {
   if (![...raw].every((ch) => ch.charCodeAt(0) < 256)) return raw;
   const back = Buffer.from(raw, "latin1").toString("utf8");
   return back.includes("\uFFFD") ? raw : back;
+}
+/** CS-D1t (R1.67): the kinds the case side's two upload doors take today, in one list (widening it is its own row). */
+export const CASE_FILE_KINDS: readonly FileKind[] = ["pdf", "jpeg", "png"];
+const REFUSAL_STATUS: Record<RefusalReason, HttpStatus> = { TOO_LARGE: HttpStatus.PAYLOAD_TOO_LARGE, TOO_MANY_PIXELS: HttpStatus.PAYLOAD_TOO_LARGE,
+  NOT_ALLOWED_TYPE: HttpStatus.UNSUPPORTED_MEDIA_TYPE, ZIP: HttpStatus.UNSUPPORTED_MEDIA_TYPE, MACROS: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+  EMPTY: HttpStatus.BAD_REQUEST, DAMAGED: HttpStatus.BAD_REQUEST };
+/** CS-D1t (R1.67): does the PDF open, whole? PF-F4's check reads no PDF structure (that needs a parser), so the reader
+ *  the app already has (pypdf, as the form library's upload check) reads it in its own process, from the bytes on its
+ *  input (nothing is on disk yet): tools/check_pdf_opens.py says what it checks. "damaged": it does not open. "locked":
+ *  it needs a password, so its pages cannot be read. "unchecked": no verdict, which is not the file's fault: the reader
+ *  could not be run, did not end in 20 s, or too many files are already waiting to be read. */
+export type PdfRead = "opens" | "damaged" | "locked" | "unchecked";
+const PDF_READ_MS = 20_000;
+/** Break M2: at most this many readers at once (each may take 1 GB), and this many uploads waiting for one. */
+export const PDF_READERS = 2, PDF_READERS_WAITING = 8;
+let reading = 0;
+const waiting: (() => void)[] = [];
+export async function pdfOpens(bytes: Uint8Array, py: string = PY, ms: number = PDF_READ_MS): Promise<PdfRead> {
+  if (reading >= PDF_READERS) {
+    if (waiting.length >= PDF_READERS_WAITING) return "unchecked";
+    await new Promise<void>((go) => waiting.push(go));   // the reader that ends hands its place on
+  } else reading++;
+  try { return await readPdf(bytes, py, ms); }
+  finally { const next = waiting.shift(); if (next) next(); else reading--; }
+}
+function readPdf(bytes: Uint8Array, py: string, ms: number): Promise<PdfRead> {
+  return new Promise((resolve) => {
+    let out = "", done = false;
+    const end = (r: PdfRead) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+    const child = spawn(py, ["-I", join(STUDIO, "tools", "check_pdf_opens.py")], { stdio: ["pipe", "pipe", "ignore"] });
+    // Break m1: a read that does not end in time is no verdict on the file (a sound, very large PDF is not "damaged").
+    const timer = setTimeout(() => { child.kill("SIGKILL"); end("unchecked"); }, ms);
+    child.on("error", () => end("unchecked"));
+    child.stdin.on("error", () => { /* the reader ended before it read everything: its exit says what happened */ });
+    child.stdout.on("data", (d: Buffer) => { if (out.length < 4096) out += d.toString("utf8"); });
+    child.on("close", () => {
+      try { const a = JSON.parse(out.trim().split("\n").pop() ?? "") as { ok?: boolean; locked?: boolean }; end(a.ok === true ? "opens" : a.locked === true ? "locked" : "damaged"); }
+      catch { end("unchecked"); }   // no answer line: the reader itself failed (not installed, killed)
+    });
+    child.stdin.end(bytes);
+  });
+}
+
+/** CS-D1t (R1.67): the one check both case upload doors make, before anything is written: PF-F4's `checkFile` (the type
+ *  from the file's own bytes), then, for a PDF, that it opens. A refusal is in PF-F4's words (they end "Nothing was
+ *  stored.") with the status its reason calls for. Answers the stored name (corrected when it disagreed with the bytes),
+ *  the type, the file's extension on disk and, for a PDF with active content, PF-F4's flag in words for the audit line.
+ *  The doors keep their own 20 MB limit (C6.4 break m5), which is under PF-F4's 25 MB for documents: the multipart limit
+ *  on each route refuses a larger file before this runs. */
+export async function checkedCaseFile(f: Upload, opens: (bytes: Uint8Array) => Promise<PdfRead> = pdfOpens): Promise<Checked & { extension: string; flagWords: string }> {
+  const r = checkFile({ bytes: f.buffer!, name: utf8Name(f.originalname), mediaType: f.mimetype }, CASE_FILE_KINDS);
+  if (!r.ok) return fail(r.message, REFUSAL_STATUS[r.reason]);
+  if (r.kind === "pdf") {
+    const read = await opens(f.buffer!);
+    const allowed = CASE_FILE_KINDS.map((k) => KINDS[k].words), list = `${allowed.slice(0, -1).join(", ")} and ${allowed[allowed.length - 1]}`;
+    // PF-F4's DAMAGED words for a file its own check cannot judge.
+    if (read === "damaged") fail(`This file could not be read: it may be damaged. Allowed here: ${list}. ${NOTHING_STORED}`, REFUSAL_STATUS.DAMAGED);
+    // Not damaged, and not readable either: said as it is, so the person can send a copy that opens.
+    if (read === "locked") fail(`This PDF needs a password to open, so it could not be read. Save a copy without the password and upload that. Allowed here: ${list}. ${NOTHING_STORED}`, REFUSAL_STATUS.DAMAGED);
+    // Never stored unchecked: the person is told to try again, and the refusal is not blamed on their file.
+    if (read === "unchecked") fail(`This PDF could not be checked just now. Try again in a moment. ${NOTHING_STORED}`, HttpStatus.SERVICE_UNAVAILABLE);
+  }
+  return { ...r, extension: KINDS[r.kind].extension, flagWords: r.flags.includes(SCRIPTS_FLAG) ? `; ${SCRIPTS_FLAG}` : "" };
 }
 const parse = <T,>(schema: { safeParse: (x: unknown) => { success: true; data: T } | { success: false; error: Parameters<typeof problemFromZod>[0] } }, body: unknown): T => {
   const r = schema.safeParse(body ?? {});
@@ -96,12 +165,14 @@ export class CaseChecklists {
     const rows = await this.db.checklistLine.findMany({ where: { caseId: c.id, stageId: c.stage.id } });
     const subjects = d.people.map((p) => p.subject);
     const docs = await this.db.caseDocument.findMany({ where: { subjectId: { in: subjects } }, orderBy: [{ uploadedAt: "asc" }, { id: "asc" }] });
-    const types = ((this.r.snapshotOf(c).document_types ?? []) as { key: string; name: string }[]);
+    const types = ((this.r.snapshotOf(c).document_types ?? []) as { key: string; name: string; defaults?: SnapTypeDefaults }[]);
     // C6.15: a set's members are named in the release with the set (they need not be lines of their own).
     const memberNames = new Map(d.people.flatMap((p) => [...p.lines, ...p.waiting, ...p.not_needed]).flatMap((l) => l.set?.members ?? []).map((m) => [m.key, m.name]));
     const typeName = (k: string) => types.find((t) => t.key === k)?.name ?? memberNames.get(k) ?? k;
     const rowOf = new Map(rows.map((x) => [`${x.subjectId}|${x.documentType}`, x]));
-    const docsOf = (subject: string, type: string | string[]): StoredDocument[] => docs.filter((x) => x.subjectId === subject && (Array.isArray(type) ? type.includes(x.documentType) : x.documentType === type)).map((x) => ({
+    const defaultsOf = (k: string) => types.find((t) => t.key === k)?.defaults; // CS-D7c: the type's cited defaults in the release
+    const docsOf = (subject: string, type: string | string[]): (StoredDocument & { flags: DocFlags })[] => docs.filter((x) => x.subjectId === subject && (Array.isArray(type) ? type.includes(x.documentType) : x.documentType === type)).map((x) => ({
+      flags: flagsOf(x, defaultsOf(x.documentType), d.today), // CS-D7: what staff set, else the type's default
       id: x.id, current: x.current, file_name: x.fileName, media_type: x.mediaType, size_bytes: x.sizeBytes, sha256: x.sha256, uploaded_by: x.uploadedBy,
       uploaded_at: x.uploadedAt.toISOString(), superseded_at: x.supersededAt?.toISOString() ?? null,
       // C6.15: on a line with a set, which member the file is.
@@ -134,7 +205,7 @@ export class CaseChecklists {
         const reason = kept ? `${l.reason} Kept on the list: it is ${STATE_WORDS[state]}${documents.length ? " and has a file" : ""}, so it is not dropped when the answers change.` : l.reason;
         // M3-S4 review m1: a kept line no longer needed blocks nothing, so it does not say never waivable either.
         return { ...l, ...providersNow(l, row), ...(kept ? { never_waivable: false, never_if: undefined } : {}), id: row?.id ?? l.id, derived_id: l.id, reason, required: kept || ((state === "not_applicable" || state === "waived") && !l.never_waivable) ? false : l.required, state, state_words: STATE_WORDS[state], state_reason: row?.stateReason ?? null,
-          state_by: row?.stateBy ?? null, state_at: row?.stateAt?.toISOString() ?? null, version: row?.version ?? 0, documents, kept, set_status: setStatusOf(l, currentKeys(p.subject, l)), ...((): { on_file?: NonNullable<ReturnType<typeof onFile>> } => { const f = onFile(p.subject, l.document.key); return f ? { on_file: f } : {}; })() };
+          state_by: row?.stateBy ?? null, state_at: row?.stateAt?.toISOString() ?? null, version: row?.version ?? 0, documents, kept, flag_warnings: state === "not_applicable" || state === "waived" ? [] : documents.filter((x) => x.current).flatMap( /* break R2-m4 */ (x) => x.flags.warnings), set_status: setStatusOf(l, currentKeys(p.subject, l)), ...((): { on_file?: NonNullable<ReturnType<typeof onFile>> } => { const f = onFile(p.subject, l.document.key); return f ? { on_file: f } : {}; })() };
       };
       // A line no longer needed that was acted on (requested, a file, Not applicable) stays on the person's list.
       const acted = (l: PersonLine) => { const row = rowOf.get(`${p.subject}|${l.document.key}`); return !!row && (row.state !== "not_requested" || filesOf(p.subject, l).length > 0); };
@@ -146,7 +217,10 @@ export class CaseChecklists {
           reason: p.applies ? `No longer required: ${d.release_label ?? "the case's release"} no longer asks this person for it; its uploads are kept and listed.` : `${p.label} is not travelling with the application now, so the release asks nothing of them.`,
           need: "not_needed", lineage: x.lineage, also_from: [], document: { key: x.documentType, name: typeName(x.documentType) }, missing: [], base: false, provided_by: "client", alternatives: [], quote: null, rule: null, set: null, waivable: false, never_waivable: false, who: "", who_words: "", shared: null, providers: [], providers_rule: null, providers_words: null }));
       const lines = [...p.lines.map((l) => out(l, false)), ...keptWaiting.map((l) => out(l, true)), ...keptNot.map((l) => out(l, true)), ...orphans.map((l) => out(l, true))];
-      return { ...p, lines, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
+      // CS-D7 (3): one "Translation + translator's affidavit" line per current document that needs one, worked out on read.
+      const off = new Set(rows.filter((x) => x.subjectId === p.subject && (x.state === "not_applicable" || x.state === "waived")).map((x) => x.documentType)); // break m3
+      const translations: TranslationLine[] = translationLines(docs.filter((x) => x.subjectId === p.subject && !off.has(x.documentType)), (k) => { const t = types.find((y) => y.key === k); return t ? { name: t.name, defaults: t.defaults } : undefined; }, d.today);
+      return { ...p, lines, translations, waiting: p.waiting.filter((l) => !acted(l)).map((l) => out(l, false)), not_needed: p.not_needed.filter((l) => !acted(l)).map((l) => out(l, false)) };
     });
     return { ...d, people };
   }
@@ -258,17 +332,13 @@ export class CaseChecklists {
     if (seen !== undefined && seen !== row.version) fail(`${shown.label} for ${person.label} changed after you opened it (it is ${STATE_WORDS[row.state as LineState]} now): read the checklist again to see its state now, then try again. Nothing was stored.`, HttpStatus.CONFLICT);
     const f = (files ?? []).filter((x) => x.buffer);
     if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
-    const bytes = f[0].buffer!;
-    if (!bytes.length) fail("The file is empty. Nothing was stored.");
-    if (bytes.length > MAX_DOCUMENT_BYTES) fail(`The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
-    const media = mediaOf(bytes);
-    if (!media) fail("Send a PDF, JPEG or PNG file (judged by the file itself, not its name). Nothing was stored.", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    const bytes = f[0].buffer!, checked = await checkedCaseFile(f[0]);
     if (!UPLOAD_FROM.includes(row.state as LineState)) fail(`${shown.label} for ${person.label} is ${STATE_WORDS[row.state as LineState]}: request it again before uploading. Nothing was stored.`, HttpStatus.CONFLICT);
     // C6.15 (SA-1B-19 rule 1): on a line with a substitute set, the file is one member of it ("member": its document type
     // key); left out, it is the line's own type when that is a member. Any member of the set the line uses counts.
     const member = memberOf(shown, (body as { member?: unknown } | null)?.member);
     const docId = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
-    const rel = join("people", row.subjectId, "documents", `${docId}.${MEDIA[media!]}`), abs = join(DOCS(), rel);
+    const rel = join("people", row.subjectId, "documents", `${docId}.${checked.extension}`), abs = join(DOCS(), rel);
     try {
       // Inside the clean-up (Devin review): a write that fails half way (a full disk) leaves no partial file.
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
@@ -282,13 +352,15 @@ export class CaseChecklists {
         const n = await tx.checklistLine.updateMany({ where: { id, version: row.version }, data: { state: met ? "received" : "requested", stateReason: null, stateBy: actor.id, stateAt: new Date(), version: { increment: 1 } } });
         if (n.count !== 1) fail("Someone changed this line after you opened it: read the checklist again to see its state now, then try again. Nothing was stored.", HttpStatus.CONFLICT);
         const now = new Date();
+        // CS-D7 (review m2): a new file of the same document keeps the language staff picked for the one it replaces.
+        const was = await tx.caseDocument.findFirst({ where: { subjectId: row.subjectId, documentType: member.key, current: true }, orderBy: { uploadedAt: "desc" }, select: { language: true } });
         await tx.caseDocument.updateMany({ where: { subjectId: row.subjectId, documentType: member.key, current: true }, data: { current: false, supersededAt: now } });
-        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: row.subjectId, documentType: member.key, checklistLineId: id, fileName: cleanName(utf8Name(f[0].originalname)),
-          mediaType: media!, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
+        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: row.subjectId, documentType: member.key, checklistLineId: id, fileName: checked.name,
+          mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now, language: was?.language ?? null } });
       });
     } catch (e) { rmSync(abs, { force: true }); throw e; } // a refused upload leaves no file behind
     await this.recount(actor, c, row.subjectId, member.key, id);
-    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${shown.set && member.key !== shown.document.key ? `${member.name} (in the set for ${shown.label})` : shown.label} for the ${person.role} on case ${short(c.id)} (${MEDIA[media!].toUpperCase()}, ${bytes.length} bytes)`);
+    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${shown.set && member.key !== shown.document.key ? `${member.name} (in the set for ${shown.label})` : shown.label} for the ${person.role} on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes${checked.flagWords})`);
     const line = await this.moved(c, id);
     return { ...line, document: line?.documents.find((x) => x.id === docId) ?? null };
   }

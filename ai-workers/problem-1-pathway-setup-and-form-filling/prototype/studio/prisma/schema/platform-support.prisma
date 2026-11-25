@@ -1,0 +1,70 @@
+// platform-support.prisma — support tickets a firm's staff raise to us. Owner: Lead B (platform, P-559).
+//
+// PF-18b (AG-16-63, AG16-16; SA-06 v3.15 AG16-16 row: agent/support-ticket:create for every starter role,
+// agent/support-ticket:list "own tickets for all; all firm tickets for Owner and Admin"). One text box plus up to three
+// attachments, the page the "?" was pressed on, no priority field (AG-16-63). Our team's reply screen is PF-17's; this row
+// keeps the service method it will call (replyAsSupport). Platform rows carry no workspace_id: the demo reset leaves them.
+// Rules Prisma cannot say are platform_support_ triggers and checks in the migration 20261118073000_pf18b_support: messages
+// are insert-only (no update, delete or truncate); a ticket is never deleted and only its status changes; the raiser and a
+// staff author are staff of the ticket's own firm; a message's file keys lie in its own ticket's folder only.
+// PF-18bk (migration 20261119170000_pf18bk_support_keys): the real foreign keys, all RESTRICT. A ticket's firm_id →
+// platform_firm; its (firm_id, raised_by) → platform_staff(firm_id, id), so the raiser is staff of the ticket's own firm;
+// a message's firm_id → platform_firm. author_id is text ('support' or a staff uuid) and takes no key: the trigger proves
+// a FIRM_STAFF author. The triggers stay as PF-18b made them (the raiser check too: PF-18b's suite names its message).
+
+/// Where the ticket stands (AG-16-63 "status including Waiting on firm"): OPEN when raised; WAITING_ON_FIRM after our
+/// reply; WAITING_ON_SUPPORT after the firm's next message; CLOSED (no row of this one closes a ticket yet: PF-17's).
+enum PlatformSupportTicketStatus {
+  OPEN
+  WAITING_ON_FIRM
+  WAITING_ON_SUPPORT
+  CLOSED
+}
+
+/// Who wrote a message: a staff member of the firm, or our support team (PF-17's console).
+enum PlatformSupportAuthorKind {
+  FIRM_STAFF
+  SUPPORT
+}
+
+/// One ticket. No priority column (AG-16-63). page is the app path the ticket was raised from (no query string, at most
+/// 300 characters). Only status and updated_at ever change (trigger); a ticket is never deleted.
+model PlatformSupportTicket {
+  id        String                      @id @default(uuid()) @db.Uuid
+  firmId    String                      @map("firm_id") @db.Uuid
+  /// The staff member who raised it: staff of firm_id (the (firm_id, raised_by) key, PF-18bk; the trigger too).
+  raisedBy  String                      @map("raised_by") @db.Uuid
+  page      String
+  status    PlatformSupportTicketStatus @default(OPEN)
+  createdAt DateTime                    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime                    @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm     PlatformFirm             @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  raiser   PlatformStaff            @relation(fields: [firmId, raisedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  messages PlatformSupportMessage[]
+
+  @@unique([firmId, id])
+  @@index([firmId, raisedBy, createdAt])
+  @@index([firmId, createdAt])
+  @@map("platform_support_ticket")
+}
+
+/// One message on a ticket: insert-only (a trigger refuses update, delete and truncate). body is 1 to 5,000 characters;
+/// file_keys name the FilesPort keys of its attachments (support/<ticket id>/<n>, at most three).
+model PlatformSupportMessage {
+  id         String                    @id @default(uuid()) @db.Uuid
+  firmId     String                    @map("firm_id") @db.Uuid
+  ticketId   String                    @map("ticket_id") @db.Uuid
+  authorKind PlatformSupportAuthorKind @map("author_kind")
+  /// The staff id for FIRM_STAFF (staff of firm_id: trigger); `support` for our team until PF-4s's system sign-in names one.
+  authorId   String                    @map("author_id")
+  body       String
+  fileKeys   String[]                  @default([]) @map("file_keys")
+  createdAt  DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+
+  firm   PlatformFirm          @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ticket PlatformSupportTicket @relation(fields: [firmId, ticketId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([firmId, ticketId, createdAt])
+  @@map("platform_support_message")
+}

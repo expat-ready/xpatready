@@ -157,6 +157,7 @@ model FoSalesSetup {
   moves        FoStageMove[]
   webForms     FoWebForm[]
   services     FoService[]
+  assignmentRules FoAssignmentRule[]
 
   @@map("fo_sales_setup")
 }
@@ -184,6 +185,9 @@ model FoPerson {
   createdBy     String   @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  // tombstone slot: duplicates (FO-9b) — a merged-away person names its survivor (AG-2-16 §10; front-office-duplicates.prisma)
+  mergedIntoId  String?  @map("merged_into_id") @db.Uuid
+  mergedAt      DateTime? @map("merged_at") @db.Timestamptz
 
   setup            FoSalesSetup       @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   receipts         FoArrivalReceipt[]
@@ -194,6 +198,8 @@ model FoPerson {
   primaryContactOf FoProspect[]       @relation("ProspectPrimaryContact")
   calls            FoCall[]
   notes            FoNote[]
+  mergedInto       FoPerson?          @relation("PersonMergedInto", fields: [firmId, mergedIntoId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom       FoPerson[]         @relation("PersonMergedInto")
 
   @@unique([firmId, id])
   @@index([firmId, email])
@@ -222,7 +228,7 @@ model FoArrivalReceipt {
 
   setup   FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   webForm FoWebForm?   @relation(fields: [firmId, webFormId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  lead    FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Restrict)
+  lead    FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Cascade) // FO-9b: a merge moves the lead and its rows
   person  FoPerson?    @relation(fields: [firmId, personId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([firmId, door, intakeKey])
@@ -326,10 +332,15 @@ model FoCompany {
   createdBy      String   @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  // tombstone slot: duplicates (FO-9b) — a merged-away company names its survivor (AG-2-16 §10)
+  mergedIntoId   String?   @map("merged_into_id") @db.Uuid
+  mergedAt       DateTime? @map("merged_at") @db.Timestamptz
 
   setup     FoSalesSetup       @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   contacts  FoCompanyContact[]
   prospects FoProspect[]
+  mergedInto FoCompany?        @relation("CompanyMergedInto", fields: [firmId, mergedIntoId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom FoCompany[]        @relation("CompanyMergedInto")
 
   @@unique([firmId, id])
   @@index([firmId, normalisedName])
@@ -473,7 +484,7 @@ model FoCall {
 
   setup    FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   person   FoPerson     @relation(fields: [firmId, personId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  lead     FoLead?      @relation("CallLead", fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Restrict)
+  lead     FoLead?      @relation("CallLead", fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Cascade) // FO-9b: a merge moves the lead and its rows
   prospect FoProspect?  @relation("CallProspect", fields: [firmId, prospectId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, personId, startedAt])
@@ -495,7 +506,7 @@ model FoNote {
 
   setup    FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   person   FoPerson     @relation(fields: [firmId, personId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  lead     FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Restrict)
+  lead     FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Cascade) // FO-9b: a merge moves the lead and its rows
   prospect FoProspect?  @relation(fields: [firmId, prospectId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, personId, createdAt])
@@ -569,8 +580,52 @@ model FoService {
 
   setup FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   leads FoLead[]
+  assignmentRules FoAssignmentRule[]
 
   @@unique([firmId, id])
   @@unique([firmId, combinationId])
   @@map("fo_service")
+}
+
+/// How an assignment rule picks the owner of a new lead (FO-10; AG-2-13b "strategy"): one named person, or round robin
+/// among the eligible set.
+enum FoAssignStrategy {
+  OWNER
+  ROUND_ROBIN
+}
+
+/// FO-10 (P-574 (3); AG-2-13a, -13b, -13d): the firm's rules for who owns a new lead that arrives with no owner. Criteria
+/// (AG-2-13b): the door (null = any door) and the program/service the person is interested in (null = any); one rule per
+/// criteria, so criteria_key (`<door or ANY>:<service id or ANY>`, a check in the migration) is unique per firm, and a
+/// rule switched off keeps its row and its cursor. The most specific active rule wins: a service rule beats a door rule
+/// (service first, then door). Strategy OWNER names owner_staff_id; ROUND_ROBIN names none and takes turns among the
+/// eligible set (empty = every active staff member holding agent/prospect:edit), its turn persisted per rule (AG-2-13d):
+/// least recently given first (FO-10 part 2, AG-2-85 rule 5); last_staff_id names the last person given one. Staff
+/// ids are checked against platform_staff of the same firm by trigger (owner) and by the API (eligible set).
+model FoAssignmentRule {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId           String           @map("firm_id") @db.Uuid
+  door             FoDoor?
+  serviceId        String?          @map("service_id") @db.Uuid
+  criteriaKey      String           @map("criteria_key")
+  strategy         FoAssignStrategy
+  ownerStaffId     String?          @map("owner_staff_id") @db.Uuid
+  eligibleStaffIds String[]         @default([]) @map("eligible_staff_ids") @db.Uuid
+  lastStaffId      String?          @map("last_staff_id") @db.Uuid
+  /// FO-10 part 2 (AG-2-85 rule 5): round robin gives the next lead to the person given one least recently. turn_no counts
+  /// the rule's turns; turns maps a staff id to the turn it last got (absent = never, first in line).
+  turnNo           Int              @default(0) @map("turn_no")
+  turns            Json             @default("{}")
+  active           Boolean          @default(true)
+  createdBy        String           @map("created_by")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedBy        String           @map("updated_by")
+  updatedAt        DateTime         @default(now()) @map("updated_at") @db.Timestamptz
+
+  setup   FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+  service FoService?   @relation(fields: [firmId, serviceId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, criteriaKey])
+  @@unique([firmId, id])
+  @@map("fo_assignment_rule")
 }

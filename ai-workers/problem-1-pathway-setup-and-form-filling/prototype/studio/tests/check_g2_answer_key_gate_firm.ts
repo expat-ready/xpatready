@@ -44,7 +44,7 @@ const SCAFFOLD_QUOTE = "Test scaffolding (P-33): the official source quote of th
 
 try {
 // The copy starts as the demo workspace: the sample inputs load only there (M1), so it loads them, then switches.
-const wsKey = sql(`select key from workspace limit 1`);
+const wsKey = sql(`select key from workspace where key <> 'platform-audit' limit 1`);
 if (wsKey && wsKey !== "demo") { console.error(`STOP  this copy's workspace is "${wsKey}": start a fresh copy (see the usage line)`); process.exit(2); }
 let r = await call("POST", "/demo/load", undefined, AUTHOR);
 ok("C5.5 M1 pass: in the demo workspace the sample load still works (the Visitor visa row is there)", r.status < 300 && !!sql(`select id from combination where combination_key = 'vv.single'`), r.body?.detail ?? r.status);
@@ -54,7 +54,7 @@ ok("C5.5 BR-3 pass (reviewer MJ1): in the demo workspace the Visitor visa's Revi
 sql(`set session_replication_role = replica; update workspace set key='firm' where key='demo'; set session_replication_role = origin`);
 restart("STUDIO_WORKSPACE_KEY=firm");
 const sess = (await call("GET", "/session")).body;
-ok("C5.5 BR-3: the copy runs as the workspace \"firm\", not the demo", sql(`select key from workspace`) === "firm" && sess?.workspace?.key === "firm" && sess.workspace.demo === false, sess?.workspace);
+ok("C5.5 BR-3: the copy runs as the workspace \"firm\", not the demo", sql(`select key from workspace where key <> 'platform-audit'`) === "firm" && sess?.workspace?.key === "firm" && sess.workspace.demo === false, sess?.workspace);
 
 ok("C5.5 BR-3 fail (reviewer MJ1): outside the demo workspace the same page shows no Demo release mark", !(await demoMark(vvDemo)));
 
