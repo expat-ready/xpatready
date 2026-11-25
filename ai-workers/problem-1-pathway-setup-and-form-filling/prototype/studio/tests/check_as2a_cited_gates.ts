@@ -7,16 +7,31 @@
 //   P  its gate facts need no form placement (they are asked of the person); without the flag they do;
 //   C  no case opens on it: one "Assessment only: no forms" line in place of the form lines;
 //   W  the change summary shows the source the expert signs, a changed source, and the flag;
-//   D  the configurator's door lists the release as assessment only and returns each rule read with its state and source.
-// Every value here is Sample (invented keys and rules, example pages); no immigration value (AGENTS rule 4). Pure: no
-// server, no database, no model call (US$0).
-//   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_as2a_cited_gates.ts
+//   D  the configurator's door lists the release as assessment only and returns each rule read with its state and source;
+//   A  through the routes, on an isolated copy: an uncited gate on an assessment-only combination → 400; cited → saved;
+//      submitted, signed off and approved by a second person with no form; the release carries the flag and the source;
+//      Open a case → 409 "Assessment only: no forms"; the New case list says the same; without the flag the same draft is
+//      held (nothing to release). When the copy has no Visitor visa release (its library), the check makes one first
+//      (tests/runtime/setup_visitor_visa.ts, as check_c69_gates.ts does).
+// Every value here is Sample (invented keys and rules, example pages); no immigration value (AGENTS rule 4). No browser,
+// no model call (US$0).
+//   zsh studio/tools/isolated.sh evidence_as2a 4436 start && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_as2a_cited_gates.ts 4436 xr_studio_evidence_as2a
 import { checkGates, checkSource, eligibilityChanges, gateProblems, snapshotEligibility, ASSESSMENT_ONLY_WORDS } from "../engine/eligibility-gates.ts";
 import { missingItems, releaseLineProblems, ASSESSMENT_ONLY_CASE_WORDS } from "../engine/programs.ts";
 import { emptyProblem } from "../api/src/studio.ts";
 import { ConfiguratorEligibility, type ReleaseRow } from "../api/src/configurator/eligibility.door.ts";
 import { EligibilityResult } from "../ports/eligibility.port.ts";
 import type { Snapshot } from "../engine/snapshot.ts";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { client } from "./runtime/api.ts";
+
+const PORT = Number(process.argv[2] ?? 4436), DB = process.argv[3] ?? "xr_studio_evidence_as2a";
+if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
+const { call } = client(PORT, DB);
+const PSQL = ["/opt/homebrew/opt/postgresql@18/bin/psql", "/usr/local/bin/psql", "/usr/bin/psql"].find((p) => existsSync(p)) ?? "psql";
+const sql = (q: string) => execFileSync(PSQL, [`postgresql://xr_studio@127.0.0.1:54329/${DB}`, "-X", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1 << 28 }).trim();
 
 let pass = 0, fail = 0;
 const ok = (n: string, c: unknown, d?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  AS-2a: ${n}${!c && d !== undefined ? ` — ${JSON.stringify(d).slice(0, 400)}` : ""}`); return !!c; };
@@ -137,6 +152,52 @@ const snapOf = (flag: boolean, forms: unknown[] = []) => ({ forms, document_requ
   ok("D fail: a score below the rule gives Not eligible, the failed rule a not-met line carrying its quote", no.outcome === "NOT_ELIGIBLE" && no.rules.find((r) => r.ref === "s.language")?.state === "not_met" && (no.rules.find((r) => r.ref === "s.language")?.source as { quote?: string })?.quote === CITED.quote, no.rules);
   const half = await door.assess({ release_id: rows[0].id, persons: [{ role: "principal", known: { "person.job_offer": true } }] });
   ok("D fail: an unanswered fact gives Possibly eligible and a not-answered line, never not met", half.outcome === "POSSIBLY_ELIGIBLE" && half.rules.find((r) => r.ref === "s.language")?.state === "not_answered", half.rules);
+}
+
+// ------------------------------------------------------------------ A: through the routes, on an isolated copy
+{
+  const AUTHOR = "user-A", REVIEWER = "user-C", APPROVER = "user-B";
+  // The database stores JSON with its keys reordered (jsonb): compare the source field by field.
+  const sameSource = (x: Record<string, unknown> | undefined) => !!x && Object.keys(x).length === 4 && (["url", "section", "quote", "date"] as const).every((k) => x[k] === CITED[k]);
+  const served = (await call("GET", "/session").catch(() => ({ status: 0, body: null }))).body?.workspace?.id;
+  const ours = (() => { try { return !!served && !!sql(`select id from workspace where id='${served}'`); } catch { return false; } })();
+  if (!ours) { console.log(`\nSTOP  the server on port ${PORT} does not use ${DB}: pass the copy's port and database.`); process.exit(2); }
+  if (sql("select count(*) from canonical_field where canonical_field_key='person.criminal_history'") === "0") {
+    const studio = join(import.meta.dirname, "..");
+    const r = spawnSync(join(studio, "node_modules", ".bin", "tsx"), ["--tsconfig", join(studio, "api", "tsconfig.json"), join(studio, "tests/runtime/setup_visitor_visa.ts"), String(PORT), DB], { encoding: "utf8", timeout: 600_000, maxBuffer: 1 << 26 });
+    ok("setup: the Visitor visa (its library) on this copy (setup_visitor_visa.ts)", r.status === 0, (r.stdout ?? "").split("\n").slice(-3));
+  }
+  const run = Date.now().toString(36);
+  const parent = sql("select program_node_key from program_def where node_kind='PROGRAM' and retired_at is null order by program_node_key limit 1");
+  const node = await call("POST", "/program-nodes", { kind: "STREAM", parentKey: parent, label: `Sample assessment stream ${run}` }, AUTHOR);
+  const made = await call("POST", "/combinations", { nodeKey: node.body?.programNodeKey }, AUTHOR);
+  const combo = String(made.body?.combination?.id ?? "");
+  ok("setup: a Sample stream and its combination, with no form", node.status < 300 && made.status < 300 && !!combo, { node: node.status, made: made.body });
+  const url = `/combinations/${combo}/eligibility-gates`;
+  const g = { key: "s.history", label: "No criminal history (Sample)", condition: { op: "eq", field: "person.criminal_history", value: false } };
+  let r = await call("PUT", url, { gates: [g], judgement: [], assessmentOnly: true }, AUTHOR);
+  ok("A fail: an assessment-only save with an uncited gate → 400 on gates.0.source, nothing stored", r.status === 400 && (r.body?.errors ?? []).some((e: { field: string }) => e.field === "gates.0.source") && sql(`select coalesce(eligibility::text, 'null') from combination where id='${combo}'`) === "null", r.body);
+  // Without the flag the draft is held at submit: nothing to release (no form, no document).
+  r = await call("PUT", url, { gates: [{ ...g, source: CITED }], judgement: [] }, AUTHOR);
+  const held = await call("POST", `/combinations/${combo}/submit`, { note: "AS-2a check: must be refused (Sample)" }, AUTHOR);
+  ok("A fail: the same draft without the flag is refused at submit (nothing to release)", r.status === 200 && held.status >= 400, { save: r.status, submit: held.status, detail: held.body?.detail });
+  r = await call("PUT", url, { gates: [{ ...g, source: CITED }], judgement: [], assessmentOnly: true, version: 1 }, AUTHOR);
+  const read = await call("GET", url, undefined, AUTHOR);
+  ok("A pass: cited and assessment only → saved; reading it back gives the flag and the source", r.status === 200 && read.body?.assessmentOnly === true && sameSource(read.body?.gates?.[0]?.source), { status: r.status, read: read.body });
+  const sub = await call("POST", `/combinations/${combo}/submit`, { note: "AS-2a check: assessment only (Sample)" }, AUTHOR);
+  ok("A pass: submitted for review with no form and no filing mode asked", sub.status < 300, sub.body?.detail ?? sub.body?.message ?? sub.status);
+  const lines = ((await call("GET", `/combinations/${combo}/review`, undefined, REVIEWER)).body?.submission?.changeSummary ?? []) as { kind: string; key: string; label: string }[];
+  ok("A pass: the reviewer sees the gate with its page and quote, and the Assessment only line", lines.some((x) => x.kind === "Eligibility" && x.key === "s.history" && x.label.includes(CITED.url) && x.label.includes(CITED.quote)) && lines.some((x) => x.key === "assessment_only"), lines.filter((x) => x.kind === "Eligibility"));
+  await call("POST", `/combinations/${combo}/signoff`, { items: lines.map((x) => `${x.kind}|${x.key}`), action: "signed" }, REVIEWER);
+  const self = await call("POST", `/combinations/${combo}/approve`, undefined, AUTHOR);
+  const appr = await call("POST", `/combinations/${combo}/approve`, undefined, APPROVER);
+  const rel = JSON.parse(sql(`select coalesce((select snapshot->'eligibility' from config_release where combination_id='${combo}' and status='RELEASED' order by version desc limit 1), 'null')`));
+  ok("A pass: a second person approves; the release carries the flag and the gate's source (no form on it)", self.status >= 400 && appr.status < 300 && rel?.assessment_only === true && sameSource(rel?.gates?.[0]?.source) && sql(`select jsonb_array_length(snapshot->'forms') from config_release where combination_id='${combo}' and status='RELEASED'`) === "0", { self: self.status, approve: appr.body?.detail ?? appr.status, rel });
+  const open = await call("POST", "/runtime/cases", { combinationId: combo, clientActor: "user-P", principal: { displayName: "Client A (Sample)" } }, "user-O");
+  ok("A fail: Open a case on it → 409 in the words \"Assessment only: no forms\", never \"items to fix\"", open.status === 409 && String(open.body?.detail ?? "").includes(ASSESSMENT_ONLY_CASE_WORDS) && !/to fix/.test(String(open.body?.detail)), open.body);
+  const list = await call("GET", "/runtime/openable", undefined, "user-O");
+  const row = (Array.isArray(list.body) ? list.body : list.body?.releases ?? []).find((x: { combination_id: string }) => x.combination_id === combo);
+  ok("A pass: the New case list shows it as not startable, saying Assessment only", !!row && row.startable === false && String(row.why).includes("Assessment only: no forms"), { status: list.status, row });
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);

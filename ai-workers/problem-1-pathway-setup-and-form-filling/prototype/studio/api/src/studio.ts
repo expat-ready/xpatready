@@ -466,7 +466,8 @@ export class Studio {
     // C11.12 BR-7: a new release needs a filing mode on every role that may be an applicant (pinned releases are kept;
     // engine/filing-modes.ts FILING_NOT_SET_BLOCKS).
     const roles = await this.personRoles(workspaceId);
-    const filing = filingProblems((s.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], roles);
+    // AS-2a (P-650 (2)): nobody files on an assessment-only release, so no filing mode is asked of its people.
+    const filing = isAssessmentOnly(s.eligibility) ? [] : filingProblems((s.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], roles);
     // G1 BR-7 (challenge M1): every published number needs a source entry; the draft only, never a released snapshot.
     // Only a draft that will be submitted (it differs from its release, or there is none): a Live row with no draft
     // changes lists none, as on the catalogue (tech lead on #568; EXPERIENCE §2.5, one status everywhere).
