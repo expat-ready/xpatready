@@ -77,3 +77,85 @@ D16 3 a pass and a fail line for each rule; m4 · D17 simulated only · D18 4 th
 N/A: no case-side page in this PR.
 
 Reviewer: Changes c1c181cf0f6e28615f0c5bd1defbc77ceb9cbeed
+
+## Round 2 (diff-only: `git diff c1c181cf0 2bf420e66`; head now `c586f1118`)
+
+I reviewed only the fixes in `c1c181cf0f6e28615f0c5bd1defbc77ceb9cbeed..2bf420e66e2a7367d330860027e6f46ebbed3ca4`. That is 3 files: retainers/service.ts, signing/service.ts
+and check_fo6_signing_api.ts. The head then moved to `c586f1118e235c27c599810a6ef8d6236ccd56ac` by one commit of records only. `git diff --stat 2bf420e66 c586f1118` shows 7 files:
+5 J-55 screenshots (png), this review.md exactly as round 1 left it, and the round 1 journey report. There is no code in that commit, so this round holds for `c586f1118`.
+
+**Verdict: Approve.** No Blocker or Major is open. Two Minors and some nits are below; none of them blocks the merge.
+
+### What I ran (PostgreSQL :54329, scratch databases dropped; never :4400)
+* `check_fo6_signing_api.ts`: **71 passed, 0 failed**, exit 0. The 6 new lines are M1 ×3, m4 ×2 and m2.
+* I wrote a second probe script in my scratchpad, outside the repo, with the suite's own set-up (fake adapter, fake mail). Results:
+  * **R2-P1** (the round 1 P1 case): withdraw over a completed envelope gives **409 SIGNED_AT_PROVIDER**. The late `completed` then applies: retainer SIGNED, 1 evidence row, prospect won.
+  * **R2-P6**: the client and the firm signed at the vendor, but every webhook is late, so the retainer still reads SENT. Edit → **409 SIGNED_AT_PROVIDER**, still SENT:1, request SENT.
+    Withdraw → 409 SIGNED_AT_PROVIDER as well. The late events then apply (SIGNED, 1 evidence row).
+  * **R2-P7**: Signed offline over a completed envelope → 200, SIGNED_OFFLINE. The late `completed` gets "the request is cancelled" and the log says
+    `cancel after the commit did not finish: SigningEnded` (see n1).
+  * **R2-P2**: a second connection takes the webhook's order (request, then retainer, then the party's advisory lock), against Withdraw, Edit and Signed offline in turn.
+    **No deadlock in any of the three.** Each waits about 400 ms for the hook to commit, then succeeds (WITHDRAWN, DRAFT, SIGNED_OFFLINE).
+  * **R2-P3**: a vendor cancel that **succeeds** after 3.5 s → **503 SIGNING_UNAVAILABLE after 3036 ms**, and the database rolls back (retainer SENT, request SENT). The vendor
+    has cancelled once by then, so its link is dead. The retry → 200 WITHDRAWN (the vendor now answers "cancelled", which is no change). Exactly 1 "Agreement withdrawn" email.
+  * **R2-P8**: another writer holds the request row for 7 s, so the withdraw's transaction runs out of time → **503 TIMED_OUT** "That took too long, so nothing changed".
+    Retainer and request stay SENT. The answer came after 7032 ms: Prisma only reports the timeout once the blocked query returns.
+
+### Round 1 findings
+* **M1: closed.** signing/service.ts:139 counts `SigningEnded` as no change only when the state is not `completed`. :147 turns `completed` into 409 `SIGNED_AT_PROVIDER`.
+  The conflict throws inside the transaction, and `cancelNow` is the last step in Withdraw and Edit, so everything rolls back: no WITHDRAWN, no email, no audit line (test :346-348).
+  Cancelled, declined and not-found still count as no change. Signed offline keeps its cancel after the commit, so a paper signature still wins over a completed envelope (R2-P7).
+  AG-5-34 governs Withdraw, not Signed offline, and the agreement is signed either way. I accept this.
+* **m1: closed.** `lockRetainerSigning` (signing/service.ts:112-115) locks the live request rows in id order. It is the first statement of the transaction in Edit (:587),
+  Withdraw (:673) and Signed offline (:746). That is now the webhook's order: `receipt` (:228) takes the request, and the retainer comes later (:282, or `moveRetainer`).
+  Signed offline takes request → party → retainer, and the webhook's `completed` takes request → retainer → party (`clearForWin`). The two orders differ after the first
+  lock, but both start with the same request row, so they queue on it and cannot deadlock (R2-P2 includes the party lock).
+  Other paths: the conflict check takes the party lock only, and Send takes party → retainer on a DRAFT, which has no live request. Neither waits on a request while holding the party.
+  When no request is live, nothing is locked first. That is safe: the webhook then refuses on `!live` before it touches the retainer.
+* **m2: closed, with a known leftover.** `withinMs(3000)` (:103-107) bounds each vendor cancel. A later rejection of the vendor's promise is still handled by `Promise.race`,
+  so there is no unhandled rejection, and the timer is cleared in `finally`. If the vendor's cancel succeeds after our 3 s limit (R2-P3), the outcome is **safe**:
+  our records stay SENT, nothing wrong is committed, and the retry closes the gap, because a cancel on a cancelled envelope is no change. One email goes out, as it should.
+  What is left is the round 1 P3 window: the user now sees 503 instead of 500, but the client's link may be dead until someone retries. That is the same class as m3.
+  P2028 → 503 TIMED_OUT (retainers/service.ts:191) runs before the unique-key and race mapping, and it is right for both of Prisma's P2028 cases (timeout and maxWait).
+* **m3: no code change, as agreed.** But it is not recorded anywhere yet: see r2-m2.
+* **m4: closed except the file-name note.** Bullet 1: the newer-version guard line now asserts only "cancelled", and its label says the guard is a second wall that no route reaches. That is honest.
+  Bullet 2: the door is now covered through a real withdraw and a real edit (WITHDRAWN / UPDATED). The session is not covered, but the door is where it reads the state. Bullet 3: Edit's 503 rollback now has a line.
+  Bullet 4 (the row names `check_fo5d_decline_withdraw.ts`) is still not said in the PR: see r2-m2.
+* **The rewritten break m3 is honest.** The old line pinned "completed after a withdraw is final", which M1 now forbids. The new pair is a refusal plus the late completion
+  applying (:338-353), and "after a withdraw the firm cannot sign at the vendor" (:354-363). Together they keep the guarantee that a withdrawn retainer never gains evidence.
+
+### Remaining issues
+1. **r2-m1 Minor (Should). The Edit half of the M1 test does not reach M1.** At check_fo6_signing_api.ts:350-351 the retainer is CLIENT_SIGNED, which `EDITABLE` does not allow
+   (retainers/service.ts:41). So the 409 is `NOT_EDITABLE`, which comes before any vendor call, and the line would pass with the M1 fix removed.
+   The code is right: R2-P6 shows Edit → SIGNED_AT_PROVIDER. **Fix:** take R2-P6's shape. Act both signatures at the fake without posting them, so the retainer stays SENT, then
+   assert `ed?.body.code === "SIGNED_AT_PROVIDER"` with SENT:1. Or relabel :351 "refused as not editable".
+2. **r2-m2 Minor (Should). The PR body is stale.** It still names head `c1c181cf0` and 65 lines. It says break m3 "now also accepts the request is cancelled", but that line was
+   rewritten. It does not state the M1 refusal (409 SIGNED_AT_PROVIDER), the lock order, the 3 s limit or P2028 → 503. It also lacks the two records round 1 asked for:
+   m3 (Signed offline's after-commit cancel is logged, never retried; for FO-6v, an outbox or a sweep) and m4 bullet 4 (the lines live in check_fo6_signing_api.ts until Decline comes).
+   **Fix:** update the body. No code change is needed.
+3. Nits (no fix required):
+   * **n1:** signing/service.ts:139 is shared with `afterCommit` (:156). A completed envelope after Signed offline now logs "cancel after the commit did not finish". It used to be silent.
+     The cancel did not fail, so a quiet "completed at the provider; the paper signature stands" would be clearer.
+   * **n2:** the comment at retainers/service.ts:746 says "the webhook's lock order (the request, then the party and the retainer)". The webhook takes the retainer before the party.
+     It is safe, as explained under m1, but the comment is wrong.
+   * **n3:** no line pins m1's lock order or P2028 → 503. Removing `lockRetainerSigning` would leave the suite green. R2-P2 and R2-P8 show both work.
+   * **n4:** the `tokenOf` helper (:448) has a filter that always holds (`count(*) … !== "0"`). It is harmless.
+   * **n5:** after a timeout, "nothing changed" is not quite true at the vendor (R2-P3). "Nothing was saved" would be exact.
+
+### Journey test (reviewer, round 2; same journeys as `journey-test-reviewer-2026-11-25.md`, rerun through R2-P1 to R2-P8)
+| Criterion | Round 1 | Round 2 | Evidence |
+|---|---|---|---|
+| Task completed | 1 | 1 | J1–J3 complete |
+| Next step obvious | ½ | 1 | J9: no deadlock, so no "someone else saved it" (R2-P2). J10: 503 "Try again" |
+| Plain words | 1 | 1 | "Everyone has signed this agreement at the signing service; the signed copy is on its way." |
+| Feedback and state | 1 | 1 | Refusals name the cause (SIGNED_AT_PROVIDER, TIMED_OUT) |
+| Correct data | ½ | 1 | J8: the withdraw is refused, and the late completion applies with its evidence (R2-P1, R2-P6) |
+| Error recovery | ½ | ½ | 503 in 3 s, and the retry heals. Until then the link is dead while the retainer reads SENT (R2-P3; m3 class) |
+| Accessibility and screen sizes | 1 | 1 | N/A, no page |
+| Speed | 1 | 1 | 71 lines; lock waits of about 0.4 s |
+| Visual quality | 1 | 1 | N/A, no page |
+| Trust and sources | 1 | 1 | Sample values; an audit line in each transaction |
+
+**9.5 / 10, pass.**
+
+Reviewer: Approve c586f1118e235c27c599810a6ef8d6236ccd56ac (code reviewed at 2bf420e66e2a7367d330860027e6f46ebbed3ca4; c586f1118 adds records only)
