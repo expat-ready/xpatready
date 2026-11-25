@@ -9,7 +9,7 @@
 // staging folder in a scratch folder, the clock injected. No network, US$0.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pff2_uploads.ts
 import "reflect-metadata";
-import { Module } from "@nestjs/common";
+import { HttpException, Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -303,6 +303,52 @@ try {
   const featureSrc = readFileSync(join(STUDIO, "api", "src", "features", "platform-files.ts"), "utf8");
   ok("PF-F2 review M1 fail: a rail switched off (the S3 deployment, two API tasks) answers 503 in words and stages nothing; the feature switches it off by PLATFORM_FILES=s3",
     offRes.statusCode === 503 && /not switched on here yet/.test(offRes.body) && (!existsSync(join(WORK, "off")) || readdirSync(join(WORK, "off")).length === 0) && /off: process\.env\.PLATFORM_FILES\?\.trim\(\) === "s3"/.test(featureSrc), offRes);
+
+  // ------------------------------------------------ CS-D1u (review round 1 on #3698): a door's check and its size limit
+  // A rail of its own (its own registry and staging folder), whose door has a 4000-byte limit and a check, finishing
+  // uploads staged straight through its store: the finish-time rules, which tus's Upload-Length keeps HTTP from reaching.
+  const { Upload } = await import("@tus/utils");
+  const { Readable } = await import("node:stream");
+  const doors2 = new UploadDoors(), checks: string[] = [], done2: string[] = [];
+  const Q = { ok: randomUUID(), refuse: randomUUID(), later: randomUUID(), "no-row": randomUUID(), down: randomUUID() } as Record<string, string>;   // people (a hold names a uuid)
+  doors2.register("STAFF", { allowedKinds: ["pdf"], maxBytes: 4000, authorize: async () => null, keyOf: (t, id) => `checked/${t.personId}/${id}`,
+    check: async (bytes, f) => { checks.push(f.name); if (f.target.personId === Q["refuse"]) throw new HttpException({ title: "Not stored", status: 400, detail: "The door says no. Nothing was stored." }, 400); if (f.target.personId === Q["later"]) throw new HttpException({ title: "Busy", status: 503, detail: "Try again in a moment." }, 503); void bytes; },
+    onComplete: async (_tx, f) => { if (f.target.personId === Q["no-row"]) throw new HttpException({ title: "Not stored", status: 409, detail: "No. Nothing was stored." }, 409); if (f.target.personId === Q["down"]) throw new Error("the door's table is down"); done2.push(f.id); } });
+  const rail2 = new UploadRail({ db: walled, files, doors: doors2, holds: new (await import("../api/src/platform/register/holds/adapter.ts")).PgLegalHolds(), now: () => clock.t, dir: join(WORK, "checked") });
+  const stage2 = async (personId: string, bytes: Uint8Array) => {
+    const id = randomUUID().replace(/-/g, "");
+    const up = new Upload({ id, size: bytes.length, offset: 0, metadata: { filename: "letter.pdf", filetype: "application/pdf", xr_firm: A.toLowerCase(), xr_door: "STAFF", xr_actor: "STAFF:x", xr_target: JSON.stringify({ personId }), xr_born: String(clock.t) } });
+    await rail2.store.create(up); await rail2.store.write(Readable.from([Buffer.from(bytes)]), id, 0);
+    return { up: await rail2.store.getUpload(id), id };
+  };
+  const refusedBy = async (p: Promise<unknown>) => p.then(() => null, (e: { status_code?: number; body?: string; getStatus?: () => number }) => e?.status_code ?? e?.getStatus?.() ?? -1);
+  const has2 = (personId: string, id: string) => files.exists(A, `checked/${personId}/${id}`);
+  const s2a = await stage2(Q["ok"], pdfOf(3000));
+  const f2a = await rail2.finish(s2a.up).catch(() => null);
+  ok("CS-D1u rail pass: a door's check runs on the finished bytes (with PF-F4's corrected name) before they are stored; the file is stored and onComplete runs",
+    !!f2a && checks.at(-1) === "letter.pdf" && done2.length === 1 && await has2(Q["ok"], s2a.id), { f2a: !!f2a, checks });
+  const s2b = await stage2(Q["refuse"], pdfOf(3000)), rows2b = fileRows();
+  const r2b = await refusedBy(rail2.finish(s2b.up));
+  ok("CS-D1u rail fail: a door's check that refuses (4xx) → refused; no plat_file row, no stored bytes, no staging copy, no onComplete",
+    r2b === 400 && fileRows() === rows2b && !(await has2(Q["refuse"], s2b.id)) && !existsSync(join(WORK, "checked", s2b.id)) && done2.length === 1, { r2b });
+  const s2c = await stage2(Q["later"], pdfOf(3000));
+  const r2c = await refusedBy(rail2.finish(s2c.up));
+  ok("CS-D1u rail fail: a check that says try again (5xx) stores nothing and keeps the staging copy for the retry",
+    r2c === 503 && !(await has2(Q["later"], s2c.id)) && existsSync(join(WORK, "checked", s2c.id)), { r2c });
+  const s2d = await stage2(Q["ok"], pdfOf(4001)), rows2d = fileRows();
+  const r2d = await refusedBy(rail2.finish(s2d.up));
+  ok("CS-D1u rail fail: bytes over the door's own limit (maxBytes) are refused at the finish (413), nothing stored, staging removed",
+    r2d === 413 && fileRows() === rows2d && !(await has2(Q["ok"], s2d.id)) && !existsSync(join(WORK, "checked", s2d.id)), { r2d });
+
+  const s2e = await stage2(Q["no-row"], pdfOf(3000));
+  const r2e = await refusedBy(rail2.finish(s2e.up));
+  ok("CS-D1u rail fail: onComplete refusing (4xx) after the bytes were put → the key is removed with the staging copy (no bytes without a row)",
+    r2e === 409 && !(await has2(Q["no-row"], s2e.id)) && !existsSync(join(WORK, "checked", s2e.id)), { r2e });
+  const s2f = await stage2(Q["down"], pdfOf(3000));
+  const r2f = await refusedBy(rail2.finish(s2f.up)), keptForRetry = await has2(Q["down"], s2f.id) && existsSync(join(WORK, "checked", s2f.id));
+  clock.t += UPLOAD_EXPIRY_MS + 60_000; await rail2.sweep(); clock.t -= UPLOAD_EXPIRY_MS + 60_000;
+  ok("CS-D1u rail pass: a failure that is not a refusal keeps the bytes and the staging copy for a retry; the expiry cleanup then removes both (no row names them)",
+    r2f !== null && keptForRetry && !(await has2(Q["down"], s2f.id)) && !existsSync(join(WORK, "checked", `${s2f.id}.json`)) && await has2(Q["ok"], s2a.id), { r2f, keptForRetry });
 
   // ------------------------------------------------------------------------------------ DW9: the migration, right after itself
   const NEW_AT = all.indexOf(NEW), before = all.filter((d) => d < NEW);

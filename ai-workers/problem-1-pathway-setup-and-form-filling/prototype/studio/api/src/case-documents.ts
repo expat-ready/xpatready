@@ -281,7 +281,10 @@ export class CaseDocuments {
     const f = (files ?? []).filter((x) => x.buffer);
     if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
     const checked = await checkedCaseFile(f[0]);   // CS-D1t (R1.67): PF-F4's one check, before anything is written
-    return this.db.$transaction((tx) => this.storeVersion(tx, t, f[0].buffer!, checked, actor));
+    // Review m8 on #3698: the file's cleanup covers a commit that fails after the callback returned.
+    const plan = this.versionPlan(t, checked);
+    try { return await this.db.$transaction((tx) => this.storeVersion(tx, t, f[0].buffer!, checked, actor, actor.id, plan)); }
+    catch (e) { rmSync(plan.abs, { force: true }); throw e; }
   }
 
   /** CS-D1u: who may store a document with no checklist line, for whom and of which type, checked before any byte is
@@ -301,10 +304,15 @@ export class CaseDocuments {
   /** CS-D1u: one version of a document with no checklist line, in the caller's transaction (the multipart route's own, or
    *  the rail's finish, with the stored file's bytes): one current per person and type, the earlier kept as history, and
    *  the audit line. `by` is the audit actor (a signed-in staff member's `staff:<id>`, J-72), else the simulated person. */
-  async storeVersion(tx: Prisma.TransactionClient, t: Awaited<ReturnType<CaseDocuments["caseUploadTarget"]>>, bytes: Uint8Array, checked: Awaited<ReturnType<typeof checkedCaseFile>>, actor: Actor, by: string = actor.id) {
+  /** Where a new version's file goes (its id and paths), chosen before the transaction so a caller can remove it. */
+  versionPlan(t: { who: { subjectId: string } }, checked: { extension: string }) {
+    const docId = randomUUID(), rel = join("people", t.who.subjectId, "documents", `${docId}.${checked.extension}`);
+    return { docId, rel, abs: join(DOCS(), rel) };
+  }
+
+  async storeVersion(tx: Prisma.TransactionClient, t: Awaited<ReturnType<CaseDocuments["caseUploadTarget"]>>, bytes: Uint8Array, checked: Awaited<ReturnType<typeof checkedCaseFile>>, actor: Actor, by: string = actor.id, plan = this.versionPlan(t, checked)) {
     const { c, who, documentType } = t;
-    const docId = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
-    const rel = join("people", who.subjectId, "documents", `${docId}.${checked.extension}`), abs = join(DOCS(), rel);
+    const { docId, rel, abs } = plan, sha256 = createHash("sha256").update(bytes).digest("hex");
     const now = new Date();
     try {
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
