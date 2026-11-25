@@ -128,3 +128,51 @@ Reviewer: Approve 05d4820a19ebaec55b54b2551da41bb40eef1207
 **Verdict: Approve**
 * Blockers: none. Majors: none open (M1 and M2 fixed with fail tests).
 * Minor to fix (in this PR if cheap, or as the first item in part 2): m5 (the NUMBER round-trip uses the 15-digit cast; compare through `::float8::text`, and add a 16-17 digit good value).
+
+## Round 3 (diff-only re-review, 25 Nov 2026)
+
+Commit reviewed: **b901ec4bca97b68707a4e9964abaebe4850a427c**, the PR's head on GitHub. The tech lead allowed a diff-only round on the PR. Scope: `git diff -M 05d4820a1..b901ec4bc -- prototype/studio`, five files, +19/-16:
+* the migration folder renamed to `20261125130000_shared__pf22a_custom_fields`;
+* inside it, the n2, n3 and n5 lines;
+* `rollback.sql` (its two name lines);
+* `platform-custom.prisma` (line 8, the name);
+* `MODULE.rows/PF-22a.md` (the name);
+* the PF-22a suite (`NEW`, the NUMBER good cases, the m4 refused list, one m1 case, one check title).
+
+Nothing else changed. This is still schema only, with no screen, so **Journey score: N/A**.
+
+### What I ran
+* `migration-slots.py check origin/main..HEAD`: **PASS**, after a fresh fetch of main (24a517697). It reports 1 new migration against main's newest, `20261124170000`.
+* `git grep 20261125090000` at the head finds no code. The old name is left only in records: round 1 of this review and of `break-report.md`, and `screens/PF-22s/challenge.md` line 2, which lists what the challenger read at the time.
+* `npx tsx tests/check_pf22a_custom_schema.ts`: **86 passed, 0 failed** (38 s). The count is the same as round 2 because the new cases sit inside existing checks.
+* `npx tsx tests/check_prisma_schema.ts`: **8 passed, 0 failed**.
+* Mutations, each run on a `git archive` copy of the head (copies and databases removed afterwards):
+  * (n3) put back `::float8)::numeric`: "DW3 pass: NUMBER takes … 3.141592653589793 …" fails (85/1);
+  * (n2) removed `COLLATE pg_c_utf8` from `pf_custom_trim`: "break m1 fail" fails (85/1). The cluster is C/C, provider libc, so the U+0085 case bites;
+  * (n3 guard) removed `SET extra_float_digits = 1`: **86/0, not caught** (see n1 below).
+* Probes on a scratch database built from every migration up to this one (PostgreSQL 18.3, dropped afterwards). `pf_custom_value_ok('NUMBER', …)`:
+  * true for `3.141592653589793`, `0.30000000000000004`, `999999999999999.9`, `5e-324`, `1e-5`, `-0`, `1.50`, `1E2`;
+  * false for `0.1234567890123456789`, `1.00000000000000001`, `1e-400`, `9007199254740993`, `1e15`;
+  * π is still true with a session `extra_float_digits` of 0 or 3, so the function's SET holds.
+* Probes of `pf_custom_trim(U&'\0085a\0085')`: length 1 under `"C"`, `"und-x-icu"` and the default. `pf_custom_label_ok(U&'Yes\0085', 80)` is f under C and under ICU. The function is still IMMUTABLE, with `search_path=pg_catalog`.
+
+### Round-2 findings
+| # | Fixed? | Fail test |
+|---|---|---|
+| Slot: migration name | **Yes.** The folder, `NEW`, the rollback's `psql` line and its `_prisma_migrations` delete, the prisma header and the module row all use the new name. The slot check passes. | DW1 (stamp unique and later than every one before it), `migration-slots.py` PASS |
+| Break n3 / review m5: NUMBER refused 16-17 digit doubles | **Yes.** The comparison is `x = ((v #>> '{}')::float8::text)::numeric` under `SET extra_float_digits = 1`. `999999999999999.9` leaves the refused list, which is right: JS reads it back unchanged. `1.00000000000000001` takes its place. | "DW3 pass" now includes π, 0.1+0.2, 1/3 and 123456789012345.6 (mutation n3 proves it bites); "break m4 fail" |
+| Break n2: `pf_custom_trim` depended on collation | **Yes.** `s COLLATE pg_c_utf8`, as the options check already does. | "break m1 fail" + `U&'Yes\0085'` (mutation n2 proves it bites on this C cluster) |
+| Break n5: "16 KB" was characters | **Yes** for the filter (header) and for the constraint comment ("16,384 characters", "2,048"). See n2 below. | the m6 (d) check's title (wording only; 16,400 characters is still refused) |
+
+### New in this round (no Blocker, no Major, no Minor)
+* **n1 (Nit): the `extra_float_digits` guard has no test.** Removing the SET leaves the suite green (86/0), because the cluster default is already 1. A session or role set to 0 would then refuse π again. My probe shows the SET works today. A cheap pin for part 2: run one π insert after `set extra_float_digits = 0`.
+* **n2 (Nit, wording): the header still says "sort … at most 2 KB"** (`migration.sql:19`). The constraint comment on line 210 now says 2,048 characters.
+
+### Could not check
+* CI's full run on this head. `ci`, `regression`, `types` and the walks show *skipped*. `review-rounds` shows *cancelled*. CodeQL, `module-cards`, `pr-rules`, `guard`, `read-gate`, `completes-ready` and `outside-wave` are green.
+
+Reviewer: Approve b901ec4bca97b68707a4e9964abaebe4850a427c
+
+**Verdict: Approve**
+* Blockers: none. Majors: none. Minors: none open. Round 2's m5 and break n2, n3 and n5 are fixed, and n2 and n3 each have a fail test that bites.
+* Nits (optional, part 2 is fine): n1 (pin `extra_float_digits` with one test), n2 (the "2 KB" in the header).
