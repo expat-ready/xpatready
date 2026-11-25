@@ -21,6 +21,10 @@ BEGIN
     IF OLD.sent_at IS NOT NULL THEN
       RAISE EXCEPTION 'money_trust_request: a sent request (%) is never deleted; cancel it with a reason', OLD.number USING ERRCODE = 'check_violation';
     END IF;
+    -- R1.60 (break a1 m5): a request of a signed retainer version keeps that version for good (B4): never deleted
+    IF OLD.retainer_version_id IS NOT NULL THEN
+      RAISE EXCEPTION 'money_trust_request: a deposit request of a signed retainer is never deleted; cancel it with a reason' USING ERRCODE = 'check_violation';
+    END IF;
     RETURN OLD;
   END IF;
   IF TG_OP = 'INSERT' THEN
@@ -33,11 +37,17 @@ BEGIN
     END IF;
     NEW.created_at := now();
     IF NEW.prepared_at IS NOT NULL THEN NEW.prepared_at := now(); END IF;   -- R1.60: the database's clock
+    IF NEW.retainer_version_id IS NOT NULL AND NEW.prepared_at IS NULL THEN   -- R1.60 (break a1 m5): B4's key only on a prepared one
+      RAISE EXCEPTION 'money_trust_request: only a deposit request prepared by a signed retainer names its retainer version' USING ERRCODE = 'check_violation';
+    END IF;
     IF NEW.sent_at IS NOT NULL THEN NEW.number := money_take_number(NEW.firm_id, 'TRUST_REQUEST'); NEW.sent_at := now(); END IF;
     RETURN NEW;
   END IF;
   IF NEW.firm_id IS DISTINCT FROM OLD.firm_id THEN
     RAISE EXCEPTION 'money_trust_request: firm_id never changes' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.retainer_version_id IS DISTINCT FROM OLD.retainer_version_id THEN   -- R1.60 (break a1 m5): B4's key never moves
+    RAISE EXCEPTION 'money_trust_request: the retainer version a request was prepared for never changes' USING ERRCODE = 'check_violation';
   END IF;
   IF OLD.cancelled_at IS NOT NULL AND (NEW.number, NEW.person_id, NEW.company_id, NEW.case_id, NEW.amount_minor, NEW.currency, NEW.purpose, NEW.sent_at, NEW.sent_by, NEW.cancelled_at, NEW.cancelled_by, NEW.cancel_reason, NEW.created_by, NEW.created_at, NEW.retainer_version_id, NEW.pay_link_token_hash, NEW.prepared_at, NEW.estimated_tax_minor)
      IS DISTINCT FROM (OLD.number, OLD.person_id, OLD.company_id, OLD.case_id, OLD.amount_minor, OLD.currency, OLD.purpose, OLD.sent_at, OLD.sent_by, OLD.cancelled_at, OLD.cancelled_by, OLD.cancel_reason, OLD.created_by, OLD.created_at, OLD.retainer_version_id, OLD.pay_link_token_hash, OLD.prepared_at, OLD.estimated_tax_minor) THEN

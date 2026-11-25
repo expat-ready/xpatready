@@ -33,7 +33,8 @@ export async function retainerSigned(tx: Tx, audit: AuditPort<Tx>, firmId: strin
     try { await hook(tx, firmId, RetainerSigned.parse(signed)); await tx.$executeRaw`release savepoint retainer_signed_listener`; }
     catch (e) {
       await tx.$executeRaw`rollback to savepoint retainer_signed_listener`;
-      const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : String((e as { name?: unknown })?.name ?? "Error").slice(0, 60);
+      let code = "Error";   // break a1 m3: naming the fault never throws in turn
+      try { code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : typeof (e as { name?: unknown })?.name === "string" ? (e as { name: string }).name.slice(0, 60) : "Error"; } catch { /* keep "Error" */ }
       logPort.error("retainer_signed_listener_failed", e, { listener: name });
       await audit.record(tx, { firmId, actor: signed.actor, action: "retainer.signed_listener_held", entity: "fo_retainer", entityKey: signed.retainerId,
         summary: `Signed; ${name} did not run and is not tried again by itself: a person makes what it would have made (no catch-up yet)`,

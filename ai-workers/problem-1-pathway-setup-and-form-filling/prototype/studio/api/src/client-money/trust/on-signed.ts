@@ -49,6 +49,13 @@ export function notDue(signed: RetainerSigned, trustAnswer: string | null): stri
   return null;
 }
 
+/** Not a request we can hold (a currency trust does not take, or more than one request holds): said once, by name. */
+async function notPrepared(tx: Tx, deps: DepositDeps, firmId: string, signed: RetainerSigned, why: string): Promise<null> {
+  await deps.audit.record(tx, { firmId, actor: signed.actor, action: "trust.request_not_prepared", entity: "fo_retainer_version", entityKey: signed.retainerVersionId,
+    summary: `No deposit request prepared: the deposit row "${signed.fees[0].label}" is signed, but ${why}. Bill it by hand.`, detail: { retainerId: signed.retainerId, retainerVersionId: signed.retainerVersionId, reason: why }, before: null, after: null });
+  return null;
+}
+
 /** The listener: prepares the version's deposit request when it is due. Returns it, or null when nothing was written. */
 export async function prepareDepositOnSigning(tx: Tx, deps: DepositDeps, firmId: string, signed: RetainerSigned): Promise<Prepared> {
   if (depositRequestMode(firmId) === "OFF") return null;
@@ -58,17 +65,13 @@ export async function prepareDepositOnSigning(tx: Tx, deps: DepositDeps, firmId:
   if (notDue(signed, facts?.answer ?? null)) return null;
   const row = signed.fees[0], amount = BigInt(row.amountMinor!), currency = MoneyCurrency.safeParse(row.currency);
   const by = signed.actor;
-  if (!currency.success || amount > BigInt(MINOR_MAX)) {
-    // Not a request we can hold (a currency trust does not take, or more than one request holds): said once, by name.
-    const why = !currency.success ? `its currency ${row.currency} is not one trust takes (CAD or USD)` : "its amount is more than one request can hold";
-    await deps.audit.record(tx, { firmId, actor: by, action: "trust.request_not_prepared", entity: "fo_retainer_version", entityKey: signed.retainerVersionId,
-      summary: `No deposit request prepared: the deposit row "${row.label}" is signed, but ${why}. Bill it by hand.`, detail: { retainerId: signed.retainerId, retainerVersionId: signed.retainerVersionId, reason: why }, before: null, after: null });
-    return null;
-  }
+  if (!currency.success) return notPrepared(tx, deps, firmId, signed, `its currency ${row.currency} is not one trust takes (CAD or USD)`);
+  if (amount > BigInt(MINOR_MAX)) return notPrepared(tx, deps, firmId, signed, "its amount is more than one request can hold");
   const amountMinor = Number(amount);
   const party = signed.personId ? { kind: "PERSON" as const, id: signed.personId } : { kind: "COMPANY" as const, id: signed.companyId! };
   const tax = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, party, null), registered: facts?.registered === true });
   const estimatedTaxMinor = taxForLine(amountMinor, tax.ratePpm);
+  if (amountMinor + estimatedTaxMinor > MINOR_MAX) return notPrepared(tx, deps, firmId, signed, "its amount with the estimated tax is more than one request can hold");   // break a1 m4
   const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${`Deposit on signing: ${row.label}`}, 500) as ok`;
   const purpose = text?.ok ? `Deposit on signing: ${row.label}` : "Deposit on signing";
   // B4: one per version; ON CONFLICT on the partial index's own predicate writes nothing for a version already holding
