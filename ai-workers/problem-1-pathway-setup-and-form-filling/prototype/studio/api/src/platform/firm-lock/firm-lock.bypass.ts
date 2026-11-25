@@ -3,5 +3,5 @@ import { defineBypassUse } from "../firm-scope.ts";
 
 export const FIRM_LOCK = defineBypassUse("platform.console.firm-lock", {
   why: "our Platform Owner locks or lifts the lock of one firm (its status, its audit line and its event; PF-27, SA-2-34, SA-2-8); that firm's own platform.bypass line",
-  routes: [/^POST \/api\/system\/firms\/[^/]+\/(lock|unlock)$/i], direct: true, audit: "per-firm",
+  routes: [/^POST \/api\/system\/firms\/[^/]+\/(lock|unlock)$/i], audit: "per-firm",
 });

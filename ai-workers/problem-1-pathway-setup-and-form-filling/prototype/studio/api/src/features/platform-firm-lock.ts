@@ -5,8 +5,9 @@ import { auditEvent } from "../platform/audit/audit-event.ts";
 import { FirmLockController } from "../platform/firm-lock/routes.ts";
 import { FirmLocks } from "../platform/firm-lock/service.ts";
 import { SystemIdentity } from "../platform/system-identity/service.ts";
+import { PlatformClock } from "../platform/identity/port.ts";
 
 export default {
   controllers: [FirmLockController],
-  providers: [{ provide: FirmLocks, useFactory: (db: Db, identity: SystemIdentity) => new FirmLocks({ db, identity, audit: auditEvent }), inject: [Db, SystemIdentity] }],
+  providers: [{ provide: FirmLocks, useFactory: (db: Db, identity: SystemIdentity, clock: PlatformClock) => new FirmLocks({ db, identity, audit: auditEvent, now: () => new Date(clock.now()) }), inject: [Db, SystemIdentity, PlatformClock] }],
 } satisfies Feature;

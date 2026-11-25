@@ -51,6 +51,7 @@ const { SystemIdentityController } = await import("../api/src/platform/system-id
 const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const { FIRM_MOVES, canMove } = await import("../api/src/platform/billing/webhook.ts");
 const feature = (await import("../api/src/features/platform-firm-lock.ts")).default;
+const { PlatformSession } = await import("../api/src/platform/identity/session/service.ts");
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 wallUnscopedQueries();
 const apps: { close(): Promise<void> }[] = [];
@@ -77,7 +78,7 @@ try {
   const st = (f: string) => sql(`select status from platform_firm where id = '${f}'`);
   const lines = (f: string, action: string) => Number(sql(`select count(*) from audit_event where firm_id = '${f}' and action = '${action}'`));
   const events = (f: string, type: string) => Number(sql(`select count(*) from module_event where firm_id = '${f}' and type = '${type}'`));
-  sql(`update platform_firm set status = 'TRIAL' where id = '${A}'`);
+  sql(`update platform_firm set status = 'TRIAL' where id = '${A}'; update platform_subscription set status = 'TRIAL' where firm_id = '${A}'`);
   const me = (t: string) => call(base, "GET", "/api/platform/me", { token: t });
   ok("setup: the firm's Owner reaches GET me before any lock (200)", (await me(firmT)).status === 200);
 
@@ -95,11 +96,12 @@ try {
   // ------------------------------------------------------------------------------------------------ the lock
   const locked = await call(base, "POST", L, { token: ownerT, body: { reason: "Sample: suspected account takeover" } });
   ok("PF-27 pass: the Platform Owner locks (200): the firm is SECURITY_LOCK, the prior TRIAL named", locked.status === 200 && locked.body.status === "SECURITY_LOCK" && locked.body.prior === "TRIAL" && st(A) === "SECURITY_LOCK", locked.body);
-  const after = await me(firmT), again = await firmSignIn();
+  const after = await me(firmT); clock.t += 2000; const again = await firmSignIn();
   ok("PF-27 pass: the firm's staff token answers 401 FIRM_LOCKED on its next request, and sign-in is refused in the same plain words (no reason given)",
     after.status === 401 && after.body.code === "FIRM_LOCKED" && again.status === 401 && again.body.code === "FIRM_LOCKED" && again.body.detail === FIRM_LOCKED && !/takeover/i.test(JSON.stringify([after.body, again.body])), [after.body, again.body]);
-  ok("PF-27 pass: one firm line (with the reason, before and after), one firm.locked event naming the prior status, our console's ALLOWED line",
-    lines(A, "platform.firm.locked") === 1 && sql(`select detail->>'reason' from audit_event where firm_id = '${A}' and action = 'platform.firm.locked'`).includes("takeover")
+  ok("PF-27 pass: one firm line (neutral: no reason on the firm's own trail), one firm.locked event naming the prior status, our console's ALLOWED line with the reason",
+    lines(A, "platform.firm.locked") === 1 && !sql(`select row_to_json(a)::text from audit_event a where firm_id = '${A}' and action = 'platform.firm.locked'`).includes("takeover")
+    && sql(`select reason from plat_system_audit where outcome = 'ALLOWED' and route = '/api/system/firms/:id/lock'`).includes("takeover")
     && sql(`select payload->>'prior' from module_event where firm_id = '${A}' and type = 'firm.locked'`) === "TRIAL" && Number(sql(`select count(*) from plat_system_audit where outcome = 'ALLOWED' and route = '/api/system/firms/:id/lock'`)) === 1, sql(`select string_agg(action, ' ') from audit_event where firm_id = '${A}'`));
   ok("PF-27 pass: firm B is untouched (its Owner still reaches GET me, no line or event)", (await me(firmBT)).status === 200 && lines(B, "platform.firm.locked") === 0 && events(B, "firm.locked") === 0);
   const twice = await call(base, "POST", L, { token: ownerT, body: { reason: "Sample" } });
@@ -110,16 +112,57 @@ try {
   const supportLift = await call(base, "POST", U, { token: supportT, body: { reason: "Sample" } });
   const lifted = await call(base, "POST", U, { token: ownerT, body: { reason: "Sample: the Owner's identity is confirmed" } });
   ok("PF-27 pass/fail: Support cannot lift (403); the Platform Owner lifts (200) back to the prior TRIAL, not ACTIVE", supportLift.status === 403 && lifted.status === 200 && lifted.body.status === "TRIAL" && st(A) === "TRIAL", [supportLift.status, lifted.body]);
+  clock.t += 2000;
+  ok("PF-27 fail (review M1): a token from before the lock stays refused after the lift (its session was ended, not paused)", (await me(firmT)).status === 401, (await me(firmT)).body);
   ok("PF-27 pass: sign-in works again and the firm line and firm.unlocked event are written", (await firmSignIn()).status === 200 && lines(A, "platform.firm.unlocked") === 1 && sql(`select payload->>'to' from module_event where firm_id = '${A}' and type = 'firm.unlocked'`) === "TRIAL");
   const notLocked = await call(base, "POST", U, { token: ownerT, body: { reason: "Sample" } });
   ok("PF-27 fail: lifting a firm that is not locked → 409 NOT_LOCKED", notLocked.status === 409 && notLocked.body.code === "NOT_LOCKED", notLocked.body);
-  sql(`update platform_firm set status = 'PAYMENT_HOLD' where id = '${A}'`);
+  sql(`update platform_firm set status = 'PAYMENT_HOLD' where id = '${A}'; update platform_subscription set status = 'PAYMENT_HOLD' where firm_id = '${A}'`);
   await call(base, "POST", L, { token: ownerT, body: { reason: "Sample: second lock while on hold" } });
   const back = await call(base, "POST", U, { token: ownerT, body: { reason: "Sample" } });
   ok("PF-27 pass: a firm locked while on payment hold returns to PAYMENT_HOLD (the newest lock's prior status, not the first)", back.status === 200 && st(A) === "PAYMENT_HOLD", [back.body, st(A)]);
   sql(`update platform_firm set status = 'DELETED' where id = '${A}'`);
   const closed = await call(base, "POST", L, { token: ownerT, body: { reason: "Sample" } });
   ok("PF-27 fail: a closed (DELETED) firm cannot be locked → 409 NOT_LOCKABLE, nothing moved", closed.status === 409 && closed.body.code === "NOT_LOCKABLE" && st(A) === "DELETED", closed.body);
+
+  // ------------------------------------------------------------------------------------------------ review round 1 fixes
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${B}'`);
+  const LB = `/api/system/firms/${B}/lock`, UB = `/api/system/firms/${B}/unlock`;
+  const long = await call(base, "POST", LB, { token: ownerT, body: { reason: "x".repeat(480) } });
+  ok("PF-27 pass (breaker M1): a 480-character reason locks (200; the reason is on our line only, never cut into the firm's detail)", long.status === 200 && st(B) === "SECURITY_LOCK", long.body);
+  const extra = await call(base, "POST", UB, { token: ownerT, body: { reason: "Sample", status: "ACTIVE" } });
+  ok("PF-27 fail (breaker m1): an unknown body field is refused (strict body), nothing moved", extra.status === 422 && st(B) === "SECURITY_LOCK", extra.body);
+  sql(`update platform_subscription set status = 'PAYMENT_HOLD' where firm_id = '${B}'`);
+  const toHold = await call(base, "POST", UB, { token: ownerT, body: { reason: "Sample" } });
+  ok("PF-27 pass (review M2): a hold that arrived during the lock takes effect on the lift: PAYMENT_HOLD (not the prior ACTIVE), with a firm.payment_hold event (a new clock)",
+    toHold.status === 200 && st(B) === "PAYMENT_HOLD" && events(B, "firm.payment_hold") === 1, [toHold.body, st(B)]);
+  await call(base, "POST", LB, { token: ownerT, body: { reason: "Sample" } });
+  sql(`update platform_subscription set status = 'ACTIVE' where firm_id = '${B}'`);
+  const toActive = await call(base, "POST", UB, { token: ownerT, body: { reason: "Sample" } });
+  ok("PF-27 pass (review M2): a payment that arrived during the lock takes effect on the lift: ACTIVE (not the prior PAYMENT_HOLD), with firm.activated", toActive.status === 200 && st(B) === "ACTIVE" && events(B, "firm.activated") === 1, [toActive.body, st(B)]);
+  sql(`update platform_firm set status = 'PROVISIONING' where id = '${B}'`);
+  const prov = await call(base, "POST", LB, { token: ownerT, body: { reason: "Sample" } });
+  ok("PF-27 fail (review M4): a PROVISIONING firm cannot be locked (SA-02 §6: Trial, Active, Payment hold only) → 409", prov.status === 409 && prov.body.code === "NOT_LOCKABLE" && st(B) === "PROVISIONING", prov.body);
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${B}'`);
+  const two = await Promise.all([1, 2, 3].map(() => call(base, "POST", LB, { token: ownerT, body: { reason: "Sample: at once" } })));
+  ok("PF-27 fail (review m1): three locks at once: one 200, two 409, one event", two.filter((r) => r.status === 200).length === 1 && two.filter((r) => r.status === 409).length === 2 && events(B, "firm.locked") === 3, two.map((r) => r.status));
+  ok("PF-27 pass (review m1): each allowed change wrote one platform.bypass line on its firm's trail", Number(sql(`select count(*) from audit_event where firm_id = '${B}' and action = 'platform.bypass' and detail->>'use' = 'platform.console.firm-lock'`)) >= 5);
+  // review B1: billing's own lock is taken first, so a Stripe event held open across the firm row cannot undo a lock
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${B}'; update platform_subscription set status = 'ACTIVE' where firm_id = '${B}'`);
+  const { Client } = await import("pg"); const held = new Client({ connectionString: urlOf(DB) }); await held.connect();
+  await held.query("begin"); await held.query("select pg_advisory_xact_lock(hashtext($1))", [`plat_billing:${B}`]);
+  const racing = call(base, "POST", LB, { token: ownerT, body: { reason: "Sample: during a webhook" } });
+  await new Promise((r) => setTimeout(r, 400));
+  const waited = st(B) === "ACTIVE";
+  await held.query(`update platform_firm set status = 'PAYMENT_HOLD' where id = '${B}'`); await held.query("commit"); await held.end();
+  const raced = await racing;
+  ok("PF-27 fail (review B1): a lock waits for billing's lock held by a webhook; it then sees billing's write and locks it (the lock is never lost)", waited && raced.status === 200 && raced.body.prior === "PAYMENT_HOLD" && st(B) === "SECURITY_LOCK", [waited, raced.body, st(B)]);
+  const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url"), staffBefore = Number(sql(`select count(*) from platform_staff where firm_id = '${B}'`));
+  const ownerB = sql(`select s.id from platform_staff s join platform_role_grant g on g.staff_id = s.id and g.ended_at is null and g.role = 'OWNER' where s.firm_id = '${B}' and s.status = 'ACTIVE' order by s.id limit 1`);
+  sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) values (gen_random_uuid(), '${B}', 'late.invitee.pf27@example.test', '{CASE_OFFICER}', encode(sha256('${token}'::bytea), 'hex'), 'staff:${ownerB}', now() + interval '48 hours')`);
+  const session = new PlatformSession(app.get(Db) as never, {} as never, {} as never, { now: () => Date.now() } as never, app.get(PlatformIdentity) as never);
+  const acc = await session.accept(token).then(() => ({}), (e) => { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string } }; return { status: x.getStatus?.(), code: x.getResponse?.().code }; });
+  ok("PF-27 fail (review M5, breaker M3): a pending invitation of a locked firm cannot be accepted (410); no staff member is added", st(B) === "SECURITY_LOCK" && (acc as { status?: number }).status === 410 && Number(sql(`select count(*) from platform_staff where firm_id = '${B}'`)) === staffBefore, acc);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

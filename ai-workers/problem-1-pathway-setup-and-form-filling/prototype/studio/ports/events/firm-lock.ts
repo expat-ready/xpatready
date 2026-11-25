@@ -9,8 +9,9 @@ export const FIRM_LOCK_EVENT = {
   FIRM_UNLOCKED: "firm.unlocked",
 } as const;
 
-/** The statuses a lock can start from, and so the ones a lift returns to (SA-2-4: never DELETED, ABANDONED or a lock). */
-export const LOCKABLE_STATUSES = ["PROVISIONING", "TRIAL", "ACTIVE", "PAYMENT_HOLD"] as const;
+/** The statuses a lock can start from, and so the ones a lift returns to: SA-02 §6 allows only Trial, Active and Payment
+ *  hold → Security lock (SA-2-4: only the transitions in §6; review M4: never PROVISIONING, ABANDONED, DELETED or a lock). */
+export const LOCKABLE_STATUSES = ["TRIAL", "ACTIVE", "PAYMENT_HOLD"] as const;
 export const FirmLocked = z.object({ firmId: z.string().uuid(), prior: z.enum(LOCKABLE_STATUSES) });
 export type FirmLocked = z.infer<typeof FirmLocked>;
 export const FirmUnlocked = z.object({ firmId: z.string().uuid(), to: z.enum(LOCKABLE_STATUSES) });
