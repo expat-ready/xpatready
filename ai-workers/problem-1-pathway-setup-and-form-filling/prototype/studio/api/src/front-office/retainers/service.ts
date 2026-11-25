@@ -24,7 +24,7 @@ import { parseInput, strict } from "../../platform/http/input.ts";
 import { z } from "zod";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
-import { prepareRetainerSigning } from "../signing/service.ts";
+import { endRetainerSigning, prepareRetainerSigning } from "../signing/service.ts";
 import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
@@ -662,6 +662,7 @@ export class Retainers {
     if (expected !== r.currentVersion) stale(r.currentVersion, expected);
     if (expectedStatus !== r.status) restated(r.status, expectedStatus);
     if (!WITHDRAWABLE.includes(r.status)) conflict(r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "A signed agreement cannot be withdrawn." : r.status === "DRAFT" ? "A draft has not been sent: edit it or leave it." : `A ${r.status.toLowerCase()} agreement cannot be withdrawn.`, "NOT_WITHDRAWABLE");
+    let signing: Awaited<ReturnType<typeof endRetainerSigning>> | null = null;
     await this.tx(async (tx) => {
       const now = new Date(this.clock.now());
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "WITHDRAWN" } });
@@ -669,8 +670,11 @@ export class Retainers {
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer",
         before: { status: r.status, withdrawnReason: null }, after: { status: "WITHDRAWN", withdrawnAt: now.toISOString(), withdrawnReason: reason } });
+      // QA-770: the client's signing request ends with the withdraw (its link stops); the envelope after the commit.
+      if (r.kind === "RETAINER") signing = await endRetainerSigning(tx, ctx, r.id, "WITHDRAWN", { audit: this.audit, now });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_WITHDRAWN, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
+    await signing?.afterCommit();
     return this.read(ctx, id);
   }
 
@@ -726,7 +730,7 @@ export class Retainers {
     }
     const offlineKey = `retainers/${r.id}/signed-offline-${attempt()}.pdf`;
     const stored = await this.files.put(ctx.firmId, offlineKey, file!.bytes, "application/pdf");
-    let prospectWon = false;
+    let prospectWon = false, signing: Awaited<ReturnType<typeof endRetainerSigning>> | null = null;
     const filed = copy ? r.currentVersion + 1 : r.currentVersion;
     const filedValues = copy ? copy.values : (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k } })).mergeValues as Record<string, unknown>;
     await this.tx(async (tx) => {
@@ -759,8 +763,11 @@ export class Retainers {
         before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
         after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
+      // QA-770: a paper signature ends the open e-signing request too (SIGNED_OFFLINE); the envelope after the commit.
+      if (r.kind === "RETAINER") signing = await endRetainerSigning(tx, ctx, r.id, "SIGNED_OFFLINE", { audit: this.audit, now });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });
+    await signing?.afterCommit();
     return { ...(await this.read(ctx, id)), prospectWon };
   }
 

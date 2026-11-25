@@ -339,7 +339,7 @@ try {
   await post(fin[0]);
   await svc.withdraw(R, r11, { expectedVersion: 1, expectedStatus: "CLIENT_SIGNED", reason: "Client changed their mind" });
   const wd = await post(fin[1]);
-  ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn/.test(wd.reason ?? "")
+  ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn|cancelled/.test(wd.reason ?? "")
     && count("fo_signing_evidence", `request_id = '${q11}'`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q11}'`) === 3, wd);
 
   // part 4c (QA-770's signing path, Lead 29 answer 1): a view or a signature on a withdrawn agreement is refused, stored once
@@ -350,9 +350,37 @@ try {
   const [v13] = await signing.act(A, d13, signerOf(q13, "CLIENT"), "viewed"), [s13] = await signing.act(A, d13, signerOf(q13, "CLIENT"), "signed");
   await svc.withdraw(R, r13, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed their mind" });
   const wv = await post(v13), wsg = await post(s13);
-  ok("FO-6 B fail (part 4c, QA-770): viewed and signed after a withdraw → 200 not applied (\"withdrawn\"), both stored once; the signer stays unsigned and unviewed, the request SENT",
-    wv.applied === false && wsg.applied === false && /withdrawn/.test(`${wv.reason} ${wsg.reason}`) && reqOf(r13)[2] === "SENT"
+  ok("FO-6 B fail (part 4c, QA-770): viewed and signed after a withdraw → 200 not applied (\"withdrawn\"), both stored once; the signer stays unsigned and unviewed, the request ended by the withdraw (QA-770)",
+    wv.applied === false && wsg.applied === false && /withdrawn|cancelled/.test(`${wv.reason} ${wsg.reason}`) && reqOf(r13)[2] === "CANCELLED"
       && count("fo_signer", `request_id = '${q13}' and (signed_at is not null or viewed_at is not null)`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q13}'`) === 2, { wv, wsg });
+
+  // QA-770 (R1.55 W1): Withdraw ends the live signing request (CANCELLED, WITHDRAWN) with one audit line in its transaction,
+  // and the envelope is cancelled at the vendor once; a refused withdraw changes neither. Signed offline ends it too.
+  const p70 = await prospect("Max"), r70 = await draft(p70);
+  await sendIt(r70);
+  const [q70, d70] = reqOf(r70);
+  const cancels70 = () => signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d70).length;
+  const refused70 = await refusal(() => svc.withdraw(R, r70, { expectedVersion: 2, expectedStatus: "SENT", reason: "Client changed plans" }));
+  ok("QA-770 fail: a refused withdraw (stale version, 409) leaves the signing request SENT and cancels nothing at the vendor",
+    refused70?.status === 409 && reqOf(r70)[2] === "SENT" && cancels70() === 0 && count("audit_event", `entity_key = '${q70}' and action = 'signing.request_cancelled'`) === 0, refused70);
+  const failedWd = await refusal(() => new Retainers(db, files, clock, failingOn("signing.request_cancelled")).withdraw(R, r70, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" }));
+  ok("QA-770 fail: a withdraw whose transaction fails leaves the request SENT, the retainer SENT, and cancels nothing at the vendor",
+    failedWd !== null && reqOf(r70)[2] === "SENT" && sql(`select status from fo_retainer where id = '${r70}'`) === "SENT" && cancels70() === 0, failedWd);
+  await svc.withdraw(R, r70, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" });
+  ok("QA-770 pass: Withdraw ends the client's signing request (CANCELLED, WITHDRAWN, ended), one signing.request_cancelled line, one cancel at the vendor; no live request",
+    sql(`select status || ':' || cancel_reason || ':' || (ended_at is not null) from fo_signature_request where id = '${q70}'`) === "CANCELLED:WITHDRAWN:true"
+      && count("audit_event", `entity_key = '${q70}' and action = 'signing.request_cancelled' and detail->>'reason' = 'WITHDRAWN'`) === 1 && cancels70() === 1
+      && count("fo_signature_request", `document_id = '${r70}' and status in ('SENT','VIEWED','CLIENT_SIGNED')`) === 0);
+  ok("QA-770 fail: the withdrawn envelope gives no signing link any more", (await refusal(() => signing.embeddedLink(A, d70, signerOf(q70, "CLIENT")))) !== null);
+  const p71 = await prospect("Nia"), r71 = await draft(p71);
+  await sendIt(r71);
+  const [q71, d71] = reqOf(r71);
+  const paper = Buffer.from("%PDF-1.4\n% signed on paper (Sample)\n%%EOF\n");
+  await svc.signedOffline(R, r71, { expectedVersion: "1", reason: "Signed at the office" }, { bytes: new Uint8Array(paper), size: paper.length } as never);
+  ok("QA-770 pass: Signed offline ends the open signing request (CANCELLED, SIGNED_OFFLINE) with one audit line and one cancel at the vendor",
+    sql(`select status || ':' || cancel_reason from fo_signature_request where id = '${q71}'`) === "CANCELLED:SIGNED_OFFLINE"
+      && count("audit_event", `entity_key = '${q71}' and action = 'signing.request_cancelled' and detail->>'reason' = 'SIGNED_OFFLINE'`) === 1
+      && signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d71).length === 1);
 
   // part 4c review round 1 M1: the firm signer's link rules, each with a line that fails without it (through the route itself)
   const routes = new SigningController(api, svc, db as never);

@@ -97,6 +97,33 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
   };
 }
 
+/** QA-770 (R1.55 W1): Withdraw and Signed offline end the retainer's live signing request in their own transaction
+ *  (CANCELLED with WITHDRAWN or SIGNED_OFFLINE, one `signing.request_cancelled` line each); the returned `afterCommit`
+ *  cancels those envelopes at the provider once that transaction commits (never throws). The link then reads ended on
+ *  the door (door.ts), and a late vendor event is refused (the request is no longer live). */
+export async function endRetainerSigning(tx: Tx, ctx: StaffContext, retainerId: string, reason: "WITHDRAWN" | "SIGNED_OFFLINE", o: { audit?: AuditPort<Tx>; now: Date }) {
+  const firmId = ctx.firmId, audit = o.audit ?? auditEvent;
+  const live = await tx.foSignatureRequest.findMany({ where: { firmId, documentKind: "RETAINER", documentId: retainerId, status: { in: ["SENT", "VIEWED", "CLIENT_SIGNED"] } }, select: { id: true, providerDocumentId: true, documentVersion: true, status: true } });
+  for (const s of live) {
+    const n = await tx.foSignatureRequest.updateMany({ where: { firmId, id: s.id, status: s.status }, data: { status: "CANCELLED", cancelReason: reason, endedAt: o.now } });
+    if (n.count !== 1) conflict("This agreement's signing changed at the same time. Open it again.", "CHANGED");
+    await audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.request_cancelled", entity: "fo_signature_request", entityKey: s.id,
+      summary: `Signing request for version ${s.documentVersion} ended: the agreement was ${reason === "WITHDRAWN" ? "withdrawn" : "signed on paper"}`,
+      detail: { requestId: s.id, retainerId, version: s.documentVersion, reason }, before: { status: s.status }, after: { status: "CANCELLED", cancelReason: reason } });
+  }
+  const envelopes = live.map((s) => s.providerDocumentId);
+  return {
+    ended: live.length,
+    async afterCommit() {
+      if (!envelopes.length) return;
+      const port = signingPort();
+      for (const d of envelopes.splice(0)) {
+        try { await port.cancel(firmId, d); } catch (e) { if (!(e instanceof SigningEnded || e instanceof SigningNotFound)) console.error(`[fo-signing] cancel after ${reason.toLowerCase()} did not finish: ${(e as Error)?.name ?? "error"}`); }
+      }
+    },
+  };
+}
+
 /** The signing module's reads and its webhook door. */
 export class Signing {
   constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly o: { audit?: AuditPort<Tx>; now?: () => Date } = {}) {}
