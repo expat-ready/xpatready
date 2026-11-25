@@ -29,6 +29,7 @@ import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf }
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
 import { CODE_MARKED, checklistFor, draftChecklist, lettersOf, markedLetters } from "./code-checklist.ts";
+import { retainerSigned, signedFees } from "./signed-hooks.ts";
 
 type Tx = Prisma.TransactionClient;
 const STUDIO = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -774,6 +775,12 @@ export class Retainers {
       await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer",
         before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
         after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
+      // R1.60 a1: the listeners of a signed retainer version (client money's deposit request), each in its own savepoint.
+      const signedVersion = await tx.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: filed }, select: { id: true } });
+      const signer = copy ? copy.signerPersonId : r.signerPersonId;
+      await retainerSigned(tx, this.audit, ctx.firmId, { retainerId: r.id, retainerVersionId: signedVersion.id, version: filed, kind: r.kind, via: "SIGNED_OFFLINE",
+        representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, personId: r.subject === "COMPANY" ? null : signer, companyId: r.subject === "COMPANY" ? r.companyId : null,
+        prospectId: r.prospectId, actor: `staff:${ctx.staffId}`, fees: await signedFees(tx, ctx.firmId, signedVersion.id) });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
       // QA-770: a paper signature ends the open e-signing request too (SIGNED_OFFLINE); its envelope is cancelled after the
       // commit, so a provider outage never holds up a signature already made on paper.
