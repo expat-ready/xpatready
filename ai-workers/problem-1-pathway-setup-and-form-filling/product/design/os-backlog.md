@@ -210,7 +210,7 @@ Rows whose "Enforced by" names a whole machine enforcer (23 of 156: e.g. P-501, 
 
 ## OS-PM hand-over
 
-**Written 25 Nov ~13:1x IST by OS-PM 2** (session https://claude.ai/code/session_018BSQJq3dhw56vCQs8vPeM6), handing over at about 45% context. OS-PM 1's hand-over (12:1x IST) is in git history at 1acfdc281; its orders still stand: Tier 1 in order, skipping OS-1, OS-3 and #3623; then Tier 2; one item per PR on its own branch; a fresh Opus reviewer on the exact head; label after Approve; a one-line status on the newest OS-PM records PR after each PR opens.
+**Written 25 Nov ~13:1x IST by OS-PM 2, updated 13:5x IST at 50% context (P-565)** (session https://claude.ai/code/session_018BSQJq3dhw56vCQs8vPeM6), handing over at about 45% context. OS-PM 1's hand-over (12:1x IST) is in git history at 1acfdc281; its orders still stand: Tier 1 in order, skipping OS-1, OS-3 and #3623; then Tier 2; one item per PR on its own branch; a fresh Opus reviewer on the exact head; label after Approve; a one-line status on the newest OS-PM records PR after each PR opens.
 
 **Done:** OS-52 (#3676), OS-10, OS-48; this list.
 
@@ -233,7 +233,11 @@ Rows whose "Enforced by" names a whole machine enforcer (23 of 156: e.g. P-501, 
 * **OS-73 (next):** LCP 2.5 s / CLS 0.1 read in the Playwright packs (acceptance/lib/browser.ts, the walker: `PerformanceObserver` for largest-contentful-paint and layout-shift), printed as one line per page, warning only; verify's check row 3 then reads it; the Lead writes STANDARDS §9.
 * **OS-77b (after it):** every API route signed out and with the wrong role refuses 401/403; list the routes from the Nest controllers, call each on an isolated copy, print the table; a planted open route fails the fixture test; warning only in CI.
 
-**Next, in order:** OS-73, OS-77b, then OS-18b (after #3703 merges), OS-19 (a CI run cancelled by a person is an ACT), OS-20 (three merges of main: "lands next"), OS-21 (two open PRs on a hot file), OS-22, OS-23, then the rest of Tier 2 (OS-24 with OS-53; check what flow-constraint.py already prints first).
+**FIRST (Lead 7, 13:5x IST, ahead of OS-73): the push-guard false positive.** `product/tools/push-guard.sh`'s SECRET_RE branch `token[:=]...{16,}` matches a Nest provider line whose `token` key holds the constant NOTIFICATION_PORT (an object of the shape token-colon-NAME, optional true; verified on main's rule; this record cannot quote it, the guard would refuse it) and blocks R1.60 part b's push. Fix: a value that is wholly an UPPER_SNAKE constant name (`^[A-Z][A-Z0-9_]*$`, followed by `,`, `}` or the end) is not a secret; real high-entropy values still match. Write the failing row in its check first (the push-guard fixture test, `check-push-guard-fixtures.sh`), then the fix; add a mutation row; tooling PR, pipeline queue; a fresh Opus reviewer and a breaker (it blocks pushes).
+
+**Lead 7's reads (13:29-13:42 IST):** #3703 (OS-18) and #3715 (OS-72) are labelled and queued. Reads of #3696, #3699, #3704 and #3693, and answers to the #3683 (OS-25) and #3715 (`next` line) questions, come on those PRs this hour. `.mergify.yml` putting #3715 on the product rule is noted for OS-1; no OS-PM action.
+
+**Next, in order:** the push-guard fix, then OS-73, OS-77b, then OS-18b (after #3703 merges), OS-19 (a CI run cancelled by a person is an ACT), OS-20 (three merges of main: "lands next"), OS-21 (two open PRs on a hot file), OS-22, OS-23, then the rest of Tier 2 (OS-24 with OS-53; check what flow-constraint.py already prints first).
 
 **Lessons (add to OS-PM 1's):**
 * **Read main first:** OS-25 was mostly built (founder-report.py) and OS-17 fitted known-failures.tsv with no new lead-watch step; a known-failures line is the cheapest ACT.
