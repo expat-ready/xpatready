@@ -1012,7 +1012,8 @@ function versionOf(filings: { id: string; submissionGroupId: string }[], items: 
 export class CasePrepareController {
   constructor(@Inject(CasePrepare) private readonly p: CasePrepare) {}
   // #325 break B4: HEAD would run the GET handler and store rows; it is refused (405), never answered from a write.
-  @Head("cases/:id/prepare") head() { fail("HEAD is not offered on /prepare: use GET.", HttpStatus.METHOD_NOT_ALLOWED); }
+  // R1.10 A5 (W5): a malformed id is the one not-found first; any other id is told HEAD is not offered.
+  @Head("cases/:id/prepare") head(@Param("id") id: string) { if (!UUID.test(id)) fail("No such case.", HttpStatus.NOT_FOUND); fail("HEAD is not offered on /prepare: use GET.", HttpStatus.METHOD_NOT_ALLOWED); }
   @Get("cases/:id/prepare") view(@Headers("x-actor") a: H, @Param("id") id: string) { return this.p.view(actorOf(a), id); }
   @Post("groups/:gid/split") @HttpCode(HttpStatus.OK) split(@Headers("x-actor") a: H, @Param("gid") gid: string, @Body() b: unknown) { return this.p.split(actorOf(a), gid, b); }
   @Post("items/:id/pdf-copy") @HttpCode(HttpStatus.ACCEPTED) pdfCopy(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.p.pdfCopy(actorOf(a), id, b); }
