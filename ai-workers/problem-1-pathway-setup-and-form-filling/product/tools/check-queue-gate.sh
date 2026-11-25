@@ -31,7 +31,7 @@ case "$m $p" in
   "GET commits/"*/check-runs?check_name=pr-suites*) s=${p#commits/}; serve "suites-${s%%/*}.json";;   # P-822
   "GET commits/"*/check-runs*) s=${p#commits/}; serve "checks-${s%%/*}.json";;
   "GET actions/runs/"*) serve "run-${p#actions/runs/}.json";;
-  "POST issues/"*/labels) n=${p#issues/}; l=$(echo "$d" | jq -r '.labels[0]'); if [ "$l" = "review: approved" ]; then echo "LABEL ${n%%/*}"; else echo "LABELNAME ${n%%/*} $l"; fi >> "$FX/log"; echo '[]';;
+  "POST issues/"*/labels) n=${p#issues/}; l=$(echo "$d" | jq -r '.labels[0]'); case "$l" in after-read*) [ -n "${FAIL_AFTERLABEL:-}" ] && { echo '{"message":"no"}'; exit 22; };; esac; if [ "$l" = "review: approved" ]; then echo "LABEL ${n%%/*}"; else echo "LABELNAME ${n%%/*} $l"; fi >> "$FX/log"; echo '[]';;
   "POST issues/"*/comments) n=${p#issues/}; echo "COMMENT ${n%%/*} $(echo "$d" | jq -r .body | head -1 | cut -c1-700)" >> "$FX/log"; echo '{}';;
   "POST statuses/"*) echo "STATUS ${p#statuses/} $(echo "$d" | jq -r '.context + " " + .state')" >> "$FX/log"; echo '{}';;
   "POST actions/runs/"*/rerun) r=${p#actions/runs/}; echo "RERUN ${r%%/*}" >> "$FX/log"; echo '{}';;
@@ -572,8 +572,44 @@ ok "P-823: the same additive migration, not drawn (7 mod 3 = 1): labelled, says 
 for c in 'DROP COLUMN:+ALTER TABLE "case" DROP COLUMN "notes";' 'named additive, adds a DROP:+ALTER TABLE "case" DROP CONSTRAINT "case_pkey";' 'lower case:+drop table "old_case";' \
          'RENAME:+ALTER TABLE "case" RENAME COLUMN "a" TO "b";' 'TRUNCATE:+TRUNCATE "case_note";' 'DELETE FROM over two lines:+DELETE'$'\n''+  FROM "case_note" WHERE true;'; do
   fp 9 "$MG" added "@@ -0,0 +1,3 @@"$'\n'"+CREATE TABLE \"x\" (\"id\" TEXT);"$'\n'"${c#*:}"; TRIG=approve run label 9
-  ok "P-823 plant: a migration named additive whose added lines say ${c%%:*}: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "keeps the Lead's read first" <<< "$out" && grep -q 'a migration that says' <<< "$out" && grep -q '^COMMENT 9 .*not put on by itself' <<< "$log" && echo 1)" "$out / $log"
+  ok "P-823 plant: a migration named additive whose added lines say ${c%%:*}: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "keeps the Lead's read first" <<< "$out" && grep -q 'a migration that is not additive' <<< "$out" && grep -q '^COMMENT 9 .*not put on by itself' <<< "$log" && echo 1)" "$out / $log"
 done
+# Review of #3661, Blocker 1-2: an allowlist, read by a SQL scanner, so nothing hides in comments, strings or bodies
+for c in 'a DROP inside a block comment:+/*'$'\n''+-- */ DROP TABLE "case";' "a DROP after a string that holds --:+INSERT INTO \"n\" VALUES ('-- ');"$'\n''+DROP TABLE "case";' \
+         'a DO $$ body:+DO $$ BEGIN EXECUTE '"'"'DR'"'"' || '"'"'OP TABLE x'"'"'; END $$;' 'DELETE /**/ FROM:+DELETE /**/ FROM "case";' \
+         'DELETE, a comment, FROM:+DELETE -- x'$'\n''+FROM "case";' 'DISABLE TRIGGER:+ALTER TABLE "case" DISABLE TRIGGER ALL;' \
+         'CREATE OR REPLACE FUNCTION:+CREATE OR REPLACE FUNCTION no_delete() RETURNS trigger LANGUAGE sql AS '"'"'select 1'"'"';' \
+         'GRANT:+GRANT ALL ON "case" TO PUBLIC;' 'DISABLE ROW LEVEL SECURITY:+ALTER TABLE "case" DISABLE ROW LEVEL SECURITY;' \
+         'UPDATE ... SET:+UPDATE "case" SET "notes" = NULL;' 'ALTER COLUMN TYPE:+ALTER TABLE "case" ALTER COLUMN "n" TYPE int;' \
+         'ADD then DROP in one ALTER:+ALTER TABLE "case" ADD COLUMN "a" TEXT, DROP COLUMN "b";' "an unclosed string:+INSERT INTO \"n\" VALUES ('x);"; do
+  fp 9 "$MG" added "@@ -0,0 +1,3 @@"$'\n'"+CREATE TABLE \"x\" (\"id\" TEXT);"$'\n'"${c#*:}"; run label 9
+  ok "P-823 plant (#3661 review): ${c%%:*}: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+done
+# The scanner's own refusals: without them a quote inside a block comment or a dollar string would swallow a real DROP
+HIDE1=$(cat <<'SQL'
+@@ -0,0 +1 @@
++CREATE TABLE "x" ("id" TEXT) /* ' */; DROP TABLE "case"; -- '
+SQL
+)
+HIDE2=$(cat <<'SQL'
+@@ -0,0 +1 @@
++COMMENT ON TABLE "x" IS $$ '$$; DROP TABLE "case"; -- '
+SQL
+)
+for h in HIDE1 HIDE2; do fp 9 "$MG" added "${!h}"; run label 9
+  ok "P-823 plant (#3661 review): a DROP after a quote inside a $([ $h = HIDE1 ] && echo block comment || echo dollar string): refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'read first' <<< "$out" && echo 1)" "$out / $log"; done
+ALLF=$(cat <<'SQL'
+@@ -0,0 +1,6 @@
++CREATE TYPE "Kind" AS ENUM ('a', 'b');
++ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE SET NULL ON UPDATE CASCADE;
++CREATE UNIQUE INDEX "i" ON "case"("kind");
++ALTER TYPE "Kind" ADD VALUE 'c';
++COMMENT ON TABLE "case" IS 'it''s ok -- a dash; DROP in a string';
++INSERT INTO "n" ("id") VALUES (E'a\'b');
+SQL
+)
+fp 9 "$MG" added "$ALLF"; run label 9
+ok "P-823: an additive migration of every allowed form (enum, ADD COLUMN and CONSTRAINT with ON DELETE SET NULL, index, ADD VALUE, comment, insert): labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$MG" modified "$ADD"; run label 9
 ok "P-823 plant: an edit to a migration (status modified), additive lines or not: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'an edit, rename or removal of a migration' <<< "$out" && echo 1)" "$out / $log"
 fp 9 "$MG" removed ""; run label 9
@@ -592,10 +628,19 @@ fp 9 "$S/api/src/platform/settings/routes.ts" modified $'@@ -1 +1,3 @@\n x\n+  @
 ok "P-823: an API file that adds an OpenRead( route: read after as a public route" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: public #9' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$S/api/src/billing/invoice.ts" modified $'@@ -1 +1,2 @@\n x\n+y' "$MG" added "$ADD"; run label 9
 ok "P-823: money and an additive migration: the money line wins (within the hour)" "$(grep -q 'Lead after-read owed: migration, money #9 .*(money: within the hour' <<< "$log" && grep -qx 'LABELNAME 9 after-read: money' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$S/api/src/billing/invoice.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; FAIL_AFTERLABEL=1; export FAIL_AFTERLABEL; run label 9; unset FAIL_AFTERLABEL
+ok "P-823 (#3661 review M3): the after-read label cannot be put on: review: approved is not put on either, exit 2" "$([ $r = 2 ] && ! grep -q '^LABEL 9' <<< "$log" && grep -q 'is not put on either' <<< "$out" && echo 1)" "exit $r: $out / $log"
+fp 9 "$S/api/src/billing/invoice.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 9
+ok "P-823 (#3661 review M3): the after-read label goes on before review: approved" "$(grep -n -e 'LABELNAME 9 after-read: money' -e '^LABEL 9$' <<< "$log" | head -1 | grep -q 'after-read: money' && echo 1)" "$log"
 fp 9 "$S/api/src/form.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 9
 ok "P-823: no read-after path: labelled with no after-read line" "$(grep -qx 'LABEL 9' <<< "$log" && ! grep -q 'after-read' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$MG" added "$ADD"; LEAD_READ_PATHS=/nonexistent; export LEAD_READ_PATHS; run label 9; unset LEAD_READ_PATHS
 ok "P-823: lead-read-paths.txt unreadable: refused (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'unreadable' <<< "$out" && echo 1)" "$out / $log"
+fp 9 "$S/prisma.config.ts" modified $'@@ -1 +1 @@\n-  migrations: { path: "prisma/migrations" },\n+  migrations: { path: "prisma/m2" },'; run label 9
+ok "P-823 (#3661 review M5): prisma.config.ts (it names the migrations path): read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'read first' <<< "$out" && echo 1)" "$out / $log"
+sed 's/^# --- read-after migration/# --- read-after migratoin/' "$TOOLS/lead-read-paths.txt" > "$T/lrp-typo.txt"
+fp 9 "$MG" added $'@@ -0,0 +1 @@\n+DROP TABLE "case";'; LEAD_READ_PATHS="$T/lrp-typo.txt"; export LEAD_READ_PATHS; run label 9; unset LEAD_READ_PATHS
+ok "P-823 (#3661 review m6): a typo in a read-after marker fails closed (never a DROP read as money)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'without its marker' <<< "$out" && echo 1)" "$out / $log"
 fp 9 "$MG" added "$ADD"; run eligible 9
 ok "P-823: eligible for an additive migration (the sweep keeps the gate's label)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 files 7 "$S/api/src/form.ts"; files 9 "$S/api/src/form.ts"

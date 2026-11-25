@@ -22,6 +22,9 @@
 ^(CLAUDE|AGENTS)\.md$
 # CI's gates that ci.yml runs from the PR's own copy (gate-b.mjs, works-set.mjs, check-port-contracts.mjs)
 /prototype/studio/tools/
+# Prisma's own configuration: it names the migrations path and the schema (review of #3661, Major 5: a moved migrations
+# path would take every migration off the list)
+/prisma\.config\.[cm]?[jt]s$
 # The permission machinery itself (P-785 (2) step 1, break B2): the guard, the keys and their catalogue, the start-up
 # guard in core.ts, the firm wall and the terms gate. A change here needs no key or decorator to widen access.
 /api/src/platform/identity/

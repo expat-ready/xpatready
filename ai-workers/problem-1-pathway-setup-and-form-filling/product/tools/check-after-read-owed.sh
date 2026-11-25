@@ -26,9 +26,9 @@ chmod +x "$T/bin/curl"
 A="$TOOLS/after-read-owed.sh"; HA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; HB=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 [ -f "$A" ] || { ok "after-read-owed.sh exists (P-823)" 0 "no $A"; finish; }
 lst() { printf '%s\n' "${@:2}" | jq -R 'select(length > 0) | {number: tonumber, pull_request: {}}' | jq -s . > "$T/fx/$1.json"; }
-prj() { jq -n --arg h "$2" --arg m "${3:-}" --arg s "${4:-closed}" '{head: {sha: $h}, merged_at: (if $m == "" then null else $m end), state: $s}' > "$T/fx/pr-$1.json"; }
-cmt() { jq -n --arg b "$2" --arg a "${3:-OWNER}" --arg u "${4:-2026-11-25T05:00:00Z}" '[{author_association: $a, body: $b, created_at: "2026-11-25T05:00:00Z", updated_at: $u}]' > "$T/fx/comments-$1.json"; }
-run() { : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test NOW="${NOW:-2026-11-25T06:00:00Z}" bash "$A" 2>&1); r=$?; }
+prj() { jq -n --arg h "$2" --arg m "${3:-}" --arg s "${4:-closed}" '{head: {sha: $h}, merged_at: (if $m == "" then null else $m end), state: $s, user: {login: "builder"}}' > "$T/fx/pr-$1.json"; }
+cmt() { jq -n --arg b "$2" --arg a "${3:-OWNER}" --arg u "${4:-2026-11-25T05:00:00Z}" --arg w "${5:-lead}" '[{author_association: $a, body: $b, created_at: "2026-11-25T05:00:00Z", updated_at: $u, user: {login: $w}}]' > "$T/fx/comments-$1.json"; }
+run() { : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test LEAD_LOGINS="${LL:-}" NOW="${NOW:-2026-11-25T06:00:00Z}" bash "$A" 2>&1); r=$?; }
 
 lst money 10; lst other 12; prj 10 $HA 2026-11-25T05:30:00Z; prj 12 $HB 2026-11-25T04:00:00Z; cmt 10 "fine"; cmt 12 "fine"; run
 ok "a money PR merged 30 min ago, not read: owed, 30 min left; a drawn other: owed; exit 0" "$([ $r = 0 ] && grep -qx 'OWED money #10 merged 2026-11-25T05:30:00Z: due 2026-11-25T06:30:00Z, 30 min left' <<< "$out" && grep -qx 'OWED other #12 merged 2026-11-25T04:00:00Z' <<< "$out" && echo 1)" "exit $r: $out"
@@ -42,6 +42,12 @@ cmt 10 "Lead read the diff: $HA" NONE; run
 ok "a read line by someone without write access does not clear it" "$(grep -q 'OWED money #10' <<< "$out" && echo 1)" "$out"
 cmt 10 "Lead read the diff: $HA" OWNER 2026-11-25T05:10:00Z; run
 ok "an edited read line does not clear it" "$(grep -q 'OWED money #10' <<< "$out" && echo 1)" "$out"
+cmt 10 "Lead read the diff: $HA" OWNER 2026-11-25T05:00:00Z builder; run
+ok "(#3661 review M4) the PR's author's own read line does not clear it" "$(grep -q 'OWED money #10' <<< "$out" && echo 1)" "$out"
+cmt 10 "Lead read the diff: $HA" OWNER 2026-11-25T05:00:00Z someone; LL="lead,other" run
+ok "with LEAD_LOGINS set, a writer outside it does not clear it" "$(grep -q 'OWED money #10' <<< "$out" && echo 1)" "$out"
+cmt 10 "Lead read the diff: $HA" OWNER 2026-11-25T05:00:00Z Lead; LL="lead other" run
+ok "... and a LEAD_LOGINS login (any case) does" "$(! grep -q '#10' <<< "$out" && echo 1)" "$out"
 cmt 10 "fine"; prj 10 $HA "" open; run
 ok "labelled, not merged yet: WAIT, not owed" "$([ $r = 0 ] && grep -qx 'WAIT money #10: labelled, not merged yet (the after-read starts at the merge)' <<< "$out" && echo 1)" "exit $r: $out"
 prj 10 $HA "" closed; run

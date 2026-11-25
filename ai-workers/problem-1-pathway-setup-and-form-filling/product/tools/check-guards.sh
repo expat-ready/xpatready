@@ -696,10 +696,15 @@ P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
-P823 words|product/tools/queue-gate.sh|s/if (\$w . length) > 0 then "a migration/if false then "a migration/|check-queue-gate.sh
+P823 allow|product/tools/migration-additive.py|s/^        if NEVER.search(s) or/        if False and/|check-queue-gate.sh
+P823 block comment|product/tools/migration-additive.py|s/if two == "\/\*":/if False:/|check-queue-gate.sh
+P823 dollar|product/tools/migration-additive.py|s/if c == "\$" and re.match/if False and re.match/|check-queue-gate.sh
+P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
+P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
+P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh
 P823 edit|product/tools/queue-gate.sh|s/elif \$x.status != "added" then/elif false then/|check-queue-gate.sh
 P823 schema|product/tools/queue-gate.sh|s/any(\$l\[\]; startswith("-"))/false/|check-queue-gate.sh
-P823 owed|product/tools/queue-gate.sh|s/^  afterread; }/  true; }/|check-queue-gate.sh
+P823 owed|product/tools/queue-gate.sh|s/^  afterline; }/  true; }/|check-queue-gate.sh
 P823 draw|product/tools/queue-gate.sh|s/elif \[ \$((PR % 3)) = 0 \]; then/elif false; then/|check-queue-gate.sh
 P823 public|product/tools/queue-gate.sh|s/\&\& opens "\$f" \&\&/\&\& false \&\&/|check-queue-gate.sh
 P823 list|product/tools/lead-read-paths.txt|s/^# --- read-after money.*/# moved/|check-queue-gate.sh
