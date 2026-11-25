@@ -390,6 +390,18 @@ try {
   ok("AUD-3 DW7 pass (filters): a correlation id finds exactly that request's lines (DW1's read: its one firm-read line); actor type, action, entity and entity key narrow to the one firm staff line",
     sCorr.status === 200 && sCorr.body.lines.length === lines(`correlation_id = '${read.requestId}'`) && sCorr.body.lines.some((l: any) => l.action === FIRM_READ && l.firmId === firmA) && sCorr.body.lines.every((l: any) => l.correlationId === read.requestId)
     && sType.status === 200 && sType.body.lines.length === 1 && sType.body.lines[0].id === firmStaffLine, { corr: sCorr.body?.lines?.length, type: sType.body?.lines });
+  // Round 2 (reviewer M1): each filter alone leaves out the one firm staff line that matches every other filter.
+  const only = `${SEARCH}?${RANGE}&action=platform.aud3_test.firm_staff`;
+  const base1 = await call(base, "GET", only, { token: ownerT });
+  const without = await Promise.all([`&ours=1`, `&actorType=OUR_STAFF`, `&entity=platform_other`, `&entityKey=${firmB}`, `&firm=${firmB}`, `&correlationId=${uuid()}`]
+    .map((q) => call(base, "GET", only + q, { token: ownerT })));
+  const early = await call(base, "GET", `${SEARCH}?from=${day(-1)}&to=${encodeURIComponent(new Date(Number(sql(`select floor(extract(epoch from at) * 1000)::bigint from audit_event where id = '${firmStaffLine}'`)) - 1).toISOString())}&action=platform.aud3_test.firm_staff`, { token: ownerT });
+  ok("AUD-3 DW7 fail (round 2, reviewer M1): the firm staff line is found by its action alone, and each of ours=1, actorType, entity, entityKey, firm, correlationId and a `to` before it leaves it out",
+    base1.status === 200 && base1.body.lines.length === 1 && base1.body.lines[0].id === firmStaffLine && without.every((r) => r.status === 200 && r.body.lines.length === 0) && early.status === 200 && early.body.lines.length === 0,
+    { base1: base1.body?.lines?.length, without: without.map((r) => [r.status, r.body?.lines?.length]), early: [early.status, early.body?.lines?.length] });
+  const firmTok = (await call(base, "POST", "/api/platform/session/local", { body: { firmKey: "sample-firm", actorId: "user-R", secondStep: true } })).body?.token as string | undefined;
+  const xFirm = lines(`action = '${CROSS_TENANT}'`), sFirmTok = await call(base, "GET", `${SEARCH}?${RANGE}`, { token: firmTok });
+  ok("AUD-3 DW7 fail (the row's test): a firm's own session on our audit search → 403, and no line", !!firmTok && sFirmTok.status === 403 && lines(`action = '${CROSS_TENANT}'`) === xFirm, { status: sFirmTok.status, firmTok: !!firmTok });
   const x1 = lines(`action = '${CROSS_TENANT}'`), all1 = lines("true");
   const sNoDates = await call(base, "GET", `${SEARCH}?firm=${firmA}`, { token: ownerT });
   const sLong = await call(base, "GET", `${SEARCH}?from=2024-01-01&to=2026-01-02`, { token: ownerT });
@@ -415,12 +427,15 @@ try {
   const tie = new Date(Date.now() - 3_600_000).toISOString();
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, firm_id, at) select gen_random_uuid(), (select id from workspace where key = 'platform-audit'),
     'staff:${uuid()}', 'platform.aud3_test.tie', 'platform_firm', '${firmB}', 'Sample tie line.', '${firmB}', '${tie}' from generate_series(1, 120)`);
+  const tieBefore = Number(sql(`select count(*) from audit_event where action = '${CROSS_TENANT}' and detail->>'scope' = '${SEARCH_SCOPE}' and detail->>'firm' = '${firmB}'`));
   const tied: string[] = [];
   for (let r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmB}&action=platform.aud3_test.tie`, { token: ownerT }), n = 0; r.status === 200 && n < 5; n++) {
     tied.push(...r.body.lines.map((l: any) => l.id)); if (!r.body.next) break;
     r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmB}&action=platform.aud3_test.tie&cursor=${r.body.next}`, { token: ownerT });
   }
   ok("AUD-3 DW7 pass (AG-13-31, keyset): 120 lines at one moment page as 50, 50, 20 with no line twice or missed", tied.length === 120 && new Set(tied).size === 120, tied.length);
+  const tiePages = Number(sql(`select count(*) from audit_event where action = '${CROSS_TENANT}' and detail->>'scope' = '${SEARCH_SCOPE}' and detail->>'firm' = '${firmB}'`)) - tieBefore;
+  ok("AUD-3 DW7 pass (round 2, reviewer): every page of a search writes its own line (the three pages of firm B's tie lines: three lines naming firm B)", tiePages === 3, tiePages);
 
   // --------------------------------------------------------------------------------------- DW4: fail-closed
   // Round 6 (Lead 16): the outside refusal raises one alert with the line's ids, as before the line moved onto the port.
