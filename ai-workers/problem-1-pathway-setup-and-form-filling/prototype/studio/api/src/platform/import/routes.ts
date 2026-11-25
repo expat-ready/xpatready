@@ -10,16 +10,16 @@ import { ImportService, RUN_KEY, VIEW_KEY } from "./engine.ts";
 
 type R = Request & { platform?: StaffContext };
 
-/** The request's bytes, refused past MAX_BYTES (413) without reading the rest; text/csv only (415). */
+/** The request's bytes, refused past MAX_BYTES (422 TOO_LARGE: main.ts rewrites a 413's words, and the limit must be named, AG-18-58) without reading the rest; text/csv only (415). */
 async function csvBody(req: R): Promise<Uint8Array> {
   const type = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
   if (type !== "text/csv") problem(415, "Not imported", "Upload the file as CSV (Content-Type text/csv).", { code: "NOT_CSV" });
-  if (Number(req.headers["content-length"] ?? 0) > MAX_BYTES) problem(413, "Not imported", `The file is too large: at most ${MAX_BYTES / 1024 / 1024} MB.`, { code: "TOO_LARGE" });
+  if (Number(req.headers["content-length"] ?? 0) > MAX_BYTES) problem(422, "Not imported", `The file is too large: at most ${MAX_BYTES / 1024 / 1024} MB.`, { code: "TOO_LARGE" });
   const parts: Buffer[] = [];
   let n = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
     n += chunk.length;
-    if (n > MAX_BYTES) { req.unpipe?.(); req.resume(); problem(413, "Not imported", `The file is too large: at most ${MAX_BYTES / 1024 / 1024} MB.`, { code: "TOO_LARGE" }); }
+    if (n > MAX_BYTES) { req.unpipe?.(); req.resume(); problem(422, "Not imported", `The file is too large: at most ${MAX_BYTES / 1024 / 1024} MB.`, { code: "TOO_LARGE" }); }
     parts.push(chunk);
   }
   return new Uint8Array(Buffer.concat(parts));
@@ -34,12 +34,8 @@ export class ImportController {
   attestation(@Req() r: R) { return this.svc.attestation(staffOf(r)); }
   @Post("attestation") @PermissionKeys(RUN_KEY)
   attest(@Req() r: R, @Body() b: unknown) { return this.svc.attest(staffOf(r), b); }
-  @Get() @PermissionKeys(VIEW_KEY)
-  list(@Req() r: R, @Query() q: { page?: string }) { return this.svc.list(staffOf(r), q); }
   @Post() @PermissionKeys(RUN_KEY)
   async upload(@Req() r: R, @Query() q: { target?: string; source?: string; name?: string }) { const s = staffOf(r); return this.svc.upload(s, q, await csvBody(r)); }
-  @Get("origin/:kind/:id") @PermissionKeys(VIEW_KEY)
-  origin(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string) { return this.svc.origin(staffOf(r), kind, id); }
   @Get(":id") @PermissionKeys(VIEW_KEY)
   view(@Req() r: R, @Param("id") id: string) { return this.svc.view(staffOf(r), id); }
   @Get(":id/rows") @PermissionKeys(VIEW_KEY)
