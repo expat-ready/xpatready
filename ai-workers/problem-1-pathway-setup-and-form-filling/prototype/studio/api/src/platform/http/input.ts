@@ -17,7 +17,7 @@ export const INPUT_BODY_LIMIT = "256kb";
 /** The paths whose JSON bodies take INPUT_BODY_LIMIT. /api/hooks/* is left out on purpose: a webhook keeps its raw-body
  *  parser and its own limit, and its schema runs after the signature check (PF-28 amendment 1). FO-2's web form keeps its
  *  32 KB (mounted first, so this parser never sees it). */
-export const INPUT_PATHS = ["/api/platform", "/api/front-office", "/api/system", "/api/public"];
+export const INPUT_PATHS = ["/api/platform", "/api/front-office", "/api/system", "/api/public", "/api/portal"];   // PF-4p: the client portal's doors too (breaker m3)
 
 /** A strict object: an unknown field is refused, named in `fields`. */
 export const strict = <S extends z.ZodRawShape>(shape: S) => z.strictObject(shape);
