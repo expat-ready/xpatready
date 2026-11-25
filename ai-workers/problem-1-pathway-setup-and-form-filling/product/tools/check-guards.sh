@@ -682,6 +682,15 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
+# P-822 (founder, 25 Nov): pr-suites green on the exact head before the label; only "success" counts
+MUT="$MUT"'
+P822 judge|product/tools/queue-gate.sh|s/^  suitesok "\$head" .. return 1/  true/|check-queue-gate.sh
+P822 only|product/tools/queue-gate.sh|s/case "\$st \$co" in "completed success")/case "completed success" in "completed success")/|check-queue-gate.sh
+P822 own run|product/tools/queue-gate.sh|s/pr-suites.yml pull_request" \] .. continue$/pr-suites.yml pull_request" ] \&\& true/|check-queue-gate.sh
+P822 proof|product/tools/queue-gate.sh|s/if \[ "\${RELABEL:-}" = 1 \]; then suitesok/if false; then suitesok/|check-queue-gate.sh
+P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
+P822 part|../../.github/workflows/pr-suites.yml|s/\[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \] \&\& exit 0/exit 0/|check-pr-suites-job.sh
+P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1

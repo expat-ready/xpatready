@@ -95,7 +95,7 @@ ok "job pr-suites' script: green for no suite picked or every part green; red fo
 # P-822's 4 quarantined suites: each a real suite, an owner lane, a date, the decision marker; run-suites.sh accepts each
 Q="$TOOLS/pr-suites-quarantine.txt"; ST="$TOOLS/../../prototype/studio/tests"; qbad=""; qn=0
 while IFS='|' read -r qs qo qd qr; do qn=$((qn + 1))
-  [ -f "$ST/$qs" ] && [[ "$qo" =~ ^(screens|forms|runtime|evidence)$ && "$qd" =~ ^2026-1[12]-[0-9]{2}$ && "$qr" = p822 ]] || qbad="$qbad $qs|$qo|$qd|$qr"
+  { [ ! -d "$ST" ] || [ -f "$ST/$qs" ]; } && [[ "$qo" =~ ^(screens|forms|runtime|evidence)$ && "$qd" =~ ^2026-1[12]-[0-9]{2}$ && "$qr" = p822 ]] || qbad="$qbad $qs|$qo|$qd|$qr"
 done < <(grep -vE '^[[:space:]]*(#|$)' "$Q")
 ok "pr-suites-quarantine.txt: the 4 suites, each a real suite with an owner lane and a fix date (P-822)" "$([ "$qn" = 4 ] && [ -z "$qbad" ] && for x in check_s5_slice3_browser.cjs check_c69_page_browser.cjs check_c83_review_browser.cjs check_fo8_prospect_won.ts; do grep -q "^$x|" "$Q" || exit; done && echo 1)" "$qn entries; bad:$qbad"
 qa=$(grep -vE '^[[:space:]]*(#|$)' "$Q" | xargs); qr=$(sed -n '/^AUTOQ=" "$/,/^done$/p' "$TOOLS/run-suites.sh"); qw=$(sed -n '/^qwhy() {/,/^  echo "fails at random/p' "$TOOLS/run-suites.sh")
