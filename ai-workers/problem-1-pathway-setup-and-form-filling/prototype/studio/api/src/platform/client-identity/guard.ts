@@ -1,11 +1,7 @@
-// PF-4p part 1 (R1.62; P-584 (4)): the one guard of /api/portal/*. A bearer token → a client of one firm (service.ts:
-// known, ACTIVE, session not ended, firm not closed) → { accountId, firmId, personId, … } on the request (req.portalClient;
-// read with clientOf), and the request's firm set for PF-12's walls. Only the client plane's tokens pass: a firm staff
-// member's or our own staff's token is a different issuer and key (local.ts), so it is a 401 here; the other way round, a
-// client token is a 401 on /api/platform and /api/front-office (PF-4's guard cannot verify it), a 401 on /api/system and
-// a 403 on the case side (core.ts: a bearer token outside /api/link).
-// At start-up every route under /api/portal must declare its access (keys.ts), no route outside it may, and a portal route
-// never also declares a firm's or our own staff's access; one that breaks a rule stops the start-up with its name.
+// PF-4p part 1 (R1.62; P-584 (4)): the one guard of /api/portal/*: a bearer token → a known, ACTIVE client of one firm whose session has not
+// ended (service.ts) → req.portalClient (clientOf), with the request's firm set for PF-12. Staff tokens are another issuer and key (401 here);
+// a client token is 401 on /api/platform, /api/front-office and /api/system, and 403 on the case side (core.ts). At start-up every route
+// under /api/portal declares its access (keys.ts), none outside does, and none mixes planes; a breach stops the start-up with its name.
 import { Inject, Injectable, type CanActivate, type ExecutionContext, type OnModuleInit } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { ModulesContainer, Reflector } from "@nestjs/core";

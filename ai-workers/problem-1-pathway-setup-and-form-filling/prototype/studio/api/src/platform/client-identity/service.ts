@@ -1,13 +1,8 @@
-// PF-4p part 1 (R1.62, map row 62; P-584 (4); AG-15-3, AG-15-38, AG16-23; SA-2-35): who a client's token is, and what a
-// client reads of their own. The client guard (guard.ts) asks this service who a bearer token is; the rest runs as the
-// account's firm under PF-12's wall (the account's firm through the narrow definer lookup platform_client_account_firm).
-// A client sees only their own firm and their own records: the cases whose case-side client names their front-office
-// person (case_client.fo_person_id), nothing about answers, documents or filings (CaseSummaryPort's shape, contract §3.5).
-// Another client's case, a malformed id and a missing one are the same 404, byte for byte.
-// Sessions: one column per account (sessions_ended_at); a sign-in starts after the last sign-in and the last ending, so a
-// session that started at or before an ending is refused at its next request (sign-out here; suspend, revoke: part 2).
-// Configuration: the local stand-in runs when PLATFORM_IDENTITY=local (local.ts); otherwise every client token is refused
-// until the client Cognito pool is wired (PF-4b's construct). Two-step is never forced for clients (AG16-23).
+// PF-4p part 1 (R1.62; P-584 (4); AG-15-3, -38, AG16-23; SA-2-35): who a client's token is, and what a client reads of their own. The guard
+// asks this service; the rest runs as the account's firm under PF-12's wall (its firm via the definer lookup platform_client_account_firm).
+// Own cases are those whose case-side client names the account's person (case_client.fo_person_id), in CaseSummaryPort's shape (contract
+// §3.5); any other id is the same 404. Sessions: sessions_ended_at per account; a sign-in starts after the last sign-in and ending.
+// The local stand-in runs with PLATFORM_IDENTITY=local; otherwise every client token is refused until the client Cognito pool is wired.
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";

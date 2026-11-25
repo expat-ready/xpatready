@@ -1,10 +1,6 @@
-// PF-4p part 1 (R1.62; P-584 (4)): the local stand-in for clients' own pool. A third stand-in, apart from the firm staff's
-// (identity/local.ts) and our own staff's (system-identity/local.ts): its own signing key, its own issuer and a
-// `plane: "client"` claim, so no other stand-in's token ever verifies here and this one's never verifies there.
-// The key is derived from PLATFORM_LOCAL_SECRET with a label of its own (HMAC-SHA256, node:crypto: tech gate entry 2, as
-// PF-4), so two processes of one copy agree and no new setting is needed; unset: a random key per start. Used only when
-// PLATFORM_IDENTITY=local, which PF-24's loader refuses outside PLATFORM_ENVIRONMENT=local. In the cloud the client pool is
-// a Cognito user pool of its own (PF-4b's construct; not wired yet: every client token is refused, saying so).
+// PF-4p part 1 (R1.62; P-584 (4)): the local stand-in for clients' own pool, apart from the firm staff's and our own staff's: its own key,
+// issuer and `plane: "client"` claim, so no token crosses planes. The key is derived from PLATFORM_LOCAL_SECRET with its own label (HMAC-SHA256,
+// node:crypto, tech gate entry 2); unset: random per start. Only with PLATFORM_IDENTITY=local (refused outside PLATFORM_ENVIRONMENT=local).
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { IdentityRefused, type IdentityPort, type VerifiedIdentity } from "../identity/port.ts";
 

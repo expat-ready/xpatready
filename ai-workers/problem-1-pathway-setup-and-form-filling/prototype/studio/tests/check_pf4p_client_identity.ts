@@ -1,17 +1,10 @@
-// PF-4p part 1 (R1.62, map row 62; BACKLOG row PF-4p; P-584 (4); AG-15-3, AG-15-38, AG16-23; SA-2-35): clients' own
-// sign-in plane, the guard of /api/portal/* and a client's own cases. Each rule with a passing and a failing case:
-//   DW1 a client token on /api/platform/me → 401; a staff token on /api/portal/me → 401; a client token on a case-side
-//       route → 403 (core.ts: a bearer token outside /api/link)
-//   DW2 a client sees only their own cases; another client's case by id (same firm or another firm), a random id and a
-//       malformed id are the same 404; a client of firm A never reads firm B's rows
-//   DW3 a suspended account cannot sign in and its live session ends at its next request; sign-out ends the session
-//   DW4 each sign-in (and each refused one of a known account) writes one audit line, actor person:<id>, type CLIENT
-//   DW5 the start-up rules: an undeclared /api/portal route, portal access off /api/portal, a mixed route each stop it
-//   DW6 the schema: one account per person and per email in a firm, email lower case, a person of another firm refused,
-//       PF-12's wall (no firm: nothing read)
-//   PENDING PF-27's firmAllows (a held or locked firm): a stub until PF-27 merges; the line says so and is not counted.
-// One process: a scratch database (every migration, PF-3's Sample seed) and a small Nest app built from the feature's own
-// classes beside core.ts's ConfigReadGuard, PF-4's guard and routes and PF-12's interceptor. No model call (US$0).
+// PF-4p part 1 (R1.62; BACKLOG PF-4p; P-584 (4); AG-15-3, -38, AG16-23; SA-2-35): the client sign-in plane, the /api/portal guard
+// and a client's own cases, each rule with a pass and a fail. DW1 a client token on /api/platform → 401, a staff token on /api/portal → 401,
+// a client token on a case route → 403. DW2 own cases only; another client's or firm's case, a random and a malformed id: the same 404.
+// DW3 suspend and sign-out end sessions. DW4 each sign-in (and refused one) writes one CLIENT audit line. DW5 the start-up rules.
+// DW6 the schema (one account per person and email, email form, the firm's own person, PF-12's wall). PENDING: PF-27's firmAllows.
+// One process: a scratch database (every migration, PF-3's Sample seed) and a small Nest app of the feature's classes beside core.ts's
+// ConfigReadGuard, PF-4's guard and routes and PF-12's interceptor. No model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf4p_client_identity.ts
 import "reflect-metadata";
 import { Controller, Get, Module } from "@nestjs/common";

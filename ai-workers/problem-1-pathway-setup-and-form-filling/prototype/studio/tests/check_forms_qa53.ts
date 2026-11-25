@@ -98,10 +98,7 @@ const isSystem = (path: string) => SYSTEM_PATH.test(path);
 /** The doors (@SystemSignIn), reviewed: this copy starts without PLATFORM_SYSTEM_IDENTITY, so the local stand-in's door
  *  answers a well-formed body 404 STAND_IN_OFF (service.ts localSignIn: the body first, then the stand-in's gate). */
 const SYSTEM_DOORS: Record<string, number> = { "POST /api/system/session/local": 404 };
-/** PF-4p (R1.62): routes under /api/portal/ belong to the client guard (ClientGuard: a client session of the client pool,
- *  never x-actor). Like PF-4s's, they leave QA-53 and QA-65 and are asked instead: no session and x-actor alone 401,
- *  never data; the one sign-in door its exact status (this copy starts without PLATFORM_IDENTITY, so the client
- *  stand-in's door answers 403 LOCAL_SIGN_IN_OFF). The exemption is exactly PORTAL_PATH, pinned. */
+/** PF-4p (R1.62): /api/portal/ is the client guard's (a client session, never x-actor): asked like PF-4s's, its door's exact status reviewed. */
 const PORTAL_SOURCE = "^\\/api\\/portal(\\/|$)", PORTAL_FLAGS = "i";
 const exactPortalPath = (re: RegExp) => re.source === PORTAL_SOURCE && re.flags === PORTAL_FLAGS;
 const isPortal = (path: string) => PORTAL_PATH.test(path);
@@ -290,17 +287,12 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   // PF-4p (R1.62): the client portal's routes, asked like PF-4s's.
   ok("PF-4p: the exemption is exactly PORTAL_PATH (source and flags pinned); a widened one fails the pin", exactPortalPath(PORTAL_PATH) && !exactPortalPath(/^\/api\//i) && !exactPortalPath(/^\/api\/portal/i), { source: PORTAL_PATH.source, flags: PORTAL_PATH.flags });
   const portalReads = all.filter((x) => isPortal(x.path)), wrongPortal: string[] = [];
-  for (const r of [...portalReads.map((x) => ({ path: x.path, method: "GET", door: false })), ...portalWrites]) {
-    const path = r.path.replace(/:id\b/g, "00000000-0000-4000-8000-000000000000");
-    const door = r.door ? PORTAL_DOORS[`${r.method} ${r.path}`] ?? -1 : undefined;   // an unreviewed door has no status: always caught
-    for (const actor of [null, "user-A", "user-O", "user-P"]) {
-      const x = await fetch(`http://localhost:${PORT}${path}`, { method: r.method, headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: r.method === "GET" ? undefined : JSON.stringify(r.door ? { firmKey: "sample-firm", email: "nobody@example.test" } : {}) });
-      const text = await x.text(); let body: unknown = text; try { body = JSON.parse(text); } catch { /* text */ }
-      if (platformWrong({ status: x.status, body }, door)) wrongPortal.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${x.status} ${text.slice(0, 80)}`);
-    }
+  for (const r of [...portalReads.map((x) => ({ path: x.path, method: "GET", door: false })), ...portalWrites]) for (const actor of [null, "user-A", "user-O", "user-P"]) {
+    const x = await fetch(`http://localhost:${PORT}${r.path.replace(/:id\b/g, "00000000-0000-4000-8000-000000000000")}`, { method: r.method, headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: r.method === "GET" ? undefined : JSON.stringify(r.door ? { firmKey: "sample-firm", email: "nobody@example.test" } : {}) });
+    const text = await x.text(); let body: unknown = text; try { body = JSON.parse(text); } catch { /* text */ }
+    if (platformWrong({ status: x.status, body }, r.door ? PORTAL_DOORS[`${r.method} ${r.path}`] ?? -1 : undefined)) wrongPortal.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${x.status} ${text.slice(0, 80)}`);
   }
-  ok(`PF-4p: the client portal's routes (${portalReads.length} reads, ${portalWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: its exact status in PORTAL_DOORS), never data`,
-    portalReads.length >= 1 && portalWrites.length >= 1 && wrongPortal.length === 0, wrongPortal);
+  ok(`PF-4p: the client portal's routes (${portalReads.length} reads, ${portalWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: its exact status in PORTAL_DOORS), never data`, portalReads.length >= 1 && portalWrites.length >= 1 && wrongPortal.length === 0, wrongPortal);
   ok("PF-4p: the portal sign-in doors in the code are exactly PORTAL_DOORS", JSON.stringify(portalWrites.filter((w) => w.door).map((w) => `${w.method} ${w.path}`).sort()) === JSON.stringify(Object.keys(PORTAL_DOORS).sort()), portalWrites);
   // CS-C1s part 2 (#2169): a runtime read that declares permission keys is marked a case read, but ConfigReadGuard leaves
   // it to PF-4's guard (a staff session only), so it is asked here like a platform route: x-actor never opens it.
