@@ -102,3 +102,45 @@ Fixes that would raise it, most valuable first:
 2. One wording and one limit for every reason length. This raises plain words.
 
 Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (J9; the firm stand-in was not on in this copy, and that part is unchanged in this diff).
+
+---
+
+# Round 3 (head 8a8de4bca; the journeys the diff touches)
+**Setup:**
+* Scratch worktree of the head, `isolated.sh rv3187 4437 start --ttl 20 PLATFORM_SYSTEM_IDENTITY=local` (runtime-lane port, never :4400); stopped afterwards.
+* Script: `scratchpad/tools/journey3.sh`. Each start is by a new Support person (one session at a time).
+* The harness probes as in review.md, Round 3.
+* Still API only.
+
+| # | Journey | Result |
+|---|---|---|
+| J1 | Support starts with a ticket reason | 201 (62 ms) |
+| J11 | Non-English: "Sample 工单 " + 110 CJK Extension B (120 characters, 228 UTF-16 units) | **422** "1-200 characters", `fields.reason` (was 500 in round 2) |
+| J11b | The same with 95 (105 characters, 200 units) | 201; the start line equals the register |
+| J11c | The same with 96 (201 units) | 422, the same words |
+| J13 | 300 Latin, then 600 | 422 INVALID "1-200", then 422 REASON_TOO_LONG "at most 500" (R2-S1 partly) |
+| J14 | Reason names the client by email: "Sample: ticket 4821, client.a@sample-firm.example cannot see invoices" | **500 "Something went wrong on the server"**, plus one BR-5 `audit_write_failed` alarm; nothing opened (R3-M1) |
+| Break | Lone surrogate `\uD800` in the reason (crafted request) | 500 plus alarm (R3-S2) |
+
+Data: 2 sessions opened (J1, J11b), each with exactly one start line whose reason equals the register's. No session for any refusal.
+
+## Score (each 0, ½ or 1)
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J1, J11b |
+| Next step obvious | 1 | The 422 names the field and the 1-200 limit |
+| Plain words | ½ | "1-200" for 201-500, but "at most 500" above it (J13) |
+| Feedback and state | ½ | J11 is fixed, but J14 gets a 500 for a reason a person would type |
+| Correct data | 1 | The reason is the same everywhere; nothing opened on any refusal |
+| Error recovery | ½ | J14 gives no field message to recover by |
+| Accessibility and screen sizes | N/A | No screen |
+| Speed | 1 | 42-62 ms per call |
+| Visual quality | N/A | No screen |
+| Trust and sources | 1 | Unchanged from round 2 |
+
+**6.5 of the 8 criteria that apply = 8.1 / 10: a pass, no criterion at 0.** The open Major (J14, R3-M1) still blocks.
+Fixes that would raise it, most valuable first:
+1. Refuse an email-shaped reason with a 422 field message (J14). This raises feedback and error recovery.
+2. One limit and one wording above 500 too. This raises plain words.
+
+Not tested: any screen, a screen reader, an intended user's walk (D17 and D20), the firm Owner's view (unchanged in this diff).

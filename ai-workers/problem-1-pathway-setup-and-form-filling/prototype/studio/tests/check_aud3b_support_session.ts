@@ -119,9 +119,11 @@ try {
   const long = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: "x".repeat(201) } });
   const extra = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: REASON, mode: "CHANGE" } });
   const wide = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: `Sample ${"\u{20000}".repeat(97)}` } });   // 104 characters, 201 UTF-16 units (round 2, R2-M1)
-  ok("AUD-3b SS1 fail (SA-2-16, BR-11: blank reason rejected): no reason, a blank one, one over 200 characters, a field it does not take (mode CHANGE), or 104 wide characters (201 UTF-16 units, over the audit line's limit; round 2) → 422 naming the field, never a 500; nothing opened, no line",
-    noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && blank.status === 422 && long.status === 422 && extra.status === 422 && wide.status === 422 && wide.body.fields?.reason && sessions() === n0 && lines("true") === l0,
-    { noReason: noReason.body?.code, blank: blank.status, long: long.status, extra: extra.status, wide: [wide.status, wide.body?.code] });
+  const email = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: "Sample: ticket 4821, client.a@sample-firm.example cannot see invoices" } });   // round 3, R3-M1
+  const lone = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: "Sample ticket \uD800 42" } });   // round 3, R3-S2: a lone surrogate
+  ok("AUD-3b SS1 fail (SA-2-16, BR-11: blank reason rejected): no reason, a blank one, one over 200 characters, a field it does not take (mode CHANGE), or 104 wide characters (201 UTF-16 units, over the audit line's limit; round 2), an email address or a lone surrogate (round 3: the audit line's own rules) → 422 naming the field, never a 500; nothing opened, no line",
+    noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && blank.status === 422 && long.status === 422 && extra.status === 422 && wide.status === 422 && wide.body.fields?.reason && email.status === 422 && email.body.fields?.reason && lone.status === 422 && sessions() === n0 && lines("true") === l0,
+    { noReason: noReason.body?.code, blank: blank.status, long: long.status, extra: extra.status, wide: [wide.status, wide.body?.code], email: [email.status, email.body?.code], lone: lone.status });
   const noKey = await call(base, "POST", START(firmB), { token: billingT, body: { reason: REASON } });
   const auditorStart = await call(base, "POST", START(firmB), { token: auditorT, body: { reason: REASON } });
   const noToken = await call(base, "POST", START(firmB), { body: { reason: REASON } });
@@ -134,8 +136,9 @@ try {
   const ghost = await call(base, "POST", START(uuid()), { token: ownerT, body: { reason: REASON } }), bad = await call(base, "POST", START("not-a-firm"), { token: ownerT, body: { reason: REASON } });
   ok("AUD-3b SS1 fail: an unknown or malformed firm → 404, nothing opened, no line", ghost.status === 404 && bad.status === 404 && sessions() === n0 && lines("true") === l0, { ghost: ghost.status, bad: bad.status });
   const second = await call(base, "POST", START(firmB), { token: supportT, body: { reason: REASON } });
+  const exact = await call(base, "POST", START(firmB), { token: supportT, body: { reason: `S${"x".repeat(199)}` } });   // round 3, R3-S3: exactly 200 units passes the reason's checks (here it meets the open session: 409)
   ok("AUD-3b SS1 fail (SA-2-17: starting another session): while our Support's session is open, a second one (any firm) → 409 SUPPORT_SESSION_OPEN naming the open one; nothing opened",
-    second.status === 409 && second.body.code === "SUPPORT_SESSION_OPEN" && second.body.sessionId === S && sessions() === n0, second.body);
+    second.status === 409 && second.body.code === "SUPPORT_SESSION_OPEN" && second.body.sessionId === S && exact.status === 409 && sessions() === n0, { second: second.body, exact: exact.status });
   const both = await Promise.all([call(base, "POST", START(firmB), { token: ownerT, body: { reason: REASON } }), call(base, "POST", START(firmA), { token: ownerT, body: { reason: REASON } })]);
   ok("AUD-3b SS1 fail (one at a time): two starts at once by one person open exactly one session (201 and 409)",
     both.map((r) => r.status).sort().join(",") === "201,409" && sessions(`staff_id = '${OWNER}'`) === 1, both.map((r) => [r.status, r.body?.code]));

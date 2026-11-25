@@ -149,3 +149,72 @@ Journey (reviewer, round 2): **8.1 / 10, a pass, no criterion at 0** (`journey-t
 Not checked: browser, keyboard, zoom and BIC (no screen); a screen reader; D17 and D20; the firm Owner's view of the start line (J9: the firm stand-in was not switched on in my copy, and that part is unchanged in this diff).
 
 Reviewer: Changes 517ea9dafb8c20bcfbad13c1da29366723066f99
+
+---
+
+# Round 3 (diff-only, 517ea9daf..8a8de4bca; reviewer, fresh context; the Lead's "round 3: diff-only")
+
+## Verdict: Ship after fixes → **Verdict: Block** until R3-M1 is fixed
+The length part of R2-M1 is fixed, and its test kills the round-2 code. But the fix says a reason that passes "is never refused there" (`service.ts:60-61`), and that is not true. A reason with an email address in it still passes this check, is refused by the start line's AuditDetail, and answers 500 with a BR-5 alarm.
+
+## What I ran
+* PR worktree at 8a8de4bca: `check_aud3b_support_session.ts` passes 26/0.
+* Scratch worktree of the head (node_modules linked; the PR worktree untouched):
+  * 24 boundary probes in the PR's harness (`scratchpad/r3probe.log`, `r3probe2.log`).
+  * 5 mutations (`scratchpad/r3mut-out.txt`).
+  * Journeys on the full API (`isolated.sh rv3187 4437`, stopped afterwards; `journey-test-reviewer-2026-11-25.md`, Round 3).
+
+## R2-M1: is a passing reason always accepted downstream?
+Order of checks: guard `reasonOf(raw)` (≤500 code points, cleaned) → zod `trim().min(1).max(500)` (UTF-16) → `reasonOf` → `reason.length ≤ 200` (UTF-16) → the database CHECK → the start line's AuditDetail.
+* **Guard (REASON_MAX 500): holds.** The guard runs first. 200 UTF-16 units is at most 200 code points, which is under 500. `reasonOf(trim(raw))` equals `reasonOf(raw)`, because `lineText` trims after cleaning.
+* **Database CHECK `char_length(btrim(reason)) BETWEEN 1 AND 200`: holds.** UTF-16 units are never fewer than code points. `reasonOf` needs a letter or digit, and JS trim already removed the spaces `btrim` would strip. P10 (spaces) and P11 (NBSP) → 201, stored as 200 code points.
+* **AuditDetail `string().max(200)`: holds for length.**
+  * 8 + 96 wide characters (200 units, 104 code points) → 201; the start line equals the register.
+  * 7 + 97 wide characters (201 units) → 422 with `fields.reason`.
+  * 200 Latin → 201; 201 Latin → 422. 199 Latin + 1 wide (200 code points, 201 units) → 422. 198 + 1 wide → 201.
+  * 100 × e + combining acute (200 units) → 201.
+  * Cleaning that shortens the text: "a" + 299 ZWSP + 199 "b" (499 raw, 200 clean) → 201. RLO + 200 x → 201. 50 Hangul fillers + 200 x → 201.
+* **AuditDetail's email refine: does not hold (R3-M1).** Lone surrogates do not hold either (R3-S2).
+
+## Mutations (scratch, each reverted)
+| Mutation | Result |
+|---|---|
+| Count code points (`[...reason].length`, the round-2 code) | **Killed** (the new "wide" case) |
+| Length check removed | Killed |
+| Limit 201 | Killed |
+| `>=` (exactly 200 refused) | **Survived**: no test sends exactly 200 (R3-S3) |
+| Count `raw` instead of the cleaned text | Survived: same result for every test input, and it only refuses more (not a finding) |
+
+## Issues (ranked)
+1. **Must (Major), R3-M1: a reason that names someone by email answers 500 and raises the BR-5 `audit_write_failed` alarm.**
+   * Scenario, full API: our Support starts a session on sample-firm with "Sample: ticket 4821, client.a@sample-firm.example cannot see invoices" → 500 "Something went wrong on the server". One alarm in `rv3187-api.log`; nothing opened. The short form "ticket a@b.co" does the same (harness E1, E2).
+   * Cause: `service.ts:63` checks only the length. The start line's `detail.reason` (`:75`) goes through AuditDetail, whose refine `ports/audit.ts:23` (EMAILISH, `:16`) refuses any email-shaped string.
+   * This is R2-M1's class: input a person would really type, a 500 with no field message ([M] Problem Details with field-level messages), and an integrity alarm anyone with the key can fire. It contradicts the fix's own comment (`:60-61`) and the Lead's check ("can never fail the start line's AuditDetail").
+   * Fix: before the transaction, check the line's own detail (`AuditDetail.safeParse({ reason })`, or the email shape). Answer 422 with `fields.reason` in plain words, e.g. "Leave out email addresses: give a ticket reference." Add a test with an email-shaped reason, plus a mutation check.
+2. **Should, R3-S2: a lone UTF-16 surrogate answers 500 and raises the same alarm.**
+   * Scenario: `{"reason":"Sample ticket \uD800"}` (and `\uDC00`) → 500. Postgres jsonb refuses it ("invalid input syntax for type json", P2007).
+   * Only a crafted request can send this; nothing a person types produces it.
+   * Fix, in the same place: refuse a reason that is not `isWellFormed()` (422). Or drop `\p{Cs}` in `lineText`, which also covers the guard's other lines.
+3. **Should, R2-S1 (still partly): the new zod message never shows.**
+   * `words()` in `http/input.ts:41` replaces every `too_big` message, so the custom `.max(500, "A reason of 1-200 characters.")` at `service.ts:48` is dead.
+   * "a" + 600 ZWSP (cleans to "a") still gets INVALID "This is too long: at most 500 characters." (P9). Over 500 after cleaning, the guard answers REASON_TOO_LONG "at most 500" (P14, P15).
+   * 201-500 is one message ("1-200"), as it already was at 517ea9daf.
+   * Fix: drop zod's `.max(500)` (the guard already bounds the size), or map it in the service. Otherwise list it as a stated Minor.
+4. **Should, R3-S3: the accept side of the boundary has no test.** The `>=` mutation survives. Add exactly 200 units (for example 8 + 96 wide characters) → 201 next to the 201-unit case.
+
+R2-S2 (PR body) is fixed: it says 26 passed and lists the stated round-1 Minors.
+
+Note, not a finding (round-1 cleaning, outside this diff): `lineText` drops ZWJ (`\p{Cf}`), so a family emoji is stored as three separate people (P20: 91 code points → 55).
+
+## D1-D20 changes from round 2 (the rest unchanged)
+| D | Score | Evidence |
+|---|---|---|
+| D2 | 4 | The reason is the same in the register and on the start line at every length tested. An email-shaped reason is fail-closed (R3-M1). |
+| D10 | 4 | One "1-200" message for 201-500, but still "at most 500" above it (R2-S1). |
+| D16 | 4 | The new test kills the round-2 code. `>=` survives (R3-S3), and R3-M1 has no test. |
+
+Journey (reviewer, round 3): **8.1 / 10, a pass, no criterion at 0**; R3-M1 still blocks (`journey-test-reviewer-2026-11-25.md`, Round 3).
+
+Not checked: browser, keyboard, zoom and BIC (no screen); a screen reader; D17 and D20; whether other routes put free-text reasons into AuditDetail (outside this diff).
+
+Reviewer: Changes 8a8de4bcafc7ae8067c30daedfc83d212e19f73d
