@@ -33,6 +33,7 @@ export type RetainerFees = z.infer<typeof RetainerFees>;
 export const SIGNED_STATES = ["SIGNED", "SIGNED_OFFLINE"] as const;
 
 export interface RetainerFeesPort<Tx> {
-  /** The retainer of this firm by id, or null (unknown, another firm's, or not an id). */
+  /** The retainer of this firm by id (in any letter case), with its current version's rows in position order, or null:
+   *  unknown, another firm's, an id that is not one, or a firm id that is not one (never thrown). */
   read(tx: Tx, firmId: string, retainerId: string): Promise<RetainerFees | null>;
 }
