@@ -89,7 +89,8 @@ try {
   const B1 = await person(B.id, "b-owner", "OWNER");
   await copyFirmHoursTo(db, A.id, [P.OWNER.id, P.BILLING_FINANCE.id]);
   const type = (slug: string, host: string, purpose = "FREE_CONSULT", minutes = 30) =>
-    db.foConsultationType.create({ data: { firmId: A.id, slug, name: `Sample consultation ${slug}`, purpose: purpose as never, modes: ["VIDEO"], hostStaffIds: [host], minutes } });
+    // Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+    db.foConsultationType.create({ data: { requireAgreement: false, firmId: A.id, slug, name: `Sample consultation ${slug}`, purpose: purpose as never, modes: ["VIDEO"], hostStaffIds: [host], minutes } });
   const [TO, TB, TC] = [await type("owner", P.OWNER.id, "FREE_CONSULT", 45), await type("billing", P.BILLING_FINANCE.id), await type("case", P.OWNER.id, "CASE_REVIEW")];
   const lead = arrival.addPerson(A.id, { givenNames: "Lee", familyName: "Sample", email: "lee@client.example" });
   const pros = arrival.addPerson(A.id, { givenNames: "Pat", familyName: "Sample", email: "pat@client.example" });

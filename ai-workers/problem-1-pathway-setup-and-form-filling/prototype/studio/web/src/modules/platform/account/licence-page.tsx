@@ -16,16 +16,20 @@ export const TWO_STEP_LINE = (t: z.infer<typeof Mine>["twoStep"]) => (t === null
 
 function MyLicence() {
   const token = useStaffToken(), qc = useQueryClient(), toast = useToast();
-  const q = useQuery({ queryKey: ["pf", "account", token], enabled: !!token, retry: false, queryFn: async () => Mine.parse(await staffApi("/platform/me/account")) });
+  // PF-31 (breaker F1 on 13621c493): the licence page's own key. My account reads the same address with a fuller parser
+  // (Account keeps roles); one key with two shapes crashed the account page when both pages were open in workspace tabs.
+  const key = ["pf", "account", token, "licence"];
+  const q = useQuery({ queryKey: key, enabled: !!token, retry: false, queryFn: async () => Mine.parse(await staffApi("/platform/me/account")) });
   if (q.isError) return <Notice tone="danger" title="Could not load your licence">{q.error instanceof StaffApiError ? q.error.message : "Please try again."}</Notice>;
   if (!q.data) return <p role="status" className="text-sm text-text-muted" data-loading>Loading your licence…</p>;
   const a = q.data;
   const save = async (l: unknown) => {
     // Review MJ-1 / break M1: the PUT replaces the whole record, so a form opened before someone else's save must not undo it.
     const fresh = Mine.parse(await staffApi("/platform/me/account"));
-    if (!sameLicence(fresh.licence, a.licence)) { qc.setQueryData(["pf", "account", token], fresh); throw new LicenceConflict(fresh.licence); }
+    if (!sameLicence(fresh.licence, a.licence)) { qc.setQueryData(key, fresh); throw new LicenceConflict(fresh.licence); }
     const saved = Mine.parse(await staffApi("/platform/me/account", { method: "PUT", json: { licence: l } }));
-    qc.setQueryData(["pf", "account", token], saved);
+    qc.setQueryData(key, saved);
+    void qc.invalidateQueries({ queryKey: ["pf", "account", token], exact: true });   // My account reads the new licence in its own shape
     toast.push({ tone: "ok", text: "Your licence record was saved." });
     return saved.warning ? { warning: saved.warning } : undefined;   // PF-4c part 2: shown on the number field
   };

@@ -42,7 +42,8 @@ const person = async (name: string, role: string) => {
 const F = await person("Client F", "OWNER"), C = await person("Client C", "CASE_OFFICER"), I = await person("Client I", "CASE_OFFICER"), AD = await person("Client A", "ADMIN"), CM = await person("Client K", "CASE_MANAGER"), BF = await person("Client D", "BILLING_FINANCE");
 const HOSTS = [F, C, I, AD, CM, BF];
 await db.foAvailability.createMany({ data: HOSTS.flatMap((h) => [1, 2, 3, 4, 5].map((weekday) => ({ firmId: M.id, staffId: h.id, weekday, startMinute: 540, endMinute: 1020, timeZone: TZ }))) });
-const type = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free-consultation", name: "Free consultation", modes: ["VIDEO", "PHONE"], hostStaffIds: HOSTS.map((h) => h.id), minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
+// Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+const type = await db.foConsultationType.create({ data: { requireAgreement: false, firmId: M.id, slug: "free-consultation", name: "Free consultation", modes: ["VIDEO", "PHONE"], hostStaffIds: HOSTS.map((h) => h.id), minutes: 30, windowDays: 400, minNoticeMinutes: 0 } });
 const client = async (given: string, owner: string | null) => {
   const p = await db.foPerson.create({ data: { firmId: M.id, givenNames: given, familyName: "Sample", email: `${given.replace(/\W/g, "").toLowerCase()}@client.example`, createdBy: "test" } });
   const l = await db.foLead.create({ data: { firmId: M.id, personId: p.id, door: "MANUAL", source: "WEBSITE", ownerStaffId: owner, createdBy: "test" } });

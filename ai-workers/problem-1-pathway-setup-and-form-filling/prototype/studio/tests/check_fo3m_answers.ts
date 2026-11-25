@@ -78,7 +78,8 @@ try {
   const P: Record<(typeof ROLES)[number], { id: string; token: string }> = {} as never;
   for (const r of ROLES) P[r] = await person(A.id, r.toLowerCase(), r);
   await copyFirmHoursTo(db, A.id, [P.OWNER.id, P.BILLING_FINANCE.id]);
-  const type = (slug: string, host: string) => db.foConsultationType.create({ data: { firmId: A.id, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: [host], minutes: 30 } });
+  // Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+  const type = (slug: string, host: string) => db.foConsultationType.create({ data: { requireAgreement: false, firmId: A.id, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: [host], minutes: 30 } });
   const [TO, TB] = [await type("owner", P.OWNER.id), await type("billing", P.BILLING_FINANCE.id)];
   const pid = arrival.addPerson(A.id, { givenNames: "Lee", familyName: "Sample", email: "lee@client.example" });
   const body = (typeId: string, when: string) => ({ typeId, personId: pid, mode: "VIDEO", startsAt: iso(when), timeZone: TZ });

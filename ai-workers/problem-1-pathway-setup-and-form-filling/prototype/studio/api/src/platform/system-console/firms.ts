@@ -18,12 +18,24 @@
 // `?health=OK` check at most PAGE_SIZE × 4 firms' figures per call: the page's firms the row already places, and the same
 // first PAGE_SIZE × 3 of the others on every page (so `total` and the pages agree), saying `complete: false` when that
 // bound stopped them.
+// Failed jobs (PF-17's failed-jobs part; Lead 15's answer on #3225; R1.93 "health per firm (last sign-in, failed jobs, plan
+// state)"): each firm's `failedJobs` is the number of its own entries on PF-14's one dead-letter list, read through
+// PlatformJobs.deadLetters (PF-14's own reader), once per call and counted here, never a second list. pg-boss's tables are
+// not a firm's (no wall), so this read crosses none. A platform job's entry (no firm) counts for no firm. When the list
+// cannot be read (the job queue is down), `failedJobs` is null ("not known"), never 0 and never a 500. Shown, not judged:
+// failed jobs do not change a firm's health (part 4's concept keeps it so: no requirement gives a threshold).
+// Part 4 (concept r2, m1): PF-14's reader keeps the list's oldest DEAD_LETTER_CAP entries, so a read that returns the full
+// cap may miss the newest failures: `failedJobsComplete` (on the page, and on one firm) is false then, and false when the
+// list could not be read; the counts stay as read. The plan shown is livePlanOf's, the helper the support queue uses too
+// (challenge M2), so the two pages cannot disagree.
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { CaseCountPort } from "../../../../ports/case-count.ts";
 import type { EntitlementMetric } from "../../../../ports/entitlement.ts";
 import { mbOf, PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
+import { DEAD_LETTER_CAP } from "../jobs/pgboss-jobs.ts";
+import { livePlanOf } from "./live-plan.ts";
 import { asBypass, touchFirm, touchPlatform } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { forbidden, problem } from "../identity/keys.ts";
@@ -50,10 +62,19 @@ export type FirmHealth = {
   plan: { code: string; name: string } | null;
   subscription: { status: string; trialEndsAt: string | null; billingPeriod: string; overdue: boolean } | null;
   lastStaffSignInAt: string | null; usage: Usage[]; health: Health; reasons: string[];
+  /** This firm's entries on PF-14's dead-letter list; null when the list could not be read. */
+  failedJobs: number | null;
+  /** One firm's answer only: false when the dead-letter read reached its cap or failed (part 4, m1). */
+  failedJobsComplete?: boolean;
 };
-export type FirmsPage = { firms: FirmHealth[]; page: number; pageSize: number; total: number; complete: boolean; note?: string };
+/** `failedJobsComplete`: false when the dead-letter read reached PF-14's cap (newer failures may be missing) or failed. */
+export type FirmsPage = { firms: FirmHealth[]; page: number; pageSize: number; total: number; complete: boolean; failedJobsComplete: boolean; note?: string };
 export type ConsoleCaller = { staffId: string; keys: readonly string[] };
-export type SystemFirmsDeps = { db: PrismaClient; cases: (firmKey: string, tx: Tx) => CaseCountPort; now: () => number };
+/** PF-14's dead-letter list as PlatformJobs.deadLetters answers it (only each entry's firm is read here). */
+export type DeadLetterRead = (limit?: number) => Promise<readonly { firmId: string | null }[]>;
+export type SystemFirmsDeps = { db: PrismaClient; cases: (firmKey: string, tx: Tx) => CaseCountPort; now: () => number; deadLetters: DeadLetterRead };
+/** The most dead-letter entries one call reads: PF-14's reader's own cap, imported (part 4, m1: never a copied number). */
+export const DEAD_LETTER_READ = DEAD_LETTER_CAP;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ORDER: Record<Health, number> = { HELD: 0, ATTENTION: 1, OK: 2, NOT_LIVE: 3 };
@@ -113,6 +134,7 @@ export class SystemFirms {
     const p = ListQuery.safeParse(query ?? {});
     if (!p.success) fields(p.error);
     const { health, q } = p.data, page = Number(p.data.page ?? "1"), start = (page - 1) * PAGE_SIZE, now = this.d.now();
+    const { counts: failed, complete: failedJobsComplete } = await this.failedByFirm();   // one read of the dead-letter list per call
     return asBypass(FIRMS_LIST, async () => {
       // One short transaction: the list's one firm-less line and the firm rows (no figures here).
       const rows = await this.d.db.$transaction(async (tx) => { await touchPlatform(tx); return this.rows(tx, null); });
@@ -121,12 +143,12 @@ export class SystemFirms {
       for (const r of rows) tier.set(r, healthOf({ status: r.status, subStatus: r.subStatus, trialEndsAt: r.trialEndsAt, usage: [storageOf(r)] }, now).health);
       const kept = rows.filter((r) => !needle || fold(r.name).includes(needle) || fold(r.address ?? "").includes(needle))
         .sort((a, b) => ORDER[tier.get(a)!] - ORDER[tier.get(b)!] || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-      const figures = (r: FirmRow) => this.d.db.$transaction((tx) => this.figures(tx, r, now));   // each firm its own short transaction
+      const figures = (r: FirmRow) => this.d.db.$transaction((tx) => this.figures(tx, r, now, failed));   // each firm its own short transaction
       if (!health || health === "HELD" || health === "NOT_LIVE") {
         // The row decides membership: exact total, figures for this page only.
         const members = health ? kept.filter((r) => tier.get(r) === health) : kept;
         const firms = await inTurn(members.slice(start, start + PAGE_SIZE), figures);
-        return { firms, page, pageSize: PAGE_SIZE, total: members.length, complete: true };
+        return { firms, page, pageSize: PAGE_SIZE, total: members.length, complete: true, failedJobsComplete };
       }
       // ATTENTION or OK: a firm the row calls OK may be over a limit, known only from its figures (bounded).
       const sure = health === "ATTENTION" ? kept.filter((r) => tier.get(r) === "ATTENTION") : [];
@@ -137,7 +159,7 @@ export class SystemFirms {
       const matches = (await inTurn(scan, figures)).filter((f) => f.health === health);
       const complete = i === open.length, from = Math.max(0, start - sure.length);
       const firms = [...found, ...matches.slice(from, from + PAGE_SIZE - found.length)];
-      return { firms, page, pageSize: PAGE_SIZE, total: sure.length + matches.length, complete,
+      return { firms, page, pageSize: PAGE_SIZE, total: sure.length + matches.length, complete, failedJobsComplete,
         ...(complete ? {} : { note: `Checked the figures of ${i} of the ${open.length} firms that could match (at most ${FIGURES_PER_CALL} a call); narrow the list with q to see the rest.` }) };
     });
   }
@@ -146,12 +168,25 @@ export class SystemFirms {
   async one(c: ConsoleCaller, id: string): Promise<FirmHealth> {
     this.allowed(c);
     if (typeof id !== "string" || !UUID.test(id)) notFound();
+    const { counts: failed, complete: failedJobsComplete } = await this.failedByFirm();
     return asBypass(FIRM_READ, () => this.d.db.$transaction(async (tx) => {
       const [row] = await this.rows(tx, id.toLowerCase());
       if (!row) return notFound();
       await touchFirm(tx, row.id);   // this firm's platform.bypass line, in this transaction (PF-12b)
-      return this.figures(tx, row, this.d.now());
+      return { ...await this.figures(tx, row, this.d.now(), failed), failedJobsComplete };
     }));
+  }
+
+  /** Each firm's count of entries on PF-14's dead-letter list (null when the list cannot be read), and whether the read
+   *  is complete: false when it returned the full cap (the newest failures may be missing) or failed (part 4, m1). */
+  private async failedByFirm(): Promise<{ counts: Map<string, number> | null; complete: boolean }> {
+    try {
+      const counts = new Map<string, number>(), letters = await this.d.deadLetters(DEAD_LETTER_READ);
+      for (const l of letters) if (l.firmId) counts.set(l.firmId.toLowerCase(), (counts.get(l.firmId.toLowerCase()) ?? 0) + 1);
+      return { counts, complete: letters.length < DEAD_LETTER_READ };
+    } catch {
+      return { counts: null, complete: false };
+    }
   }
 
   /** The firms' own rows. The web address is read directly (no by-firm read in web-address/; named in the PR, review m3). */
@@ -171,11 +206,11 @@ export class SystemFirms {
 
   /** PF-15's own reads, in this firm's short transaction (checkDowngrade's sources): never a count of our own. The plan
    *  shown is the live plan PF-15 reads (an ended subscription's plan is not shown, break m2). */
-  private async figures(tx: Tx, r: FirmRow, now: number): Promise<FirmHealth> {
+  private async figures(tx: Tx, r: FirmRow, now: number, failed: Map<string, number> | null): Promise<FirmHealth> {
     const ent = new PgEntitlements(tx, () => now);
     const limits = new Map<EntitlementMetric, number | null>();
-    let plan: { code: string; name: string } | null = null;
-    for (const m of METRICS) { const l = await ent.limitOf(r.id, m); limits.set(m, l.limit); if (l.planCode) plan = { code: l.planCode, name: l.planName ?? l.planCode }; }
+    for (const m of METRICS) limits.set(m, (await ent.limitOf(r.id, m)).limit);
+    const plan = await livePlanOf(tx, r.id, now);   // the one plan source, shared with the support queue (part 4, challenge M2)
     const cases = await this.d.cases(r.key, tx).activeCounts(tx), seats = await seatsUsed(tx, r.id);
     const counted: Record<Exclude<EntitlementMetric, "storage_mb">, number> = { seats, active_individual_cases: cases.individual, active_corporate_cases: cases.corporate };
     const usage: Usage[] = METRICS.map((metric) => {
@@ -189,6 +224,7 @@ export class SystemFirms {
       id: r.id, name: r.name, webAddress: r.address, status: r.status, plan,
       subscription: r.subStatus ? { status: r.subStatus, trialEndsAt: r.trialEndsAt?.toISOString() ?? null, billingPeriod: r.billingPeriod ?? "MONTHLY", overdue: r.subStatus === "OVERDUE" } : null,
       lastStaffSignInAt: r.lastSignIn?.toISOString() ?? null, usage, ...h,
+      failedJobs: failed === null ? null : failed.get(r.id.toLowerCase()) ?? 0,
     };
   }
 }

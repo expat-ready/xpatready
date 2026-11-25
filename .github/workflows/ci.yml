@@ -277,6 +277,11 @@ jobs:
         # P-756 (2) (founder 20 Nov): guards.yml ran it only when tools paths changed, so the PR adding a module folder
         # passed and main went red after it (#2207, #2317). Reads files only. Notes PRs: job "ci". Test: the script itself.
         run: bash "$P/tools/check-mergify-scopes.sh"
+      - name: migration slots (SPD-2, P-802; migration-slots.py check; every PR and batch, seconds)
+        # One migration slot per area (.mergify.yml mig-<area>): a migration folder the change adds names its area
+        # (<stamp>_<area>__<name>), the area covers what it changes, and its stamp is after main's newest (a batch: of
+        # its own area); a refusal prints the exact git mv. Reads git and files only. Test: product/tools/test-spd-2.sh.
+        run: python3 -I "$P/tools/migration-slots.py" check $([ "$QUEUE" = true ] && echo --batch) "$RANGE"
       - name: every route a pack's set-up calls has a screen (tools/route-has-screen.mjs, under a second)
         # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has
         # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in
@@ -326,6 +331,7 @@ jobs:
           node "$S/tools/count-any.mjs" --against "${RANGE%%..*}"
           bash "$P/tools/check-select-suites.sh"
           bash "$P/tools/check-select-graph.sh"   # E3: the coverage graph narrows a covered app file, never anything it cannot speak for
+          bash "$P/tools/test-spd-2.sh"   # SPD-2 (P-802): per-area migration slots, the re-stamp check, suites by module
           bash "$P/tools/check-merge-guard.sh"
           bash "$P/tools/check-lane-bind.sh"
           bash "$P/tools/check-new-machine.sh"   # B168: the any-Mac setup script's own logic
@@ -527,7 +533,8 @@ jobs:
       - name: type check, api and web (typecheck.mjs; only errors not in typecheck-known.txt fail)
         # 19 Nov (P-214): tsc for api died at node's default ~4 GB heap in merge batches #2245 and #2246 (six PRs each,
         # "JavaScript heap out of memory", 0 files checked), failing `ci` for every member. tsc inherits this env.
-        env: { NODE_OPTIONS: "--max-old-space-size=8192" }
+        # 24 Nov: 8192 was too little for main with #3235 (10.5 GB used); 12288 passes on the 16 GB runner, 4.9 GB left.
+        env: { NODE_OPTIONS: "--max-old-space-size=12288" }
         run: node "$P/tools/typecheck.mjs" | tee -a "$GITHUB_STEP_SUMMARY"; exit ${PIPESTATUS[0]}
   regression-plan:
     # P-320 (b): a merge-queue batch re-runs every Works capability's acceptance pack (qa/CAPABILITIES.md at the base).

@@ -25,6 +25,7 @@ import { MoneyDocuments, creditNoteData, documentText, invoiceData, receiptData,
 import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
 import { dayOf, invoiceFacts, type Facts } from "./facts.ts";
 import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
+import { IssueTick, applyTrust } from "../trust/money-out.ts";
 
 type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
@@ -48,7 +49,7 @@ export class InvoiceMoney {
   /** POST …/invoices/:id/issue[?dueDate=YYYY-MM-DD]: the next INV- number, the lines frozen, a due date (the firm's "Due in
    *  N days" when none is sent). The query is parsed before anything is read. */
   async issue(ctx: StaffContext, invoiceId: string, query: unknown): Promise<IssuedView> {
-    const b = parse(IssueIn, query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());
+    const b = parse(IssueIn.extend(IssueTick.shape), query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());   // FO-7t part 2: the "Pay from trust now" tick
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     const view = await this.write(async (tx) => {
       await this.seen(tx, ctx, id, scope); const inv = await this.lock(tx, ctx.firmId, id);   // C5 before the locks and any write (review m2)
@@ -66,6 +67,8 @@ export class InvoiceMoney {
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.issued", entity: "money_invoice", entityKey: id, summary: `Invoice ${v.number} issued: ${v.currency} ${MONEY(v.totalMinor)}, due ${v.dueDate}.`,
         detail: { invoiceId: id, number: v.number, totalMinor: v.totalMinor, taxMinor: v.taxMinor }, before: { status: "DRAFT", number: null, dueDate: null }, after: { status: "ISSUED", number: v.number, dueDate: v.dueDate, totalMinor: v.totalMinor, currency: v.currency, ...lettered(head) } });
       await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_ISSUED, f);
+      // FO-7t part 2 (FO-7s3b's Q5, Lead B): ticked → paid from trust in this transaction, after the number; a refusal rolls the issue back.
+      if (b.payFromTrustMinor) return (await applyTrust(tx, this.audit, { firmId: firmScope(ctx.firmId).firmId, by: `staff:${ctx.staffId}`, today, invoiceId: id, amountMinor: b.payFromTrustMinor, unclearedAcknowledged: b.unclearedAcknowledged, atIssue: true })).after.view;
       return v;
     });
     return IssuedView.parse({ invoice: view, email: await this.emailInvoice(ctx.firmId, view) });

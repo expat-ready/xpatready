@@ -4,6 +4,7 @@
 import { Controller, Get, Inject, Param, Query, Req } from "@nestjs/common";
 import { SystemKeys, systemStaffOf, type SystemStaffContext } from "../system-identity/keys.ts";
 import { FIRM_READ_KEY, SystemFirms } from "./firms.ts";
+import { ReadsAcrossFirms, ReadsFirm } from "../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext };
 
@@ -11,9 +12,9 @@ type R = { systemStaff?: SystemStaffContext };
 export class SystemFirmsController {
   constructor(@Inject(SystemFirms) private readonly firms: SystemFirms) {}
 
-  @Get() @SystemKeys(FIRM_READ_KEY)
+  @Get() @SystemKeys(FIRM_READ_KEY) @ReadsAcrossFirms("the firms list")
   list(@Req() r: R, @Query() q: Record<string, unknown>) { return this.firms.list(systemStaffOf(r), q); }
 
-  @Get(":id") @SystemKeys(FIRM_READ_KEY)
+  @Get(":id") @SystemKeys(FIRM_READ_KEY) @ReadsFirm("id")
   one(@Req() r: R, @Param("id") id: string) { return this.firms.one(systemStaffOf(r), id); }
 }
