@@ -82,3 +82,18 @@ Expected: no userinfo, a public host shown as parsed (punycode), and the normali
 * Not run: the 100-program and 400-combination budget (the PR adds an O(1) flag read per row to `openable` and catalogue), keyboard, 1024 px and 200 % zoom. The PR adds no new UI controls; the editor only carries `source` and the flag through on a re-save.
 
 Verdict: Block
+
+## Round 2 (fc4ee1299, fix b9628074d; fresh copy `brk2b` on :4482, `check_as2a_cited_gates.ts` 73/73 first)
+* **B1 fixed.** On "With an LMIA" (6 forms, 22 document lines), a cited gate plus `assessmentOnly:true`, then `POST …/submit` → 400. The new error `assessment-only` is listed, and P-62 still fires next to it (`person.has_national_id` and `person.used_other_name`: the same "This gate reads …" refusal with and without the flag; `validate.ts:319-320`). `openable` keeps v1 startable. A form attached to an assessment-only stream while it waits for review → approve 409, no release made.
+* **B2 fixed.** Cases `a92956dc…` and `c463f94e…` are on Visitor visa v1, and v2 is assessment only. `GET …/release-update` gives `refused.code "assessment_only"`; `POST {target_version:2, from_revision:1, reason}` → 409 with the same words, and the pin stays on v1.
+* **B3 fixed.** A URL `href` of 500, a section of 200 and a quote of 2000 UTF-16 units (emoji) are saved, released and assessed: `door.assess` → LIKELY_ELIGIBLE, `listAssessable` → `[true]`. One unit more → 400.
+* **B4 fixed.** Leaving out the flag, or sending null, keeps it. `false` turns it off, and it stays off on the next save that leaves it out. Deleting every gate needs `assessmentOnly:false` sent with it, and the refusal says why. **B5 fixed.** The flag's change line is now `Eligibility|assessment-only`, beside a gate keyed `assessment_only`, and a gate key `assessment-only` → 400 `gates.0.key`.
+* **B6 fixed.** These are now 400: userinfo, `user:pass`, a Cyrillic host, localhost, `10.0.0.1`, `0x7f.1`, a trailing dot, port 8443, `https:/x`, `https:x`, backslashes, a space, `javascript:`. `HTTPS://WWW…` and `:443` are stored normalised. Punycode `xn--canad-6nf.ca` is accepted, but it reads as punycode to the reviewer (held). **B7 fixed.** `1999-12-31` → 400 and `2000-01-01` → 200. Today and today+1 → 200; today+2 → 400.
+* **B8 mostly fixed.** U+061C, U+2060 and U+00AD are refused now. New problems in the stricter `checkSource` (all Minor):
+  * **R2-1** `HIDDEN` (`engine/eligibility-gates.ts:170`) refuses U+200C and U+200D, which ordinary Hindi and Persian text needs. `"क्‍ष नियम"` and `"می‌خواهم"` → 400 "plain text".
+  * **R2-2** Invisible characters still pass: tag characters U+E0049… (hidden ASCII, the planted-instruction trick, invisible to the reviewer who signs the quote), U+034F, U+180E, U+3164, U+FE0F, U+2800 and U+FFF9-FFFB are all 200. Matters once AS-2c puts quotes in a client copy.
+  * **R2-3** The URL errors give the wrong reason, and a typed accented path is refused: `https://www.quebec.ca/immigration/programme-régulier` → 400, which blames the host (the `%C3%A9` form is accepted); `https://www.example.gov/` + 165×`{` (189 characters typed, 518 as `href`) → 400 "at most 500 characters".
+  * **R2-4** `https://foo.localhost/x` and `https://metadata.google.internal/x` pass `PUBLIC_HOST` (`:172`). Nothing fetches them; it is a citation check only.
+* Case-stages words (`case-stages.ts:112`): this copy has no route, because the keys `sp.outside` and `wp.lmia_inside` are absent. Read only: "Cannot start: Assessment only: no forms. …". `openable` leaves the name out (`named` false) and reads "Assessment only: no forms. This release …" (held).
+
+Verdict: Approve
