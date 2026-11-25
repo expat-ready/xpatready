@@ -5,6 +5,7 @@
 // anyone without the key sees the API's own 403 words, never an empty table. Kept 7 years: nothing here deletes.
 // A breach's own page (decide, notices, history) is part A2.
 import * as React from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Notice, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
@@ -13,12 +14,12 @@ import { systemApi, SystemApiError, useSystemToken } from "../session";
 import { BREACH_MANAGE_KEY, BreachList, COPY, DECISION_WORDS, firmsText, noticesText, STATUS_WORDS, statusOf, whenWords, type Breach } from "./contract";
 import { RecordBreach } from "./record-breach";
 
-function Row({ b, fresh }: { b: Breach; fresh: boolean }) {
+function Row({ b }: { b: Breach }) {
   const s = STATUS_WORDS[statusOf(b)];
   return (
-    <tr data-breach-row={b.id} data-status={statusOf(b)} data-fresh={fresh || undefined} className={cn(fresh && "bg-primary/5")}>
+    <tr data-breach-row={b.id} data-status={statusOf(b)}>
       <td className="whitespace-nowrap"><time dateTime={b.discoveredAt}>{whenWords(b.discoveredAt)}</time></td>
-      <td className="min-w-64 max-w-xl [overflow-wrap:anywhere]"><span className="line-clamp-2" title={b.description}>{b.description}</span></td>
+      <td className="min-w-64 max-w-xl [overflow-wrap:anywhere]"><Link to={`/system/privacy/breaches/${b.id}`} className="line-clamp-2 text-text-link hover:underline" title={b.description}>{b.description}</Link></td>
       <td className="min-w-40 [overflow-wrap:anywhere]">{b.firms.length ? firmsText(b.firms) : <span className="text-text-muted">{COPY.underInvestigation}</span>}</td>
       <td className="min-w-32">{DECISION_WORDS[b.decision]}{b.decision === "NO_NOTICE" && b.decisionReason ? <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">why: {b.decisionReason}</span> : null}</td>
       <td className="whitespace-nowrap">{noticesText(b)}</td>
@@ -28,9 +29,9 @@ function Row({ b, fresh }: { b: Breach; fresh: boolean }) {
 }
 
 function BreachesBody() {
-  const token = useSystemToken(), me = useSystemStaff(), qc = useQueryClient();
+  const token = useSystemToken(), me = useSystemStaff(), qc = useQueryClient(), go = useNavigate();
   const list = useQuery({ queryKey: ["sys", "breaches", token], enabled: !!token, retry: false, queryFn: async () => BreachList.parse(await systemApi("/register/breaches")) });
-  const [open, setOpen] = React.useState(false), [fresh, setFresh] = React.useState<string | null>(null);
+  const [open, setOpen] = React.useState(false);
   const heading = React.useRef<HTMLHeadingElement>(null), recordButton = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { if (list.data && takeArrival()) heading.current?.focus(); }, [!!list.data]);   // eslint-disable-line react-hooks/exhaustive-deps -- the first answer after a sign-in
   const d = list.data;
@@ -38,7 +39,8 @@ function BreachesBody() {
   const refused = list.error instanceof SystemApiError ? list.error : null;
   const manage = me.keys.includes(BREACH_MANAGE_KEY) && refused?.status !== 403;
   const refresh = () => void qc.invalidateQueries({ queryKey: ["sys", "breaches"] });
-  const recorded = (id: string) => { setOpen(false); setFresh(id); refresh(); };
+  // A2: the new breach's own page opens, saying its next step (board §2).
+  const recorded = (id: string) => { setOpen(false); refresh(); go(`/system/privacy/breaches/${id}?recorded=1`); };
   // Every close refreshes the list, so a breach whose answer was lost shows before anyone records it again (break m1).
   const toggle = (o: boolean) => { setOpen(o); if (!o) refresh(); };
   const title = (
@@ -56,14 +58,13 @@ function BreachesBody() {
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {title}
-      <div role="status">{fresh ? <p className="rounded-lg border border-border border-l-4 border-l-ok bg-surface-raised px-4 py-3 text-sm" data-recorded>{COPY.recorded}</p> : null}</div>
       {list.isError ? <Notice tone="danger" title="Not available" action={<Button variant="outline" size="sm" onClick={() => void list.refetch()}>Retry</Button>}>
         <span data-breaches-error>{refused ? refused.message : COPY.loadFailed}</span></Notice>
         : !d ? null
           : !d.breaches.length ? <p data-breaches-empty className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted">{COPY.breachesEmpty}</p>
             : <>
               <Table label="Breaches" head={["Discovered", "What happened", "Firms", "Decision", "Notices", "Status"]}>
-                {d.breaches.map((b) => <Row key={b.id} b={b} fresh={b.id === fresh} />)}
+                {d.breaches.map((b) => <Row key={b.id} b={b} />)}
               </Table>
               <p className="text-xs text-text-muted">{d.truncated ? COPY.truncated : `${d.breaches.length} ${d.breaches.length === 1 ? "breach" : "breaches"}`}</p>
             </>}

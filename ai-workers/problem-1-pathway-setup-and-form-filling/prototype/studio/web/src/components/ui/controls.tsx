@@ -89,7 +89,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         <DialogPrimitive.Content onOpenAutoFocus={(e) => { const el = initialFocus?.(); if (el && !el.disabled) { e.preventDefault(); el.focus(); } else openOnFirstField(e); }} onCloseAutoFocus={(e) => { const el = returnFocus?.(); if (el) { e.preventDefault(); el.focus(); } }} className={cn("fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface-raised shadow-xl outline-none", wide ? "max-w-4xl" : "max-w-lg")}>
           <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
             <div>
-              <DialogPrimitive.Title className="text-base font-semibold">{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="text-base font-semibold [overflow-wrap:anywhere]">{title}</DialogPrimitive.Title>
               {description ? <DialogPrimitive.Description className="mt-1 text-xs text-text-muted">{description}</DialogPrimitive.Description> : <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>}
             </div>
             <DialogPrimitive.Close className="rounded-md p-1 text-text-muted hover:bg-text/5" aria-label="Close"><X className="size-4" /></DialogPrimitive.Close>
