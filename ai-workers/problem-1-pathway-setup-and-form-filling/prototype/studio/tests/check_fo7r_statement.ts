@@ -84,7 +84,7 @@ try {
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
   const person = (firm: string, n: string) => moneyVisible(sql, firm, "person", sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7r.${n}@example.org', 'seed:FO-7r', now()) returning id`));
-  const PA = person(A, "a"), PA2 = person(A, "a2"), PB = person(B, "b"), PBULK = person(A, "bulk");
+  const PA = person(A, "a"), PA2 = person(A, "a2"), PB = person(B, "b"), PBULK = person(A, "bulk"), PDC = person(A, "dense-credit");
   for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7r', now())`);
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
   const tA = await signIn("user-R", "sample-firm"), tB = await signIn("user-S", "sample-solo");
@@ -302,9 +302,12 @@ try {
     insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'WITHDRAWAL_TO_INVOICE', -20, 'CAD', row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}';
     insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, corrects_entry_id, correction_kind, reason, created_by) select '${A}', '${PBULK}', 'CORRECTION', 20, 'CAD', 20000 + row_number() over (), 0, e.id, 'OTHER', 'Bulk (Sample)', 'seed:FO-7r-bulk' from money_trust_entry e where e.person_id = '${PBULK}' and e.kind = 'WITHDRAWAL_TO_INVOICE' and e.seq <= 1000;
     insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'APPLIED', -5, 'CAD', row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.person_id = '${PBULK}' and i.number like 'BULK-%00';
-    -- review R3-1: thousands of the client's own credit applications, each reversed in part (a reversal looked up per entry)
-    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PBULK}', 'APPLIED', -5, 'CAD', 50000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk-r3' from money_invoice i where i.person_id = '${PBULK}' and substring(i.number from 6)::int % 3 = 1;
-    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, reverses_entry_id, reason, created_by) select '${A}', '${PBULK}', 'REVERSED', 2, 'CAD', 90000 + row_number() over (), 0, e.id, 'Bulk (Sample)', 'seed:FO-7r-bulk-r3' from money_credit_entry e where e.created_by = 'seed:FO-7r-bulk-r3';
+    -- review R3-1: another client dense in credit: 3,333 invoices, each with credit applied and that credit reversed in part
+    -- (a reversal is looked up by its entry: the array condition made this 2.5 s)
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PDC}', 'DC-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 3333) g;
+    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.number like 'DC-%';
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PDC}', 'APPLIED', -5, 'CAD', 50000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk-r3' from money_invoice i where i.number like 'DC-%';
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, reverses_entry_id, reason, created_by) select '${A}', '${PDC}', 'REVERSED', 2, 'CAD', 90000 + row_number() over (), 0, e.id, 'Bulk (Sample)', 'seed:FO-7r-bulk-r3' from money_credit_entry e where e.created_by = 'seed:FO-7r-bulk-r3';
     -- other clients' facts in the same firm (review M1: an OR join cost grew with the firm's credit entries): 3,000 invoices
     -- of another client, each with credit applied and a trust withdrawal (performance rows: written with triggers off)
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PA2}', 'OTHER-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-bulk', 'seed:FO-7r-bulk', now() from generate_series(1, 3000) g;
@@ -330,12 +333,16 @@ try {
   const [viaRoute, msRoute] = await timed(() => call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`));
   const [sumRoute, msSumRoute] = await timed(() => call(tA, "GET", `/front-office/money/parties/person/${PBULK}/summary`));
   const inv0 = bs.accounts.find((x) => x.account === "INVOICES")!, b0 = bsum.totals[0]!, nR3 = Number(sql(`select count(*) from money_credit_entry where created_by = 'seed:FO-7r-bulk-r3' and kind = 'APPLIED'`));
-  const applied = 500 + nR3 * 3;   // 100 × 5.00 cents, then each R3 application of 5 less its reversal of 2
-  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 3,433 credit applications (3,333 of them reversed in part), in a firm holding 53,000 other invoices with their payments, credit and trust rows (medians of 3): page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
+  const applied = 500;   // 100 applications of 5 cents
+  const [dc, msDc] = await timed(() => call(tA, "GET", `/front-office/money/parties/person/${PDC}/statement`)), [dcSum, msDcSum] = await timed(() => call(tA, "GET", `/front-office/money/parties/person/${PDC}/summary`));
+  const dcInv = dc.body?.accounts?.find((x: any) => x.account === "INVOICES");   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok(`FO-7r S8 pass (review R3-1): a client with ${nR3} invoices, each with credit applied and reversed in part: statement ${msDc} ms, summary ${msDcSum} ms through the route (medians of 3), within 300 ms, closing as owed`,
+    nR3 === 3333 && msDc < 300 && msDcSum < 300 && dcInv?.closingMinor === 3333 * (1000 - 3) && dcSum.body?.totals?.[0]?.creditAppliedMinor === 3333 * 3 && dcSum.body?.totals?.[0]?.owedMinor === dcInv?.closingMinor, { msDc, msDcSum, dcInv, t: dcSum.body?.totals });
+  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 100 credit applications, in a firm holding 53,000 other invoices with their payments, credit and trust rows (medians of 3): page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
     msS < 300 && msSum < 300 && msRoute < 300 && msSumRoute < 300 && viaRoute.status === 200 && sumRoute.status === 200 && bs.items.length === 50 && !!bs.next
-    && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && nR3 > 3000 && b0.creditAppliedMinor === applied && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - applied && inv0.closingMinor === b0.owedMinor,
+    && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && b0.creditAppliedMinor === applied && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - applied && inv0.closingMinor === b0.owedMinor,
     { msS, msSum, msRoute, msSumRoute, closing: bs.accounts, totals: bsum.totals });
-  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && inv0.lines === 10_000 + 1_000 + 10_000 + 10_000 + 1_000 + 100 + 2 * nR3, { pageSize: bs.pageSize, n: bs.items.length, lines: inv0.lines });
+  ok("FO-7r S8 fail (AG-6-30's failure case): a request without a page size gets the default, 50, never every line", bs.pageSize === 50 && bs.items.length === 50 && inv0.lines === 10_000 + 1_000 + 10_000 + 10_000 + 1_000 + 100, { pageSize: bs.pageSize, n: bs.items.length, lines: inv0.lines });
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
 } finally {
