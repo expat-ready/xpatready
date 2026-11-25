@@ -16,8 +16,9 @@ const PAGES: Record<string, string> = {
   "/still": `<h1>Still page</h1>${TEXT}`,
   // A 500 px block lands above the text after first paint: the text moves down by most of the viewport.
   "/shift": `<div id=top></div><h1>Shift page</h1>${TEXT}<script>setTimeout(()=>{document.getElementById("top").style.height="500px"},300)</script>`,
-  // The largest text paints only after 3 s; "Loading" until then, so settle waits for it.
-  "/slow": `<div id=w>Loading</div><script>setTimeout(()=>{document.getElementById("w").innerHTML=${JSON.stringify(`<h1 style='font-size:64px'>Slow page</h1>${TEXT}`)}},3000)</script>`,
+  // The largest text paints only after 3 s (a fixed script moves a <template> in; no code is built from strings);
+  // "Loading" until then, so settle waits for it.
+  "/slow": `<div id=w>Loading</div><template id=t><h1 style='font-size:64px'>Slow page</h1>${TEXT}</template><script>setTimeout(()=>{document.getElementById("w").replaceChildren(document.getElementById("t").content.cloneNode(true))},3000)</script>`,
 };
 const server = createServer((req, res) => {
   const body = PAGES[(req.url ?? "/").split("?")[0]];
