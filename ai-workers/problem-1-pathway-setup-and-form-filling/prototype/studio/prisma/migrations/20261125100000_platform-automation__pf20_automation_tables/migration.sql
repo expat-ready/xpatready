@@ -9,7 +9,8 @@
 --   * auto_run: at most one RUNNING run per firm, recipe and person (two triggers never make two runs: FO-12a's test);
 --     an ENDED run names its reason and time, a RUNNING one neither.
 --   * auto_step_run: an outbox row only on a sent step; a reason on every skip, failure or cancel.
---   * Keys are (firm_id, id) pairs, so nothing of firm A names anything of firm B.
+--   * Keys are (firm_id, id) pairs, so no row of firm A names another of firm B's rows. auto_step_run.outbox_id is not a
+--     key (an erased message's row may go): the engine writes it only from its own firm's send, under PF-12's wall.
 --   * PF-12's wall on all four: a forced policy naming the session's firm and the firm-first gate.
 -- Keys: agent/template:configure (switch a recipe on or off), agent/prospect:sequence (Add to follow-up) are already
 -- catalogue rows (PF-3's seed): none is added here.

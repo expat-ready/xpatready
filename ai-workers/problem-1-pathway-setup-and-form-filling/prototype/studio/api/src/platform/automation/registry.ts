@@ -1,11 +1,8 @@
-// PF-20 part 1 (R1.36; map row 36; AG-2-31 rules 1-2, AG-11's recipe model; P-584 (2)): the automation registry. Each
-// module registers its own recipes at start-up (the front office its four lead recipes, FO-12b; the case side its own);
-// the platform keeps no recipe of its own. A firm's copy of a recipe (auto_recipe and its steps) is made from the
-// registered one the first time the firm's recipes are read, and keeps only the firm's on/off and each step's wording,
-// timing and mode (AG-2-31 rule 2). A recipe key registered twice stops the start-up naming it; a firm's recipe whose
-// module no longer registers it is never run (its steps are skipped "recipe not registered").
-// R1.36's slice: a step is one message (the Mailer or Messenger doer, through PF-19b's MessagePort and its consent gate).
-// Tasks, reminders and assignment as step actions (FO-10 parts, AG-2-56's "Call now" task) are later parts.
+// PF-20 part 1 (R1.36; AG-2-31 rules 1-2; P-584 (2)): the automation registry. Each module registers its own recipes at
+// start-up (the front office its four lead recipes, FO-12b); a firm's copy (auto_recipe and its steps) is made from it on
+// first read and keeps only the firm's on/off and each step's wording, timing and mode. A key registered twice stops the
+// start-up; a firm's recipe no module registers is never run. A step is one message in R1.36's slice (tasks, reminders
+// and assignment as step actions are later parts).
 import { z } from "zod";
 
 /** Sample (AG-2-31 rule 2): steps per recipe in Release 1 (the library's longest has three; no builder adds more). */
@@ -16,14 +13,15 @@ export const MAX_DELAY_MINUTES = 365 * 24 * 60;
 export const RecipeKey = z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/, "a dotted lower-case key with its module first (fo.going_cold)").max(100);
 export const StepClass = z.enum(["SERVICE", "MARKETING"]);
 export const StepMode = z.enum(["AUTO", "ASK", "OFF"]);
-const OneLine = z.string().trim().min(1).max(200).regex(/^[^\r\n]*$/, "a subject on one line");
+/** One line with no control or line-separator character (the outbox refuses them; break m2). */
+const OneLine = z.string().trim().min(1).max(200).regex(/^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]*$/, "a subject on one line");
 export const RecipeStepDef = z.strictObject({
   /** Minutes after the run starts (AG-2-31 rule 2: the firm can change it). */
   delayMinutes: z.number().int().min(0).max(MAX_DELAY_MINUTES),
   /** The consent gate's purpose (AG-2-33 rule 3): MARKETING needs the person's consent on the channel. */
   class: StepClass,
   subject: OneLine,
-  body: z.string().trim().min(1).max(20_000),
+  body: z.string().trim().min(1).max(20_000).refine((t) => !t.includes("\u0000"), "no NUL character"),
   mode: StepMode.default("AUTO"),
 });
 export const RecipeDef = z.strictObject({

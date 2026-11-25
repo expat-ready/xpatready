@@ -1,20 +1,11 @@
 // PF-20 part 1 (R1.36 "A recipe sends at its time only to people with the purpose's consent; … switching a recipe off
-// stops queued sends"; map row 36; AG-2-31 rules 1-8 and §11, AG-2-33, FO-12a's Done when, rev 11): the automation
-// engine's tables and Conductor. Each line passes and fails:
-//   DW0 the migration applied after every earlier one; prisma migrate diff empty; one running run per recipe and person
-//       and an ended run's reason are held by the database;
-//   DW1 a recipe sends at its time: nothing before; at its time the consented person's MARKETING step is SENT and the
-//       person without consent is SKIPPED with the gate's reason ("NO_CONSENT: MARKETING"), and their run goes on;
-//   DW2 a recipe switched off starts no run; two enrolments of one person make one run;
-//   DW3 a step switched off never sends and the next step still runs;
-//   DW4 switching the recipe off ends its runs and cancels every queued step and its job; a cancelled job that runs
-//       anyway sends nothing; one audit line names the counts;
-//   DW5 a person who withdraws consent after enrolment: the next step is skipped and the run ends "unsubscribed";
-//   DW6 a recipe whose module no longer registers it is never run; a key registered twice stops the start-up naming it;
-//   DW7 a step job run twice sends once; firm B never reads or switches firm A's runs.
-// One scratch database with every migration and the Sample firms; real MessagePort (PF-19b) and ConsentStore (PF-19a)
-// with the local email adapter; fakeJobs on a fake clock. No server, no browser, no model call, nothing leaves the
-// machine (US$0). The database and folder are removed at the end.
+// stops queued sends"; AG-2-31 rules 1-8 and §11, AG-2-33, FO-12a's Done when, rev 11). Each line passes and fails:
+// DW0 migration, migrate diff, walls and the database's rules · DW1 at its time: sent with consent, skipped without (the
+// run goes on) · DW2 off starts no run; one run per person · DW3 a step switched off · DW4 off ends runs, cancels queued
+// steps and jobs, one audit line · DW5 a withdrawal ends the run · DW6 registration · DW7 once; firms apart · DW8 off
+// racing an enrolment (break M1) · DW9 a message held in the outbox is withdrawn by the off (break M2) · the input
+// checks (break m1-m3). Scratch database with every migration and the Sample firms; real MessagePort and ConsentStore with
+// the local email adapter; fakeJobs on a fake clock. No server, browser or model call; US$0. Removed at the end.
 //   tsx studio/tests/check_pf20_engine.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -23,7 +14,7 @@ import { readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { LocalFiles } from "../api/src/front-office/files.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
-import { Automation, EXIT, STEP_QUEUE, STEP_REASON, stepJobKey } from "../api/src/platform/automation/engine.ts";
+import { Automation, EnrolRefused, EXIT, STEP_QUEUE, STEP_REASON, stepJobKey } from "../api/src/platform/automation/engine.ts";
 import { AutomationRegistry } from "../api/src/platform/automation/registry.ts";
 import { localEmail } from "../api/src/platform/messages/channels/email/local.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
@@ -33,6 +24,7 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { fakeAlerts } from "../ports/alert.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
+import type { AuditPort } from "../ports/audit.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -170,11 +162,64 @@ try {
   const pT = await consented(), aT = box("twice");
   const rT = await tx((t) => auto.enrol(t, { firmId: firmA, recipeKey: "test.follow_up", subject: pT, channel: "EMAIL", address: aT, by: "staff:pf20" }));
   const firstStep = rT.started ? rT.stepRunIds[0] : "";
+  const early = await auto.runStep(firmA, firstStep);
+  ok("PF-20 fail (break m1): a step called before its time sends nothing and stays QUEUED", early === "QUEUED" && (await outboxTo(aT)).length === 0, early);
+  await clock.advance({ minutes: 61 });
   const twiceRun = [await auto.runStep(firmA, firstStep), await auto.runStep(firmA, firstStep)];
   ok("PF-20 DW7 pass: a step job run twice sends once (SUCCESS both times, one outbox row)", twiceRun.every((s) => s === "SUCCESS") && (await outboxTo(aT)).length === 1, twiceRun);
   ok("PF-20 DW7 fail: firm B reads none of firm A's runs for the person, and its own off touches none of them",
     (await auto.runsFor(firmB, pT)).length === 0 && (await auto.setOn(firmB, "test.follow_up", false, "staff:pf20"))?.endedRuns === 0 && (await auto.runsFor(firmA, pT))[0]?.state === "RUNNING");
   ok("PF-20 pass: \"Enrolled in\" lists the person's run with each step's state", (await auto.runsFor(firmA, pT))[0]?.steps.map((s) => s.state).join() === "SUCCESS,QUEUED,QUEUED");
+
+  // ------------------------------------------------------------------------------------------- DW8 off races an enrolment (break M1)
+  // The off's transaction is held open 1.5 s (its audit line waits); an enrolment starts 0.4 s in. Before the fix the
+  // enrolment read "on" without a lock and its run outlived the off.
+  const slowAudit: AuditPort<Parameters<Parameters<typeof db.$transaction>[0]>[0]> = { record: async (t, e) => { if ("action" in e && e.action === "automation.recipe.off") await new Promise((r) => setTimeout(r, 1500)); return auditEvent.record(t, e); } };
+  const slow = new Automation({ db, messages, jobs, audit: slowAudit, registry, clock });
+  const pR = await consented(), aR = box("race");
+  const offing = slow.setOn(firmA, "test.follow_up", false, "staff:pf20");
+  await new Promise((r) => setTimeout(r, 400));
+  const raced = await enrolNow(firmA, "test.follow_up", pR, aR);
+  await offing;
+  ok("PF-20 DW8 fail (break M1): an enrolment racing a switch-off waits for it and starts no run; the recipe has none running",
+    !raced.started && raced.reason === "recipe off" && (await auto.recipes(firmA)).find((r) => r.key === "test.follow_up")?.running === 0, { raced, recipes: await auto.recipes(firmA) });
+  const offRecipe = sql(`select id from auto_recipe where firm_id = '${firmA}' and key = 'test.follow_up'`);
+  const left = sql(`insert into auto_run (id, firm_id, recipe_id, subject_kind, subject_id, channel, address, enrolled_by) values (gen_random_uuid(), '${firmA}', '${offRecipe}', 'FO_PERSON', '${uuid()}', 'EMAIL', '${box("left")}', 'seed:pf20') returning id`).split("\n")[0];
+  const again2 = await auto.setOn(firmA, "test.follow_up", false, "staff:pf20");
+  ok("PF-20 DW8 pass: switching off a recipe already off still ends a run left running on it",
+    again2?.endedRuns === 1 && (await db.autoRun.findUniqueOrThrow({ where: { id: left } })).exitReason === EXIT.RECIPE_OFF, again2);
+
+  // ------------------------------------------------------------------------------------------- DW9 a held message (break M2)
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(clock.now());
+  sql(`insert into msg_send_counter (firm_id, day, sent, updated_at) values ('${firmA}', '${today}', 100000, now()) on conflict (firm_id, day) do update set sent = 100000`);
+  const pH = await consented(), aH = box("held");
+  const rH = await enrolNow(firmA, "test.two_steps", pH, aH);
+  await clock.advance({ minutes: 1 });
+  const heldStep = (await steps(rH.started ? rH.runId : ""))[0], heldRow = (await outboxTo(aH))[0];
+  ok("PF-20 DW9 setup: the step was handed to the outbox and its message waits there (QUEUED \"daily limit\")", heldStep.state === "SUCCESS" && heldRow?.state === "QUEUED" && heldRow.stateReason === "daily limit", { heldStep, heldRow });
+  const offH = await auto.setOn(firmA, "test.two_steps", false, "staff:pf20");
+  sql(`update msg_send_counter set sent = 0 where firm_id = '${firmA}' and day = '${today}'`);
+  await clock.advance({ days: 2 });
+  const heldAfter = await db.msgOutbox.findUniqueOrThrow({ where: { id: heldRow.id } });
+  ok("PF-20 DW9 fail (break M2): switching off withdraws the waiting message (SUPPRESSED \"CANCELLED: recipe switched off\"); once the limit clears, the sweep never sends it",
+    heldAfter.state === "SUPPRESSED" && heldAfter.stateReason === "CANCELLED: recipe switched off" && !heldAfter.sentAt && (await outboxTo(aH)).every((o) => o.state !== "SENT"), heldAfter);
+  ok("PF-20 DW9 pass: the off counts the withdrawn message with the cancelled step (2 queued messages)", offH?.cancelledSteps === 2
+    && /switched off: 1 running, 2 queued messages cancelled/.test(sql(`select summary from audit_event where action = 'automation.recipe.off' and entity_key = (select id::text from auto_recipe where firm_id = '${firmA}' and key = 'test.two_steps')`)), offH);
+
+  // ------------------------------------------------------------------------------------------- the engine's input (break m2, m3)
+  await auto.setOn(firmA, "test.two_steps", true, "staff:pf20");
+  const refusedEnrol = async (i: Partial<Parameters<typeof auto.enrol>[1]>) => tx(async (t) => {
+    let why = ""; try { await auto.enrol(t, { firmId: firmA, recipeKey: "test.two_steps", subject: { kind: "FO_PERSON", id: uuid() }, channel: "EMAIL", address: box("in"), by: "staff:pf20", ...i } as Parameters<typeof auto.enrol>[1]); } catch (e) { why = e instanceof EnrolRefused ? e.message : `other: ${String(e)}`; }
+    await t.$queryRaw`select 1`;   // the caller's transaction is still usable
+    return why;
+  });
+  const whys = [await refusedEnrol({ subject: { kind: "STAFF", id: uuid() } }), await refusedEnrol({ subject: { kind: "FO_PERSON", id: "nope" } }), await refusedEnrol({ address: "not an address" }), await refusedEnrol({ channel: "WHATSAPP" })];
+  ok("PF-20 fail (break m3): a staff subject, a non-uuid id, a bad address or an email on WhatsApp is refused before any SQL, and the caller's transaction goes on", whys.every((w) => w.startsWith("enrol:")), whys);
+  ok("PF-20 pass: an address is kept in its one form (upper case and spaces normalised)", (await enrolNow(firmA, "test.two_steps", { kind: "FO_PERSON", id: uuid() }, "  PF20.Upper@Example.COM ")).started && (await db.autoRun.count({ where: { address: "pf20.upper@example.com" } })) === 1);
+  ok("PF-20 fail (break m3): a step id that is not a uuid answers null", (await auto.runStep(firmA, "nope")) === null);
+  let tab = ""; try { new AutomationRegistry().register({ module: "test", key: "test.tab", label: "Tab", description: "Tab.", defaultOn: false, steps: [{ delayMinutes: 0, class: "SERVICE", subject: "a\tb", body: "x" }] }); } catch (e) { tab = String(e); }
+  let nul = ""; try { new AutomationRegistry().register({ module: "test", key: "test.nul", label: "Nul", description: "Nul.", defaultOn: false, steps: [{ delayMinutes: 0, class: "SERVICE", subject: "ok", body: "a\u0000b" }] }); } catch (e) { nul = String(e); }
+  ok("PF-20 fail (break m2): the registry refuses a subject with a tab or line separator and a body with NUL", /one line/.test(tab) && /NUL/.test(nul), { tab, nul });
 } finally {
   await db.$disconnect().catch(() => undefined);
   spawnSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB], { stdio: "ignore" });

@@ -1,21 +1,17 @@
-// PF-20 part 1 (R1.36; map row 36; AG-2-31 rules 4-8, AG-2-33; FO-12a's Done when, rev 11, moved by P-584 (2)): the
-// automation engine. A module enrols a person in a registered recipe inside its own transaction (enrol); after its commit
-// it calls schedule, which queues one JobPort job per step at its time (the run's start plus the step's wait). When a
-// step's time comes its job (the Conductor) locks the step run and checks, in order: the run still running, the firm's
-// recipe still on, the recipe still registered, the step's mode (Off: skipped; Ask me first: waits for approval); then it
-// sends the step's message through PF-19b's MessagePort, whose consent gate judges the person at that moment (AG-2-33 rule
-// 1): a person without the purpose's consent is SKIPPED with the gate's reason, and the run goes on to its next step. A
-// withdrawal or an unsubscribe ends the run (AG-2-31 rule 8). Switching a recipe off (setOn) ends its running runs and
-// cancels every queued step, in one transaction, then cancels their jobs: a cancelled job that runs anyway finds its
-// step CANCELLED and sends nothing. A step job runs twice → sends once (the row lock, the QUEUED state and the outbox's
-// idempotency key auto.step:<step run id>). Every write is firm-scoped; switching on or off is audited (AuditPort, in the
-// same transaction). Not here yet (later parts, PF-20 part 2): approving an "Ask me first" step, a sweep for a step whose
-// job a crash lost between commit and schedule, rate caps and quiet hours beyond the gate's own daily cap.
+// PF-20 part 1 (R1.36; map row 36; AG-2-31 rules 4-8, AG-2-33; FO-12a's Done when, rev 11; P-584 (2)): the automation
+// engine. A module enrols a person inside its own transaction (enrol), then schedule queues one JobPort job per step at
+// its time. The step's job (the Conductor) locks the step run and checks the run, the firm's recipe on, the recipe
+// registered and the step's mode, then sends through PF-19b's MessagePort, whose consent gate judges the person then
+// (AG-2-33 rule 1): without the purpose's consent the step is SKIPPED with the gate's reason and the run goes on; a
+// withdrawal ends the run "unsubscribed" (AG-2-31 rule 8). Switching a recipe off ends its runs, cancels every queued step
+// and withdraws its messages still waiting in the outbox, in one transaction, then cancels their jobs. A step job run
+// twice sends once (row lock, QUEUED state, outbox key auto.step:<id>). Later (PF-20 part 2): approving "Ask me first",
+// a sweep for a job lost between commit and schedule, quiet hours and rate caps beyond the gate's daily cap.
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
 import type { AuditPort } from "../../../../ports/audit.ts";
-import type { Channel, Subject } from "../../../../ports/consent.ts";
+import { normaliseAddress, type Channel, type Subject } from "../../../../ports/consent.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import { MessageRefused, type MessagePort } from "../../../../ports/messages.ts";
 import { firmScope, withFirm } from "../firm-scope.ts";
@@ -32,9 +28,19 @@ export const STEP_REASON = { RECIPE_OFF: "recipe switched off", RUN_ENDED: "run 
 const STOPPED = /^(WITHDRAWN|ADDRESS_UNSUBSCRIBED|SUPPRESSED: (UNSUBSCRIBE|STOP|COMPLAINT))\b/;
 
 export type EnrolInput = { firmId: string; recipeKey: string; subject: Subject; channel: Channel; address: string; context?: { kind: string; id: string }; by: string };
-export type EnrolResult = { started: true; runId: string; stepRunIds: string[] } | { started: false; reason: "recipe off" | "already running" | "not registered"; runId?: string };
+export type EnrolResult = { started: true; runId: string; stepRunIds: string[] } | { started: false; reason: "recipe off" | "already running" | "not registered" | "no steps"; runId?: string };
+const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+/** Checked before any SQL runs, so a refused enrolment never spoils the caller's transaction (break m3): a person or a
+ *  case party (never staff), uuids, a lead or prospect context, and an address the channel can use. */
+const EnrolShape = z.object({ firmId: Uuid, recipeKey: z.string().max(100), subject: z.strictObject({ kind: z.enum(["FO_PERSON", "CASE_PARTY"]), id: Uuid }), channel: z.enum(["EMAIL", "WHATSAPP"]),
+  address: z.string().min(3).max(320), context: z.strictObject({ kind: z.string().regex(/^[a-z][a-z_]{0,39}$/), id: Uuid }).optional(), by: z.string().min(1).max(200) });
+/** Refused: an enrolment whose person, address or context the engine cannot use (nothing was written). */
+export class EnrolRefused extends Error { constructor(message: string) { super(message); this.name = "EnrolRefused"; } }
 
-export type AutomationDeps = { db: PrismaClient; messages: MessagePort<Tx>; jobs: JobPort; audit: AuditPort<Tx>; registry: AutomationRegistry; clock?: ClockPort };
+/** The messages module's own withdrawal of rows it still holds QUEUED (PF-19b: Messages.withdrawQueued), so a step whose
+ *  message waits (the daily limit, or between commit and send) is never sent after its recipe is switched off (break M2). */
+export type QueuedWithdrawal = { withdrawQueued(tx: Tx, firmId: string, outboxIds: string[], reason: string): Promise<number> };
+export type AutomationDeps = { db: PrismaClient; messages: MessagePort<Tx> & QueuedWithdrawal; jobs: JobPort; audit: AuditPort<Tx>; registry: AutomationRegistry; clock?: ClockPort };
 
 export class Automation {
   readonly #clock: ClockPort;
@@ -84,28 +90,38 @@ export class Automation {
       await this.ensure(tx, firmId, [def]);
       const [r] = await tx.$queryRaw<{ id: string; on: boolean }[]>`SELECT id, "on" FROM auto_recipe WHERE firm_id = ${firmId}::uuid AND key = ${key} FOR UPDATE`;
       const now = this.#clock.now();
-      let ended: string[] = [], cancelled: string[] = [];
-      if (r.on !== on) {
-        await tx.autoRecipe.update({ where: { id: r.id }, data: { on, updatedAt: now, updatedBy: by } });
-        if (!on) ({ ended, cancelled } = await this.#endRuns(tx, firmId, { recipeId: r.id }, EXIT.RECIPE_OFF, STEP_REASON.RECIPE_OFF));
+      let ended: string[] = [], cancelled: string[] = [], withdrawn = 0;
+      // Off always ends what still runs, even when already off (break M1); enrol holds this row FOR SHARE meanwhile.
+      if (!on) ({ ended, cancelled, withdrawn } = await this.#endRuns(tx, firmId, { recipeId: r.id }, EXIT.RECIPE_OFF, STEP_REASON.RECIPE_OFF));
+      if (r.on !== on || ended.length) {
+        if (r.on !== on) await tx.autoRecipe.update({ where: { id: r.id }, data: { on, updatedAt: now, updatedBy: by } });
+        const queued = cancelled.length + withdrawn;
         await this.d.audit.record(tx, { firmId, actor: by, action: on ? "automation.recipe.on" : "automation.recipe.off", entity: "plat_auto_recipe", entityKey: r.id,
-          summary: on ? `Automatic messages "${def.label}" switched on.` : `Automatic messages "${def.label}" switched off: ${ended.length} running, ${cancelled.length} queued messages cancelled.`,
-          detail: { key, endedRuns: ended.length, cancelledSteps: cancelled.length }, before: { on: r.on }, after: { on } });
+          summary: on ? `Automatic messages "${def.label}" switched on.` : `Automatic messages "${def.label}" switched off: ${ended.length} running, ${queued} queued messages cancelled.`,
+          detail: { key, endedRuns: ended.length, cancelledSteps: cancelled.length, withdrawnMessages: withdrawn }, before: { on: r.on }, after: { on } });
       }
-      return { ended, cancelled };
+      return { ended, cancelled, withdrawn };
     }));
     for (const id of out.cancelled) await this.d.jobs.cancel(stepJobKey(id));
-    return { key, on, endedRuns: out.ended.length, cancelledSteps: out.cancelled.length };
+    return { key, on, endedRuns: out.ended.length, cancelledSteps: out.cancelled.length + out.withdrawn };
   }
 
   /** Enrols one person in one recipe inside the caller's transaction (AG-2-31 rules 4, 9). Nothing starts while the
    *  firm's recipe is off, and a person already running in it is not enrolled twice. Call schedule after the commit. */
-  async enrol(tx: Tx, e: EnrolInput): Promise<EnrolResult> {
+  async enrol(tx: Tx, input: EnrolInput): Promise<EnrolResult> {
+    const shape = EnrolShape.safeParse(input);
+    if (!shape.success) throw new EnrolRefused(`enrol: ${shape.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}`);
+    let address: string;
+    try { address = normaliseAddress(input.channel, input.address); } catch { throw new EnrolRefused(`enrol: not an address ${input.channel === "EMAIL" ? "email" : "WhatsApp"} can use`); }
+    const e = { ...input, address };
     const def = this.d.registry.get(e.recipeKey);
     if (!def) return { started: false, reason: "not registered" };
     await this.ensure(tx, e.firmId, [def]);
-    const r = await tx.autoRecipe.findFirstOrThrow({ where: firmScope(e.firmId, { key: e.recipeKey }), include: { steps: { orderBy: { position: "asc" } } } });
-    if (!r.on) return { started: false, reason: "recipe off" };
+    // FOR SHARE: a switch-off (FOR UPDATE in setOn) waits for this enrolment, or this one waits and reads off (break M1).
+    const [lock] = await tx.$queryRaw<{ id: string; on: boolean }[]>`SELECT id, "on" FROM auto_recipe WHERE firm_id = ${e.firmId}::uuid AND key = ${e.recipeKey} FOR SHARE`;
+    const r = await tx.autoRecipe.findUniqueOrThrow({ where: { id: lock.id }, include: { steps: { orderBy: { position: "asc" } } } });
+    if (!lock.on) return { started: false, reason: "recipe off" };
+    if (!r.steps.length) return { started: false, reason: "no steps" };
     const now = this.#clock.now();
     const made = await tx.$queryRaw<{ id: string }[]>`INSERT INTO auto_run (id, firm_id, recipe_id, subject_kind, subject_id, channel, address, context_kind, context_id, enrolled_by, started_at)
       VALUES (gen_random_uuid(), ${e.firmId}::uuid, ${r.id}::uuid, ${e.subject.kind}, ${e.subject.id}::uuid, ${e.channel}, ${e.address}, ${e.context?.kind ?? null}, ${e.context?.id ?? null}::uuid, ${e.by}, ${now})
@@ -144,24 +160,29 @@ export class Automation {
       steps: r.steps.map((s) => ({ position: s.position, dueAt: s.dueAt.toISOString(), state: s.state, reason: s.reason, outboxId: s.outboxId, doneAt: s.doneAt?.toISOString() ?? null })) }));
   }
 
-  async #endRuns(tx: Tx, firmId: string, where: Prisma.AutoRunWhereInput, exit: string, stepReason: string): Promise<{ ended: string[]; cancelled: string[] }> {
+  async #endRuns(tx: Tx, firmId: string, where: Prisma.AutoRunWhereInput, exit: string, stepReason: string): Promise<{ ended: string[]; cancelled: string[]; withdrawn: number }> {
     const now = this.#clock.now();
     const runs = (await tx.autoRun.findMany({ where: firmScope(firmId, { ...where, state: "RUNNING" as const }), select: { id: true } })).map((r) => r.id);
-    if (!runs.length) return { ended: [], cancelled: [] };
+    if (!runs.length) return { ended: [], cancelled: [], withdrawn: 0 };
+    // A step handed to the outbox whose message still waits there (the daily limit, not yet sent) is withdrawn (break M2).
+    const handed = (await tx.autoStepRun.findMany({ where: firmScope(firmId, { runId: { in: runs }, state: "SUCCESS" as const, outboxId: { not: null } }), select: { outboxId: true } })).map((s) => s.outboxId as string);
+    const withdrawn = handed.length ? await this.d.messages.withdrawQueued(tx, firmId, handed, `CANCELLED: ${stepReason}`) : 0;
     const cancelled = (await tx.autoStepRun.findMany({ where: firmScope(firmId, { runId: { in: runs }, state: "QUEUED" as const }), select: { id: true } })).map((s) => s.id);
     await tx.autoStepRun.updateMany({ where: firmScope(firmId, { id: { in: cancelled }, state: "QUEUED" as const }), data: { state: "CANCELLED", reason: stepReason, doneAt: now } });
     await tx.autoRun.updateMany({ where: firmScope(firmId, { id: { in: runs }, state: "RUNNING" as const }), data: { state: "ENDED", exitReason: exit, endedAt: now } });
-    return { ended: runs, cancelled };
+    return { ended: runs, cancelled, withdrawn };
   }
 
   /** The Conductor: one step at its time (see the file's head). Returns the step run's state afterwards. */
   async runStep(firmId: string, stepRunId: string): Promise<string | null> {
+    if (!Uuid.safeParse(firmId).success || !Uuid.safeParse(stepRunId).success) return null;
     const out = await withFirm(firmId, () => this.d.db.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM auto_step_run WHERE firm_id = ${firmId}::uuid AND id = ${stepRunId}::uuid FOR UPDATE`;
       if (!locked.length) return null;
       const sr = await tx.autoStepRun.findUniqueOrThrow({ where: { id: stepRunId }, include: { run: { include: { recipe: { include: { steps: { orderBy: { position: "asc" } } } } } } } });
       if (sr.state !== "QUEUED") return { state: sr.state, outboxId: null, cancel: [] as string[] };
       const run = sr.run, recipe = run.recipe, step = recipe.steps.find((s) => s.position === sr.position), now = this.#clock.now();
+      if (now.getTime() < sr.dueAt.getTime()) return { state: sr.state, outboxId: null, cancel: [] as string[] };   // not yet its time (break m1)
       const finish = async (state: "SUCCESS" | "SKIPPED" | "AWAITING_APPROVAL" | "FAILED" | "CANCELLED", reason: string | null, outboxId: string | null = null) => {
         await tx.autoStepRun.update({ where: { id: sr.id }, data: { state, reason, outboxId, doneAt: now } });
         let cancel: string[] = [];
@@ -176,9 +197,11 @@ export class Automation {
       if (!this.d.registry.has(recipe.key) || !step) return finish("SKIPPED", STEP_REASON.NOT_REGISTERED);
       if (step.mode === "OFF") return finish("SKIPPED", STEP_REASON.STEP_OFF);
       if (step.mode === "ASK") return finish("AWAITING_APPROVAL", STEP_REASON.ASK);
+      // The stricter class wins: a step the module now registers as MARKETING is marketing on older copies (break m6).
+      const cls = step.class === "MARKETING" || this.d.registry.get(recipe.key)?.steps[step.position - 1]?.class === "MARKETING" ? "MARKETING" : "SERVICE";
       try {
         const sent = await this.d.messages.send(tx, {
-          firmId, person: { kind: run.subjectKind as Subject["kind"], id: run.subjectId }, channel: run.channel as Channel, class: step.class as "SERVICE" | "MARKETING",
+          firmId, person: { kind: run.subjectKind as Subject["kind"], id: run.subjectId }, channel: run.channel as Channel, class: cls,
           address: run.address, content: { subject: step.subject, text: step.body }, idempotencyKey: stepJobKey(sr.id),
         });
         return sent.state === "SUPPRESSED" ? finish("SKIPPED", sent.reason ?? "suppressed") : finish("SUCCESS", null, sent.outboxId);
