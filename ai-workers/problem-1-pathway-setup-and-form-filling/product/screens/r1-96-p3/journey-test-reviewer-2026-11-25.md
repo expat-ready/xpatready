@@ -67,3 +67,16 @@ The product passes. The journey's weaknesses as a proof (it misses rules that ar
 ## Not tested
 The GitHub recorded walk (`walks.yml` with `record.ts`): it runs on the header's :4496, which I did not use. A real screen reader
 and an intended user's unaided walk (no screen; D17/D20 stay with the founder). Card refunds (no Stripe in scope).
+
+## Round 2 (e7dc96ef2, diff only)
+* Journey 3's cumulative step is now in j_96 itself: 200.01 after 100.00 gets 409 OVER_CREDIT "Only CAD 200.00 is left", `leftMinor`
+  20000. **Held.**
+* New journey 7, the Owner on a client whose trust ledger has gone wrong (a planted L1 row): the check names it, and a write-off and a
+  plan each get 409 "The ledger would not balance after this … Nothing was saved." with nothing written. **Held.**
+* 26/26 on a fresh copy on :4438. The four rule removals that stayed green in round 1 all turn it red now (review Round 2 table).
+* A second run on the same copy now fails 6 balanced checks (20/26), because W7's planted row stays in firm A. The header always starts
+  a fresh copy, so this is review Minor 8, not a product fault.
+* Product behaviour is unchanged (no product code in the diff), so the score is the same: Plain words is still ½ for the no-reason
+  422 text.
+
+**7.5 of 8 applicable = 9.4, recorded as 9.0 / 10. Pass.**

@@ -85,3 +85,40 @@ instead. A real user's walk (D17/D20 stay with the founder).
 **Verdict: Block.** Fix 1, 2 and 3. Fix minors 4-7 or list them in the PR.
 
 Reviewer: Block ee4579cee7cb7f927649bf81ce9675be93c46b30
+
+## Round 2 (diff only: `git diff ee4579cee..e7dc96ef2`)
+Head `e7dc96ef2fc2391f978d8f06d626e6f339d8d000`. One commit. It changes `j_96.ts` (+28 −5) and the qa/built line, and commits this
+round-1 review and journey report as written. No product code changed. I ran it on a worktree of the exact head, port 4438, name j96r,
+and stopped the copy and dropped its database afterwards.
+* Fresh copy, as the header says: **26/26, exit 0**, 22 s including the copy's start.
+* The four mutations you named all turn j_96 red now, each on a fresh database:
+
+  | Mutation | Result |
+  |---|---|
+  | `ledgerCheck` always balanced | 24/26; both W7 steps FAIL |
+  | write-off rollback removed (`write-off.ts:59`) | 25/26; W7 FAIL (the write-off was written) |
+  | plan rollback removed (`plan.ts:113`) | 25/26; W7 FAIL (the plan was written) |
+  | credit notes capped at the total (API `money.ts:159-160` and the 4 DB triggers) | 19/26; the new W3 fail is first, then L3 on every later balanced check |
+  | Also: refund cap removed at the API only | 24/26; both W2 steps FAIL on the code (the DB's 409 MONEY_RULE no longer passes) |
+
+* **M1 closed.** W7 (`j_96.ts:164-177`) plants WO10's L1 row on a new client's invoice. `ledgerCheck` names L1. A write-off and a
+  plan on that invoice each get 409 UNBALANCED naming L1, and write-off, plan and write-off audit counts stay `0:0:0`. W7 runs after
+  the last firm-wide balanced check, so the earlier checks are unaffected.
+* **M2 closed.** W3 sends 200.01 after the 100.00 note and gets 409 OVER_CREDIT, `leftMinor` 20000, still 100.00 credited.
+* **M3 closed.** The line now names #3792 and the app's real words ("Only CAD 250.00 of this payment is left to refund"). It says that
+  only a write-off and a plan run the check in their own transaction, with W7 as proof, and that refunds, credit notes, reversals and
+  payments rely on the database's checks. That matches `write-off.ts:58-59` and `plan.ts:112-113`.
+* **Minor 4 closed:** W2 asserts OVER_REFUND, the words and `leftMinor`.
+* Minors 5, 6 and 7 are unchanged and stay listed.
+* New Minor 8 (Should): j_96 no longer runs twice on one copy. W7's planted row stays in firm A, so a second run on the same copy fails
+  all six firm-wide balanced checks (20/26). The header and `walk.mjs` always start a fresh copy, so neither the merge walk nor
+  item-proof is affected. Fix: delete the planted entry under the replica role at the end of W7, or give every balanced check an
+  `invoiceId`.
+* New Minor 9 (Should): the qa/built line still says "Journey: `tests/journeys/j_96.ts` (W1-W6)" while citing W7 in the same line.
+  Make it W1-W7.
+
+No Blocker or Major is open. Fix Minors 5-9 or list them in the PR.
+
+**Verdict: Ship (Approve).**
+
+Reviewer: Approve e7dc96ef2fc2391f978d8f06d626e6f339d8d000
