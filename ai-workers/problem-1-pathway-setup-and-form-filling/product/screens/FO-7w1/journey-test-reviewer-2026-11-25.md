@@ -72,3 +72,36 @@ Tax matches a typed line in an ON firm (13 %), a BC firm (5 %) and an unregister
 **Not tested:**
 * a real screen reader and an intended user's unaided walk (D17 and D20 stay with the founder);
 * a visible-browser walk, because there is no screen.
+
+## Re-run on c5e9aede5 (diff only, reviewer role)
+**What I ran:**
+* j_56 on an isolated scratch copy at :4436: 17/18. W1 passes; W9's pay link is FO-7c/FO-7s2.
+* The check: 31/31, 5 runs.
+* 14 probes in a scratch copy of the check (see review.md, "Re-review c5e9aede5").
+
+**Journeys that changed:**
+* **3, Empty.** Every row is already billed, or there is only a deposit plus an open-amount row, or there are no rows. Each now gives 409 `NOTHING_TO_BILL`, with no draft and no audit line. Naming the deposit then bills it. **Held.**
+* **8, Recovery (twice, and at once).** A double start gives 409 `NOTHING_TO_BILL`. In 5 racing rounds, one draft holds the line and no unnamed start collides. **Held.**
+* **4, Error.**
+  * Fees whose total with tax is over 21,474,836.47 give 422 at `feeRowIds`, with nothing written. At exactly 21,474,836.47 the draft is accepted and it issues.
+  * A label with a C1 control character is refused, and the refusal names its row (review r2).
+* **1, Main path, with the firm's default at USD and no currency sent.** The draft is in CAD. **Held.**
+
+**Break it:** Persian (ZWNJ) and emoji (ZWJ) labels are no longer copied exactly (review r1). Amounts, tax and billed-once are all unaffected.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | j_56 W1 201 `FEE:150000`; W7 issues |
+| Next step obvious | 1 (was ½) | No empty draft. Each refusal says what to do (name the rows; fix the label on the retainer or leave its row out) |
+| Plain words | 1 | Refusals end "Nothing was saved."; the NOTHING_TO_BILL wording can be sharper (r4) |
+| Feedback and state | 1 | 409 for state (`RETAINER_NOT_SIGNED`, `ROW_ON_INVOICE`, `NOTHING_TO_BILL`), 422 at the field |
+| Correct data | ½ (was 1) | Amounts, tax, total limit and billed-once are exact. Labels holding ZWNJ, ZWJ, LRM or a soft hyphen are changed (r1) |
+| Error recovery | 1 | Every refusal writes no draft and no audit line; the next valid request succeeds |
+| Accessibility and screen sizes | ½ | No screen |
+| Speed | ½ | Not measured against §9; one query and one insert per row (review m5) |
+| Visual quality | ½ | No screen |
+| Trust and sources | 1 | `sourceFeeRowId` on each line; Sample data only; no AI |
+
+**8 / 10, no 0: pass.** Fix r1 first (Correct data back to 1), then r4.
+
+**Not tested:** a screen reader, a visible-browser walk, an intended user's walk (D17 and D20 stay with the founder).

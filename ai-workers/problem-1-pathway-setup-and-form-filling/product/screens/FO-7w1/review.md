@@ -83,3 +83,71 @@
 Verdict: Approve
 
 Reviewer: Approve ac93518c49fa49e5e622b61e04f6c81a21d75a3c
+
+## Re-review c5e9aede5 (diff only)
+**Scope:** `git diff ac93518c4 c5e9aede5` only: `drafts.ts` (+25/-10), the check (+47/-5) and the two reports. Same reviewer role; I did not build it. **Verdict: Approve** (no Blocker or Major; 5 Minors below, r1 and r2 best fixed in this PR, one regex each). **Journey 8/10, pass** (appended to `journey-test-reviewer-2026-11-25.md`).
+
+**What I ran:**
+* The check in the checkout: **31/31**. In a scratch copy: 31/31 four more times (no flake in the 5-round race).
+* `typecheck.mjs` at 12 GB: api 15 known errors, 0 new, 0 fixed; web 0. `graph.mjs --check`: exit 0.
+* j_56 on an isolated scratch copy at **:4436** (never :4400): 17/18. W1 passes; W9's pay link is FO-7c/FO-7s2, as before. Copy stopped, database dropped, repo tree clean.
+* 9 mutants of `drafts.ts` (scratch) and 14 probes added to a scratch copy of the check.
+
+**Each fix:**
+* **Break m1 (409 NOTHING_TO_BILL), correct.** It runs after the lock and before the create, so the rollback leaves no draft and no audit line (probe). It reuses the issue route's code and shape (`money.ts:33,62`: 409 "Not possible now"). It fits the row's "skipped" rule: a part-billed retainer still skips. Probe: row 1 named → 201; unnamed → 201 with row 2 only; again → 409. Naming still wins (ROW_ON_INVOICE first). The race case now allows only "201 with the line" or "409 NOTHING_TO_BILL" from an unnamed start, which is right under the lock. The PR body names the change openly.
+* **Break m3 (total), correct; same tax as stored.** `planned` computes `taxMinor` once with `this.tax(amount, ratePpm)`, and that same value is written. Issue checks the stored lines' total against MINOR_MAX (`money.ts:63`). Boundary at ON 13 %: one row of 1,900,428,006 totals exactly 2,147,483,647 → 201, and it issues (200). 1,900,428,007 → 422 at `feeRowIds`, nothing written. With the tax left out of the sum, the mutant is caught.
+* **Break m4 (CAD), correct.** An explicit USD on a retainer is still 422 at `currency`, and a plain draft keeps the firm's USD default. The hard-coded "CAD" mirrors `fo_retainer_fee_row_currency_check`, so it must change if that check ever widens (noted only).
+* **Break m2 (labels), safe but too wide:** r1, r2.
+* **Review m1 (rate), m2 (lock), m8 (row id), and the types:** correct. The m1 and m2 cases catch their mutants (the lock 4 of 4 runs).
+* **Review m3 (per-row limit):** the case passes, but see r3(c).
+
+**Mutants** (red = the check catches it):
+
+| Mutant | Result |
+|---|---|
+| No NOTHING_TO_BILL | 3 red |
+| No mark strip | 1 red |
+| No total check | 1 red |
+| Total without tax | 1 red |
+| Firm-default currency | 1 red |
+| No advisory lock | 1 red, 4/4 runs |
+| Rate fixed at 130000 | 1 red |
+| No per-row MINOR_MAX | **31/31**, survives |
+| P2002 409 without `feeRowIds` | **31/31**, survives |
+
+**Minor (Should):**
+* **r1. The stripped set is wider than what `money_text_ok` refuses** (`drafts.ts:240`).
+  * `money_text_ok` refuses only `[[:cntrl:]\u0085  ‪-‮⁦-⁩]` (migration `20261115042334_fo7a_client_money_tables`, line 527). The new class also strips characters it accepts: U+00AD, U+061C, U+180E, U+200B–U+200F, U+2060–U+2065 and U+FEFF.
+  * Probes, each `money_text_ok = t` and each copied exactly at ac93518c4 (break report, "Text"):
+    * Persian "حق‌الزحمه (Sample)" becomes "حقالزحمه (Sample)": the ZWNJ is lost and the letters now join.
+    * "Family 👨‍👩‍👧 fee" becomes three separate emoji.
+    * The LRM, soft hyphen and ZWSP are dropped.
+  * It is safe: only invisible format characters go, it never adds a refused one, and amounts are untouched. But the signed label is no longer copied as written, and the comment "(which money_text_ok refuses)" is not accurate.
+  * **Fix:** strip only `[‪-‮⁦-⁩]`.
+* **r2. C1 controls still block the whole unnamed bill** (`drafts.ts:240`).
+  * U+0080–U+009F (for example NEL U+0085, CSI U+009B) pass `fo_retainer_text_ok`, which refuses only C0, DEL and U+2028/9. `money_text_ok` refuses them as `[[:cntrl:]]`.
+  * Probe: 422, "Fee row 2 ("FeeSample") …". The refusal now names the row, but the raw control character is quoted inside the detail.
+  * **Fix:** add `\u0080-\u009f` to the first, to-space class.
+* **r3. Test gaps.** The PR says every fix has a failing case; three don't:
+  * (a) The "names its row" refusal has no case. A label of only "‮" or one C1 label reaches it.
+  * (b) m8 has no case (its mutant survives).
+  * (c) Review m3's case no longer proves the per-row check. Any row above MINOR_MAX also fails the new total check, with the same 422 at `feeRowIds`. Behaviour stays safe. **Fix:** assert the per-row words, or drop the check as redundant.
+* **r4. The NOTHING_TO_BILL words** (`drafts.ts:86`).
+  * "every fee with an amount is already on an invoice" is said even when nothing was ever billed: only open-amount rows, no rows, or only a deposit (probes).
+  * **Fix:** for example, "Nothing left to bill from this retainer without naming rows: its fees with an amount are already on an invoice, or it has none. A deposit ("On signing") is billed only when named. Nothing was saved."
+* **r5. The module row and the doc comment are stale.** `MODULE.rows/FO-7w1.md` and the `retainerRows` comment list the codes without 409 `NOTHING_TO_BILL` and without the total's 422. **Fix:** add both.
+
+**Nits:**
+* Check line 121: "so no draft can never be issued".
+* The review-m1 case leaves firm B's address in BC. Later firm-B cases check status only.
+
+**Dimension changes:**
+* D5 Stability: 4 → 5 (no empty drafts).
+* D16 Testability: 3 → 4 (7 of 9 mutants are caught; r3 covers the rest).
+* All other dimensions are as before.
+
+**Could not check:** a screen (there is none). The breaker's m5 is left to the tech lead, as stated.
+
+Verdict: Approve
+
+Reviewer: Approve c5e9aede52d6648a2b116f89e584575f576cb501
