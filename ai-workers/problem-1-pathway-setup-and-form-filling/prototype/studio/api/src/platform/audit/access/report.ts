@@ -48,9 +48,9 @@ export const AUDIT_LOG_LIST = "system/audit-log:list", AUDIT_EXPORT = "system/au
 export const PAGE = 50, EXPORT_MAX = 50_000;
 /** Exports made at once, and waiting for a place; past that, 503 with nothing written (AUD-4's numbers; Sample). */
 export const EXPORTS_AT_ONCE = 2, EXPORTS_WAITING = 8;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REPORT_QUERY = query("from", "to", "cursor"), EXPORT_QUERY = query("from", "to");
-const AT_TEXT = Prisma.sql`to_char(e.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+export const AT_TEXT = Prisma.sql`to_char(e.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 type Row = { id: string; at: string; firm_id: string | null; actor: string; actor_type: string; action: string; entity: string; entity_key: string | null;
   correlation_id: string | null; support_session_id: string | null; summary: string; detail: unknown };
@@ -65,8 +65,8 @@ const cells = (l: AccessLine): unknown[] => [l.at, l.trail, l.who, l.actor, l.ac
 
 const notFound = (): never => problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
 const badCursor = (): never => problem(FIELD_ERROR_STATUS, "Check the filter", "The page cursor is not one this report gave: start again from the first page.", { code: "BAD_CURSOR", fields: { cursor: "Not a cursor this report gave." } });
-const encode = (r: Row) => Buffer.from(JSON.stringify([r.at, r.id])).toString("base64url");
-function decode(c: string | undefined): { at: string; id: string } | undefined {
+export const encode = (r: { at: string; id: string }) => Buffer.from(JSON.stringify([r.at, r.id])).toString("base64url");
+export function decode(c: string | undefined): { at: string; id: string } | undefined {
   if (c === undefined || c === "") return undefined;
   try {
     const v = JSON.parse(Buffer.from(c, "base64url").toString("utf8")) as unknown;

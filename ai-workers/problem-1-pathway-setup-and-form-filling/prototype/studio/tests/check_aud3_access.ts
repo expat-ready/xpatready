@@ -6,7 +6,9 @@
 // trail (no firm) naming the staff member and the scope, and no line on any firm's trail. DW3 the guard-level check: a
 // change route that writes no line answers 500 AUDIT_LINE_MISSING; one that writes its line answers 201 (PF-21b's place);
 // a route our staff call with no declaration stops the start-up, naming it. DW4 fail-closed: a line that cannot be
-// written answers 500 and the data is never sent; the writers refuse outside our staff's request.
+// written answers 500 and the data is never sent; the writers refuse outside our staff's request. DW5 (part 2) our
+// per-firm access report and its CSV. DW7 (part 3) our audit search: dates required, its filters, keyset pages, and its
+// own cross_tenant.access line naming the firm it was narrowed to.
 // One process, a scratch database (dropped at the end), no model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_aud3_access.ts
 import "reflect-metadata";
@@ -215,7 +217,7 @@ try {
   const reflector = new Reflector();
   ok("AUD-3 DW3 fail (start-up): a route our staff call with no firm-data declaration stops the start-up, naming it",
     await throwsLike(() => assertFirmDataDeclared([UndeclaredController], reflector), (e) => /UndeclaredController\.thing \(\/api\/system\/aud3-undeclared\)/.test(String(e))));
-  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-17's firms and support queue, R1.90's sign-up links, AUD-3 part 2's access report, PF-21d's switches and erasure)",
+  ok("AUD-3 DW3 pass (start-up): every route on main our staff call declares one (PF-4s's, PF-21b's holds and requests, PF-21c's breaches, PF-17's firms and support queue, R1.90's sign-up links, AUD-3 part 2's access report and part 3's search, PF-21d's switches and erasure)",
     await throwsLike(() => assertFirmDataDeclared([...sysFeature.controllers, ...holdsFeature.controllers, ...breachesFeature.controllers, ...requestsFeature.controllers, ...consoleFeature.controllers, ...signupLinksFeature.controllers, ...supportFeature.controllers, ...(accessFeature.controllers ?? []), ...erasureFeature.controllers, Aud3TestController], reflector), () => true) === false);
   ok("AUD-3 DW3 fail (start-up, round 2, breaker 4): a handler inherited from a base class with no declaration stops the start-up too",
     await throwsLike(() => assertFirmDataDeclared([InheritedController], reflector), (e) => /InheritedController\.thing \(\/api\/system\/aud3-inherited\)/.test(String(e))));
@@ -343,6 +345,61 @@ try {
   sql(`drop trigger aud3_refuse_export on audit_event; drop function aud3_refuse_export()`);
   ok("AUD-3 DW5 fail (fail-closed): an export whose audit.exported line cannot be written answers 500 and sends no line of the report",
     blockedCsv.status === 500 && wantA.every((id) => !blockedText.includes(id)), { status: blockedCsv.status, text: blockedText.slice(0, 200) });
+
+  // ---------------------------------------------------------------------------- DW7: our audit search (part 3)
+  const SEARCH = "/api/system/audit", SEARCH_SCOPE = "our audit search";
+  const searchLine = (rid: string | null) => sql(`select coalesce(firm_id::text, 'none') || '|' || actor || '|' || (detail->>'scope') || '|' || coalesce(detail->>'firm', 'none') from audit_event where action = '${CROSS_TENANT}' and correlation_id = '${rid}'`);
+  const fA0 = lines("firm_id is not null"), x0 = lines(`action = '${CROSS_TENANT}'`);
+  const sA = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}`, { token: ownerT });
+  const wantSA = idsWhere(`firm_id = '${firmA}' and at >= '${day(-1)}' and at < '${day(2)}'`).length;
+  const allSA: any[] = [];
+  for (let r = sA, n = 0; r.status === 200 && n < 20; n++) { allSA.push(...r.body.lines); if (!r.body.next) break; r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}&cursor=${r.body.next}`, { token: ownerT }); }
+  ok("AUD-3 DW7 pass (SA-11-8): our search narrowed to firm A answers 200 with every line on firm A's trail in the range (any actor type), newest first, each with its firm, trail, who and plain action words",
+    sA.status === 200 && sA.body.firm === firmA && allSA.length === wantSA && allSA.every((l) => l.firmId === firmA && l.trail === "firm") && allSA.some((l) => l.who === "Firm staff" && l.actorType === "FIRM_STAFF")
+    && allSA.some((l) => l.action === FIRM_READ && l.actionWords === "ExpatReady staff read the firm's records") && new Set(allSA.map((l) => l.id)).size === allSA.length, { status: sA.status, got: allSA.length, wantSA });
+  ok("AUD-3 DW7 fail (narrowed): the search narrowed to firm A holds none of firm B's lines and no platform-trail line", allSA.every((l) => l.firmId !== firmB) && !allSA.some((l) => l.firmId === null));
+  ok("AUD-3 DW7 pass (SA-11-12, BR-14: the query that produced the evidence logs itself): each search page wrote one cross_tenant.access line on the platform's own trail, naming the staff member, the scope and firm A, and nothing on any firm's trail",
+    searchLine(sA.requestId) === `none|ourstaff:${OWNER}|${SEARCH_SCOPE}|${firmA}` && lines("firm_id is not null") === fA0, { line: searchLine(sA.requestId), firmLines: [fA0, lines("firm_id is not null")], x: [x0, lines(`action = '${CROSS_TENANT}'`)] });
+  const sAll = await call(base, "GET", `${SEARCH}?${RANGE}`, { token: auditorT });
+  ok("AUD-3 DW7 pass: an unnarrowed search by the Auditor (read-only) answers 200 with lines of firm A, firm B and the platform's own trail, and its line names no firm (it is in no firm's report)",
+    sAll.status === 200 && sAll.body.lines.length === 50 && typeof sAll.body.next === "string" && searchLine(sAll.requestId) === `none|ourstaff:${AUDITOR}|${SEARCH_SCOPE}|none`, { status: sAll.status, line: searchLine(sAll.requestId) });
+  const sPlat = await call(base, "GET", `${SEARCH}?${RANGE}&firm=platform`, { token: ownerT });
+  ok("AUD-3 DW7 pass: firm=platform reads the platform's own trail only (firm-less lines), and its line names no firm",
+    sPlat.status === 200 && sPlat.body.lines.length > 0 && sPlat.body.lines.every((l: any) => l.firmId === null && l.trail === "platform") && searchLine(sPlat.requestId) === `none|ourstaff:${OWNER}|${SEARCH_SCOPE}|none`, { status: sPlat.status, line: searchLine(sPlat.requestId) });
+  const sOurs = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}&ours=1`, { token: ownerT });
+  const sSess = await call(base, "GET", `${SEARCH}?${RANGE}&ours=1&action=platform.aud3_test.in_session`, { token: ownerT });
+  ok("AUD-3 DW7 pass (the \"ExpatReady staff access\" button): ours=1 holds only our staff's lines and lines under a support session, the support one said as \"ExpatReady support\"",
+    sOurs.status === 200 && sOurs.body.lines.length > 0 && sOurs.body.lines.every((l: any) => l.actorType === "OUR_STAFF" || l.supportSessionId)
+    && sSess.status === 200 && sSess.body.lines.length === 1 && sSess.body.lines[0].id === sessionLine && sSess.body.lines[0].who === "ExpatReady support", { ours: sOurs.body?.lines?.length, sess: sSess.body?.lines });
+  ok("AUD-3 DW7 fail (the button): ours=1 leaves out the firm staff member's own line", sOurs.status === 200 && !sOurs.body.lines.some((l: any) => l.id === firmStaffLine));
+  const sCorr = await call(base, "GET", `${SEARCH}?${RANGE}&correlationId=${read.requestId}`, { token: ownerT });
+  const sType = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmA}&actorType=FIRM_STAFF&action=platform.aud3_test.firm_staff&entity=platform_firm&entityKey=${firmA}`, { token: ownerT });
+  ok("AUD-3 DW7 pass (filters): a correlation id finds exactly that request's lines (DW1's read: its one firm-read line); actor type, action, entity and entity key narrow to the one firm staff line",
+    sCorr.status === 200 && sCorr.body.lines.length === lines(`correlation_id = '${read.requestId}'`) && sCorr.body.lines.some((l: any) => l.action === FIRM_READ && l.firmId === firmA) && sCorr.body.lines.every((l: any) => l.correlationId === read.requestId)
+    && sType.status === 200 && sType.body.lines.length === 1 && sType.body.lines[0].id === firmStaffLine, { corr: sCorr.body?.lines?.length, type: sType.body?.lines });
+  const x1 = lines(`action = '${CROSS_TENANT}'`), all1 = lines("true");
+  const sNoDates = await call(base, "GET", `${SEARCH}?firm=${firmA}`, { token: ownerT });
+  const sLong = await call(base, "GET", `${SEARCH}?from=2024-01-01&to=2026-01-02`, { token: ownerT });
+  const sBadFirm = await call(base, "GET", `${SEARCH}?${RANGE}&firm=not-a-firm`, { token: ownerT });
+  const sBadType = await call(base, "GET", `${SEARCH}?${RANGE}&actorType=ROBOT`, { token: ownerT });
+  const sUnknown = await call(base, "GET", `${SEARCH}?${RANGE}&person=${OWNER}`, { token: ownerT });
+  const sBadCursor = await call(base, "GET", `${SEARCH}?${RANGE}&cursor=nope`, { token: ownerT });
+  ok("AUD-3 DW7 fail (date range required): no dates → 422 DATES_REQUIRED; over a year → 422 RANGE_TOO_LONG; a malformed firm, an unknown actor type, a filter this search does not take, a cursor it did not give → 422; none writes any line",
+    sNoDates.status === 422 && sNoDates.body.code === "DATES_REQUIRED" && sLong.status === 422 && sLong.body.code === "RANGE_TOO_LONG" && sBadFirm.status === 422 && sBadFirm.body.fields?.firm
+    && sBadType.status === 422 && sUnknown.status === 422 && sBadCursor.status === 422 && lines("true") === all1, { sNoDates: sNoDates.body, sLong: sLong.status, sBadFirm: sBadFirm.body, sBadType: sBadType.status, sUnknown: sUnknown.status, sBadCursor: sBadCursor.status });
+  const sNoKey = await call(base, "GET", `${SEARCH}?${RANGE}`, { token: supportT }), sNoToken = await call(base, "GET", `${SEARCH}?${RANGE}`);
+  ok("AUD-3 DW7 fail (system/audit-log:list): our Support gets 403 and no token 401; neither writes a cross_tenant.access line",
+    sNoKey.status === 403 && sNoToken.status === 401 && lines(`action = '${CROSS_TENANT}'`) === x1, { sNoKey: sNoKey.status, sNoToken: sNoToken.status });
+  // AG-13-31: equal times page with no skip or repeat (120 lines on firm B at one moment).
+  const tie = new Date(Date.now() - 3_600_000).toISOString();
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, firm_id, at) select gen_random_uuid(), (select id from workspace where key = 'platform-audit'),
+    'staff:${uuid()}', 'platform.aud3_test.tie', 'platform_firm', '${firmB}', 'Sample tie line.', '${firmB}', '${tie}' from generate_series(1, 120)`);
+  const tied: string[] = [];
+  for (let r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmB}&action=platform.aud3_test.tie`, { token: ownerT }), n = 0; r.status === 200 && n < 5; n++) {
+    tied.push(...r.body.lines.map((l: any) => l.id)); if (!r.body.next) break;
+    r = await call(base, "GET", `${SEARCH}?${RANGE}&firm=${firmB}&action=platform.aud3_test.tie&cursor=${r.body.next}`, { token: ownerT });
+  }
+  ok("AUD-3 DW7 pass (AG-13-31, keyset): 120 lines at one moment page as 50, 50, 20 with no line twice or missed", tied.length === 120 && new Set(tied).size === 120, tied.length);
 
   // --------------------------------------------------------------------------------------- DW4: fail-closed
   // Round 6 (Lead 16): the outside refusal raises one alert with the line's ids, as before the line moved onto the port.
