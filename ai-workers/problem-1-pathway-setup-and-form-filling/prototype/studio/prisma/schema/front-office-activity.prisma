@@ -5,7 +5,7 @@
 // signing door, pay links, booking self-service, later the client portal), written through ports/portal-activity.ts in
 // the door's own transaction. person_id names the firm's fo_person and case_id a case: plain uuids (no relation to another
 // area's file); the person is checked by a trigger in the migration (same firm), as are the insert-only rule, the source's
-// shape and PF-12's wall. Part B: fo_client_update, one row per "Tell the client" message; "last update" is its newest DELIVERED row.
+// shape and PF-12's wall. Part B: fo_client_update, one row per "Tell the client" message; "last update" is its newest sent row.
 
 /// What the client did.
 enum FoPortalActivityKind {
@@ -48,11 +48,15 @@ model FoClientUpdate {
   /// `staff:<id>`.
   sentBy    String   @map("sent_by")
   outboxId  String?  @map("outbox_id") @db.Uuid
-  /// DELIVERED (MessagePort queued or sent it) or NOT_SENT (with the reason).
+  /// ACCEPTED (MessagePort queued it; counted once its outbox row is SENT or DELIVERED) or NOT_SENT (with the reason).
   state     String
   reason    String?
+  /// The Idempotency-Key and the SHA-256 of the request (PF-21i): one update per key in a firm.
+  requestKey  String @map("request_key")
+  requestHash String @map("request_hash")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  @@unique([firmId, requestKey])
   @@index([firmId, personId, createdAt(sort: Desc)])
   @@map("fo_client_update")
 }

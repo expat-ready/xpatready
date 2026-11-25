@@ -1,7 +1,9 @@
 // FO-14 part A: the staff read of a client's engagement (R1.62's strip, data side): when the client was last seen at one
 // of our doors and their newest 20 events. A person the firm does not have, or an id that is not one, is the one 404.
-// Part B: "Tell the client" (one email through MessagePort, recorded in fo_client_update) and "last update", the newest
-// DELIVERED update's time (never an activity event, a NOT_SENT update or a government letter); streamFor feeds the portal.
+// Part B: "Tell the client" (one email through MessagePort per Idempotency-Key, recorded in fo_client_update) and "last
+// update", the newest update the outbox has SENT or DELIVERED (never an activity event, a NOT_SENT, queued, held, failed
+// or suppressed update, or a government letter); streamFor feeds the portal. Reads take the persons merged into the asked
+// one (one level: a merge points a tombstone at its survivor, never at another tombstone).
 import { Inject } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -10,15 +12,20 @@ import { PORTAL_ACTIVITY_PORT, type PortalActivityItem, type PortalActivityPort 
 import { Db } from "../../core.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { firmScope, notInFirm, withFirm } from "../../platform/firm-scope.ts";
-import { parseInput, strict, text } from "../../platform/http/input.ts";
+import { parseInput, strict } from "../../platform/http/input.ts";
+import { lockRequestKey, readIdempotencyKey, requestHash } from "../../platform/idempotency.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const ENGAGEMENT_EVENTS = 20;
 /** Bound useExisting MESSAGE_PORT (features/front-office-activity.ts). */
 export const CLIENT_UPDATE_MESSAGES = Symbol.for("front-office.ClientUpdateMessages");
-const UpdateBody = strict({ text: text(2000).pipe(z.string().min(1)), caseId: z.string().regex(UUID).optional() });
-const DELIVERED: ReadonlySet<SendResult["state"]> = new Set(["QUEUED", "SENT", "DELIVERED"]);
+// Code points, as the database counts; a control or format character (NUL, zero-width, bidi) is refused, \n \r \t kept.
+const Text = z.string().trim().refine((s) => s.replace(/\p{Cf}/gu, "").trim() !== "", "This is required.")
+  .refine((s) => !/[^\P{Cc}\n\r\t]|\p{Cf}/u.test(s), "Remove control and invisible characters (line breaks and tabs are fine).")
+  .refine((s) => [...s].length <= 2000, "This is too long: at most 2000 characters.");
+const UpdateBody = strict({ text: Text, caseId: z.string().regex(UUID).optional() });
+const ACCEPTED: ReadonlySet<SendResult["state"]> = new Set(["QUEUED", "SENT", "DELIVERED"]);
 
 export class Engagement {
   constructor(@Inject(Db) private readonly db: Db, @Inject(PORTAL_ACTIVITY_PORT) private readonly activity: PortalActivityPort,
@@ -33,12 +40,17 @@ export class Engagement {
   }
 
   /** POST people/:id/updates { text, caseId? }: one email to the person, recorded DELIVERED or NOT_SENT with the reason. */
-  async tell(ctx: StaffContext, personId: string, input: unknown) {
+  async tell(ctx: StaffContext, personId: string, input: unknown, rawKey: unknown) {
     if (typeof personId !== "string" || !UUID.test(personId)) return notInFirm("person");
-    const b = parseInput(UpdateBody, input), firm = ctx.firmId, by = `staff:${ctx.staffId}`, id = randomUUID();
-    const caseId = b.caseId?.toLowerCase() ?? null;
+    const b = parseInput(UpdateBody, input), key = readIdempotencyKey(rawKey, "Send an Idempotency-Key header with each new update.");
+    const firm = ctx.firmId, by = `staff:${ctx.staffId}`, id = randomUUID(), caseId = b.caseId?.toLowerCase() ?? null;
+    const hash = requestHash({ personId: personId.toLowerCase(), by, input });
     const done = await withFirm(firm, () => this.db.$transaction(async (tx) => {
-      const p = await tx.foPerson.findFirst({ where: firmScope(firm, { id: personId.toLowerCase() }), select: { id: true, email: true } });
+      await lockRequestKey(tx, "fo-client-update", firm, key);
+      const was = await tx.foClientUpdate.findFirst({ where: firmScope(firm, { requestKey: key }), select: { id: true, state: true, reason: true, requestHash: true } });
+      if (was && was.requestHash !== hash) problem(422, "Request key already used", "This request key was already used for a different update.", { code: "IDEMPOTENCY_KEY_REUSED" });
+      if (was) return { ...was, queued: null, repeated: true };
+      const p = await tx.foPerson.findFirst({ where: firmScope(firm, { id: personId.toLowerCase(), mergedIntoId: null }), select: { id: true, email: true } });
       if (!p) return notInFirm("person");
       if (caseId) {
         const [c] = await tx.$queryRaw<{ id: string }[]>`SELECT c.id::text AS id FROM runtime_case c JOIN case_client k ON k.id = c.client_id AND k.firm_id = c.firm_id
@@ -49,31 +61,33 @@ export class Engagement {
       if (p.email) {
         const [f] = await tx.$queryRaw<{ name: string }[]>`SELECT operating_name AS name FROM platform_firm WHERE id = ${firm}::uuid`;
         sent = await this.messages.send(tx, { firmId: firm, person: { kind: "FO_PERSON", id: p.id }, channel: "EMAIL", class: "TRANSACTIONAL", address: p.email,
-          content: { subject: `An update from ${f?.name ?? "your firm"}`, text: b.text }, idempotencyKey: `client-update:${id}` });
+          content: { subject: `An update from ${Array.from(f?.name ?? "your firm").slice(0, 90).join("")}`, text: b.text }, idempotencyKey: `client-update:${requestHash(key)}` });
       }
-      const state = sent && DELIVERED.has(sent.state) ? "DELIVERED" : "NOT_SENT";
-      const reason = !sent ? "no email address" : state === "DELIVERED" ? null : (sent.reason ?? sent.state);
+      const state = sent && ACCEPTED.has(sent.state) ? "ACCEPTED" : "NOT_SENT";
+      const reason = !sent ? "no email address" : state === "ACCEPTED" ? null : (sent.reason ?? sent.state);
       const outboxId = sent?.outboxId ?? null;
-      await tx.foClientUpdate.create({ data: { id, ...firmScope(firm), personId: p.id, caseId, body: b.text, sentBy: by, outboxId, state, reason }, select: { id: true } });
+      await tx.foClientUpdate.create({ data: { id, ...firmScope(firm), personId: p.id, caseId, body: b.text, sentBy: by, outboxId, state, reason, requestKey: key, requestHash: hash }, select: { id: true } });
       await auditEvent.record(tx, { firmId: firm, actor: by, action: "fo.client_update.recorded", entity: "fo_client_update", entityKey: id, ...(caseId ? { caseId } : {}),
-        summary: state === "DELIVERED" ? "Told the client: an update was sent by email." : `An update to the client was not sent (${reason}).`,
+        summary: state === "ACCEPTED" ? "Told the client: an update was sent by email." : `An update to the client was not sent (${reason}).`,
         detail: { personId: p.id, ...(caseId ? { caseId } : {}), ...(outboxId ? { outboxId } : {}) }, before: null, after: { state, reason, caseId, outboxId, sentBy: by } });
-      return { state, reason, queued: sent?.state === "QUEUED" ? outboxId : null };
+      return { id, state, reason, queued: sent?.state === "QUEUED" ? outboxId : null, repeated: false };
     }));
     // After the commit: the worker sends; a dispatch that fails is left to the outbox sweep.
     if (done.queued) await this.messages.dispatch(firm, [done.queued]).catch(() => undefined);
-    return { id, state: done.state, reason: done.reason, lastUpdate: (await this.delivered(firm, personId.toLowerCase(), 1))[0]?.at ?? null };
+    return { repeated: done.repeated, answer: { id: done.id, state: done.state, reason: done.reason, lastUpdate: (await this.delivered(firm, personId.toLowerCase(), 1))[0]?.at ?? null } };
   }
 
-  /** For the client portal's read (a later part): last update, the newest 20 DELIVERED updates and the newest 20 events. */
+  /** For the client portal's read (a later part): last update, the newest 20 sent updates and the newest 20 events. */
   async streamFor(firmId: string, personId: string) {
     if (typeof personId !== "string" || !UUID.test(personId)) return { lastUpdate: null, updates: [], activity: [] };
     const pid = personId.toLowerCase(), updates = await this.delivered(firmId, pid, ENGAGEMENT_EVENTS);
     return { lastUpdate: updates[0]?.at ?? null, updates, activity: await withFirm(firmId, () => this.activity.recent(firmId, pid, ENGAGEMENT_EVENTS)) };
   }
 
-  private async delivered(firmId: string, personId: string, take: number) {
-    const rows = await withFirm(firmId, () => this.db.foClientUpdate.findMany({ where: firmScope(firmId, { personId, state: "DELIVERED" }), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take, select: { createdAt: true, body: true, caseId: true } }));
-    return rows.map((r) => ({ at: r.createdAt, text: r.body, caseId: r.caseId }));
+  /** Reads PF-19's outbox state: an ACCEPTED update counts once its msg_outbox row is SENT or DELIVERED. */
+  private delivered(firmId: string, personId: string, take: number) {
+    return withFirm(firmId, () => this.db.$queryRaw<{ at: Date; text: string; caseId: string | null }[]>`SELECT u.created_at AS at, u.body AS text, u.case_id::text AS "caseId"
+      FROM fo_client_update u JOIN msg_outbox o ON o.firm_id = u.firm_id AND o.id = u.outbox_id WHERE u.firm_id = ${firmId}::uuid AND u.state = 'ACCEPTED' AND o.state IN ('SENT', 'DELIVERED')
+      AND u.person_id IN (SELECT id FROM fo_person WHERE firm_id = ${firmId}::uuid AND (id = ${personId}::uuid OR merged_into_id = ${personId}::uuid)) ORDER BY u.created_at DESC, u.id DESC LIMIT ${take}`);
   }
 }

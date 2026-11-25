@@ -13,7 +13,8 @@
 //   DW9 a delivered update moves lastUpdate; DW10 a suppressed address is NOT_SENT and does not move it; DW11 no email
 //   address is NOT_SENT and sends nothing; DW12 an activity event does not move it; DW13 another firm's person, another
 //   client's case → 404, nothing written; DW14 no portal:message key 403; text over 2000 or empty 422; DW15 the table
-//   refuses update and delete; the audit line holds no body text; DW16 streamFor: only DELIVERED updates, newest first.
+//   refuses update and delete; the audit line holds no body text; DW16 streamFor: only sent updates, newest first;
+//   DW17 one update per Idempotency-Key; DW18 a merged-away person refused, its history read through the survivor.
 // One process: a scratch database (every migration, PF-3's Sample seed) and a small Nest app built from the feature's own
 // classes with PF-4's guard and routes and PF-12's interceptor. No model call (US$0).
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo14_activity.ts
@@ -39,8 +40,8 @@ const refusedBySql = (q: string, like: RegExp) => { try { sql(q); return false; 
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
-const call = async (base: string, path: string, auth?: string, post?: unknown) => {
-  const r = await fetch(`${base}${path}`, { method: post ? "POST" : "GET", headers: { ...(auth ? { authorization: `Bearer ${auth}` } : {}), ...(post ? { "content-type": "application/json" } : {}) }, body: post ? JSON.stringify(post) : undefined });
+const call = async (base: string, path: string, auth?: string, post?: unknown, key?: string | null) => {
+  const r = await fetch(`${base}${path}`, { method: post ? "POST" : "GET", headers: { ...(auth ? { authorization: `Bearer ${auth}` } : {}), ...(post ? { "content-type": "application/json" } : {}), ...(key ? { "idempotency-key": key } : {}) }, body: post ? JSON.stringify(post) : undefined });
   const text = await r.text();
   let body: any = text; try { body = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body, text };
@@ -165,9 +166,15 @@ try {
 
   ok("FO-14 pass: the feature binds PORTAL_ACTIVITY_PORT and registers the engagement route", feature.controllers.length === 1 && feature.providers.length === 3 && n > 0);
 
-  // DW9-DW16: "Tell the client" (part B)
+  // DW9-DW18: "Tell the client" (part B)
   const outbox = () => Number(sql(`select count(*) from msg_outbox`)), updates = (w = "true") => Number(sql(`select count(*) from fo_client_update where ${w}`));
-  const tell = (p: string, body: unknown, tok = t) => call(base, `/api/front-office/people/${p}/updates`, tok, body);
+  let kn = 0;
+  const tell = (p: string, body: unknown, tok = t, key: string | null = `k-${++kn}`) => call(base, `/api/front-office/people/${p}/updates`, tok, body, key);
+  const work = (id: string) => withFirm(FA, async () => { for (let i = 0; i < 9; i++) { const r = await messages.deliver(FA, sql(`select outbox_id from fo_client_update where id = '${id}'`)).catch(() => ""); if (r) return r; } return ""; });
+  const lastUpd = async (p: string) => (await call(base, `/api/front-office/people/${p}/engagement`, t)).body.lastUpdate;
+  const suppress = (on: boolean, a = "client.c@sample-client.example") => sql(on ? `insert into msg_firm (firm_id) values ('${FA}') on conflict do nothing; insert into msg_suppression (id, firm_id, channel, address, reason, created_by) values (gen_random_uuid(), '${FA}', 'EMAIL', '${a}', 'HARD_BOUNCE', 'seed:fo14')`
+    : `alter table msg_suppression disable trigger user; delete from msg_suppression where firm_id = '${FA}'; alter table msg_suppression enable trigger user`);
+
   const PC = person(FA, randomUUID(), "client.c@sample-client.example"), cs = (p: string) => {
     const k = randomUUID(), c = randomUUID(), w = randomUUID();
     sql(`set session_replication_role = replica; insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values ('${k}', '${w}', 'sample-firm', '${FA}', 1, 'Client Sample', 'PERSON', '${p}', 'seed:fo14');
@@ -176,19 +183,28 @@ try {
   };
   const caseC = cs(PC);
   const first = await tell(PC, { text: "Your file was submitted.", caseId: caseC });
-  ok("FO-14 DW9 pass: a delivered update moves lastUpdate (the answer and the engagement read)", first.status === 201 && first.body.state === "DELIVERED" && first.body.reason === null && first.body.lastUpdate
-    && (await call(base, `/api/front-office/people/${PC}/engagement`, t)).body.lastUpdate === first.body.lastUpdate && outbox() === 1, first.body);
-  ok("FO-14 DW9 fail: before any update lastUpdate is null", (await call(base, `/api/front-office/people/${PA}/engagement`, t)).body.lastUpdate === null);
-  sql(`insert into msg_firm (firm_id) values ('${FA}') on conflict do nothing; insert into msg_suppression (id, firm_id, channel, address, reason, created_by) values (gen_random_uuid(), '${FA}', 'EMAIL', 'client.c@sample-client.example', 'HARD_BOUNCE', 'seed:fo14')`);
+  ok("FO-14 DW9 fail: an update the outbox only accepted (QUEUED) does not count yet", first.status === 201 && first.body.state === "ACCEPTED" && first.body.lastUpdate === null && await lastUpd(PC) === null, first.body);
+  const sent1 = await work(first.body.id), at1 = await lastUpd(PC);
+  ok("FO-14 DW9 pass: once the worker sends it, it moves lastUpdate", sent1 === "sent" && typeof at1 === "string", { sent1, at1 });
+  ok("FO-14 DW9 fail: before any update lastUpdate is null", await lastUpd(PA) === null);
+  suppress(true);
   const supp = await tell(PC, { text: "A second update." });
-  ok("FO-14 DW10 fail: a suppressed address is NOT_SENT with the gate's reason and does not move lastUpdate", supp.status === 201 && supp.body.state === "NOT_SENT" && /^SUPPRESSED/.test(supp.body.reason) && supp.body.lastUpdate === first.body.lastUpdate, supp.body);
+  ok("FO-14 DW10 fail: a suppressed address is NOT_SENT with the gate's reason and does not move lastUpdate", supp.status === 201 && supp.body.state === "NOT_SENT" && /^SUPPRESSED/.test(supp.body.reason) && await lastUpd(PC) === at1, supp.body);
   ok("FO-14 DW10 pass: the NOT_SENT update is still recorded", updates(`person_id = '${PC}' and state = 'NOT_SENT'`) === 1);
-  sql(`alter table msg_suppression disable trigger user; delete from msg_suppression where firm_id = '${FA}'; alter table msg_suppression enable trigger user`);
+  suppress(false);
+  const late = await tell(PC, { text: "Suppressed after the post." });
+  suppress(true); const lateR = await work(late.body.id); suppress(false);
+  const PF = person(FA, randomUUID(), "refused@example.com"), refused = await tell(PF, { text: "To a refused address." }), refR = await work(refused.body.id);
+  sql(`insert into msg_send_counter (firm_id, day, sent, updated_at) select '${FA}', d, 100000, now() from generate_series(current_date - 1, current_date + 1, interval '1 day') d on conflict (firm_id, day) do update set sent = 100000`);
+  const held = await tell(PC, { text: "Held at the cap." }), heldR = await work(held.body.id);
+  sql(`update msg_send_counter set sent = 0 where firm_id = '${FA}'`);
+  ok("FO-14 DW10 fail: suppressed after the post, FAILED by the provider and held at the daily cap: none counts", lateR === "suppressed" && refR === "failed" && heldR === "held" && await lastUpd(PC) === at1 && await lastUpd(PF) === null, { lateR, refR, heldR });
   const before = outbox(), none = await tell(PA, { text: "No address here." });
   ok("FO-14 DW11 fail: a person with no email is NOT_SENT (\"no email address\"), sends nothing, lastUpdate stays null", none.status === 201 && none.body.state === "NOT_SENT" && none.body.reason === "no email address" && none.body.lastUpdate === null && outbox() === before, none.body);
+  await rec(FA, { firmId: FA, personId: PC, kind: "VIEW", source: "government-letter" });
   await rec(FA, { firmId: FA, personId: PC, kind: "SIGN_IN", source: "portal" });
   const eng = (await call(base, `/api/front-office/people/${PC}/engagement`, t)).body;
-  ok("FO-14 DW12 fail: an activity event moves lastSeen, never lastUpdate", eng.lastUpdate === first.body.lastUpdate && eng.lastSeen !== eng.lastUpdate && eng.lastSeen > eng.lastUpdate, eng);
+  ok("FO-14 DW12 fail: an activity event or a government letter moves lastSeen, never lastUpdate", eng.lastUpdate === at1 && eng.lastSeen > eng.lastUpdate, eng);
   const n0 = updates(), o0 = outbox(), cross = await tell(PB, { text: "Hello." }), otherCase = await tell(PC, { text: "Hello.", caseId: cs(person(FA)) });
   ok("FO-14 DW13 fail: another firm's person → 404, another client's case → 404 \"No such case.\"; nothing written or sent", cross.status === 404 && otherCase.status === 404 && /No such case\./.test(otherCase.text) && updates() === n0 && outbox() === o0, [cross.body, otherCase.body]);
   ok("FO-14 DW13 pass: the client's own case is accepted", updates(`case_id = '${caseC}'`) === 1);
@@ -197,14 +213,29 @@ try {
   const roT = (await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-fo14ro", secondStep: true }) }).then((r) => r.json()) as { token: string }).token;
   const denied = await tell(PC, { text: "Hello." }, roT);
   ok("FO-14 DW14 fail: a staff member without agent/portal:message → 403, nothing written", denied.status === 403 && updates() === n0, denied.body);
-  const long = await tell(PC, { text: "x".repeat(2001) }), empty = await tell(PC, { text: "   " });
-  ok("FO-14 DW14 fail: text over 2000 or empty → 422 naming text", long.status === 422 && empty.status === 422 && long.body.fields?.text && empty.body.fields?.text && updates() === n0, [long.body, empty.body]);
-  ok("FO-14 DW14 pass: exactly 2000 characters is accepted", (await tell(PC, { text: "y".repeat(2000) })).body.state === "DELIVERED");
-  ok("FO-14 DW15 fail: fo_client_update refuses update and delete", refusedBySql(`update fo_client_update set state = 'DELIVERED'`, /UPDATE refused/) && refusedBySql(`delete from fo_client_update`, /DELETE refused/));
+  const badT = await Promise.all([{ text: "x".repeat(2001) }, { text: "   " }, { text: "a\u0000b" }, { text: "\u200b\u200b" }, { text: "a\u202eb" }, { text: "🇨🇦".repeat(1001) }].map((b) => tell(PC, b)));
+  ok("FO-14 DW14 fail: over 2000 code points, empty, NUL, zero-width only, a format character → 422 naming text", badT.every((r) => r.status === 422 && r.body.fields?.text) && badT[3].body.fields.text === "This is required." && updates() === n0, badT.map((r) => [r.status, r.body.fields]));
+  const okLong = await tell(PC, { text: "🇨🇦".repeat(1000) }), last = await tell(PC, { text: "y".repeat(1990) + "\n\tend" });
+  ok("FO-14 DW14 pass: 2000 code points (1000 flags) and line breaks and tabs are accepted", okLong.status === 201 && last.body.state === "ACCEPTED" && await work(last.body.id) === "sent", [okLong.body, last.body]);
+  ok("FO-14 DW15 fail: fo_client_update refuses update and delete", refusedBySql(`update fo_client_update set state = 'NOT_SENT'`, /UPDATE refused/) && refusedBySql(`delete from fo_client_update`, /DELETE refused/));
+  const insU = (p: string, extra = "", vals = "") => `insert into fo_client_update (firm_id, person_id, body, sent_by, state, request_key, request_hash${extra}) values ('${FA}', '${p}', 'b', 'staff:x', 'NOT_SENT', '${randomUUID()}', '${"0".repeat(64)}'${vals}) returning created_at > now() - interval '1 hour'`;
+  ok("FO-14 DW15 fail: its own person trigger refuses another firm's person; ACCEPTED needs an outbox row; the time is the database's", refusedBySql(insU(PB), /not one of the firm's people/)
+    && refusedBySql(insU(PC).replace("'NOT_SENT'", "'ACCEPTED'"), /fo_client_update_shape/) && sql(insU(PC, ", created_at", ", '2000-01-01'")) === "t");
   const lines = sql(`select string_agg(a::text, '|') from audit_event a where entity = 'fo_client_update'`);
-  ok("FO-14 DW15 pass: one audit line per update, with no body text and no email", Number(sql(`select count(*) from audit_event where entity = 'fo_client_update'`)) === updates() && !/submitted|second update|No address|yyyy|sample-client/.test(lines), lines);
+  ok("FO-14 DW15 pass: one audit line per update, with no body text and no email", Number(sql(`select count(*) from audit_event where entity = 'fo_client_update'`)) === updates() - 1 && !/submitted|second update|No address|yyyy|sample-client/.test(lines), lines);
+  const k = "fo14-same-key", n1 = updates(), o1 = outbox(), a1 = await tell(PC, { text: "Once." }, t, k), a2 = await tell(PC, { text: "Once." }, t, k), a3 = await tell(PC, { text: "Twice." }, t, k);
+  ok("FO-14 DW17 fail: the same key and body answers the first update (200) and sends once; another body with it → 422; no key → 400", a1.status === 201 && a2.status === 200 && a2.body.id === a1.body.id && a3.status === 422
+    && (await tell(PC, { text: "x" }, t, null)).status === 400 && updates() === n1 + 1 && outbox() === o1 + 1, [a2.body, a3.body]);
+  const many = await Promise.all(Array.from({ length: 5 }, () => tell(PC, { text: "At once." }, t, "fo14-at-once")));
+  ok("FO-14 DW17 pass: 5 posts at once with one key → one row, one outbox row", many.every((r) => r.body.id === many[0].body.id) && updates(`body = 'At once.'`) === 1 && Number(sql(`select count(*) from msg_outbox o join fo_client_update u on u.outbox_id = o.id where u.body = 'At once.'`)) === 1, many.map((r) => r.status));
+  const PS = person(FA, randomUUID(), "survivor@sample-client.example"), PT = person(FA, randomUUID(), "tomb@sample-client.example"), tu = await tell(PT, { text: "Before the merge." });
+  await work(tu.body.id); await rec(FA, { firmId: FA, personId: PT, kind: "UPLOAD", source: "portal" });
+  sql(`set session_replication_role = replica; update fo_person set merged_into_id = '${PS}', merged_at = now() where id = '${PT}'`);
+  const tomb = await tell(PT, { text: "After the merge." }), surv = (await call(base, `/api/front-office/people/${PS}/engagement`, t)).body;
+  ok("FO-14 DW18 fail: a merged-away person: tell → the one 404; both tables refuse it", tomb.status === 404 && refusedBySql(insU(PT), /not one of the firm's people/) && refusedBySql(ins(FA, PT), /not one of the firm's people/), tomb.body);
+  ok("FO-14 DW18 pass: the survivor's engagement shows the tombstone's events and last update (one level)", surv.activity[0]?.kind === "UPLOAD" && typeof surv.lastUpdate === "string", surv);
   const stream = await new Engagement(db, pg, messages).streamFor(FA, PC);
-  ok("FO-14 DW16 pass/fail: streamFor returns only DELIVERED updates, newest first (the NOT_SENT one left out), and the activity", stream.updates.length === 2 && stream.updates[0].text === "y".repeat(2000) && stream.updates[1].caseId === caseC
+  ok("FO-14 DW16 pass/fail: streamFor returns only sent updates, newest first (NOT_SENT, queued, suppressed, held left out), and the activity", stream.updates.length === 2 && stream.updates[0].text.startsWith("yyyy") && stream.updates[1].caseId === caseC
     && stream.lastUpdate?.getTime() === stream.updates[0].at.getTime() && stream.activity[0]?.kind === "SIGN_IN", stream);
   console.log("PENDING  FO-14: payments (FO-7c pay door, open PR) record PAID when it merges (not counted)");
 } catch (e) {

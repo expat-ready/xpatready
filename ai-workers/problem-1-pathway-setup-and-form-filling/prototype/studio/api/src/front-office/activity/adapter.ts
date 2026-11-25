@@ -30,7 +30,9 @@ export class PgPortalActivity implements PortalActivityPort<Tx> {
   async recent(firmId: string, personId: string, limit: number): Promise<PortalActivityItem[]> {
     if (typeof personId !== "string" || !UUID.test(personId)) return [];
     const take = Math.min(Math.max(Math.trunc(limit) || 1, 1), 100);
-    const rows = await this.db.foPortalActivityEvent.findMany({ where: firmScope(firmId, { personId: personId.toLowerCase() }), orderBy: [{ at: "desc" }, { id: "desc" }], take, select: { kind: true, caseId: true, source: true, at: true } });
+    // The person and those merged into it (one level: a merge points a tombstone at its survivor).
+    const pid = personId.toLowerCase(), ids = [pid, ...(await this.db.foPerson.findMany({ where: firmScope(firmId, { mergedIntoId: pid }), select: { id: true } })).map((p) => p.id)];
+    const rows = await this.db.foPortalActivityEvent.findMany({ where: firmScope(firmId, { personId: { in: ids } }), orderBy: [{ at: "desc" }, { id: "desc" }], take, select: { kind: true, caseId: true, source: true, at: true } });
     return rows.map((r) => ({ kind: r.kind, caseId: r.caseId, source: r.source, at: r.at }));
   }
 }

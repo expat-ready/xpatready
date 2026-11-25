@@ -9,7 +9,9 @@
 --   * PF-12's wall: a forced policy naming the session's firm and the firm-first gate; trigger functions run as
 --     xr_wall_reader (tests/check_pf12_walls.ts).
 -- Part B: fo_client_update, one row per "Tell the client" message (insert-only, the same person trigger and wall);
--- "last update" is its newest DELIVERED row. body 1-2000 characters, sent_by `staff:<id>`, state DELIVERED or NOT_SENT.
+-- "last update" is its newest ACCEPTED row whose outbox row is SENT or DELIVERED (read by the service). body 1-2000
+-- characters, sent_by `staff:<id>`, state ACCEPTED (with its outbox row) or NOT_SENT; one row per Idempotency-Key in a
+-- firm (request_key, request_hash). Both tables refuse a merged-away person (merged_into_id set): a merge moves neither.
 -- New, empty tables: no data statement runs. Rollback: rollback.sql in this folder.
 
 -- CreateEnum
@@ -43,6 +45,8 @@ CREATE TABLE "fo_client_update" (
     "outbox_id" UUID,
     "state" TEXT NOT NULL,
     "reason" TEXT,
+    "request_key" TEXT NOT NULL,
+    "request_hash" TEXT NOT NULL,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "fo_client_update_pkey" PRIMARY KEY ("id")
@@ -51,10 +55,14 @@ CREATE TABLE "fo_client_update" (
 -- CreateIndex
 CREATE INDEX "fo_client_update_firm_id_person_id_created_at_idx" ON "fo_client_update"("firm_id", "person_id", "created_at" DESC);
 
+-- CreateIndex
+CREATE UNIQUE INDEX "fo_client_update_firm_id_request_key_key" ON "fo_client_update"("firm_id", "request_key");
+
 -- Rules Prisma cannot say.
 ALTER TABLE "fo_client_update" ADD CONSTRAINT "fo_client_update_shape" CHECK (
-  char_length("body") BETWEEN 1 AND 2000 AND "sent_by" ~ '^staff:[A-Za-z0-9-]{1,64}$' AND "state" IN ('DELIVERED', 'NOT_SENT')
-  AND ("reason" IS NULL OR char_length("reason") BETWEEN 1 AND 200));
+  char_length("body") BETWEEN 1 AND 2000 AND "sent_by" ~ '^staff:[A-Za-z0-9-]{1,64}$' AND "state" IN ('ACCEPTED', 'NOT_SENT')
+  AND ("state" <> 'ACCEPTED' OR "outbox_id" IS NOT NULL) AND ("reason" IS NULL OR char_length("reason") BETWEEN 1 AND 200)
+  AND char_length("request_key") BETWEEN 1 AND 255 AND "request_hash" ~ '^[0-9a-f]{64}$');
 ALTER TABLE "fo_portal_activity_event" ADD CONSTRAINT "fo_portal_activity_event_shape" CHECK (
   "source" ~ '^[a-z]+(-[a-z]+)*$' AND char_length("source") <= 40
   AND ("source_ref" IS NULL OR (char_length("source_ref") BETWEEN 1 AND 200 AND "source_ref" !~ '[[:cntrl:]]')));
@@ -69,7 +77,7 @@ BEGIN
   IF platform_session_firm() IS NOT NULL AND NEW."firm_id" IS DISTINCT FROM platform_session_firm() THEN
     RAISE EXCEPTION 'fo_activity_person_ok: only the session''s own firm' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM "fo_person" p WHERE p."firm_id" = NEW."firm_id" AND p."id" = NEW."person_id" FOR KEY SHARE) THEN
+  IF NOT EXISTS (SELECT 1 FROM "fo_person" p WHERE p."firm_id" = NEW."firm_id" AND p."id" = NEW."person_id" AND p."merged_into_id" IS NULL FOR KEY SHARE) THEN
     RAISE EXCEPTION '%: the person is not one of the firm''s people', TG_TABLE_NAME USING ERRCODE = 'foreign_key_violation';
   END IF;
   IF TG_TABLE_NAME = 'fo_client_update' THEN NEW."created_at" := clock_timestamp(); ELSE NEW."at" := clock_timestamp(); END IF;
