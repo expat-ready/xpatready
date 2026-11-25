@@ -164,6 +164,16 @@ Four people, with AI agents doing most of the writing and checking of code. Our 
 * **Code ownership and contracts.** Who owns the code we write into their repository, and who carries the liability for a filing error, is not written down anywhere. *Unconfirmed: no counsel.* Employment and contract steps need a lawyer. This plan is not legal or HR advice.
 * **The lab today.** The same changes help the lab now: a steady pipeline owner, blocking checks on pull requests, shaped rows of at most 3 pieces, and outside accounts opened early.
 
-## Open question for the founder
+## Recommended split of the seats (founder asked, 26 Nov)
 
-Which of the three founders takes each seat (product owner, customer and domain, business and operations)? The time estimates and the hiring order depend on it.
+This is the tech lead's recommendation, based on what our records show about each founder. Roles only, no names.
+
+| Founder | Recommended seat | Why |
+|---|---|---|
+| **The CEO founder** (licensed immigration consultant, an RCIC, according to their email signature; owns the company; already product owner of the specs) | **Founder B, customer and domain, plus CEO and fundraising.** Leads the pitch, rules on immigration facts and on spec changes, signs up pilot firms, and does the weekly real-case walk. | Investors back a regulated domain expert as CEO. They already rule on the specs. Their time is better spent on customers and money than on daily shaping. |
+| **The founder who runs the lab** (gave about 395 asks to the agents since 21 Oct and knows the pipeline best) | **Founder A, product owner.** Shapes every piece of work, does the daily acceptance walk, works side by side with the developer, and feeds the CEO the demo and the numbers for the pitch. | This founder already does the job, and the lab shows where it needs to change: fewer status asks, more shaped rows with "done when". |
+| **The third founder** (strengths not in our records) | **Founder C, business and operations**, unless their strengths fit B or A better. Owns accounts, vendors, legal and counsel, pricing, and the pre-release manual test. | The 14 lab rows blocked on outside accounts show that this seat must have an owner from day one. |
+
+**What changes from the first draft:** fundraising moves from Founder A to the CEO founder, so the product owner keeps 1.5–2 hours a day for shaping and acceptance. The CEO's product time is about 1 hour a day, plus the time they spend fundraising.
+
+**Still to confirm:** the third founder's strengths, and whether the CEO founder agrees to give spec rulings in one weekly batch rather than one at a time.
