@@ -392,6 +392,12 @@ fresh "owed-watch.py lanes: the board's data.json as step 11 accepted it (over 1
 so=$(python3 -I "$TOOLS/owed-watch.py" starts --state "$TOOLS/../STATE.md" 2>&1); echo "$so"; act=$((act + $(grep -c '^ACT' <<<"$so"))); seen "$so"
 fresh "owed-watch.py starts: STATE.md in this copy"
 
+# 13d (OS-18, P-530): a red "Waiting on the founder" line atop STATE or in its Start here: one ACT to re-send the push once
+# it has waited 30 min, then at most once an hour (founder-wait.py remembers each line in $STATE_DIR); a plain line between.
+fw=$(python3 -I "$TOOLS/founder-wait.py" --state "$TOOLS/../STATE.md" --memory "$STATE_DIR/founder-wait.json" 2>&1); fwrc=$?; echo "$fw"; seen "$fw"
+act=$((act + $(grep -c '^ACT' <<<"$fw"))); [ "$fwrc" = 0 ] && grep -qE '^(ACT   )?founder wait: ' <<<"$fw" || ACT "founder wait: founder-wait.py did not run ($(tail -1 <<<"$fw"))"
+fresh "founder-wait.py: STATE.md in this copy, its memory in $STATE_DIR (13d)"
+
 # 16. The focus list stays true (ENF-733b, founder A261): main's focus-list.md against qa's file on main (step 11's copy).
 git show origin/main:ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md > "$STATE_DIR/focus-main.md" 2>/dev/null; ft=$(python3 -I "$TOOLS/focus-truth.py" --list "$STATE_DIR/focus-main.md" --caps "$STATE_DIR/caps-main.md" 2>&1); ftrc=$?; [ "$ftrc" = 1 ] && ACT "focus list: $(grep -c '^drop:' <<<"$ft") proven lines, $(grep -c '^missing:' <<<"$ft") Partial items missing (focus-truth.py --md)"; [ "$ftrc" -gt 1 ] && ACT "focus list not checked: $(tail -1 <<<"$ft")"
 fresh "focus-truth.py: focus-list.md and qa/CAPABILITIES.md on origin/main (fetched in step 4; qa's file read in step 5, saved in step 11)"
