@@ -19,6 +19,15 @@ export function taxOf(i: { subtotal: number; subtotal_excluding_tax: number | nu
   return { subtotalCents: i.subtotal_excluding_tax ?? i.subtotal, taxCents: i.total_taxes ? lines.reduce((n, t) => n + t.amountCents, 0) : null, taxLines: lines };
 }
 
+/** The Customer Portal's one configuration (PORTAL_FEATURES: card, invoices, cancel at period end; plan switching off,
+ *  PF-16), found by its metadata or made once. Shared by the portal hand-off and the set-up script (R1.91 part 1). */
+export async function ensurePortalConfiguration(stripe: Stripe): Promise<{ id: string; created: boolean }> {
+  const found = (await stripe.billingPortal.configurations.list({ active: true, limit: 100 })).data.find((c) => c.metadata?.pf5 === PORTAL_TAG);
+  if (found) return { id: found.id, created: false };
+  const made = await stripe.billingPortal.configurations.create({ features: PORTAL_FEATURES as unknown as Stripe.BillingPortal.ConfigurationCreateParams.Features, metadata: { pf5: PORTAL_TAG } }, { idempotencyKey: PORTAL_TAG });
+  return { id: made.id, created: true };
+}
+
 export class StripeBilling implements BillingPort {
   private portalConfig: string | null = null;
   constructor(private readonly stripe: Stripe, private readonly webhookSecret: string | null = null) {}
@@ -79,10 +88,7 @@ export class StripeBilling implements BillingPort {
 
   async portal(input: PortalInput) {
     const p = PortalInput.parse(input);
-    if (!this.portalConfig) {
-      const found = (await this.stripe.billingPortal.configurations.list({ active: true, limit: 100 })).data.find((c) => c.metadata?.pf5 === PORTAL_TAG);
-      this.portalConfig = found?.id ?? (await this.stripe.billingPortal.configurations.create({ features: PORTAL_FEATURES as unknown as Stripe.BillingPortal.ConfigurationCreateParams.Features, metadata: { pf5: PORTAL_TAG } }, { idempotencyKey: PORTAL_TAG })).id;
-    }
+    this.portalConfig ??= (await ensurePortalConfiguration(this.stripe)).id;
     return { url: (await this.stripe.billingPortal.sessions.create({ customer: p.customerId, return_url: p.returnUrl, configuration: this.portalConfig })).url };
   }
 
