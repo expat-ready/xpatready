@@ -77,6 +77,19 @@ def t_records_pr(F, row, arg):
     return len(big), (f"#{big[0]['number']} {big[0]['additions'] + big[0]['deletions']} lines" if big else "none")
 
 
+def t_records_age(F, row, arg, now):
+    """OS-17 (P-526c: no ruling lives only in an unmerged PR; records PRs over 24 h are merged or closed): every open
+    records PR, draft or not, opened more than `threshold` hours ago; each is named, oldest first."""
+    prs = F.get("prs")
+    if prs is None:
+        raise NotRead("open PRs not read")
+    if prs and not any("createdAt" in p for p in prs):
+        raise NotRead("open PRs read without createdAt")
+    old = sorted((p for p in prs if is_records(p) and p.get("createdAt") and age_h(now, p["createdAt"]) > float(row["threshold"])),
+                 key=lambda p: p["createdAt"])
+    return len(old), ("; ".join(f"#{p['number']} open {age_h(now, p['createdAt']):g} h" for p in old) if old else "none")
+
+
 def board_part(F, *path):
     b = F.get("board")
     if not isinstance(b, dict):
@@ -142,6 +155,8 @@ def check(F, rows, now=None):
                 n, item = t_size(F, r, arg)
             elif kind == "records-pr-lines":
                 n, item = t_records_pr(F, r, arg)
+            elif kind == "records-pr-age":
+                n, item = t_records_age(F, r, arg, now)
             elif kind == "proving":
                 n, item = t_proving(F, r, arg)
             elif kind == "feeding":

@@ -683,6 +683,9 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
+# OS-17 (P-526c): records PRs open over 24 h; the row switches the age rule off.
+MUT="$MUT"'
+OS17 age|product/tools/known-failures.py|s/ and age_h(now, p\["createdAt"\]) > float(row\["threshold"\])),/),/|check-known-failures.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1

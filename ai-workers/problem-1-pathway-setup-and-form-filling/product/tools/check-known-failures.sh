@@ -36,6 +36,12 @@ case_ "records-pr ACT: 760 lines"         records-pr act  '{"prs":[{"number":7,"
 case_ "records-pr ignores app PRs"        records-pr ok   '{"prs":[{"number":8,"title":"forms: C1.2","additions":900,"deletions":0}]}'
 case_ "records-pr ACT: a (records only) title" records-pr act '{"prs":[{"number":9,"title":"records: P-631 (records only)","additions":790,"deletions":0}]}'
 case_ "records-pr ACT: the records label"  records-pr act '{"prs":[{"number":10,"title":"rules page","labels":[{"name":"records"}],"additions":750,"deletions":0}]}'
+case_ "records-pr-age ok: a records PR open 5 h" records-pr-age ok '{}'
+case_ "records-pr-age ACT: open 25 h, named with its age" records-pr-age act '{"prs":[{"number":11,"title":"lead: records","createdAt":"2026-11-15T05:00:00Z"}]}'
+case_ "records-pr-age ok: an app PR open 3 days" records-pr-age ok '{"prs":[{"number":12,"title":"forms: C1.2","createdAt":"2026-11-13T05:00:00Z"}]}'
+case_ "records-pr-age ACT: a draft records PR counts too" records-pr-age act '{"prs":[{"number":13,"title":"qa: rescore","isDraft":true,"createdAt":"2026-11-14T05:00:00Z"}]}'
+case_ "records-pr-age ok: exactly 24 h" records-pr-age ok '{"prs":[{"number":14,"title":"records: x","createdAt":"2026-11-15T06:00:00Z"}]}'
+case_ "records-pr-age: PRs read without createdAt is an ACT" records-pr-age nm '{"prs":[{"number":15,"title":"lead: x"}]}'
 case_ "questions ok: sle-watch met"       questions ok    '{}'
 case_ "questions seen: counted, not repeated" questions seen '{"seen":["sle   x","ACT   SLE Q #12: question unanswered 60 min"]}'
 case_ "questions: a new-question ACT without sle-watch is still seen" questions seen '{"seen":["queue 0 queued","ACT   #12 has a new question for the tech lead"]}'
@@ -71,6 +77,10 @@ case_ "a fact not read is an ACT, never a pass" size-rules nm '{"files":{}}'
 case_ "board not read: a warn (the board step says it), not a second ACT" proving-pipe warn '{"board":null}'
 case_ "open PRs not read: an ACT" records-pr nm '{"prs":null}'
 case_ "a malformed board is said, never a traceback" feeding-pipe warn '{"board":[1]}'
+
+python3 -I -c 'import json,sys; b=json.loads(sys.argv[1]); b["prs"]=[{"number":21,"title":"lead: a","createdAt":"2026-11-15T04:00:00Z"},{"number":20,"title":"records: b","labels":[{"name":"records"}],"createdAt":"2026-11-14T06:00:00Z"},{"number":22,"title":"tools: c","createdAt":"2026-11-01T00:00:00Z"}]; print(json.dumps(b))' "$BASE" > "$T/f.json"
+o=$(python3 -I "$TOOLS/known-failures.py" --facts "$T/f.json" | grep 'known records-pr-age:')
+grep -qF -- '— 2, oldest: #20 open 48 h; #21 open 26 h (' <<<"$o" && echo "PASS records-pr-age names every old records PR, oldest first, and no other PR" || { echo "FAIL records-pr-age list :: $o"; fail=$((fail+1)); }
 
 # Each table line has a passing case (ok) and a failing one (act or seen) above (a new line without both fails here).
 for id in $(awk -F'\t' '!/^#/ && $1 != "id" {print $1}' "$TOOLS/known-failures.tsv"); do
