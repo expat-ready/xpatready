@@ -219,6 +219,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 9 dispatch|../../.github/workflows/label-guard.yml|s/ github.event_name == .workflow_dispatch. ..//|check-label-sweep.sh
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
 11|product/tools/push-guard.sh|s/^\( *\)\[ "\$h" = "\$want" \] \(..\)/\1true \2/|check-push-guard-fixtures.sh
+11 const|product/tools/push-guard.sh|s/sed -E "\$CONST_SED"/cat/|check-push-guard-fixtures.sh
 11 records|product/tools/check-stale-paths.sh|/prototype\/\*-manifest\*.sha256/d|check-cleanup-checks.sh
 12 who|../../.github/workflows/comment-run.yml|s/OWNER.MEMBER.COLLABORATOR) ;;/*) ;;/|check-comment-run.sh
 12 if|../../.github/workflows/comment-run.yml|s/ \&\& contains(fromJSON([^)]*), github.event.comment.author_association)//|check-comment-run.sh
