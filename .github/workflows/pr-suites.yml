@@ -93,8 +93,8 @@ jobs:
         continue-on-error: true
         timeout-minutes: 50
         run: |
-          d=""; [ "$DIRECT" = true ] && d="--direct"
-          bash "$P/tools/run-suites.sh" --demo --retry --changed "$RANGE" $d --shard "${{ matrix.shard }}/$N" | tee suites.md
+          # SPD-2 item 2 (P-802): the suites of the modules the change touches plus the always-run set (--modules)
+          bash "$P/tools/run-suites.sh" --demo --retry --changed "$RANGE" --modules --shard "${{ matrix.shard }}/$N" | tee suites.md
           exit ${PIPESTATUS[0]}
       - name: summary (report only)
         if: always()

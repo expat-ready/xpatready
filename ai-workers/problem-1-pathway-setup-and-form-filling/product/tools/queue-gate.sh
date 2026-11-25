@@ -221,6 +221,15 @@ fresh() {
   local mine mig m mf hit=""
   mine=$(grep -E "$CODE" <<< "$files" | grep -viE "$DOCS"; true)   # no grep -q in a pipe: pipefail + SIGPIPE (review m1)
   [ -n "$mine" ] || { status success "no app code: nothing to re-check"; return; }
+  # SPD-2 fault 3 (Lead 4 on #3035, 23 Nov): a PR adding a migration folder that names no area holds no mig-<area> slot,
+  # and its green ci ran a ci.yml without the slot check. A re-run keeps that ci.yml (GitHub re-runs the event's commit),
+  # so it is held before the queue, the attempt count and the label: failure, no re-run, until a push renames it.
+  local d
+  for d in $(grep -E "$MIG" <<< "$mine" | sed -nE 's#^(.*/prisma/migrations/[^/]+)/.*#\1#p' | sort -u); do
+    [[ "${d##*/}" =~ ^[0-9]{14}_[a-z0-9]+(-[a-z0-9]+)*__[A-Za-z0-9_]+$ ]] && continue
+    git cat-file -e "$MAIN_REF:$d" 2>/dev/null && continue   # already on main: an edit (a checksum repair), not a new slot
+    status failure "its migration ${d##*/} names no area (SPD-2): git mv it to <stamp>_<area>__<name>; ci prints the command"
+    return; done
   has queued && { status success "in the queue: its batch is tested on today's main"; return; }
   # Review M2: an unlabelled PR never holds a success, so a label always waits for a verdict made at labelling time.
   has "$LABEL" || [ "${LABELLING:-}" = 1 ] || { status pending "decided when review: approved goes on"; return; }
@@ -233,7 +242,13 @@ fresh() {
     mf=$(git diff --no-renames --name-only "$m^1" "$m" 2>/dev/null)
     local both; both=$(comm -12 <(sort -u <<< "$mine") <(sort -u <<< "$mf"); true)   # no grep -q in a pipe (round 2 m1)
     if [ -n "$both" ]; then hit="$subj ($(sed -n '1s|.*/||p' <<< "$both"))"; break; fi
-    if [ "$mig" -gt 0 ] && grep -qE "$MIG" <<< "$mf"; then hit="$subj (a migration)"; break; fi
+    # SPD-2 (P-802): only a migration of the same area (or a shared, barrier or unnamed one) re-checks; another area's
+    # migration touches other tables (migration-slots.py clash; it fails closed: no answer counts as a clash).
+    if [ "$mig" -gt 0 ] && grep -qE "$MIG" <<< "$mf"; then
+      grep -E "$MIG" <<< "$mine" > "$H.ma"; grep -E "$MIG" <<< "$mf" > "$H.mb"
+      local cl=0; python3 -I "$HERE/migration-slots.py" clash "$H.ma" "$H.mb" || cl=$?; rm -f "$H.ma" "$H.mb"
+      [ "$cl" = 1 ] || { hit="$subj (a migration of the same area)"; break; }
+    fi
   done < <(TZ=UTC git log --first-parent --date=format-local:%Y-%m-%dT%H:%M:%SZ --format='%H %cd %s' --since="$run_started" "$MAIN_REF" 2>/dev/null | awk '{print $1, $2, $6}')
   [ -n "$hit" ] || { status success "no merge since this ci started touches its files"; return; }
   status failure "main merged $hit after this ci started: re-check on today's main" || return 2

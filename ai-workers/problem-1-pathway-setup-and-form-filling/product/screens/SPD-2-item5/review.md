@@ -120,3 +120,45 @@ Ran: `check-pr-concurrency.sh` PASS (78 checks); `check-queue-gate.sh` 137/137; 
 
 Reviewer: Block 839fe12603360472bf4eee89a8a6ae706e716f1c
 Verdict: Block (fix Major R2-1; the minors are optional)
+
+## Round 3 (diff-only, 839fe1260..d92b77ad2763e558e5169b9c4b8a4a23ae91ba1a; the tech lead allowed round 3)
+
+Read: `git diff 839fe1260 d92b77ad2` without review.md (review-rounds.yml comment, check-pr-concurrency.sh, queue-gate.sh, check-guards.sh).
+Ran:
+* `check-pr-concurrency.sh` PASS (86 checks); `check-queue-gate.sh` 137/137; `check-pr-suites-job.sh` 20/20.
+* The three R2-1 edits and 10 new ones, each on a scratch copy (PRC_WORKFLOWS=...).
+* Row `36 wfname` applied by hand with GNU sed in a scratch copy (not `--mutate`).
+
+As in rounds 1-2, this is pipeline work: no screen dimensions and no journey score.
+
+### Round-2 findings
+* **R2-1 fixed for review-rounds.** All three edits now FAIL:
+  * (a) a workflow-level `${{ github.workflow }}-${{ pull_request.number || issue.number }}` fails twice: "a verdict comment's run: ... 'review-rounds-7' equals the workflow's (a deadlock)", and the unrelated-comment check;
+  * (b) a workflow-level `review-rounds-${{ issue.number }}` fails on the same two;
+  * (c) another name with the mergify cancel fails with "a run for an unrelated comment holds a concurrency group [('workflow', 'rr-7', True)]".
+  * The "thanks" case fails any workflow-level group on review-rounds, whatever its expression, because a workflow group always takes a slot. That closes #2749 M1 for good. The issue_comment deadlock comparison is a second check behind it.
+  * An unmodelled key now fails: `github.actor` in review-rounds' group and `github.base_ref` in pr-rules' group both give "github.<key> is not modelled here".
+* **Minor 1 fixed:** the review-rounds comment now says only a batch's push run is never cancelled.
+* **Minor 2 fixed:**
+  * ci kind `if: ${{ github.event.pull_request.draft == false }}` now FAILS ("job kind skips a merge-queue batch");
+  * a pr-suites plan that runs on a batch FAILS ("job plan runs on a merge-queue batch").
+* **Minor 3 fixed (another way, accepted):** an unevaluable group is compared by its raw text, and a block without a group FAILS. Test: guards and trace both set to `x-${{ matrix.k }}` gives "trace.yml and guards.yml share the concurrency group 'x-${{ matrix.k }}'". The outer `except Exception: continue` now skips only a file that cannot be parsed.
+* **Minor 4 fixed:** a comment above `MUT=` names the GNU-sed `\n` rows. CI runs on ubuntu.
+* **Minor 5 fixed:** an empty re-read now prints "the head could not be read again before the re-run: no re-run now". It is still fail-safe (`return 0`, no re-run).
+* **Row `36 wfname`:** the edit changes review-rounds.yml, the YAML still parses, and the check turns red (88 checks, 2 FAIL: the deadlock and the unrelated comment). Row `36 deadlock` is also still red.
+
+### Minors / nits (not blocking)
+1. **R3-1: `github.workflow` is still empty in the main per-workflow cases.**
+   * Cause: `BATCH` and `CASES` are built when the script starts, before any `load()`. So `pr()` stores `"workflow": ""`, and the A loop's `{**ctx0, "event_name": event}` keeps that empty value.
+   * Proof: a job group `${{ github.workflow }}-${{ github.event.pull_request.number }}` added to pr-suites' `plan` PASSES (86 checks). On GitHub that group is `pr-suites-7`, the workflow's own group, so it deadlocks. The same group written literally FAILS.
+   * Why it is not Major:
+     * review-rounds is covered by the issue_comment and "thanks" cases, which use `WF["name"]` (all R2-1 edits FAIL);
+     * the other five A workflows run on pull_request from the PR's own copy, so the deadlock shows as cancelled runs on the very PR that adds it;
+     * ci is a Mergify condition, so a deadlocked ci fails closed.
+   * Fix (one line): `ctx = {**ctx0, "event_name": event, "workflow": WF["name"]}` in the A loop.
+2. The new review-rounds comment says a verdict comment on a batch PR can supersede "an older comment run of that batch". With cancel true, it can also cancel a running pull_request_target run of that batch. This is harmless, because the newer run reads every comment and sets the status. Better wording: "an older run of that batch".
+3. Row `36 wfname` would stay red even without the `workflow` key in the contexts ("not modelled", plus the "thanks" case). So it proves the deadlock is refused, not that `github.workflow` is modelled. That is acceptable for the guard table's format.
+4. `github.sha` and `github.repository` are modelled in the pull_request contexts only. In the issue_comment context they fail as unmodelled, which fails closed. Also, a workflow without `name:` gets its file name, while GitHub uses the file path. Every A workflow has a `name:`.
+
+Reviewer: Approve d92b77ad2763e558e5169b9c4b8a4a23ae91ba1a
+Verdict: Approve (no open Blocker or Major; Minors R3-1 and 2-4 are optional, R3-1 is a one-line fix worth taking)
