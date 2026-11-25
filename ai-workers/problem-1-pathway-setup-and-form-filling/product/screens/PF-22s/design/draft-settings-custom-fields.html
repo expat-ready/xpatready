@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Custom fields settings draft</title>
+<!-- PF-22s draft board 1 (drafter, 25 Nov): Settings → Custom fields. Self-contained: the builder cannot see the canvas.
+     Colours from web/src/styles/tokens.css; pattern Library list (EXPERIENCE §3); Settings frame as Offices (offices-page.tsx).
+     Every name, count and choice here is Sample. Not concept.md: the tech lead approves after the fresh challenge. -->
+<style>/* Colours copied from web/src/styles/tokens.css (light sheet; text-muted per index.css = neutral-700). Sizes 12/14/16/18/24 only. */
+:root{--primary:#0862c5;--primary-t:#e6f4ff;--surface:#f7f7f7;--raised:#fff;--text:#2d2d2d;--muted:#595959;--link:#054e9c;--border:#d9d9d9;--strong:#bfbfbf;--danger:#991b1b;--danger-fill:#dc2626;--warn:#663200;--warn-t:#fff3e0;--ok:#0f5c2e;--ok-t:#eaf6ee;--ring:#0862c5;font-family:'Inter Variable',Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--text);font-size:14px;line-height:1.45}
+.board{display:grid;gap:32px;padding:24px 16px;max-width:1440px;margin:auto}
+.intro{background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:16px 20px}.intro h1{font-size:24px;margin:0 0 4px}.intro p{margin:4px 0;color:var(--muted)}
+h2.b{font-size:16px;margin:0 0 8px}h2.b small{font-size:12px;color:var(--muted);font-weight:400;margin-left:8px}
+.frame{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--raised);border-bottom:1px solid var(--border);font-size:14px}.top b{color:var(--primary)}.top .sp{flex:1}.crumb{color:var(--muted)}
+.main{padding:20px;min-width:0;position:relative}.page h1{font-size:24px;margin:0}.sub{color:var(--muted);margin:4px 0 16px}
+.hd{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.chip{min-height:32px;border:1px solid var(--border);border-radius:999px;padding:5px 12px;background:var(--raised);font-size:14px}.chip.on{border-color:var(--primary);background:var(--primary-t);color:var(--link);font-weight:600}
+.fchip{display:inline-flex;align-items:center;gap:4px;min-height:32px;border:1px solid var(--primary);background:var(--primary-t);color:var(--link);border-radius:999px;padding:4px 6px 4px 12px;font-weight:600}.fchip i{font-style:normal;padding:0 6px}
+table{border-collapse:collapse;width:100%;background:var(--raised);border:1px solid var(--border);border-radius:8px;overflow:hidden}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;height:44px}th{font-size:12px;color:var(--muted);font-weight:600}td small{display:block;color:var(--muted);font-size:12px}
+button,.btn{font:inherit;font-size:14px;border-radius:8px;padding:7px 14px;border:1px solid var(--strong);background:var(--raised);color:var(--text);cursor:pointer}button.p{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600}button.sm{padding:4px 10px}button.ln{border:0;background:none;color:var(--link);padding:4px;text-decoration:underline}button.d{color:var(--danger);border-color:#e8b4b4}button[disabled]{opacity:.5;cursor:not-allowed}button.ic{padding:4px 8px}
+.card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--raised)}.card h2{font-size:14px;margin:0 0 8px}.card h3{font-size:12px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+dl.kv{display:grid;grid-template-columns:12rem 1fr;gap:6px 12px;margin:0}dl.kv dt{color:var(--muted)}dl.kv dd{margin:0;overflow-wrap:anywhere}
+.notice{border-radius:8px;padding:10px 12px;margin-bottom:12px;border:1px solid}.notice b{display:block}.n-info{background:#eef4fc;border-color:#c7d9f2}.n-warn{background:var(--warn-t);border-color:#f2d39b;color:var(--warn)}.n-danger{background:#fdecec;border-color:#f0c4c0;color:var(--danger)}.n-ok{background:var(--ok-t);border-color:#b8dcc4;color:var(--ok)}
+.pill{display:inline-block;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted);background:var(--surface)}.pill.req{border-color:var(--strong);color:var(--text)}.pill.warn{border-color:#f2d39b;color:var(--warn);background:var(--warn-t)}.pill.arch{border-style:dashed}
+.empty{border:1px dashed var(--border);border-radius:12px;padding:32px 16px;text-align:center;color:var(--muted);background:var(--raised)}
+.skel{height:14px;border-radius:6px;background:linear-gradient(90deg,#eee,#f7f7f7,#eee);margin:10px 0}
+.panelwrap{display:grid;grid-template-columns:1fr 560px;min-height:520px}.panelwrap .dim{background:rgba(45,45,45,.25)}
+.panel{background:var(--raised);border-left:1px solid var(--border);display:flex;flex-direction:column}.panel header{padding:16px 20px;border-bottom:1px solid var(--border)}.panel header h2{font-size:18px;margin:0}.panel header p{margin:4px 0 0;color:var(--muted)}.panel .body{padding:16px 20px;flex:1}.panel footer{display:flex;justify-content:space-between;gap:8px;padding:12px 20px;border-top:1px solid var(--border)}
+.dlg{max-width:480px;margin:24px auto;border:1px solid var(--border);border-radius:12px;padding:20px;background:var(--raised);box-shadow:0 8px 24px rgba(0,0,0,.12)}.dlg h2{font-size:18px;margin:0 0 8px}.dlg .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.field{margin-bottom:14px}.field label,.field .lb{display:block;font-weight:600;margin-bottom:4px}.field .lb small,.field label small{font-weight:400;color:var(--muted)}.hint{font-size:12px;color:var(--muted);margin-top:4px}.err{font-size:12px;color:var(--danger);margin-top:4px;font-weight:600}.err::before{content:"⚠ "}
+input,select,textarea{width:100%;font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--strong);border-radius:8px;background:var(--raised);color:var(--text)}input.bad,select.bad,textarea.bad{border-color:var(--danger);border-width:2px}input[type=checkbox],input[type=radio]{width:auto;margin-right:6px}
+.opt{display:flex;gap:8px;align-items:center;margin-bottom:6px}.opt input{flex:1}
+.preview{border:1px dashed var(--strong);border-radius:8px;padding:12px;background:var(--surface)}.preview .t{font-size:12px;color:var(--muted);margin-bottom:6px}
+.spec{background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:14px}.spec h3{font-size:14px;margin:8px 0 4px}.spec ul{margin:4px 0;padding-left:20px}.spec td,.spec th{height:auto;padding:6px 8px}
+.menu{position:absolute;z-index:5;width:340px;background:var(--raised);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px}.menu .sec{font-size:12px;color:var(--muted);font-weight:600;padding:8px 8px 4px}.menu .row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;min-height:36px}.menu .row:hover,.menu .row.f{background:#f0f4fa}.menu .row .n{flex:1}.menu .row small{display:block;color:var(--muted);font-size:12px}.menu hr{border:0;border-top:1px solid var(--border);margin:6px 0}
+.toast{position:absolute;right:16px;bottom:16px;background:var(--raised);border:1px solid #b8dcc4;border-left:4px solid var(--ok-t);border-left-color:#16a34a;border-radius:8px;padding:10px 14px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.row-a{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.sample{font-size:12px;color:var(--warn);font-weight:600}
+@media (max-width:1100px){.panelwrap{grid-template-columns:1fr}.panelwrap .dim{display:none}.grid2{grid-template-columns:1fr}dl.kv{grid-template-columns:1fr}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}code{font-size:12px;background:var(--surface);padding:1px 4px;border-radius:4px}
+</style></head><body><div class="board">
+
+<section class="intro"><h1>Settings → Custom fields <span class="sample">(draft board, Sample data)</span></h1>
+<p>Who: Owner and Admin (key <code>agent/custom-field:manage</code>). Where: My account menu entry "Custom fields", address <code>/platform/custom-fields?kind=prospects</code>.</p>
+<p>Business rules on this board: BR-1 who may manage, BR-2 types and choices, BR-3 type frozen once used, BR-4 a choice in use stays, BR-5 archive with a confirm naming the count, BR-6 un-archive, BR-7 the limit (Sample 50).</p></section>
+
+<section><h2 class="b">A. Normal: Prospects chosen <small>1440 px · one primary (Add a field)</small></h2>
+<div class="frame"><div class="top"><b>ExpatReady</b><span class="crumb">My account › Custom fields</span><span class="sp"></span><span>Admin ▾</span></div>
+<div class="main page">
+<div class="hd"><div><h1>Custom fields</h1><p class="sub">Fields your firm adds to its records. They show on each record and in the list filters.</p></div><button class="p">Add a field</button></div>
+<div class="chips" role="group" aria-label="Record type"><button class="chip on" aria-pressed="true">Prospects (4)</button><button class="chip">People (2)</button><button class="chip">Companies (0)</button></div>
+<p class="hint" style="margin:-4px 0 12px">Prospect fields show on the prospect. People fields show on the person's lead and prospect. Company fields show on a corporate prospect.</p>
+<table aria-label="Prospect fields"><thead><tr><th>Order</th><th>Field</th><th>Type</th><th>Required</th><th>Used on</th><th><span class="sr">Actions</span></th></tr></thead><tbody>
+<tr><td><button class="ic" disabled aria-label="Move Referral partner up">↑</button> <button class="ic" aria-label="Move Referral partner down">↓</button></td><td><b>Referral partner</b><small>The firm or person who sent this prospect to us.</small></td><td>Choose one <small>3 choices</small></td><td><span class="pill req">Required</span></td><td><span title="Prospects with a value in this field">14 prospects</span></td><td class="row-a"><button class="sm">Edit</button></td></tr>
+<tr><td><button class="ic" aria-label="Move up">↑</button> <button class="ic" aria-label="Move down">↓</button></td><td><b>Budget for fees</b><small>What the client said they can spend, in CAD.</small></td><td>Number</td><td>Optional</td><td>6 prospects</td><td class="row-a"><button class="sm">Edit</button></td></tr>
+<tr><td><button class="ic" aria-label="Move up">↑</button> <button class="ic" aria-label="Move down">↓</button></td><td><b>Wants a consult in this language and a very long field name that wraps to a second line</b></td><td>Choose several <small>4 choices</small></td><td>Optional</td><td>0 prospects</td><td class="row-a"><button class="sm">Edit</button></td></tr>
+<tr><td><button class="ic" aria-label="Move up">↑</button> <button class="ic" disabled aria-label="Move down">↓</button></td><td><b>Intake deadline</b></td><td>Date</td><td>Optional</td><td>2 prospects</td><td class="row-a"><button class="sm">Edit</button></td></tr>
+</tbody></table>
+<p style="margin-top:12px"><button class="ln">Show archived fields (1)</button> <span class="hint">4 of 50 prospect fields used.</span></p>
+</div></div></section>
+
+<section><h2 class="b">B. Add a field: right panel with the preview beside the editor <small>Escape or Cancel closes; focus returns to Add a field</small></h2>
+<div class="frame"><div class="panelwrap"><div class="dim"></div><aside class="panel" role="dialog" aria-labelledby="pb">
+<header><h2 id="pb">Add a prospect field</h2><p>It shows on every prospect and in the Pipeline filters.</p></header>
+<div class="body">
+<div class="notice n-danger" role="alert"><b>There is a problem: 2 things need a fix</b><a href="#">Give the field a name</a> · <a href="#">“Maple Law” is already a choice</a></div>
+<div class="field"><label for="l1">Name</label><input id="l1" class="bad" value="" aria-describedby="e1"><div class="err" id="e1">Give the field a name, for example Referral partner.</div></div>
+<div class="field"><label for="t1">Type</label><select id="t1"><option>Choose one: pick one from a list</option><option>Short text: up to one line</option><option>Long text: notes, several lines</option><option>Number: amounts, counts</option><option>Date: a calendar day</option><option>Choose several: tick any from a list</option><option>Yes / no: a tick box</option><option>Email</option><option>Phone</option><option>Web address</option></select><div class="hint">The type cannot change once a prospect has a value.</div></div>
+<div class="field"><span class="lb">Choices <small>in the order shown</small></span>
+<div class="opt"><input value="Maple Law" aria-label="Choice 1"><button class="ic" aria-label="Move Maple Law down">↓</button><button class="ic" aria-label="Remove Maple Law">✕</button></div>
+<div class="opt"><input value="Northgate Legal" aria-label="Choice 2"><button class="ic" aria-label="Move up">↑</button><button class="ic" aria-label="Remove">✕</button></div>
+<div class="opt"><input class="bad" value="maple law" aria-label="Choice 3" aria-describedby="e2"><button class="ic" aria-label="Move up">↑</button><button class="ic" aria-label="Remove">✕</button></div><div class="err" id="e2">“Maple Law” is already a choice.</div>
+<button class="ln">+ Add a choice</button></div>
+<div class="field"><label><input type="checkbox" checked>Required</label><div class="hint">Staff must fill it before they can save a prospect's custom fields. It never stops a stage move or Convert.</div></div>
+<div class="field"><label for="h1">Help text <small>(optional)</small></label><input id="h1" value="The firm or person who sent this prospect to us."><div class="hint">Shown under the field. Up to 200 characters.</div></div>
+<div class="preview"><div class="t">How staff will see it on a prospect</div><div class="field" style="margin:0"><label>Referral partner</label><select><option>Choose…</option><option>Maple Law</option><option>Northgate Legal</option></select><div class="hint">The firm or person who sent this prospect to us.</div></div></div>
+</div>
+<footer><button>Cancel</button><button class="p">Add field</button></footer></aside></div></div></section>
+
+<section><h2 class="b">C. Edit a field in use <small>type locked (BR-3), a choice in use stays (BR-4), archive at the bottom, set apart</small></h2>
+<div class="frame"><div class="panelwrap"><div class="dim"></div><aside class="panel">
+<header><h2>Edit “Referral partner”</h2><p>Prospect field · used on 14 prospects</p></header>
+<div class="body">
+<div class="field"><label>Name</label><input value="Referral partner"></div>
+<div class="field"><span class="lb">Type</span><input value="Choose one" disabled aria-describedby="tl"><div class="hint" id="tl">The type cannot change: 14 prospects have a value. To use another type, archive this field and add a new one.</div></div>
+<div class="field"><span class="lb">Choices</span>
+<div class="opt"><input value="Maple Law" disabled aria-describedby="u1"><button class="ic" disabled aria-label="Remove Maple Law">✕</button></div><div class="hint" id="u1" style="margin:-2px 0 8px">Used on 9 prospects, so it cannot be removed or renamed.</div>
+<div class="opt"><input value="Northgate Legal" disabled><button class="ic" disabled aria-label="Remove">✕</button></div><div class="hint" style="margin:-2px 0 8px">Used on 5 prospects, so it cannot be removed or renamed.</div>
+<div class="opt"><input value="Harbourview Paralegal"><button class="ic" aria-label="Remove Harbourview Paralegal">✕</button></div><div class="hint" style="margin:-2px 0 8px">Not used yet.</div>
+<button class="ln">+ Add a choice</button></div>
+<div class="field"><label><input type="checkbox" checked>Required</label><div class="hint">2 prospects made before it was required have no value: they show “Required, not filled in”.</div></div>
+<hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+<div class="field"><span class="lb">Archive</span><div class="hint" style="margin-bottom:8px">Hides the field from prospects and filters. Values are kept; you can un-archive it later.</div><button class="d">Archive this field</button></div>
+</div>
+<footer><button>Cancel</button><button class="p">Save changes</button></footer></aside></div></div></section>
+
+<section class="grid2">
+<div><h2 class="b">D. In-use confirm (BR-5) <small>after PATCH → 409 FIELD_IN_USE {count: 14}; centred yes/no only</small></h2>
+<div class="frame" style="padding:8px"><div class="dlg" role="alertdialog" aria-labelledby="dh" aria-describedby="dd"><h2 id="dh">Archive “Referral partner”?</h2>
+<p id="dd">14 prospects have a value in this field. The values are kept but hidden from prospects and filters. You can un-archive it at any time.</p>
+<p class="hint">Saved views that filter by it will say “1 filter part no longer applies”.</p>
+<div class="ft"><button autofocus>Keep the field</button><button class="p">Archive field</button></div></div></div>
+<p class="hint">A field with no values archives at once with a toast: “Intake deadline is archived.” [Undo].</p></div>
+<div><h2 class="b">E. Archived shown (BR-6)</h2>
+<div class="frame main" style="position:relative;min-height:240px"><table><thead><tr><th>Field</th><th>Type</th><th>Status</th><th></th></tr></thead><tbody>
+<tr><td><b>Referral partner</b><small>14 prospects keep their value</small></td><td>Choose one</td><td><span class="pill arch">◌ Archived 25 Nov 2026</span></td><td class="row-a"><button class="sm">Un-archive</button></td></tr></tbody></table>
+<p><button class="ln">Hide archived fields</button></p>
+<div class="toast" role="status">Referral partner is shown again on 14 prospects.</div></div></div>
+</section>
+
+<section class="grid2">
+<div><h2 class="b">F. Empty (Companies)</h2><div class="frame main"><div class="empty"><p style="margin:0 0 8px;color:var(--text);font-weight:600">No custom fields for companies yet</p><p style="margin:0 0 12px">Add one to record something your firm tracks, such as the number of employees. It shows on every corporate prospect and in the filters.</p><button class="p">Add a field</button></div></div></div>
+<div><h2 class="b">G. Loading <small>skeleton rows + sr-only “Loading the custom fields…”</small></h2><div class="frame main"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:70%"></div></div></div>
+<div><h2 class="b">H. Error</h2><div class="frame main"><div class="notice n-danger" role="alert"><b>Could not load the custom fields</b>Check your connection, then <button class="ln">Try again</button>.</div></div></div>
+<div><h2 class="b">I. No access (BR-1 fail) <small>an Agent opens the address</small></h2><div class="frame main"><h1 style="font-size:24px;margin:0">Custom fields</h1><p class="sub">Fields your firm adds to its records.</p><div class="notice n-info"><b>Not available</b>Only an Owner or Admin can manage the firm's custom fields. You can fill them in on each record.</div></div></div>
+<div><h2 class="b">J. Limit reached (BR-7, Sample 50)</h2><div class="frame main"><div class="hd"><div class="notice n-warn" style="flex:1"><b>Your firm has 50 prospect fields, the most allowed.</b>Archive one to add another.</div><button class="p" disabled aria-describedby="lim">Add a field</button></div><p class="hint" id="lim">Add a field is off: 50 of 50 prospect fields used.</p></div></div>
+<div><h2 class="b">K. Save refused by the server</h2><div class="frame main"><div class="notice n-danger"><b>A prospect field named “Referral partner” already exists.</b>Choose another name. (409 DUPLICATE_KEY, said at the Name field)</div><div class="notice n-warn"><b>Someone changed this field while you were editing.</b>Your changes are kept below. <button class="ln">Load the latest</button></div></div></div>
+</section>
+
+<section class="spec"><h3>Contract used (shape only; PF-22a part 2 builds it)</h3>
+<ul><li><code>GET /api/platform/custom-fields?kind=fo_prospect&amp;archived=1</code> → fields with <code>valueCount</code> and <code>optionUse</code> (Ask), <code>limit</code>.</li>
+<li><code>POST</code> → 201 · 409 DUPLICATE_KEY · 422 LIMIT_REACHED. <code>PATCH /:id</code> → 409 FIELD_IN_USE {count} (resend with <code>confirm:true</code>) · 409 TYPE_FROZEN · 409 OPTION_IN_USE {option,count}.</li>
+<li>Key made from the name (never typed, never on the main path); shown under “Details” for an Admin.</li></ul>
+<h3>Tests on this board (one pass, one fail each)</h3>
+<table><tr><th>BR</th><th>Pass</th><th>Fail</th></tr>
+<tr><td>1</td><td>Admin sees Add a field</td><td>Agent sees frame I; POST → 403</td></tr>
+<tr><td>2</td><td>Choose one with 2 distinct choices saves</td><td>0 choices: “Add at least one choice.”; a repeat (any case): frame B error</td></tr>
+<tr><td>3</td><td>type changes while used on 0</td><td>used on 14: locked (frame C); PATCH type → 409</td></tr>
+<tr><td>4</td><td>new choice added to a used field</td><td>remove “Maple Law” is off; PATCH without it → 409 OPTION_IN_USE</td></tr>
+<tr><td>5</td><td>0 values: archived at once, Undo</td><td>14 values: frame D; Keep the field changes nothing</td></tr>
+<tr><td>6</td><td>Un-archive: values back on the prospect</td><td>archived: absent from the panel and More filters</td></tr>
+<tr><td>7</td><td>the 50th saves</td><td>the 51st: frame J; POST → 422</td></tr></table>
+<h3>Keyboard and size</h3><ul><li>Tab order: record-type chips → Add a field → each row's ↑ ↓ Edit → Show archived. ↑/↓ announce “Referral partner moved to position 2 of 4”.</li><li>1024 px: Used on moves under Type. 375 px: table rows become cards (Field, then Type · Required · Used on on one line); panel takes the full width; Add a field 44 px tall.</li></ul></section>
+</div></body></html>

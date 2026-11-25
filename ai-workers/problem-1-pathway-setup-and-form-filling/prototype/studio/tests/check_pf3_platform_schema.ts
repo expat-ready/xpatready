@@ -79,7 +79,7 @@ try {
   // ------------------------------------------------------------------------------------------------- catalogues (data)
   // Keys later rows add to the catalogue (P-601; Lead B on #1753): Appendix C is asserted exactly for SA-06's own keys, and
   // each adding row asserts its own rows exactly. A row that adds keys extends this list (never a wider filter).
-  const ADDED_BY_LATER_ROWS = ["agent/complaint:", "agent/identity-check:", "agent/conflict:"];   // PF-21: agent/complaint:record, agent/complaint:read; FO-13i: agent/identity-check:record; FO-13c: agent/conflict:check
+  const ADDED_BY_LATER_ROWS = ["agent/complaint:", "agent/identity-check:", "agent/conflict:", "agent/custom-field:"];   // PF-21: agent/complaint:record, agent/complaint:read; FO-13i: agent/identity-check:record; FO-13c: agent/conflict:check; PF-22a: agent/custom-field:manage
   const laterKeys = ADDED_BY_LATER_ROWS.map((p) => `permission_key not like '${p}%'`).join(" and ");
   const perRole = sql(DEMO, `select string_agg(role || ':' || n, ',' order by role) from (select role::text, count(*) n from platform_role_permission where ${laterKeys} group by role) x`);
   ok("PF-3 pass: the starter roles' keys per role equal SA-06 v3.15 Appendix C (Owner 231, Admin 213, Case Manager 145, Case Officer 99, Billing / Finance 46, Read-only 40)",
