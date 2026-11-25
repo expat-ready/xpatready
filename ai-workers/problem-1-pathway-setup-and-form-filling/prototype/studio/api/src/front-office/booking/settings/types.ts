@@ -30,7 +30,7 @@ import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
 import { windowsFor } from "./hours.ts";
 import { forbidden } from "../../../platform/identity/keys.ts";
 import { firmTimings, resolveTimings, TIMING_FIELDS, TIMING_RANGES, timingWarnings, timingKey, withTimings, type TimingField } from "./timings.ts";
-import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput, plainIssue } from "../../../platform/http/input.ts";
 import { needsAgreement } from "../consultation-agreement/gate.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -108,7 +108,7 @@ function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
   parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const b = (body ?? {}) as Record<string, unknown>;
   if (b && typeof b === "object" && b.purpose === "PAID_CONSULT") throw fieldError(FIELD_ERROR_STATUS, "purpose", WORDS.paid, "PAID_NOT_AVAILABLE");
-  const r = schema.safeParse(b);
+  const r = schema.safeParse(b, { error: plainIssue });   // PF-28 A2: zod's own words never reach a field
   if (r.success) return r.data;
   const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (FO-3a1e break m1)
   for (const i of r.error.issues) { const f = String(i.path[0] ?? (i.code === "unrecognized_keys" ? (i as { keys?: string[] }).keys?.[0] : "body") ?? "body"); fields[f] ??= i.code === "unrecognized_keys" ? "Not a field of a booking type." : i.message; }
