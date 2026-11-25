@@ -60,7 +60,7 @@ export function MergeDialog({ pair, onClose, onMerged, returnFocus }: { pair: Re
               {step === 1 ? <fieldset className="flex flex-col gap-3">
                 <legend className="sr-only">Choose what to keep</legend>
                 <div role="radiogroup" aria-label="Which record stays" className="flex flex-wrap gap-4">
-                  {pair!.people.map((x) => <label key={x.personId} className="flex items-center gap-2"><input type="radio" name="survivor" checked={survivor === x.personId} onChange={() => { setSurvivor(x.personId); setPicks({}); }} /><span><span className="font-medium">{card(x.personId)}</span> stays</span></label>)}
+                  {pair!.people.map((x) => <label key={x.personId} className="flex items-center gap-2"><input type="radio" name="survivor" value={x.personId} checked={survivor === x.personId} onChange={() => { setSurvivor(x.personId); setPicks({}); }} /><span><span className="font-medium">{card(x.personId)}</span> stays</span></label>)}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[34rem] text-left" aria-label="Each field's value">
