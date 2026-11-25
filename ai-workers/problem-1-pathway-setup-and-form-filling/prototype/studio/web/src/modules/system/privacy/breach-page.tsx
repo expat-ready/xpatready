@@ -9,6 +9,7 @@ import * as React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Field, Input, Notice, Textarea } from "@/components/ui/controls";
+import { FoldOut } from "@/components/fold-out";
 import { cn } from "@/lib/utils";
 import { SystemFrame, useSystemStaff } from "../frame";
 import { systemApi, SystemApiError, useSystemToken } from "../session";
@@ -59,7 +60,7 @@ function NoticeRow({ firm, notice, canSend, why, error, onSend }: { firm: { id: 
         {notice ? <div className="mt-1 flex flex-col gap-1 text-sm">
           <p><span className="font-medium text-text-ok"><span aria-hidden>● </span>Sent</span> <time dateTime={notice.sentAt}>{momentUtc(notice.sentAt)}</time> to {notice.recipients.length} {notice.recipients.length === 1 ? "person" : "people"} ({[...new Set(notice.recipients.flatMap((r) => r.roles))].map((r) => r[0] + r.slice(1).toLowerCase()).join(", ")}) · by {actorWords(notice.sentBy, notice.sentByName)}</p>
           {notice.subject !== null ? <p>Subject: <span data-notice-subject>{notice.subject}</span></p> : null}
-          {notice.text !== null ? <details><summary className="cursor-pointer text-text-link">Words sent</summary><pre tabIndex={0} role="region" aria-label={`Words sent to ${name}`} className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-sans text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [overflow-wrap:anywhere]" data-notice-words>{notice.text}</pre></details>
+          {notice.text !== null ? <FoldOut summary="Words sent" summaryClassName="text-text-link"><pre tabIndex={0} role="region" aria-label={`Words sent to ${name}`} className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-sans text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [overflow-wrap:anywhere]" data-notice-words>{notice.text}</pre></FoldOut>
             : <p className="text-text-muted" data-words-note>{notice.wordsNote}</p>}
           <p className="text-xs text-text-muted">{COPY.sentNoMore}</p>
         </div> : <p className="mt-1 text-sm text-text-muted">Not sent{why ? `: ${why}` : ""}</p>}
