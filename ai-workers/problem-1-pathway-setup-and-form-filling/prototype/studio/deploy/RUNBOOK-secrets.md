@@ -19,6 +19,8 @@ The app reads every setting once, at start, from its environment. In the cloud, 
 | `PLATFORM_BOLDSIGN_API_KEY` | yes | the e-signature provider's key |
 | `PLATFORM_ZOOM_CLIENT_ID` | no | the Zoom app |
 | `PLATFORM_ZOOM_CLIENT_SECRET`, `PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN` | yes | the Zoom app's secret and webhook token |
+| `PLATFORM_GOOGLE_CLIENT_ID` | no | R1.43 part 0: the Google OAuth web client's id (public: Google shows it on every consent page). Optional, as a pair with the secret: both unset, connecting a Google calendar is off on that server. Staging: set by CDK (`GOOGLE_CLIENT_ID` in `cdk/lib/service.ts`); production: none yet |
+| `PLATFORM_GOOGLE_CLIENT_SECRET` | yes | that client's secret. Staging: `xr/staging/PLATFORM_GOOGLE_CLIENT_SECRET`, made by hand on 25 Nov before the stack named it, so CDK **imports it by name** (`STAGE_SECRETS`) and never creates or replaces it; rotate it in Google's console (add a secret, put its value as a new version here, redeploy, then disable the old one in Google). Production: none yet |
 | `PLATFORM_SECRET_BOX_KEYS` | yes | the key ring for firms' own connection credentials: `version:key` pairs, comma-separated, each key 32 random bytes in base64 |
 | `PLATFORM_SECRET_BOX_KEY_VERSION` | no | the version new values are sealed with; must be in the ring |
 | `PLATFORM_FILES_LINK_KEY` | yes | PF-F1c: the S3 download links' signing key; made random by Secrets Manager at the first deploy (48 letters and digits), so nobody supplies it. Rotating it ends the links already handed out (they last 5 minutes) |

@@ -3,7 +3,7 @@
 // so a check that cannot fail is caught. PF-8rc adds the backup checks (`backupFindings`, `vaultFindings`,
 // `bypassFindings`) and a whole-stack allowance for the ca-west-1 copy vault (`REGION_ALLOW`).
 import { BYPASS_ACTIONS, COPY_REGION, KEY_DESTROY_ACTIONS, RETENTION_DAYS } from "./backup.ts";
-import { SIGN_IN_ACTIONS } from "./service.ts";
+import { SIGN_IN_ACTIONS, importedSecretName } from "./service.ts";
 type Resource = { Type: string; Properties?: Record<string, unknown> };
 export type Template = { Resources?: Record<string, Resource>; Parameters?: unknown; Outputs?: unknown; Mappings?: unknown; Conditions?: unknown; Rules?: unknown };
 export type SynthStack = { name: string; region: string; template: Template };
@@ -458,6 +458,7 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
         // only for ecr:GetAuthorizationToken, which AWS grants on nothing narrower.
         const res = Array.isArray(st.Resource) ? st.Resource : [st.Resource];
         const own = (x: unknown, inJoin = false): boolean => {
+          if (!inJoin && importedSecretName(x, true)) return true; // R1.43 part 0: a secret of STAGE_SECRETS, imported by name
           const o = x as { "Fn::GetAtt"?: [string]; Ref?: string; "Fn::Join"?: [string, unknown[]] } | undefined;
           if (o?.["Fn::GetAtt"]) return !!R[o["Fn::GetAtt"][0]];
           if (typeof o?.Ref === "string") return R[o.Ref]?.Type === "AWS::SecretsManager::Secret" || (inJoin && (!!R[o.Ref] || ["AWS::Partition", "AWS::AccountId", "AWS::Region", "AWS::URLSuffix"].includes(o.Ref)));

@@ -43,6 +43,8 @@ const generated = () => ({
   PLATFORM_SECRET_BOX_KEY_VERSION: "2",
   PLATFORM_LOCAL_SECRET: rand(40),   // PF-24w: PF-4's stand-in key is a secret setting of the loader too (optional)
   PLATFORM_SYSTEM_LOCAL_SECRET: rand(40),   // PF-4s: our own staff's stand-in key, a secret setting too (optional; never PLATFORM_LOCAL_SECRET's value)
+  PLATFORM_GOOGLE_CLIENT_ID: `${String(100000000000 + randomBytes(4).readUInt32BE())}-${rand(32)}.apps.googleusercontent.com`,   // R1.43 part 0: optional pair
+  PLATFORM_GOOGLE_CLIENT_SECRET: ["GOCSPX", rand(28)].join("-"),   // R1.43 part 0: a secret setting (redacted and scrubbed like the rest)
   PLATFORM_FILES_LINK_KEY: key32(),   // PF-F1b: the S3 download links' key is a secret setting of the loader too (optional)
 } as Record<string, string>);
 /** Every secret value in a generated set (each secret-box key on its own), to look for in messages, logs and responses. */

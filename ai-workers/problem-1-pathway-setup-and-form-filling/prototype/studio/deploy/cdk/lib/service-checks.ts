@@ -1,7 +1,7 @@
 // PF-8b's checks over a synthesized template: pure functions returning plain-words findings (empty = pass), run on the
 // real stacks (must pass) and on broken copies (must fail) by test/service.test.ts, as PF-8a's checks.ts does.
 import type { Template } from "./checks.ts";
-import { CERT_ARN_PATTERN, CHALLENGE_MINUTES, NO_DOMAIN, SIGN_IN_ACTIONS } from "./service.ts";
+import { CERT_ARN_PATTERN, CHALLENGE_MINUTES, NO_DOMAIN, SIGN_IN_ACTIONS, importedSecretName } from "./service.ts";
 export { SIGN_IN_ACTIONS };
 
 type Res = { Type: string; Properties?: Record<string, unknown> };
@@ -14,7 +14,7 @@ const json = (v: unknown) => JSON.stringify(v ?? null);
 const refId = (v: unknown) => { const o = v as { Ref?: string; "Fn::GetAtt"?: [string, string] } | undefined; return o?.Ref ?? o?.["Fn::GetAtt"]?.[0]; };
 const containers = (r: Res) => arr(r.Properties?.ContainerDefinitions) as Container[];
 const env = (c: Container) => new Map((c.Environment ?? []).map((e) => [e.Name, e.Value]));
-const secretName = (t: Template, v: unknown) => { const id = refId(v); const r = id ? t.Resources?.[id] : undefined; return r?.Type === "AWS::SecretsManager::Secret" ? String(r.Properties?.Name ?? `(generated ${id})`) : undefined; };
+const secretName = (t: Template, v: unknown) => { const id = refId(v); const r = id ? t.Resources?.[id] : undefined; return r?.Type === "AWS::SecretsManager::Secret" ? String(r.Properties?.Name ?? `(generated ${id})`) : importedSecretName(v); }; // R1.43 part 0: or one of STAGE_SECRETS, imported by name
 // A value that looks like a credential, wherever it sits in a plain value; a dynamic reference ({{resolve:…}}, what
 // unsafeUnwrap() writes) puts the secret's value into the resource in plain text, so it counts too (break M-1).
 const CREDENTIAL = /(?:^|[^A-Za-z])(sk|rk)_(test|live)_|whsec_|postgres(ql)?:\/\/[^\s/]*:[^\s/@]+@|-----BEGIN|AKIA[0-9A-Z]{16}|\{\{resolve:(secretsmanager|ssm-secure):/;
@@ -105,7 +105,7 @@ export function secretReadFindings(t: Template): string[] {
   const add = (roles: unknown[], doc: unknown, from: string) => {
     for (const st of arr(g(doc, "Statement")) as St[] & { NotAction?: unknown }[]) if (st.Effect !== "Deny" && (st as { NotAction?: unknown }).NotAction !== undefined) out.push(`${from}: an Allow with NotAction (unreadable; re-break n2)`);
     for (const st of arr(g(doc, "Statement")) as St[]) if (st.Effect !== "Deny" && readsSecret(st.Action))
-      for (const role of roles.map((r) => refId(r) ?? json(r))) grants.push({ role, res: arr(Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((x) => refId(x) ?? json(x)), from });
+      for (const role of roles.map((r) => refId(r) ?? json(r))) grants.push({ role, res: arr(Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((x) => refId(x) ?? importedSecretName(x, true) ?? json(x)), from });
   };
   const holders = (p: Res) => [...arr(p.Properties?.Roles), ...arr(p.Properties?.Users).map((u) => `user ${json(u)}`), ...arr(p.Properties?.Groups).map((x) => `group ${json(x)}`)]; // re-break RM-2
   for (const [id, p] of [...all(t, "AWS::IAM::Policy"), ...all(t, "AWS::IAM::ManagedPolicy")]) add(holders(p), p.Properties?.PolicyDocument, id);
@@ -118,7 +118,7 @@ export function secretReadFindings(t: Template): string[] {
   const execs = new Map<string, Set<string>>();
   for (const [id, td] of all(t, "AWS::ECS::TaskDefinition")) {
     const exec = refId(td.Properties?.ExecutionRoleArn);
-    const wanted = new Set(containers(td).flatMap((c) => (c.Secrets ?? []).map((x) => refId(x.ValueFrom) ?? json(x.ValueFrom))));
+    const wanted = new Set(containers(td).flatMap((c) => (c.Secrets ?? []).map((x) => refId(x.ValueFrom) ?? importedSecretName(x.ValueFrom) ?? json(x.ValueFrom))));
     if (!exec) { if (wanted.size) out.push(`${id}: secrets but no execution role`); continue; }
     execs.set(exec, wanted);
     const trust = g(t.Resources?.[exec], "Properties", "AssumeRolePolicyDocument");

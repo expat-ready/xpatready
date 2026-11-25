@@ -3,7 +3,7 @@
 // does and why (ECR by digest, 2 tasks over two zones, HTTPS-only ALB, secrets supplied at deploy, the migration task,
 // SES, the wildcard zone and certificate, three Cognito pools): ../README.md "The service". Log groups and alarms are
 // PF-23c's; deploy, rollback and smoke test PF-8c's. Sizes, timings, DMARC and password policy are Sample.
-import { CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_iam as iam, aws_kms as kms, aws_logs as logs, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_s3 as s3, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
+import { ArnFormat, CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_iam as iam, aws_kms as kms, aws_logs as logs, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_s3 as s3, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
 import { Construct } from "constructs";
 
 export type Stage = "staging" | "production";
@@ -38,6 +38,23 @@ export const SERVICE_SECRETS = [
   "PLATFORM_ZOOM_CLIENT_ID", "PLATFORM_ZOOM_CLIENT_SECRET", "PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN", "PLATFORM_SECRET_BOX_KEYS", "PLATFORM_SECRET_BOX_KEY_VERSION",
 ] as const;
 export const POOLS = ["staff", "own-staff", "clients"] as const;
+/** R1.43 part 0 (P-821, 25 Nov): settings one stage has and the other not yet. Staging has the Google OAuth test app
+ *  (project expatready-staging, Testing mode): its client secret was made by hand in Secrets Manager before this stack
+ *  named it, so it is imported by name (creating it again would fail the deploy: "already exists") and read with the
+ *  stack's key, as the secrets above. Production has no Google client yet: no setting, so Google connections are off
+ *  there (the loader takes the pair as both or neither). The client id is public (Google shows it on every consent page),
+ *  so it is a plain setting. */
+export const STAGE_SECRETS: Record<Stage, readonly string[]> = { staging: ["PLATFORM_GOOGLE_CLIENT_SECRET"], production: [] };
+/** The one form an imported secret may take in a template, for the estate's guards (checks.ts, service-checks.ts): this
+ *  account's and this region's ARN of a name in STAGE_SECRETS, exactly as formatArn writes it; `wildcard` is the form
+ *  IAM's grant takes (Secrets Manager adds six random characters to every secret's ARN). Anything else is undefined. */
+export function importedSecretName(v: unknown, wildcard = false): string | undefined {
+  const at = (name: string) => JSON.stringify({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":secretsmanager:ca-central-1:", { Ref: "AWS::AccountId" }, `:secret:${name}${wildcard ? "-??????" : ""}`]] });
+  const got = JSON.stringify(v ?? null);
+  for (const [stage, names] of Object.entries(STAGE_SECRETS)) for (const n of names) if (got === at(`xr/${stage}/${n}`)) return `xr/${stage}/${n}`;
+  return undefined;
+}
+export const GOOGLE_CLIENT_ID: Record<Stage, string | null> = { staging: "944392513043-74l9f3bhl99tkiv4e3nt24tf3qfomfj1.apps.googleusercontent.com", production: null };
 /** PF-4bs (concept screens/PF-4bs r3 §4; Lead 23, 24 Nov): the only Cognito actions the app may call, each with its caller,
  *  on the staff pool's ARN only (held by service-checks.ts signInTaskFindings and checks.ts ECS_TASK_ACTIONS). Sign-in and
  *  its code: AdminInitiateAuth, AdminRespondToAuthChallenge; the set-password callback: AdminSetUserPassword, AdminGetUser;
@@ -128,7 +145,12 @@ export class AppService extends Construct {
       encryptionKey: key,
       removalPolicy: RemovalPolicy.RETAIN,
     });
-    const appSecrets: Record<string, sm.Secret> = { DATABASE_URL: ownerUrl, ...Object.fromEntries(SERVICE_SECRETS.map((n) => [n, secret(n)])), PLATFORM_FILES_LINK_KEY: linkKey };
+    // R1.43 part 0: a secret made by hand before the stack named it, imported by its name (no placeholder, no create).
+    const imported = (name: string) => sm.Secret.fromSecretAttributes(this, `Secret${name}`, {
+      secretPartialArn: Stack.of(this).formatArn({ service: "secretsmanager", resource: "secret", resourceName: `xr/${stage}/${name}`, arnFormat: ArnFormat.COLON_RESOURCE_NAME }),
+      encryptionKey: key,
+    });
+    const appSecrets: Record<string, sm.ISecret> = { DATABASE_URL: ownerUrl, ...Object.fromEntries(SERVICE_SECRETS.map((n) => [n, secret(n)])), ...Object.fromEntries(STAGE_SECRETS[stage].map((n) => [n, imported(n)])), PLATFORM_FILES_LINK_KEY: linkKey };
 
     // --- Cognito: three separate pools (PF-4b staff, PF-4s our own staff, PF-4p clients)
     // QA-643 (PF-4b; AWS's cognito-idp API model 2016-04-18, botocore 1.44.9, read 21 Nov 2026): a staff member signs in
@@ -181,6 +203,7 @@ export class AppService extends Construct {
         PLATFORM_COGNITO_USER_POOL_ID: pools.staff.userPoolId,
         PLATFORM_COGNITO_CLIENT_ID: staffClient.userPoolClientId,
         PLATFORM_SES_REGION: region,
+        ...(GOOGLE_CLIENT_ID[stage] ? { PLATFORM_GOOGLE_CLIENT_ID: GOOGLE_CLIENT_ID[stage]! } : {}), // R1.43 part 0: public, a plain setting
         // PF-F1c: the cloud FilesPort (api/src/platform/files/choose.ts): the documents bucket, the data key, this region
         PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: props.files.bucketName, PLATFORM_FILES_KMS_KEY_ID: key.keyArn, PLATFORM_FILES_REGION: region,
         ...(noDomain ? {} : { PLATFORM_ADDRESS_SUFFIX: domain }), // PF-8b F2b: firm addresses under this stack's zone (F3: no-domain mode sets the load balancer's name below)
