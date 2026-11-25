@@ -1,7 +1,7 @@
 // platform-client-identity.prisma — clients' own portal sign-in: accounts and invitations (PF-4p, R1.62). Owner: Lead B (platform).
 // Built by the screens lane (amendment B, P-600 condition 1: its own area file). A third sign-in group, walled from both staff groups: an
 // account belongs to one firm and names that firm's fo_person, whose cases are the only ones the client reads. No Prisma relation into other
-// owners' files: the person rule (a trigger) and the invitation's key are in migration 20261125100000_platform-client-identity__pf4p_client_identity.
+// owners' files: the person rule (a trigger) and the invitation's key are in migration 20261125150000_platform-client-identity__pf4p_client_identity.
 
 /// AG-15-3, AG-15-4, AG-15-6: an account's life. Only ACTIVE signs in.
 enum PlatClientAccountStatus {
