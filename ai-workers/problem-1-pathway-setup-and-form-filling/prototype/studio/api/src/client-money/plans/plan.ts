@@ -58,7 +58,7 @@ export class PaymentPlans {
       await invoiceInScope(tx, firmId, id, scope);
       const inv = await lock(tx, firmId, id);
       if (!inv.issued) refuse("DRAFT", "A plan is for an issued invoice: issue it first. Nothing was saved.");
-      if (await tx.moneyPaymentPlan.findFirst({ where: firmScope(firmId, { invoiceId: id, status: "ACTIVE" }), select: { id: true } })) refuse("PLAN_EXISTS", `${inv.number} already has a plan: cancel it first. Nothing was saved.`);
+      if (await tx.moneyPaymentPlan.findFirst({ where: firmScope(firmId, { invoiceId: id, status: "ACTIVE" as const }), select: { id: true } })) refuse("PLAN_EXISTS", `${inv.number} already has a plan: cancel it first. Nothing was saved.`);
       const due = await dueOf(tx, firmId, id);
       if (due <= 0) refuse("NOTHING_DUE", `Nothing is due on ${inv.number}, so there is nothing to plan. Nothing was saved.`);
       const sum = b.instalments.reduce((s, x) => s + x.amountMinor, 0);
@@ -88,7 +88,7 @@ export class PaymentPlans {
       const inv = await lock(tx, firmId, id);
       const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${c.reason}, 200) as ok`;
       if (!text.ok) badField("reason", "The reason needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
-      const plan = await tx.moneyPaymentPlan.findFirst({ where: firmScope(firmId, { invoiceId: id, status: "ACTIVE" }), select: { id: true } });
+      const plan = await tx.moneyPaymentPlan.findFirst({ where: firmScope(firmId, { invoiceId: id, status: "ACTIVE" as const }), select: { id: true } });
       if (!plan) return refuse("NO_PLAN", `${inv.number ?? "This invoice"} has no active plan. Nothing was saved.`);
       await tx.moneyPaymentPlan.update({ where: { id: plan.id }, data: { status: "CANCELLED", cancelledBy: by, cancelReason: c.reason } });
       await this.audit.record(tx, { firmId, actor: by, action: "invoice.plan_cancelled", entity: "money_payment_plan", entityKey: plan.id,
