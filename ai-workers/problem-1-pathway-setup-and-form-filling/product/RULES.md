@@ -151,16 +151,16 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
 | IDX-9 | Row word for word in `rules/tech-lead.md` › IDX-9. | prose | 19 Nov |
 | P-731 | A PR that failed a batch is relabelled only after a green full run on its head, every failing suite named (P-733 (4)). | CI: label-guard (CI-PRE, owed) | 19 Nov |
-| P-733 | Lanes on the items nearest done first, one lane per item to Proven; PRs near 800 lines; automatic proof on merge; qa walks risky items. | CI: #2233 (owed); prose (focus) | 19 Nov |
-| P-734 | P-733 runs unchanged to 22 Nov evening; no new workflow row before 23 Nov unless a fix; daily number: Proven. | script: ENF-733 (owed) | 19 Nov |
+| P-733 | Lanes on the items nearest done first, one lane per item to Proven; PRs near 800 lines; automatic proof on merge; qa walks risky items. | CI: walks.yml (ENF-733), #2233; prose | 19 Nov |
+| P-734 | P-733 runs unchanged to 22 Nov evening; no new workflow row before 23 Nov unless a fix; daily number: Proven. | script: check-focus-list.sh (#2254) | 19 Nov |
 | IDX-14 | Product rulings P-735, P-736, P-737, P-741 stand: row word for word in `rules/tech-lead.md` › IDX-14. | prose | 19 Nov |
 | IDX-17 | Test-run rows P-742, P-743 (`FULL_RUN_FROM` to 22 Nov 20:00 IST), P-744 (B203 now): word for word in `rules/tech-lead.md` › Moved 20 Nov. | CI: queue-gate.sh FULL_FROM; script: records-only.sh | 20 Nov |
 | IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
 | IDX-20 | 20 Nov rows P-749 to P-756 stand: list word for word in `rules/tech-lead.md` › IDX-20 row. | script: lead-pr.sh | 20 Nov |
 | IDX-21 | 20 Nov P-757 to P-765 stand: row word for word in `rules/tech-lead.md` › IDX-21. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
 | IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23 (P-770, P-778 the Lead does every step; P-780 recovery swap; P-781 Opus 5.5 medium for all, Fable 5.2 medium critical). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |
-| IDX-25 | P-782-P-815 stand: `rules/tech-lead.md` › IDX-25. | script: ENF-782b (owed) | 22 Nov |
-| P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
+| IDX-25 | P-782-P-815 stand: `rules/tech-lead.md` › IDX-25. | script: human-sample.py (ENF-782b) | 22 Nov |
+| P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: flow-constraint.py (ENF-738) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
