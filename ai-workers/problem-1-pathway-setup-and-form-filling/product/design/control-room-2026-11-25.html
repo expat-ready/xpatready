@@ -1,0 +1,332 @@
+<title>Release 1 Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, a pinned "needs you" strip, then summary → mechanism → tracks → plan, each section a band */
+:root{
+  --bg:#f5f6f9; --surface:#ffffff; --fg:#1b2130; --muted:#5b6479; --line:#dde1ea;
+  --accent:#2747c9; --accent-soft:#e6ebfb;
+  --ok:#1d7a4f; --ok-soft:#e3f3ea; --warn:#a66300; --warn-soft:#fbefdc; --bad:#b3261e; --bad-soft:#fbe5e3;
+  --display:"Archivo",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11141c; --surface:#181c27; --fg:#e7eaf2; --muted:#9aa3b8; --line:#2a3040;
+  --accent:#8ea5ff; --accent-soft:#1f2747;
+  --ok:#5fcf98; --ok-soft:#14301f; --warn:#f0b35a; --warn-soft:#33270f; --bad:#ff8a80; --bad-soft:#3a1715; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11141c; --surface:#181c27; --fg:#e7eaf2; --muted:#9aa3b8; --line:#2a3040;
+  --accent:#8ea5ff; --accent-soft:#1f2747;
+  --ok:#5fcf98; --ok-soft:#14301f; --warn:#f0b35a; --warn-soft:#33270f; --bad:#ff8a80; --bad-soft:#3a1715; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--body);margin:0}
+.wrap{max-width:1040px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:30px;font-weight:800;letter-spacing:-.01em}
+h2{font-size:21px;font-weight:700}
+h3{font-size:16px;font-weight:700}
+p{margin:0;max-width:72ch}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+section{display:flex;flex-direction:column;gap:14px}
+.lede{color:var(--muted)}
+.needs{border:1.5px solid var(--bad);background:var(--bad-soft);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.needs.y{border-color:var(--warn);background:var(--warn-soft)}
+.needs b{font-family:var(--display)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.kpi .n{font:700 28px var(--display);font-variant-numeric:tabular-nums}
+.kpi .s{font-size:13px;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font:500 12px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font:500 12px var(--mono);padding:1px 8px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.info{background:var(--accent-soft);color:var(--accent)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+ul,ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.note{font-size:13px;color:var(--muted)}
+svg text{font-family:var(--mono);fill:var(--muted);font-size:11px}
+svg .lbl{fill:var(--fg);font-size:12px}
+.steps{counter-reset:s;list-style:none;padding:0;display:flex;flex-direction:column;gap:10px}
+.steps li{counter-increment:s;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px 12px 52px;position:relative}
+.steps li::before{content:counter(s);position:absolute;left:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--surface);font:700 14px/26px var(--display);text-align:center}
+.steps .meta{font:12px var(--mono);color:var(--muted);margin-top:4px}
+.bar{display:flex;height:22px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.bar span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+</style>
+
+<div class="wrap">
+
+<header style="display:flex;flex-direction:column;gap:8px">
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 4 · 25 Nov 2026, 08:25 IST</div>
+  <h1>Where we are, how the machine works, and what we fix today</h1>
+  <p class="lede">Every number below comes from GitHub, <span class="mono">origin/main</span> or a measured report (<span class="mono">design/why-targets-missed-2026-11-24.md</span>, 72-hour window to 24 Nov 22:23 IST). Where a figure is an estimate it says so.</p>
+</header>
+
+<section>
+  <div class="needs"><b>🔴 Needs you: one answer</b>
+    <span>What time today can you sit for about 2 hours to open the outside accounts (Stripe test mode, BoldSign sandbox key, Google and Microsoft test sign-in, AWS reads)? You decided the sitting itself (P-821). I drive the browser; you sign in and accept terms.</span>
+    <span><b>Recommend:</b> today 11:00 IST. 14 of the 44 unproven rows cannot pass without these accounts, so without them we stop at about 87 of 101 around 1 Dec.</span></div>
+  <div class="needs y"><b>🟡 Decide when you can</b>
+    <span>The new blocking check (P-822, <span class="mono">pr-suites</span> required before the label) would normally run as a warning for 24 hours first (P-717 b). We already have the evidence it needs: 18 of 33 real defects were red there before the queue. <b>Recommend:</b> make it blocking on landing, with the 4 most flaky tests quarantined at the same time.</span></div>
+</section>
+
+<section>
+  <h2>The headline</h2>
+  <div class="kpis">
+    <div class="kpi"><span class="eyebrow">Works (qa-proven)</span><span class="n">57<span style="font-size:16px;color:var(--muted)"> / 101</span></span><span class="s">+2 since midnight (R1.65, R1.53)</span></div>
+    <div class="kpi"><span class="eyebrow">Partial</span><span class="n">23</span><span class="s">some parts built</span></div>
+    <div class="kpi"><span class="eyebrow">Not built</span><span class="n">21</span><span class="s">all in wave 4</span></div>
+    <div class="kpi"><span class="eyebrow">Proving rate</span><span class="n">4.7<span style="font-size:16px;color:var(--muted)">/day</span></span><span class="s">net, 22–24 Nov</span></div>
+    <div class="kpi"><span class="eyebrow">Needed</span><span class="n">2.6<span style="font-size:16px;color:var(--muted)">/day</span></span><span class="s">44 rows in 17 days to 12 Dec</span></div>
+    <div class="kpi"><span class="eyebrow">Weekly plan</span><span class="n">28%</span><span class="s">resets 1 Dec 10:29 IST</span></div>
+  </div>
+  <div class="panel">
+    <h3>Works by day, and where the current rate takes us</h3>
+    <div class="scroll">
+    <svg viewBox="0 0 740 300" width="100%" style="min-width:560px" role="img" aria-label="Works by day from 15 Nov to 12 Dec with projection">
+      <g stroke="var(--line)" stroke-width="1">
+        <line x1="50" y1="20" x2="700" y2="20"/><line x1="50" y1="80.6" x2="700" y2="80.6"/><line x1="50" y1="141.2" x2="700" y2="141.2"/><line x1="50" y1="201.8" x2="700" y2="201.8"/><line x1="50" y1="260" x2="700" y2="260"/>
+      </g>
+      <text x="44" y="24" text-anchor="end">101</text><text x="44" y="85" text-anchor="end">75</text><text x="44" y="145" text-anchor="end">50</text><text x="44" y="206" text-anchor="end">25</text><text x="44" y="264" text-anchor="end">0</text>
+      <text x="50" y="280" text-anchor="middle">15 Nov</text><text x="170.4" y="280" text-anchor="middle">20 Nov</text><text x="290.7" y="280" text-anchor="middle">25 Nov</text><text x="435.2" y="280" text-anchor="middle">1 Dec</text><text x="567.5" y="280" text-anchor="middle">6–7 Dec</text><text x="700" y="280" text-anchor="middle">12 Dec</text>
+      <!-- 1 Dec re-decide gate -->
+      <line x1="435.2" y1="20" x2="435.2" y2="260" stroke="var(--warn)" stroke-dasharray="3 4"/>
+      <circle cx="435.2" cy="88.9" r="5" fill="var(--warn)"/><text x="441" y="102" style="fill:var(--warn)">72 by 1 Dec, else re-decide (P-609)</text>
+      <!-- required pace -->
+      <line x1="299" y1="124.6" x2="700" y2="20" stroke="var(--muted)" stroke-dasharray="2 4" stroke-width="1.5"/>
+      <!-- projection with accounts -->
+      <line x1="299" y1="124.6" x2="524.2" y2="20" stroke="var(--accent)" stroke-dasharray="6 5" stroke-width="2"/>
+      <circle cx="524.2" cy="20" r="4.5" fill="var(--accent)"/><text x="530" y="34" style="fill:var(--accent)">~4–5 Dec at 4.7/day, if accounts open</text>
+      <!-- projection without accounts -->
+      <polyline points="299,124.6 453.2,53.3 700,53.3" fill="none" stroke="var(--bad)" stroke-dasharray="6 5" stroke-width="2"/>
+      <text x="560" y="68" style="fill:var(--bad)">stuck at ~87 without them</text>
+      <!-- actual -->
+      <polyline points="50,255.2 74.1,233.9 98.1,233.9 122.2,233.9 146.3,231.5 170.4,200.6 194.4,162.6 218.5,150.7 242.6,141.2 266.6,129.3 299,124.6" fill="none" stroke="var(--fg)" stroke-width="2.5"/>
+      <circle cx="299" cy="124.6" r="5" fill="var(--fg)"/><text x="306" y="140" class="lbl">57 now</text>
+      <circle cx="700" cy="20" r="5" fill="none" stroke="var(--fg)" stroke-width="2"/><text x="694" y="12" text-anchor="end" class="lbl">all 101 by 12 Dec</text>
+    </svg>
+    </div>
+    <div class="legend"><span><i style="background:var(--fg)"></i>actual (end of each IST day)</span><span><i style="background:var(--accent)"></i>today's rate, accounts open</span><span><i style="background:var(--bad)"></i>today's rate, no accounts</span><span><i style="background:var(--muted)"></i>pace needed for 12 Dec</span></div>
+    <p class="note">Rate projection assumes the remaining rows behave like the finished ones; the 2026-11-24 report warns they are longer chains, so treat 4–5 Dec as optimistic.</p>
+  </div>
+</section>
+
+<section>
+  <h2>How the machine works: one capability from idea to "Works"</h2>
+  <p class="lede">A capability (an R1 row) is a chain of parts. Each part is one PR that goes through these stations. The row counts only when its last part is proven on main. Measured times are medians for builder PRs, 72 h to 24 Nov.</p>
+  <div class="panel scroll">
+  <svg viewBox="0 0 980 250" width="100%" style="min-width:820px" role="img" aria-label="Pipeline stations">
+    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+    <g font-family="var(--body)">
+      <!-- stations: x positions -->
+      <g>
+        <rect x="10" y="40" width="104" height="70" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="62" y="64" text-anchor="middle" class="lbl">1 Shape</text><text x="62" y="82" text-anchor="middle">row ready</text><text x="62" y="98" text-anchor="middle">Lead</text>
+      </g>
+      <g>
+        <rect x="132" y="40" width="104" height="70" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="184" y="64" text-anchor="middle" class="lbl">2 Build</text><text x="184" y="82" text-anchor="middle">cloud builder</text><text x="184" y="98" text-anchor="middle">~3 rounds</text>
+      </g>
+      <g>
+        <rect x="254" y="40" width="104" height="70" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="306" y="64" text-anchor="middle" class="lbl">3 Review</text><text x="306" y="82" text-anchor="middle">fresh Opus</text><text x="306" y="98" text-anchor="middle">0.4 h to Approve</text>
+      </g>
+      <g>
+        <rect x="376" y="40" width="104" height="70" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/>
+        <text x="428" y="64" text-anchor="middle" class="lbl">4 Lead read</text><text x="428" y="82" text-anchor="middle">migr/money/route</text><text x="428" y="98" text-anchor="middle">209 holds / 72 h</text>
+      </g>
+      <g>
+        <rect x="498" y="40" width="104" height="70" rx="8" fill="var(--bad-soft)" stroke="var(--bad)"/>
+        <text x="550" y="64" text-anchor="middle" class="lbl">5 Merge queue</text><text x="550" y="82" text-anchor="middle">33% batches red</text><text x="550" y="98" text-anchor="middle">45 min if green</text>
+      </g>
+      <g>
+        <rect x="620" y="40" width="104" height="70" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="672" y="64" text-anchor="middle" class="lbl">6 Walk on main</text><text x="672" y="82" text-anchor="middle">automatic</text><text x="672" y="98" text-anchor="middle">since 24 Nov</text>
+      </g>
+      <g>
+        <rect x="742" y="40" width="104" height="70" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="794" y="64" text-anchor="middle" class="lbl">7 qa proof</text><text x="794" y="82" text-anchor="middle">fresh reader</text><text x="794" y="98" text-anchor="middle">145 min lag</text>
+      </g>
+      <g>
+        <rect x="864" y="40" width="104" height="70" rx="8" fill="var(--ok-soft)" stroke="var(--ok)"/>
+        <text x="916" y="70" text-anchor="middle" class="lbl">Works</text><text x="916" y="90" text-anchor="middle">row counts</text>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)">
+        <line x1="114" y1="75" x2="130" y2="75"/><line x1="236" y1="75" x2="252" y2="75"/><line x1="358" y1="75" x2="374" y2="75"/><line x1="480" y1="75" x2="496" y2="75"/><line x1="602" y1="75" x2="618" y2="75"/><line x1="724" y1="75" x2="740" y2="75"/><line x1="846" y1="75" x2="862" y2="75"/>
+      </g>
+      <!-- rework loop -->
+      <path d="M550,110 C550,175 184,175 184,112" fill="none" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+      <text x="367" y="168" text-anchor="middle" style="fill:var(--bad)">red batch → back to builder: median 88 min, ~6,570 PR-minutes a day (largest wait)</text>
+      <!-- chain note -->
+      <path d="M916,112 C916,215 62,215 62,112" fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="2 4" marker-end="url(#ar)"/>
+      <text x="490" y="232" text-anchor="middle" style="fill:var(--accent)">next part of the same row starts again at Shape: ~10 merges per new Works</text>
+      <text x="10" y="24">Where it waits today:</text><text x="160" y="24" style="fill:var(--warn)">amber = waits on the Lead</text><text x="350" y="24" style="fill:var(--bad)">red = biggest loss</text>
+    </g>
+  </svg>
+  </div>
+</section>
+
+<section>
+  <h2>What went well, what went wrong</h2>
+  <div class="two">
+    <div class="panel"><h3 style="color:var(--ok)">Going well (measured)</h3>
+      <ul>
+        <li>Merging is fast when green: 95 PRs a day, CI machine wait 0 min median, pipeline queue 18 of 18 batches landed.</li>
+        <li>Review is quick: 0.4 h from PR to first Approve.</li>
+        <li>qa is not the brake: 145 min from last part to Works.</li>
+        <li>Walk on merge is live (ENF-733): a merged PR naming R1.n walks its journey on main by itself.</li>
+        <li>Main has been green since 07:25 IST; 2 rows proven since midnight, more queued (R1.68, R1.69, R1.104).</li>
+        <li>Lead 3 ran 8 h on one session instead of hourly hand-overs.</li>
+      </ul></div>
+    <div class="panel"><h3 style="color:var(--bad)">Going wrong (measured)</h3>
+      <ul>
+        <li><b>Long chains:</b> 141 product merges gave 14 new Works (72 h).</li>
+        <li><b>Red batches:</b> 121 of 368 batch runs red; 18 of 33 real defects were already red on the PR in a check that only warns.</li>
+        <li><b>Outside accounts:</b> 14 rows need sign-ins only you can give.</li>
+        <li><b>Lead on the critical path:</b> 209 label holds for a Lead read; #3035 (the migration fix) held 55 h.</li>
+        <li><b>Too many leads:</b> 32 Lead sessions in 35 h (to 24 Nov), each with a ~170–205k-token start read.</li>
+        <li><b>Rules on paper:</b> 82 of 132 rules (62%) are prose only.</li>
+        <li><b>Stale work:</b> 20 open PRs quiet 15–45 h; 12 "Question for the tech lead" comments unanswered (oldest 44 h).</li>
+      </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>Every track that is running</h2>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>Track</th><th>What it is for</th><th>Now (08:2x IST)</th><th>Next step</th><th>Expect by (IST)</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td><b>A · Product build</b></td><td>Finish the nearest Partials (P-820); Not-built only where a Partial needs it</td><td>16 cloud lanes; #3593 R1.58, #3579 R1.86, #3490 R1.54 full runs on today's main; #3491 R1.87 cleared to label</td><td>Relabel each on green; #3544 R1.10 and #3217 R1.5 need review and label</td><td class="num">10:00–13:00</td><td><span class="pill warn">3 dequeued</span></td></tr>
+      <tr><td><b>B · qa ahead</b></td><td>Journeys written before code, and the independent proof</td><td>qa 9, 10, 11 active; #3607 (R1.68, R1.69) and #3605 (R1.104) queued</td><td>Walk j_93 after #3607, j_13 after #3606</td><td class="num">09:30–11:00</td><td><span class="pill ok">moving</span></td></tr>
+      <tr><td><b>OS-1 · Merge pipeline</b></td><td>One migration slot per schema area (#3035), so migrations stop queuing one at a time</td><td>Approved; out of date with main</td><td>Update branch, green, Lead label</td><td class="num">12:00</td><td><span class="pill bad">held 55 h</span></td></tr>
+      <tr><td><b>OS-2 · Enforcement</b></td><td>P-822 pr-suites required before label; P-823 auto-label additive migration, money and route PRs after a fresh reviewer</td><td>Building (decided this morning); no PR open yet</td><td>Open the two small PRs, then flip to blocking</td><td class="num">14:00</td><td><span class="pill info">building</span></td></tr>
+      <tr><td><b>Records</b></td><td>Your decisions in DECISIONS and RULES</td><td>#3606 (P-818) in the merge queue; Lead branch behind main (P-795 vs P-818)</td><td>Reopen P-819..P-823 as one records PR; refresh RULES</td><td class="num">09:30</td><td><span class="pill warn">behind</span></td></tr>
+      <tr><td><b>Outside accounts</b></td><td>Lift the ceiling from 87 to 101 (P-821)</td><td>List ready: Stripe, BoldSign, Google, Microsoft, AWS reads</td><td>Your time for the sitting</td><td class="num">your time</td><td><span class="pill bad">needs you</span></td></tr>
+      <tr><td><b>Leads</b></td><td>One Lead, two idle standbys (P-286)</td><td>Lead 4 at 13% context; standby Lead 5 only</td><td>Start Lead 6 standby now (your typed turn)</td><td class="num">08:30</td><td><span class="pill ok">ok</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Enforcement: how much of the rulebook a machine checks</h2>
+  <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+    <div class="bar" role="img" aria-label="132 rules: 82 prose, 23 script, 18 CI, 5 hook, 4 owed">
+      <span style="width:62.1%;background:var(--bad)"></span><span style="width:17.4%;background:var(--accent)"></span><span style="width:13.6%;background:var(--ok)"></span><span style="width:3.8%;background:var(--warn)"></span><span style="width:3.1%;background:var(--muted)"></span>
+    </div>
+    <div class="legend"><span><i style="background:var(--bad)"></i>prose only 82</span><span><i style="background:var(--accent)"></i>script 23</span><span><i style="background:var(--ok)"></i>CI 18</span><span><i style="background:var(--warn)"></i>hook 5</span><span><i style="background:var(--muted)"></i>enforcer owed 4</span></div>
+    <p>Of the 46 rules a machine checks, 30 are only partly covered. 8 of 37 workflows are report-only by design: a new blocking check warns for 24 h first and needs a second PR to block (P-717 b). That is why a decision made in the morning is still not "live" at night.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Can this Lead follow the rules? An honest scorecard</h2>
+  <div class="two">
+    <div class="panel"><h3>Done in my first 20 minutes</h3>
+      <ul>
+        <li>Check created first (cron :03 and :33, exact prompt).</li>
+        <li><span class="mono">current_lead</span> names me; times from the clock in IST.</li>
+        <li>Opus 5.5 medium (P-788); context 13%.</li>
+        <li>Owed list read in order; nothing it depends on has merged yet.</li>
+      </ul></div>
+    <div class="panel"><h3>Missed so far, and the fix</h3>
+      <ul>
+        <li>App view of the cloud lanes not read for 165 min; session context not read for 488 min. <b>Fix:</b> at the 08:33 check, then every check.</li>
+        <li>12 lane questions unanswered, the oldest 44 h, from earlier Leads. <b>Fix:</b> answer or park each today; close drafts nobody owns.</li>
+      </ul></div>
+  </div>
+  <div class="panel"><p><b>Why a Lead misses rules:</b> 132 rules, 62% on paper, held by one session that used to change every hour. No session can keep that in its head. <b>The fix is not a better Lead. Each rule needs a check that runs by itself and blocks.</b> The <span class="mono">lead-watch</span> script already prints the misses (that is how I found mine); the next step is for the missing ones to block or alert on their own, so nobody has to remember them.</p></div>
+</section>
+
+<section>
+  <h2>Today's operating-system plan, in order</h2>
+  <p class="lede">What happens when we start: product lanes keep building the whole time. Operating-system PRs go through their own "pipeline" queue (18 of 18 landed, about 10 min each), so they do not wait behind product. Each step below says how we will know it worked.</p>
+  <ol class="steps">
+    <li><b>Records first:</b> land P-819..P-823 on main and refresh RULES.md, so every check and lane reads today's decisions.
+      <div class="meta">enforced by: check-docs fails if RULES lags over 3 rows · proof: lead-watch stops printing "records not on main" · by 09:30</div></li>
+    <li><b>pr-suites blocks before the label (P-822)</b>, with the 4 most flaky tests quarantined in the same change.
+      <div class="meta">enforced by: label guard refuses a label without green pr-suites on the head · proof: red batches fall from 33% toward ~20% over 24 h · by 14:00</div></li>
+    <li><b>Auto-label additive migration, money and route PRs (P-823)</b> after a fresh reviewer's Approve; the Lead reads afterwards.
+      <div class="meta">enforced by: queue-gate labels by itself; the Lead's read is logged · proof: Lead-read holds go from ~70 a day toward 0 · by 15:00</div></li>
+    <li><b>Land #3035</b>, one migration slot per schema area.
+      <div class="meta">enforced by: Mergify queue rules · proof: migration time in the queue falls from a mean of 76 min toward 50 · by 12:00</div></li>
+    <li><b>A merge wakes the lane that waits on it</b>, instead of the Lead typing into idle lanes.
+      <div class="meta">enforced by: a workflow on merge that posts the next step to the dependent PR and its session · proof: lane idle minutes measured for 48 h · by 18:00</div></li>
+    <li><b>Stale PR sweep:</b> the 20 quiet PRs are answered, given an owner, or closed with a reason.
+      <div class="meta">enforced by: the SLE lines in lead-watch become an alert at 4 h · proof: 0 questions older than 30 min · by 13:00</div></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Software engineering stages, with a gate inside each</h2>
+  <p class="lede">Each stage needs an entry test, an exit test, a machine that checks it, and a number we watch. The gaps column is what we add so the internal parts work as well as the stages.</p>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>Stage</th><th>Exit test</th><th>Checked by a machine today</th><th>Gap to add</th><th>Number we watch</th></tr></thead>
+    <tbody>
+      <tr><td><b>Plan</b> (shape a row)</td><td>Dup check, touch list, "Done when", decisions answered</td><td><span class="pill warn">part</span> brief-check.sh</td><td>Every row lists its parts with a % done that a script computes</td><td>Rows ready 1+1 waves ahead</td></tr>
+      <tr><td><b>Design</b></td><td>Concept, fresh challenge, your look or Lead approval</td><td><span class="pill bad">prose</span></td><td>Concept PR needs a challenge file before Approve</td><td>Concept age</td></tr>
+      <tr><td><b>Build</b></td><td>Code plus a test per business rule; contracts between modules</td><td><span class="pill ok">yes</span> type check, fast checks, PR size</td><td>Contract tests per module boundary run on the PR</td><td>Rounds per PR (median 3)</td></tr>
+      <tr><td><b>Test</b></td><td>Affected suites green on the PR</td><td><span class="pill warn">warn only</span> pr-suites</td><td>P-822 blocking, flaky quarantine with an owner and date</td><td>Red batch rate (33%)</td></tr>
+      <tr><td><b>Review</b></td><td>Fresh Opus Approve on the exact head</td><td><span class="pill ok">yes</span> label guard</td><td>P-823 auto-label for additive risky paths</td><td>Approve → label time</td></tr>
+      <tr><td><b>Integrate</b> (merge)</td><td>Batch green on top of main</td><td><span class="pill ok">yes</span> Mergify</td><td>#3035 slots per schema area</td><td>Queue time, rework minutes</td></tr>
+      <tr><td><b>Prove</b></td><td>Journey walked on main twice, fresh qa reader</td><td><span class="pill ok">yes</span> walks on merge</td><td>Row status moves by script from the walk result</td><td>Last part → Works (145 min)</td></tr>
+      <tr><td><b>Operate</b></td><td>Alarms reach a person; logs and backups in Canada</td><td><span class="pill warn">part</span> R1.13, R1.1</td><td>Cloud reads committed with checksums; deploy from CI (PF-8c)</td><td>Alarm to inbox time</td></tr>
+      <tr><td><b>Steer</b> (Lead)</td><td>Checks on time, questions answered within 30 min</td><td><span class="pill warn">part</span> lead-watch prints misses</td><td>Misses alert by themselves; one-page start read under 40k tokens</td><td>Lead hand-overs a day, unanswered questions</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Dates</h2>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>Date (IST)</th><th>What</th><th>Needs</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="num">Today 09:30–15:00</td><td>Records on main, P-822, P-823, #3035</td><td>Lead and OS-2 lane</td><td><span class="pill info">in progress</span></td></tr>
+      <tr><td class="num">Today, your time</td><td>Outside accounts sitting (~2 h)</td><td>You</td><td><span class="pill bad">needs you</span></td></tr>
+      <tr><td class="num">1 Dec</td><td>Check: 72 proven or re-decide the date (P-609)</td><td>~2.5 a day from now</td><td><span class="pill ok">on track at 4.7/day</span></td></tr>
+      <tr><td class="num">6–7 Dec</td><td>Aim: all 101 proven</td><td>Accounts open; ~4.4 a day</td><td><span class="pill warn">tight</span></td></tr>
+      <tr><td class="num">12 Dec</td><td>Release 1: all 101 together (P-609)</td><td>Accounts open; 2.6 a day</td><td><span class="pill ok">reachable</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>If we work with full focus, this is the order</h2>
+  <ol>
+    <li><b>Open the outside accounts today.</b> This is the only thing that raises the ceiling above 87.</li>
+    <li><b>Stop red batches at the PR</b> (P-822 plus quarantine). It cuts the biggest measured wait.</li>
+    <li><b>Take the Lead out of routine labels</b> (P-823, #3035).</li>
+    <li><b>Finish the nearest Partials</b> (P-820): R1.86, R1.58, R1.56, R1.85, R1.29, R1.10 are 74–92% done.</li>
+    <li><b>No new process rules until 12 Dec</b> unless something breaks that we can measure; turn existing prose rules into checks instead.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Risks</h2>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>Risk</th><th>Cost if it happens</th><th>Mitigation</th><th>Owner</th></tr></thead>
+    <tbody>
+      <tr><td>Accounts not opened this week</td><td>14 rows never pass; 12 Dec missed</td><td>Sitting today, one account at a time</td><td>You, Lead drives</td></tr>
+      <tr><td>Blocking pr-suites trips on flaky tests</td><td>PRs wait, builders stall</td><td>Quarantine the 4 worst first; re-run once by itself</td><td>OS-2 lane</td></tr>
+      <tr><td>Auto-label lets a bad migration through</td><td>Main red, demo down</td><td>Additive only, fresh reviewer, Lead after-read, one migration per area</td><td>Lead</td></tr>
+      <tr><td>Weekly plan burn (28% now, ~1.5–6% an hour)</td><td>Lanes stop before 1 Dec reset</td><td>Hourly rate in each check; fewer lanes if over 4%/h</td><td>Lead</td></tr>
+      <tr><td>Remaining rows are longer chains than the finished ones</td><td>Rate drops below 4.7</td><td>Split rows into parts with % done; nearest first</td><td>Lead, builders</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+</div>
