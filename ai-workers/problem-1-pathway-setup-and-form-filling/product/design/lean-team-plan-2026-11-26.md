@@ -176,4 +176,4 @@ This is the tech lead's recommendation, based on what our records show about eac
 
 **What changes from the first draft:** fundraising moves from Founder A to the CEO founder, so the product owner keeps 1.5–2 hours a day for shaping and acceptance. The CEO's product time is about 1 hour a day, plus the time they spend fundraising.
 
-**Still to confirm:** the third founder's strengths, and whether the CEO founder agrees to give spec rulings in one weekly batch rather than one at a time.
+**Confirmed by the founder, 26 Nov (00:44 IST): "Yes, keep it".** Still to agree with the CEO founder: whether the CEO founder agrees to give spec rulings in one weekly batch rather than one at a time.
