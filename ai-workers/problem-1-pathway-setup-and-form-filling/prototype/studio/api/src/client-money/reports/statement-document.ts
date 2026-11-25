@@ -33,8 +33,10 @@ export const lineWords = (kind: string) => WORDS[kind] ?? kind;
 export type StatementHead = { firmName: string; firmAddress: string; billTo: string };
 
 /** The statement's names, every figure printed from the reads' digits. `lines` is every line of the period (all pages). */
-export function statementData(st: Pick<Statement, "accounts" | "period" | "trustShows">, lines: StatementLine[], sum: Summary, head: StatementHead, issuedOn: string): RenderData {
-  const period = st.period.from || st.period.to ? `${st.period.from ?? "the first entry"} to ${st.period.to ?? issuedOn}` : "Everything";
+export function statementData(st: Pick<Statement, "accounts" | "period" | "trustShows">, lines: StatementLine[], sum: Summary, head: StatementHead, issuedOn: string,
+  forCase: { caseId: string; label: string | null } | null = null): RenderData {
+  const period = (st.period.from || st.period.to ? `${st.period.from ?? "the first entry"} to ${st.period.to ?? issuedOn}` : "Everything")
+    + (forCase ? `, case ${forCase.label ?? "on file"} only` : "");   // break M2: a narrowed statement says what it is narrowed to
   const accounts = st.accounts.map((a) => {
     const title = a.account === "INVOICES" ? `Invoices and payments (${a.currency})` : `Trust (${a.currency})`;
     const rows = lines.filter((l) => l.account === a.account && l.currency === a.currency)
@@ -43,10 +45,14 @@ export function statementData(st: Pick<Statement, "accounts" | "period" | "trust
   }).join("\n");
   // AG-6-28 rule 3: each case's trust balance in plain words. The case is named by its number: the case's program name
   // has no source on main (not known), so never "your work permit" guessed.
-  const held = st.trustShows ? sum.cases.filter((c) => (c.trustMinor ?? 0) > 0)
+  const cases = forCase ? sum.cases.filter((c) => c.caseId === forCase.caseId) : sum.cases;   // break M2: a case's statement shows that case's figures only
+  const held = st.trustShows ? cases.filter((c) => (c.trustMinor ?? 0) > 0)
     .map((c) => `Held in trust for ${c.caseLabel ? `your case ${c.caseLabel}` : "you (not yet on a case)"}: ${c.currency} ${SIGNED(c.trustMinor!)}`).join("\n") : "";
-  const summary = sum.totals.map((t) => [`Owed: ${t.currency} ${SIGNED(t.owedMinor)}`, t.creditMinor > 0 ? `Credit held for you: ${t.currency} ${SIGNED(t.creditMinor)}` : "",
-    t.waitingMinor > 0 ? `Paid beyond the bill, waiting for your choice (refund or keep as credit): ${t.currency} ${SIGNED(t.waitingMinor)}` : ""].filter(Boolean).join("\n")).join("\n");
+  // owed, credit and waiting are today's (the summary has no period): headed "As of <today>" (break M2), for the case alone
+  // when the statement is narrowed to one
+  const figures = forCase ? cases : sum.totals;
+  const summary = [`As of ${issuedOn}:`, ...figures.map((t) => [`Owed: ${t.currency} ${SIGNED(t.owedMinor)}`, t.creditMinor > 0 ? `Credit held for you: ${t.currency} ${SIGNED(t.creditMinor)}` : "",
+    t.waitingMinor > 0 ? `Paid beyond the bill, waiting for your choice (refund or keep as credit): ${t.currency} ${SIGNED(t.waitingMinor)}` : ""].filter(Boolean).join("\n"))].join("\n");
   return { firmName: head.firmName, firmAddress: head.firmAddress, billTo: head.billTo, period, issuedOn, accounts: accounts || "No entries.", held, summary };
 }
 

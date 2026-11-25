@@ -15,6 +15,6 @@ const scopeOf = (db: Db) => { const v = new PgMoneyVisibility(db); return (ctx: 
 export default { controllers: [MoneyReportsController], providers: [
   { provide: MoneySummary, useFactory: (db: Db, c: PlatformClock) => new MoneySummary(db, scopeOf(db), { now: () => new Date(c.now()) }), inject: [Db, PlatformClock] },
   { provide: MoneyStatement, useFactory: (db: Db) => new MoneyStatement(db, scopeOf(db)), inject: [Db] },
-  // part 2: the PDF and Send statement over the same two reads, the audit adapter and the app's mail port
-  { provide: StatementSend, useFactory: (db: Db, st: MoneyStatement, sum: MoneySummary, c: PlatformClock, mail?: MailPort) => new StatementSend(db, st, sum, auditEvent, mail ?? null, { now: () => new Date(c.now()) }),
-    inject: [Db, MoneyStatement, MoneySummary, PlatformClock, { token: MAIL_PORT, optional: true }] }] } satisfies Feature;
+  // part 2: the PDF and Send statement over part 1's reads in one snapshot, the audit adapter and the app's mail port
+  { provide: StatementSend, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new StatementSend(db, scopeOf(db), auditEvent, mail ?? null, { now: () => new Date(c.now()) }),
+    inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] }] } satisfies Feature;

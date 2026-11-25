@@ -119,6 +119,13 @@ export class MoneyStatement {
   }
 }
 
+/** Every line of the period at once (up to `limit` + 1, so a caller can tell it is over), with its accounts, inside the
+ *  caller's transaction: part 2's PDF and Send statement read the whole statement in one query and one snapshot, never
+ *  page by page (break M4, m1 on #3753). */
+export async function allLines(tx: Tx, f: string, party: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean, from: string | undefined, to: string | undefined, limit: number) {
+  return read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust)), from, to, limit + 1, null);
+}
+
 /** The page read's SQL (exported for the plan check in tests/check_fo7r_statement.ts). */
 export function readSql(base: Prisma.Sql, start: Prisma.Sql | null, end: Prisma.Sql | null, inPeriod: Prisma.Sql, cur: Prisma.Sql, pageSize: number): Prisma.Sql {
   return Prisma.sql`${base},

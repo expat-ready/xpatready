@@ -141,6 +141,38 @@ try {
   const other = await call(tA, "GET", `/front-office/money/parties/person/${PB}/statement.pdf`), otherSend = await call(tA, "POST", `/front-office/money/parties/person/${PB}/statement/send`, {}), anon = await call(undefined, "GET", `${S}/statement.pdf`);
   ok("FO-7r P5 fail: another firm's client → 404 (PDF and send), no session → 401", other.status === 404 && otherSend.status === 404 && anon.status === 401, { other: other.status, otherSend: otherSend.status, anon: anon.status });
 
+  // ---------------------------------------------------------------------------------------------------- break round 1
+  // M3, M2: a case of this client narrows the statement and its figures, and the page names it; another case is 404.
+  const W = "00000000-0000-4000-8000-00000000f7r2".replace("f7r2", "0f72"), K1 = sql(`select gen_random_uuid()`), K2 = sql(`select gen_random_uuid()`), CL = sql(`select gen_random_uuid()`), CLB = sql(`select gen_random_uuid()`);
+  sql(`set session_replication_role = replica;
+    insert into case_client (id, workspace_id, firm_id, firm_key, client_number, display_name, display_kind, fo_person_id, created_by) values ('${CL}', '${W}', '${A}', 'sample-firm', 9701, 'Client a Sample', 'PERSON', '${PA}', 'seed:FO-7r-2'),
+      ('${CLB}', '${W}', '${A}', 'sample-firm', 9702, 'Client no-email Sample', 'PERSON', '${PN}', 'seed:FO-7r-2');
+    insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, firm_id, case_number, client_id) values
+      ('${K1}', '${W}', gen_random_uuid(), 'user-P', 'user-O', 'sample-firm', '${A}', 'C-2026-97001', '${CL}'), ('${K2}', '${W}', gen_random_uuid(), 'user-P', 'user-O', 'sample-firm', '${A}', 'C-2026-97002', '${CLB}');
+    update money_invoice set case_id = '${K1}' where id = '${i1}'`);
+  const onCase = pdfText((await call(tA, "GET", `${S}/statement.pdf?caseId=${K1}`)).bytes);
+  ok("FO-7r break M2 pass: a case's statement says \"case C-2026-97001 only\" and shows that case's owed alone (CAD 1,655.50), not the client's USD", onCase.includes("case C-2026-97001 only") && onCase.includes("Owed: CAD 1,655.50") && !onCase.includes("USD"), onCase.slice(0, 900));
+  const notHers = await call(tA, "GET", `${S}/statement.pdf?caseId=${K2}`), n2 = mail.sent.length, notHersSend = await call(tA, "POST", `${S}/statement/send`, { caseId: K2 }), random = await call(tA, "GET", `${S}/statement.pdf?caseId=${sql(`select gen_random_uuid()`)}`);
+  ok("FO-7r break M3 fail: another client's case, or an unknown case, → 404, nothing sent", notHers.status === 404 && notHersSend.status === 404 && random.status === 404 && mail.sent.length === n2, { notHers: notHers.status, notHersSend: notHersSend.status, random: random.status });
+  const past = pdfText((await call(tA, "GET", `${S}/statement.pdf?to=2020-01-31`)).bytes);
+  ok("FO-7r break M2 pass: today's figures on a past period's statement are headed \"As of <today>\"", past.includes(`As of ${new Date().toISOString().slice(0, 10)}:`) && past.includes("Closing balance: CAD 0.00"), past.slice(-500));
+  // M1: an audit failure sends nothing (the line and the email are one step); a mail failure rolls the line back (P6)
+  sql(`create function fo7r2_refuse() returns trigger language plpgsql as $$ begin if new.action = 'statement.sent' then raise exception 'refused for the check'; end if; return new; end $$;
+    create trigger fo7r2_refuse before insert on audit_event for each row execute function fo7r2_refuse()`);
+  const n3 = mail.sent.length, refused = await call(tA, "POST", `${S}/statement/send`, {});
+  sql(`drop trigger fo7r2_refuse on audit_event; drop function fo7r2_refuse()`);
+  ok("FO-7r break M1 fail: when the audit line cannot be written, no email is sent (and the caller is told it failed)", refused.status >= 500 && mail.sent.length === n3, { status: refused.status, sent: mail.sent.length - n3 });
+  const again = await call(tA, "POST", `${S}/statement/send`, {});
+  ok("FO-7r break M1 pass: with the audit working again, the send goes and writes its line", again.status === 200 && again.body.email === "SENT" && mail.sent.length === n3 + 1, again.body);
+  // m2: an address the database holds but the mail port refuses is 422, not NOT_SENT
+  sql(`update fo_person set email = 'a@@example.org' where id = '${PF}'`);
+  const badAddr = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, {});
+  ok("FO-7r break m2 fail: an email the mail port refuses (a@@example.org) → 422 naming to, nothing sent", badAddr.status === 422 && JSON.stringify(badAddr.body).includes('"to"'), badAddr.body);
+  // m3: a merged-away person is not found (the survivor holds the money)
+  sql(`set session_replication_role = replica; update fo_person set merged_into_id = '${PA}', merged_at = now() where id = '${PF}'`);
+  const merged = await call(tA, "GET", `/front-office/money/parties/person/${PF}/statement.pdf`), mergedSum = await call(tA, "GET", `/front-office/money/parties/person/${PF}/summary`);
+  ok("FO-7r break m3 fail: a merged-away person's statement and summary → 404", merged.status === 404 && mergedSum.status === 404, { merged: merged.status, mergedSum: mergedSum.status });
+
   // ---------------------------------------------------------------------------------------------------- P4
   const n = Math.ceil(STATEMENT_LINE_MAX / 2) + 1;   // each invoice is two lines (issued, paid)
   sql(`set session_replication_role = replica;

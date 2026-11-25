@@ -71,7 +71,15 @@ export class MoneySummary {
     const kind = kindOf(kindRaw), f = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx), today = dayOf(this.clock.now());
     return this.db.$transaction(async (tx) => {
       await sortMemory(tx);
-      const party = await partyFor(tx, f, kind, id, scope), showTrust = await trustShows(tx, f);
+      const party = await partyFor(tx, f, kind, id, scope);
+      return summaryIn(tx, f, party, scope, today, await trustShows(tx, f));
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+}
+
+/** The summary of a party already found, inside the caller's transaction (part 2 reads it with the statement's lines in
+ *  one snapshot: break M4 on #3753). */
+export async function summaryIn(tx: Prisma.TransactionClient, f: string, party: Party, scope: MoneyScope, today: string, showTrust: boolean): Promise<Summary> {
       // per invoice from the statement's own lines (ledgerCtes, the INVOICES account: one source for both reads), as
       // FACTS_LATERAL's terms: trust paid is never below zero per invoice (its greatest(…, 0)), and due never below zero
       const inv = await tx.$queryRaw<Row[]>(summarySql(f, party, scope, today));
@@ -94,6 +102,4 @@ export class MoneySummary {
         .sort((a, b) => (a.caseId === null ? -1 : b.caseId === null ? 1 : (a.caseLabel ?? a.caseId).localeCompare(b.caseLabel ?? b.caseId)) || a.currency.localeCompare(b.currency));
       const totals = (["CAD", "USD"] as const).flatMap((cur) => { const mine = cases.filter((c) => c.currency === cur); return mine.length ? [mine.map(({ caseId: _c, caseLabel: _l, ...x }) => x).reduce(add, zero(cur, showTrust))] : []; });
       return { party, today, trustShows: showTrust, totals, cases };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-  }
 }
