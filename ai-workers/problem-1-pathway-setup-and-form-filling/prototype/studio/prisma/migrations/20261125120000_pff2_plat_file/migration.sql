@@ -5,10 +5,10 @@
 --     half-finished file). No foreign key to the firm (as plat_legal_hold): PF-12's wall keeps each firm to its own rows.
 --   * only the scan columns ever change (plat_file_write); rows are never deleted by the app (a dispose keeps its row, CS-D6).
 --   * every function is plat_file_ (area prefix, rows rev 15.2).
--- Stamp: 20261124060000, re-stamped from 20261124040000 by Lead 23 (24 Nov, on #3277; #3276 keeps 20261124050000 and lands first);
---   a pure rename, the SQL unchanged.
+-- Stamp: 20261125120000, re-stamped from 20261124060000 (25 Nov, on #3277: main's newest is 20261124170000 and an open PR
+--   holds 20261125113000; Lead 28 asked for a re-stamp past them), earlier from 20261124040000 by Lead 23; pure renames, the SQL unchanged.
 -- Rollback (in this order): DROP TABLE "plat_file"; DROP FUNCTION plat_file_write(); DROP TYPE "PlatFileScanState"; delete this
---   folder's row (20261124060000_pff2_plat_file) from _prisma_migrations.
+--   folder's row (20261125120000_pff2_plat_file) from _prisma_migrations.
 -- Prisma's DDL, then the rules.
 CREATE TYPE "PlatFileScanState" AS ENUM ('SCANNING', 'SCAN_PENDING', 'CLEAN', 'QUARANTINED');
 CREATE TABLE "plat_file" (
