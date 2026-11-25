@@ -1,0 +1,36 @@
+// platform-firm-export.prisma — the firm's full data download. Owner: Lead B (platform, P-559). PF-11 part 1 (map row 22;
+// SA-2-33, AG-16-20): one row per request (firm, operationId); the zip stored per attempt (firm-export/<id>/<n>.zip); READY for
+// the Sample 7 days, then EXPIRED; failed_reason in plain words only. Checks in migration 20261125050000_shared__pf11_firm_export.
+
+enum PlatformFirmExportState {
+  QUEUED
+  READY
+  DOWNLOADED
+  EXPIRED
+  FAILED
+}
+
+model PlatformFirmExport {
+  id           String                  @id @default(uuid()) @db.Uuid
+  firmId       String                  @map("firm_id") @db.Uuid
+  operationId  String                  @map("operation_id") @db.Uuid
+  requestedBy  String                  @map("requested_by") @db.Uuid
+  state        PlatformFirmExportState @default(QUEUED)
+  attempt      Int                     @default(0)
+  fileKey      String?                 @map("file_key")
+  sha256       String?
+  sizeBytes    Int?                    @map("size_bytes")
+  rowCounts    Json?                   @map("row_counts")
+  expiresAt    DateTime?               @map("expires_at") @db.Timestamptz
+  downloadedAt DateTime?               @map("downloaded_at") @db.Timestamptz
+  failedReason String?                 @map("failed_reason")
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm      PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requester PlatformStaff @relation(fields: [firmId, requestedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, operationId])
+  @@index([firmId, createdAt])
+  @@map("platform_firm_export")
+}
