@@ -154,7 +154,9 @@ export class CaseNotes {
   /** A case note's line is a "case note" line keyed by its case; a client note's a "case client" line keyed by its client
    *  (it names no case). Never the note's words. */
   private async audit(tx: Tx, ctx: StaffContext, c: Subject, action: string, summary: string, detail: Record<string, unknown>) {
-    await new Audit(tx as unknown as Db).log(c.workspaceId, `staff:${ctx.staffId}`, action, c.kind === "case" ? "case note" : "case client", c.id, `${summary} on ${c.label}`, { ...detail, firmId: c.firmId });
+    const log = new Audit(tx as unknown as Db), by = `staff:${ctx.staffId}`, words = `${summary} on ${c.label}`, d = { ...detail, firmId: c.firmId };
+    if (c.kind === "case") await log.log(c.workspaceId, by, action, "case note", c.id, words, d);
+    else await log.log(c.workspaceId, by, action, "case client", c.id, words, d);
   }
 
   /** GET notes: the case's (or client's) current notes, pinned first, then newest (agent/case:show). */
