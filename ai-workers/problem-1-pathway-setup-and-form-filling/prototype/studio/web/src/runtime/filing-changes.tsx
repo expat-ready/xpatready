@@ -7,6 +7,7 @@
 // disabled buttons). After a change, an Undo next to its words opens the inverse change. Nothing is decided here.
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { Info, MoreHorizontal, Undo2, UserPlus } from "lucide-react";
 import { api, ApiError, useApi } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -108,7 +109,7 @@ export function PeopleAndFilings({ caseId, people, canAdd, onAdd, roleOf, nameOf
 function RowMenu({ p, onPick }: { p: CasePerson; onPick: (k: Kind) => void }) {
   const principal = p.role === "principal", spouse = p.role === "spouse_or_partner";
   return (
-    <DropdownMenu.Root modal={false}>
+    <MenuRoot modal={false}>
       <DropdownMenu.Trigger asChild><Button size="sm" variant="ghost" aria-label={`Actions for ${p.label}`} data-person-menu><MoreHorizontal /></Button></DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} className="z-50 w-[300px] rounded-lg border border-border bg-surface-raised p-1 text-sm shadow-lg">
@@ -120,7 +121,7 @@ function RowMenu({ p, onPick }: { p: CasePerson; onPick: (k: Kind) => void }) {
             : <DropdownMenu.Item className={ITEM} onSelect={() => onPick("add_back")} data-action="add-back"><span>Add filing back…</span><small className="text-xs text-text-muted">The same filing, with its items, comes back.</small></DropdownMenu.Item>}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    </MenuRoot>
   );
 }
 

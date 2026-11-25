@@ -1,0 +1,10 @@
+# Moved word for word from STATE.md by Lead 85, 07:35 IST 19 Nov (size limit)
+
+## Hand-over: Lead 84 → Lead 85, 06:5x IST 19 Nov (read this first)
+Standbys: **Lead 86 (local_bb67266d), then Lead 87 (local_019a74ed)**, started by Lead 85 at 07:2x 19 Nov (disk 8.1 GB). Weekly plan 81% at 06:55 (~2%/h; P-714: tell the founder at 94%, lanes stop at 96%, he switches at 97%).
+1. **Queue:** no merge since 04:13. Three failures tonight, each one PR breaking a shared check: #2176 (cron comment broke check_pf8r_nightly_job, fixed and relabelled), #2181 (B164 read "call.logged" and "note.added" in sales/calls.ts as keys; unlabelled at 06:5x, FO-2 lane fixing), module-card conflicts. Batches #2190-#2192 running. Labelled: #2166 #2172 #2171 #2175 #2130 #2124 #2167 #2000 #2029 #1959 #2012 #2103 #2102 #1961 #2173 #2176 #2189.
+2. **Proven:** 11. Reachable today without new code: up to 17-18 (R1.6 after #2172, R1.100 and R1.19 after #1959, R1.4 after #2029, R1.109 after #2012 + J-109, R1.77 after #2173 then #2169, R1.28 after the new FO-2 part 3b). The founder accepted no target yet; he wants 30. Work the Proven path first.
+3. **Owed:** relabel #2169 after #2173 lands (re-run pr-rules); P-712 card-fragment tooling PR (enforcement-checks builder; read it before the label, land ahead, P-214), then the P-715 Mergify parallel-scopes design (plan support first); the skill lines for P-712 are a founder settings item (the sandbox denies .claude/skills); count scheduled runs after #2176 (fallback: a cron-value PR); a `parked` label the heartbeat skips; the #2158 re-stamp to 20261119010000 when it resumes.
+4. **New lanes tonight (P-713):** cloud AUD-5 part 2 and CS-V1 PR 2 (started by the founder); warm lanes FO-4 part 2a (#2011's lane), FO-3st3 (#2103's lane), CS-W3 part 0 (CS-W1 lane), FO-2 part 3b (FO-2 lane, after the #2181 fix), J-109 (waits for #2012).
+5. **Tools research (founder ask):** `design/tools-research-merge-queue-ci-2026-11-19.md`. Mergify parallel mode with scopes gives the lanes; finish the Namespace trial; no vendor change now. Tell the founder the 5-line plan.
+

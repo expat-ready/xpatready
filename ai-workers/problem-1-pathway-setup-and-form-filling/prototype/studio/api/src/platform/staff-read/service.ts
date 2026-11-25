@@ -5,6 +5,7 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { PlatformRole, Prisma } from "@prisma/client";
 import { Db } from "../../core.ts";
 import { catalogueMismatches, type KeyClass, type Scope } from "../identity/catalogue.ts";
+import { seatLimitOf, seatsUsed } from "../entitlements/limits.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import { FIRM_KEY, type StaffContext } from "../identity/keys.ts";
 import { PlatformIdentity } from "../identity/service.ts";
@@ -14,7 +15,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The six starter roles in the order the role picker and Compare roles show them (PF-6r). */
 export const STARTER_ROLES = ["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER", "BILLING_FINANCE", "READ_ONLY"] as const satisfies readonly PlatformRole[];
 export const TWO_STEP_WORDS = "Required for all staff";
-const include = { grants: { where: { endedAt: null }, select: { role: true }, orderBy: { grantedAt: "asc" as const } }, credential: { select: { representativeType: true, licensingBody: true } } };
+const include = { grants: { where: { endedAt: null }, select: { role: true }, orderBy: { grantedAt: "asc" as const } }, credential: { select: { representativeType: true, licensingBody: true } }, office: { select: { officeId: true } } };
 
 @Injectable()
 export class StaffReads {
@@ -25,18 +26,20 @@ export class StaffReads {
     try { return await this.admin.twoStep({ staffId: s.id, subject: s.identitySubject, email: s.email }); } catch (e) { if (e instanceof HttpException) return null; throw e; }
   }
 
+  /** Team's seat line: the limit through the gate's own reader (seatLimitOf → PgEntitlements.limitOf) and the usage
+   *  through seatsUsed, so the line never shows a free seat the gate refuses (QA-774); `plan` is the plan that limit is. */
   async seats(firmId: string) {
-    const sub = await this.db.platformSubscription.findFirst({ where: firmScope(firmId, { status: { not: "ENDED" as const } }), include: { plan: { select: { seatsLimit: true, name: true } } } });
+    const lim = await seatLimitOf(this.db, firmId);
     const [c] = await this.db.$queryRaw<{ active: number; suspended: number; pending: number }[]>`select
       (select count(*) from platform_staff where firm_id = ${firmId}::uuid and status = 'ACTIVE')::int as active,
       (select count(*) from platform_staff where firm_id = ${firmId}::uuid and status = 'SUSPENDED')::int as suspended,
       (select count(*) from platform_invitation where firm_id = ${firmId}::uuid and accepted_at is null and revoked_at is null and expires_at > now())::int as pending`;
-    const used = c.active + c.suspended + c.pending, limit = sub?.plan.seatsLimit ?? 0;
-    return { used, limit, plan: sub?.plan.name ?? null, active: c.active, suspended: c.suspended, pending: c.pending, line: `${used} of ${limit} seats used` };
+    const used = await seatsUsed(this.db, firmId), limit = lim.limit ?? 0;
+    return { used, limit, plan: lim.planCode ? lim.limitPlanName : null, booked: lim.booked, active: c.active, suspended: c.suspended, pending: c.pending, line: `${used} of ${limit} seats used` };
   }
 
-  private async row(s: { id: string; displayName: string; email: string; status: string; identitySubject: string | null; lastSignInAt: Date | null; grants: { role: string }[]; credential: { representativeType: string; licensingBody: string } | null }) {
-    return { id: s.id, displayName: s.displayName, email: s.email, roles: s.grants.map((g) => g.role), status: s.status, twoStep: await this.twoStep(s), lastSignInAt: s.lastSignInAt, licensed: !!s.credential };
+  private async row(s: { id: string; displayName: string; email: string; status: string; identitySubject: string | null; lastSignInAt: Date | null; grants: { role: string }[]; credential: { representativeType: string; licensingBody: string } | null; office: { officeId: string } | null }) {
+    return { id: s.id, displayName: s.displayName, email: s.email, roles: s.grants.map((g) => g.role), status: s.status, twoStep: await this.twoStep(s), lastSignInAt: s.lastSignInAt, licensed: !!s.credential, officeId: s.office?.officeId ?? null };   // PF-18s part 1: who works where
   }
 
   /** GET /api/platform/staff: the Team list and the seat line. */
@@ -92,8 +95,10 @@ export class StaffReads {
   /** PUT /api/platform/me/account: the person's own licence record (PF-4's rules and audit line). */
   async saveMyAccount(actor: StaffContext, body: { licence?: unknown }) {
     const l = (body.licence && typeof body.licence === "object" ? body.licence : {}) as Record<string, unknown>;
-    await this.id.saveCredential(actor, actor.staffId, l);
-    return this.myAccount(actor);
+    const saved = await this.id.saveCredential(actor, actor.staffId, l);
+    // PF-4c part 2 (AG-1-34): the soft warning reaches the person's own form too; the record is saved either way.
+    const warning = "warning" in saved ? saved.warning : undefined;
+    return { ...(await this.myAccount(actor)), ...(warning ? { warning } : {}) };
   }
 
   /** GET /api/platform/settings/two-step: required for all staff, shown, no switch (question 3 decided, P-567: fixed on,

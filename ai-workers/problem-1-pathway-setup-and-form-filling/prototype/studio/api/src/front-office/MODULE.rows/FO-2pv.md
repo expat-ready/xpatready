@@ -1,0 +1,2 @@
+Entry points: FO-2pv: `PATCH prospects/:id { value, currency }` (key `agent/prospect:edit`) and `GET prospect-currencies` (key `agent/prospect:show`; the firm default and the fixed list) ( the value and currency of a prospect, in the sales prospect-edit file with its own controller).
+Tests: the FO-2pv prospect value check (check_fo2pv_prospect_value) and the journey tests J-30 and J-31 (step W3v).

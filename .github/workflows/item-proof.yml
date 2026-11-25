@@ -1,0 +1,232 @@
+# Automatic proof at an item's last merge (P-728 (3), P-729 (1), founder 19 Nov). Measured bottleneck: after an item's
+# last part merged, proof waited 3-5 h for a separate J-test PR and a qa session. Now a PR whose body has a line
+# "Completes: R1.77" (several: "Completes: R1.77, R1.78"; pr-rules.yml checks the line can be read) starts this run when
+# its merge commit is pushed to main, on GitHub's runners (public repository: US$0; live AI off, no model call, no secret):
+#   * detect: the items, from the merged PR's body (studio/tools/item-proof.mjs detect); none → nothing runs.
+#   * prove (one machine an item, fail-fast off), on the merge commit (by hand: main's head when started): the item's pack, read from its row in
+#     qa/CAPABILITIES.md (item-proof.mjs plan): each C id's acceptance packs through works-set.mjs --run (holds in
+#     qa/REGRESSION-HELD.md kept, scoring data from qa/REGRESSION-DATA.md, a red pack retried once, as the merge queue),
+#     each studio/tests suite its "Done when" names through run-suites.sh --only, then its journey
+#     tests/journeys/j_<n>.ts through walk.mjs (own isolated copy, never :4400; video scaled to fit 800 x 800). A missing
+#     journey or pack is FAIL, never skipped (P-405). The recording is checked for key and secret values first
+#     (item-proof.mjs scan; Sample data only); a hit uploads nothing and fails the verdict. A PASS uploads the video, a
+#     FAIL the trace and step screenshots (there is no retry, so "the first retry" is the run that failed), as
+#     proof-<item>-<sha>, kept 90 days.
+#   * report: one comment on the merged PR, and product/qa/verdicts/auto/<item>-<sha>.json plus the founder's page
+#     README.md (each proven journey with its video) committed to the branch auto-verdicts, never main: main takes
+#     changes only through the merge queue. It never edits qa/CAPABILITIES.md and never marks Works: qa reads the
+#     verdict and walks the journey once (gate A, P-339, P-348c).
+# The prove job ends red when its verdict is FAIL or no pack, suite or journey ran, the summary saying why (A274).
+# Start by hand (the Lead; cloud lanes cannot dispatch, P-439): Actions › item-proof › Run workflow, pr = a merged PR's
+# number. Test: studio/tests/check_item_proof.ts (detection, verdict shape, page, scan, and this file's shape).
+# Safety: it runs on a push to main (each merge is its own push, the queue merges with a merge commit) and on a hand
+# start from main, and every job checks out only the commit that started it (github.sha: main's code, plain checkout,
+# never a computed ref: CodeQL cache poisoning, #2133); the PR is found from that commit through the API, and its body
+# reaches the shell only through a file; no cache.
+name: item-proof
+run-name: "${{ inputs.pr && format('item-proof · #{0} (by hand, on main''s head)', inputs.pr) || format('item-proof · {0}', github.sha) }}"
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "A merged PR's number: prove the items on its Completes: line again, on main's head (start it from main)"
+        required: true
+permissions: { contents: read }
+jobs:
+  detect:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read, pull-requests: read }
+    outputs:
+      items: ${{ steps.d.outputs.items }}
+      sha: ${{ steps.d.outputs.sha }}
+      pr: ${{ steps.d.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - id: d
+        name: the merged PR (the one whose merge commit this push is; by hand, the PR named) and its Completes line
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.pr }}
+          T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
+        run: |
+          SHA="$GITHUB_SHA"; api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+          if [ -n "$WANT" ]; then
+            [[ "$WANT" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "pr: not a PR number: $WANT"; exit 1; }
+            curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/pulls/$WANT" > pr.json
+            node -e 'const p=require("./pr.json"); if(!p.merged_at||p.base.ref!=="main"){console.error("PR not merged into main");process.exit(1)}'
+          else
+            # A push that is not a PR's merge commit (a direct push, a batch's fast-forward) proves nothing.
+            # The API can lag a fresh merge (review m1): three tries, then the merge commit's own "Merge pull request #N".
+            for t in 1 2 3; do
+              curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/$SHA/pulls" > prs.json || echo '[]' > prs.json
+              node -e 'const ps=require("./prs.json").filter(p=>p.merged_at&&p.merge_commit_sha===process.argv[1]&&p.base.ref==="main"); require("fs").writeFileSync("pr.json",JSON.stringify(ps[0]??{}))' "$SHA"
+              if node -e 'process.exit(require("./pr.json").number?0:1)'; then break; fi
+              if [ "$t" -lt 3 ]; then sleep $((t * 10)); fi
+            done
+            n=$(git log -1 --format=%s "$SHA" | sed -n 's/^Merge pull request #\([0-9]\{1,7\}\) from .*/\1/p')
+            if ! node -e 'process.exit(require("./pr.json").number?0:1)' && [ -n "$n" ]; then
+              curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/pulls/$n" > p1.json || echo '{}' > p1.json
+              node -e 'const p=require("./p1.json"); require("fs").writeFileSync("pr.json",JSON.stringify(p.merged_at&&p.merge_commit_sha===process.argv[1]?p:{}))' "$SHA"
+              node -e 'process.exit(require("./pr.json").number?0:1)' || echo "::warning::main $SHA says it merges #$n, but GitHub does not return that PR with this merge commit: nothing proved"
+            fi
+          fi
+          node -e 'const p=require("./pr.json"); require("fs").writeFileSync("body.md",p.body??""); console.log(p.number??"")' > pr.txt
+          PR=$(cat pr.txt)
+          if [ -z "$PR" ]; then echo "items=[]" >> "$GITHUB_OUTPUT"; echo "main $SHA is no PR's merge commit: nothing to prove" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          d=$(node "$T/item-proof.mjs" detect --body-file body.md) || echo "::warning::a Completes: line could not be read; only the readable items are proved"
+          items=$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).items))' "$d")
+          { echo "items=$items"; echo "sha=$SHA"; echo "pr=$PR"; } >> "$GITHUB_OUTPUT"
+          echo "PR #$PR, main $SHA: items $items" | tee -a "$GITHUB_STEP_SUMMARY"
+  prove:
+    needs: detect
+    if: ${{ needs.detect.outputs.items != '' && needs.detect.outputs.items != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        item: ${{ fromJSON(needs.detect.outputs.items) }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+      ITEM: ${{ matrix.item }}
+      SHA: ${{ needs.detect.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - name: set up like a cloud session (cloud-setup.sh, as nightly's packs job)
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: Playwright's own Chromium
+        run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: what proves ${{ matrix.item }} (its row in qa/CAPABILITIES.md)
+        run: |
+          node "$S/tools/item-proof.mjs" plan "$ITEM" | tee "$RUNNER_TEMP/plan.json"
+          : > "$RUNNER_TEMP/results.jsonl"
+      - name: the packs (works-set.mjs --run; holds kept, a red pack retried once)
+        run: |
+          for c in $(node -p 'require(process.argv[1]).packs.join(" ")' "$RUNNER_TEMP/plan.json"); do
+            st=0; node "$S/tools/works-set.mjs" --run "$c" > "$RUNNER_TEMP/pack-$c.log" 2>&1 || st=$?
+            cat "$RUNNER_TEMP/pack-$c.log"
+            # Every pack held, or run on its fixture only, is "not tested" (P-405): never a pass (review M2).
+            node "$S/tools/item-proof.mjs" pack-line "$c" "$st" "$RUNNER_TEMP/pack-$c.log" >> "$RUNNER_TEMP/results.jsonl"
+          done
+      - name: the suites its Done when names (run-suites.sh --only)
+        if: always()
+        run: |
+          for f in $(node -p 'require(process.argv[1]).suites.join(" ")' "$RUNNER_TEMP/plan.json"); do
+            st=0; bash "$P/tools/run-suites.sh" --demo --only "$f" || st=$?
+            echo "{\"kind\":\"suite\",\"name\":\"$f\",\"exit\":$st}" >> "$RUNNER_TEMP/results.jsonl"
+          done
+      - name: its journey, recorded (walk.mjs; own copy, never :4400)
+        if: always()
+        env: { WALK_SHA: "${{ needs.detect.outputs.sha }}" }
+        run: |
+          j=$(node -p 'const p=require(process.argv[1]); p.journeyExists ? p.journey : ""' "$RUNNER_TEMP/plan.json")
+          [ -n "$j" ] || { echo "no $(node -p 'require(process.argv[1]).journey' "$RUNNER_TEMP/plan.json") on main: the verdict is FAIL"; exit 0; }
+          st=0; node "$S/tests/journeys/walk.mjs" "$S/$j" "$RUNNER_TEMP/walk" || st=$?
+          # Its FAIL and HELD lines count too (walk.json), not only its exit (review m4).
+          node -e 'const fs=require("fs"),[f,j,st]=process.argv.slice(1); let w={}; try{w=JSON.parse(fs.readFileSync(f,"utf8"))}catch{}
+            console.log(JSON.stringify({kind:"journey",name:j,exit:Number(st),fail:w.fail??0,...(w.held?{note:`${w.held} HELD step(s)`}:{})}))' "$RUNNER_TEMP/walk/walk.json" "$j" "$st" >> "$RUNNER_TEMP/results.jsonl"
+      - id: pick
+        name: no key or secret in the recording; a PASS keeps the video, a FAIL the trace
+        if: always()
+        run: |
+          w="$RUNNER_TEMP/walk" u="$RUNNER_TEMP/upload"; mkdir -p "$u"
+          [ -d "$w" ] || { echo "up=no" >> "$GITHUB_OUTPUT"; exit 0; }
+          st=0; node "$S/tools/item-proof.mjs" scan "$w" || st=$?
+          echo "{\"kind\":\"scan\",\"name\":\"no key or secret value in the recording\",\"exit\":$st}" >> "$RUNNER_TEMP/results.jsonl"
+          [ "$st" = 0 ] || { echo "up=no" >> "$GITHUB_OUTPUT"; exit 0; }
+          cp "$w"/walk.json "$w"/README.md "$u"/ 2>/dev/null || true
+          ok=$(node "$S/tools/item-proof.mjs" verdict --item "$ITEM" --plan "$RUNNER_TEMP/plan.json" --results "$RUNNER_TEMP/results.jsonl" --sha "$SHA" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).overall')
+          if [ "$ok" = PASS ] && ! ls "$w"/video/*.webm >/dev/null 2>&1; then
+            # A PASS must carry its video (review m3): none recorded fails the verdict.
+            echo '{"kind":"scan","name":"the journey video was recorded","exit":1}' >> "$RUNNER_TEMP/results.jsonl"; ok=FAIL; fi
+          if [ "$ok" = PASS ]; then cp -r "$w/video" "$u/"; else cp -r "$w"/trace-*.zip "$w/steps" "$w/walk.log" "$u/" 2>/dev/null || true; fi
+          echo "up=yes" >> "$GITHUB_OUTPUT"
+      - id: up
+        name: upload the recording (kept 90 days)
+        if: always() && steps.pick.outputs.up == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-${{ matrix.item }}-${{ needs.detect.outputs.sha }}
+          path: ${{ runner.temp }}/upload
+          retention-days: 90
+          overwrite: true
+      - name: the verdict
+        if: always()
+        env:
+          ART: ${{ steps.up.outputs.artifact-url }}
+          PR: ${{ needs.detect.outputs.pr }}
+        run: |
+          set -o pipefail; mkdir -p "$RUNNER_TEMP/verdict"
+          # Never an empty or torn file (review M1): written aside, kept only when it parses.
+          node "$S/tools/item-proof.mjs" verdict --item "$ITEM" --plan "$RUNNER_TEMP/plan.json" --results "$RUNNER_TEMP/results.jsonl" --sha "$SHA" --pr "$PR" \
+            --run-id "$GITHUB_RUN_ID" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --artifact-url "$ART" --repo "$GITHUB_REPOSITORY" \
+            > "$RUNNER_TEMP/v.json"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$RUNNER_TEMP/v.json"
+          mv "$RUNNER_TEMP/v.json" "$RUNNER_TEMP/verdict/$ITEM-$SHA.json"; cat "$RUNNER_TEMP/verdict/$ITEM-$SHA.json"
+          node -p '(v=>`### ${v.item}: ${v.overall}\n${v.why.map(w=>"* "+w).join("\n")}`)(require(process.argv[1]))' "$RUNNER_TEMP/verdict/$ITEM-$SHA.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: keep the verdict for the report job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: "proof-verdict-${{ matrix.item }}", path: "${{ runner.temp }}/verdict", retention-days: 90, overwrite: true }
+      # A274 (21 Nov, run 44921268206): "prove (R1.4)" was green while its verdict said FAIL and nothing ran. Last, so the
+      # verdict is kept and the report job (always()) still posts it; this job is red when the verdict proves nothing.
+      - name: the job fails when the verdict is FAIL or nothing ran (item-proof.mjs gate)
+        if: always()
+        run: |
+          st=0; node "$S/tools/item-proof.mjs" gate "$RUNNER_TEMP/verdict/$ITEM-$SHA.json" > "$RUNNER_TEMP/gate.md" || st=$?
+          cat "$RUNNER_TEMP/gate.md"; cat "$RUNNER_TEMP/gate.md" >> "$GITHUB_STEP_SUMMARY"; exit "$st"
+  report:
+    needs: [detect, prove]
+    if: ${{ always() && needs.detect.outputs.items != '' && needs.detect.outputs.items != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: write, pull-requests: write, issues: write }
+    # No concurrency group: GitHub keeps one waiting run a group and cancels the rest (review m2); the push loop below
+    # retries a push that lost a race.
+    env:
+      T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
+      V: ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/verdicts/auto
+      PR: ${{ needs.detect.outputs.pr }}
+      BRANCH: auto-verdicts
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: main, persist-credentials: false }
+      - uses: actions/download-artifact@v4
+        with: { pattern: "proof-verdict-*", merge-multiple: true, path: verdicts }
+      - name: commit the verdict files and the founder's page to auto-verdicts (never main)
+        id: save
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          ls verdicts/*.json >/dev/null 2>&1 || { echo "saved=No verdict file was made (the prove job failed before its verdict step; see the run)." >> "$GITHUB_OUTPUT"; exit 0; }
+          url="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          for try in 1 2 3 4; do
+            rm -rf av; git init -q av; git -C av remote add origin "$url"
+            if git -C av fetch -q --depth 1 origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null; then git -C av checkout -q -B "$BRANCH" "origin/$BRANCH"; else git -C av checkout -q --orphan "$BRANCH"; fi
+            mkdir -p "av/$V"; cp verdicts/*.json "av/$V/"
+            node "main/$T/item-proof.mjs" page --dir "av/$V"
+            git -C av add -A; git -C av -c user.name="item-proof" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "item-proof: #$PR verdicts (run $GITHUB_RUN_ID)" || true
+            if git -C av push -q origin "HEAD:$BRANCH"; then
+              echo "saved=Verdict file(s) and the founder's page: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$BRANCH/$V" >> "$GITHUB_OUTPUT"; exit 0; fi
+            sleep $((try * 5))
+          done
+          echo "saved=Verdict file(s) not saved: the push to $BRANCH was refused 4 times (see the run); they are the run's artifacts proof-verdict-*." >> "$GITHUB_OUTPUT"
+      - name: one verdict comment on the merged PR
+        if: always()
+        env: { GH_TOKEN: "${{ github.token }}", SAVED: "${{ steps.save.outputs.saved }}", ITEMS: "${{ join(fromJSON(needs.detect.outputs.items), ' ') }}" }
+        run: |
+          if ls verdicts/*.json >/dev/null 2>&1; then node "main/$T/item-proof.mjs" comment --dir verdicts --saved "$SAVED" --items "$ITEMS" > comment.md
+          else printf '## Automatic proof (P-728 (3)): no verdict\n\nThe prove job ended before writing a verdict: %s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > comment.md; fi
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          node -e 'process.stdout.write(JSON.stringify({body:require("fs").readFileSync("comment.md","utf8")}))' > payload.json
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$PR/comments" --data @payload.json > /dev/null

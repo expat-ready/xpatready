@@ -26,7 +26,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFile
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RUNTIME_GROUP = ["check_runtime_r1a.ts", "check_runtime_r1c.cjs", "check_runtime_r1d.ts"];
@@ -169,8 +169,10 @@ function selfTest() {
   process.exit(bad ? 1 : 0);
 }
 
-const cmd = process.argv[2];
-if (cmd === "--self-test") selfTest();
+// Run as a command only (static-sweeps.mjs imports startsSomething, ENF-782a part 2): an import runs nothing.
+const cmd = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href ? process.argv[2] : null;
+if (cmd === null) { /* imported */ }
+else if (cmd === "--self-test") selfTest();
 else if (cmd === "record") {
   const base = need("base", SHA), head = need("head", SHA), run = need("run", /^\d+$/), attempt = need("attempt", /^\d+$/), out = need("out");
   const s = passed(readFileSync(need("suites"), "utf8"));

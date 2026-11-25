@@ -1,5 +1,6 @@
 // PF-6 part 1 (concept pf-6-staff r2 §4 "My account", read only): the person's own name, email, roles, licence line and
 // two-step state from GET /api/platform/me/account. Editing the own licence and two-step is PF-6 part 2.
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { Notice } from "@/components/ui/controls";
@@ -41,7 +42,7 @@ export function AccountPage() {
   return (
     <PlatformFrame crumbs={[{ label: "Profile" }]}>
       <h1 className="mb-1 text-xl font-semibold">Profile</h1>
-      <p className="mb-4 text-sm text-text-muted">Your own account, as your firm holds it. Changing your licence or two-step sign-in comes next.</p>
+      <p className="mb-4 text-sm text-text-muted">Your own account, as your firm holds it. Change your licence under <Link className="text-text-link underline" to="/account/licence">Licence</Link>.</p>
       <Profile />
     </PlatformFrame>
   );

@@ -9,6 +9,8 @@
 #        batches split across n GitHub machines, each its own fresh copy). Combines with --changed and --demo.
 #   --skip-quarantined   every suite except the QUARANTINE list below (I1: the merge queue's one full run; --changed
 #        always skips them). --direct (with --changed): select-suites.mjs --direct, never everything (CI's PR_SUITES=direct).
+#   --modules (with --changed; SPD-2 item 2, P-802): module-suites.py instead: a file in a module card's paths runs that
+#        card's suites (its Tests. line and row files), any other file select-suites.mjs --direct, plus the always-run set.
 #   --retry   (B122, P-376 (8); PR and merge-queue checks only, never the nightly full set) a failed suite runs once more,
 #        from a fresh start: a new isolated copy (270 suites), the demo restarted (check_studio_browser.cjs, which resets
 #        it), or a suite that starts its own copy or touches no database. Its row says "passed on retry" (not a
@@ -30,6 +32,8 @@
 #   --skip-green <file>   suites remembered green (P-371 (3), tools/ci-memory.mjs): "<suite><TAB><why>" lines; each is
 #        left out of this run and shown as "remembered" with its reason. Only a pull request's check passes it.
 #   --list   print the units this run would run (all shards together, after --changed and --skip-green), run nothing.
+#   --only "<check_a.ts check_b.cjs>"   only these studio/tests suites, each by its usage line (P-729: item-proof.yml runs
+#        the suites an R1 row's "Done when" names). A name that is not a studio/tests/check_* file stops the run (exit 2).
 # Each tests/check_*.ts|cjs names its run in a usage line: "isolated.sh <name> <port> start && tsx|node studio/tests/<file>
 # <args>" (an isolated copy: own database, own files, the demo is never touched) or "tsx studio/tests/<file>" (no server).
 # Never calls a model (every suite replays saved runs; US$0). Exit 1 when any suite fails; a summary table either way.
@@ -40,20 +44,22 @@ export PATH="$ROOT/.tools/node-v24.21.0/bin:/opt/homebrew/opt/postgresql@18/bin:
 # GNU timeout: `timeout` on Linux (CI), `gtimeout` from Homebrew coreutils on the Mac. Missing → stop loudly, never run unguarded.
 TIMEOUT="$(command -v timeout || command -v gtimeout || true)"
 [ -n "$TIMEOUT" ] || { echo "GNU timeout is missing (Mac: brew install coreutils, which provides gtimeout); no suite was run"; exit 2; }
-DEMO=0; NAMES=0; LIST=0; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0
+DEMO=0; NAMES=0; LIST=0; ONLY=""; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0; MODULES=0
 while [ $# -gt 0 ]; do case "$1" in
   --demo) DEMO=1;;
   --skip-quarantined) SKIPQ=1;;
   --direct) DIRECT=--direct;;
+  --modules) MODULES=1;;   # SPD-2: with --changed, module-suites.py (the module cards' suites + the always-run set)
   --retry) RETRY=1;;
   --names) NAMES=1;;   # print the names and ports this copy would use, run nothing
   --list) LIST=1;;
+  --only) [ -n "${2:-}" ] || { echo "--only wants \"<suites>\"; no suite was run"; exit 2; }; ONLY="$2"; shift;;
   --skip-green) [ -f "${2:-}" ] || { echo "--skip-green wants a file of remembered suites; no suite was run"; exit 2; }; GREEN="$2"; shift;;
   --changed) [ -n "${2:-}" ] || { echo "--changed wants <base>..<head>; no suite was run"; exit 2; }; CHANGED="$2"; shift;;
   --changed=*) CHANGED="${1#--changed=}";;
   --shard) [[ "${2:-}" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -le "${BASH_REMATCH[2]}" ] || { echo "--shard wants <i>/<n>, 1 <= i <= n; no suite was run"; exit 2; }
     SHARD="${BASH_REMATCH[1]}"; SHARDS="${BASH_REMATCH[2]}"; shift;;
-  *) echo "run-suites.sh: unknown option $1 (--demo, --names, --list, --changed <base>..<head>, --shard <i>/<n>, --skip-quarantined, --direct, --skip-green <file>, --retry); no suite was run"; exit 2;;
+  *) echo "run-suites.sh: unknown option $1 (--demo, --names, --list, --changed <base>..<head>, --shard <i>/<n>, --skip-quarantined, --direct, --skip-green <file>, --retry, --only "<suites>"); no suite was run"; exit 2;;
 esac; shift; done
 # Not regression suites: the 100-program exercise needs its own fixture copy (run by hand, see its usage line).
 # PF-8r's restore drill needs docker and the built image studio-skeleton:test: it runs in nightly.yml's job restore-drill.
@@ -112,7 +118,13 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # whole suite (this list is per suite); its 13 other steps still run nightly, and acceptance/C6.13.test.ts (32 steps)
 # still runs in PR and queue packs. Fix row QA-420 (qa/BUGS.md, runtime): the check waits for the focus move (or the
 # product moves focus only after its re-render), 5 runs green in a row, then off this list in that PR.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs"
+# check_fo3st2_availability_browser.ts (FO-3st2 staff Availability and Time off, screens) held 20 Nov by the founder's choice
+# (11:2x IST, "Hold the failing staff-hours test"; Lead 100): J-A2 ("Evening calls" made default changes the public slots,
+# Tue 18:00-20:00) and J-A4 (whole-day time off on "the Monday", Toronto) fail both tries on every PR and batch since
+# 20 Nov: the suite derives its days from today's date (full runs 44676827988, 44676831421; #2305's batch). No product PR
+# merged for ~1.5 h. The nightly full set still runs it. The fix lane ("Fix · FO-3st2 staff-hours test fails by date")
+# pins the suite's dates and removes this hold in the same PR; it must be off this list by 21 Nov.
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do
@@ -176,7 +188,11 @@ if [ -n "$CHANGED" ]; then
   [[ "$CHANGED" == *..* ]] || { echo "--changed wants <base>..<head>; no suite was run"; exit 2; }
   base="${CHANGED%%..*}"; head="${CHANGED##*..}"
   files=$(git -c core.quotePath=false diff --no-renames --name-only "$base...$head") || { echo "git diff $base...$head failed; no suite was run"; exit 2; }
-  sel=$(printf '%s\n' "$files" | node "$P/product/tools/select-suites.mjs" $DIRECT) || { echo "select-suites.mjs failed; no suite was run"; exit 2; }
+  if [ "$MODULES" = 1 ]; then   # SPD-2 item 2 (P-802): a PR's suites by module; the merge batch and the nightly run every suite
+    sel=$(printf '%s\n' "$files" | python3 -I "$P/product/tools/module-suites.py") || { echo "module-suites.py failed; no suite was run"; exit 2; }
+  else
+    sel=$(printf '%s\n' "$files" | node "$P/product/tools/select-suites.mjs" $DIRECT) || { echo "select-suites.mjs failed; no suite was run"; exit 2; }
+  fi
   printf '%s\n' "$sel" > "$OUT/selection.tsv"
   TAB=$(printf '\t')
   if [ "${sel%%"$TAB"*}" = ALL ]; then
@@ -186,6 +202,12 @@ if [ -n "$CHANGED" ]; then
     [ "$LIST" = 1 ] || echo "**$(printf '%s\n' "$sel" | grep -c .) suites chosen** for $base..$head ($(printf '%s\n' "$files" | grep -c .) files changed); the full set runs nightly on main."
     [ "$LIST" = 1 ] || { echo; echo "| Chosen suite | Why |"; echo "|---|---|"; printf '%s\n' "$sel" | awk -F'\t' '{ gsub(/\|/, "\\|", $2); print "| " $1 " | " $2 " |" }'; echo; }
   fi
+fi
+# --only: exactly the named suites (each must be a studio/tests/check_* file: a typo never runs nothing and passes).
+if [ -n "$ONLY" ]; then
+  [ -z "$CHANGED" ] || { echo "--only and --changed do not combine; no suite was run"; exit 2; }
+  for f in $ONLY; do [[ "$f" =~ ^check_[A-Za-z0-9_.-]+\.(ts|cjs)$ ]] && [ -f "$TESTS/$f" ] || { echo "--only: $f is not a studio/tests/check_* suite; no suite was run"; exit 2; }; done
+  PICK=" $(printf '%s ' $ONLY)"
 fi
 # --skip-green: REMEMBER, " a b c ", the suites a green run on the same base already passed with unchanged inputs.
 REMEMBER=" "; [ -n "$GREEN" ] && REMEMBER=" $(cut -f1 "$GREEN" | grep -E '^check_[A-Za-z0-9_.-]+$' | tr '\n' ' ')"
@@ -204,7 +226,7 @@ if [ "$SHARDS" -gt 1 ] || [ "$LIST" = 1 ]; then
   RT0="$S/tests/runtime"; [ -n "${SUITES_TESTS_DIR:-}" ] && RT0=/nonexistent
   [ -f "$RT0/check_case_engine.ts" ] && picked check_case_engine.ts && units+=(check_case_engine.ts)
   [ -f "$RT0/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && units+=(check_runtime_r1a.ts)
-  for t in check_p2_guard check_p2_launch; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
+  for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
   TURN=${#units[@]}
   MINE=" $(printf '%s\n' "${units[@]}" | awk -v n="$SHARDS" -v me="$SHARD" -v q="$QW" -v tf="$P/product/tools/suite-times.tsv" '
     BEGIN { while ((getline l < tf) > 0) { if (l ~ /^#/) continue; split(l, a, "\t"); t[a[1]] = a[2] } }
@@ -270,6 +292,18 @@ LIMIT="${SUITES_TIMEOUT:-1200}"; [[ "$LIMIT" =~ ^[1-9][0-9]*$ ]] || LIMIT=1200
 KILL_AFTER="${SUITES_KILL_AFTER:-30}"; [[ "$KILL_AFTER" =~ ^[1-9][0-9]*$ ]] || KILL_AFTER=30
 lim() { if [ $((LIMIT % 60)) = 0 ]; then echo "$((LIMIT / 60)) min"; else echo "$LIMIT s"; fi; }
 timedout() { [ "$1" = 124 ] || { [ "$1" = 137 ] && [ "$2" -ge "$LIMIT" ]; }; }   # exit code, seconds taken
+# A hung Node suite also writes Node's own report when asked (hang-report.py prints the filtered part; the raw file never
+# leaves its private folder). Only with a Node that can leave the environment and network out, and only on Linux: a process
+# that does not catch SIGUSR2 dies of it, and /proc says which of the suite's own processes catch it.
+REPORT_OK=""; [ -d /proc/self/fd ] && node --report-exclude-env --report-exclude-network -e 0 2>/dev/null && REPORT_OK=1
+askreport() {  # askreport <timeout's pid> <folder>: SIGUSR2 to the node processes of the suite's own group that catch it and report there
+  local p c; [ -n "$2" ] || return 0
+  for p in $(ps -A -o pid=,pgid= 2>/dev/null | awk -v g="$1" '$2 == g { print $1 }'); do
+    { tr '\0' '\n' < "/proc/$p/environ"; } 2>/dev/null | grep -qF -- "--report-directory=$2" || continue
+    [ "$(basename "$(readlink "/proc/$p/exe" 2>/dev/null)")" = node ] || continue
+    c=$(awk '$1 == "SigCgt:" { print $2 }' "/proc/$p/status" 2>/dev/null); [ -n "$c" ] && [ $(( 16#${c: -3} & 16#800 )) -ne 0 ] && kill -USR2 "$p" 2>/dev/null && : > "$2/asked"
+  done
+}
 hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still run
   kill -0 "$1" 2>/dev/null || return 0
   local p fd fds
@@ -286,15 +320,23 @@ hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still
 guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed out, 137 killed after ignoring the TERM)
   local log="$1"; shift; local pid w code
   # Append mode, so the suite's later lines never write over the STOP lines (its own offset would).
-  : > "$log"; "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
+  local rd="" opt=""; [ -n "$REPORT_OK" ] && rd=$(mktemp -d "${TMPDIR:-/tmp}/hang.XXXXXXXX" 2>/dev/null) && case "$rd" in *[[:space:]]*) rmdir "$rd"; rd="";; esac
+  [ -n "$rd" ] && opt="${NODE_OPTIONS:+$NODE_OPTIONS }--report-on-signal --report-exclude-env --report-exclude-network --report-directory=$rd"
+  : > "$log"; env ${opt:+"NODE_OPTIONS=$opt"} "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
   pid=$!
   ( s=""; trap '[ -n "$s" ] && kill "$s" 2>/dev/null; exit 0' TERM
-    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log" ) < /dev/null &
+    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log"; askreport "$pid" "$rd" ) < /dev/null &
   w=$!
   wait "$pid"; code=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
+  [ -z "$rd" ] || { python3 -I "$P/product/tools/hang-report.py" "$rd" >> "$log" 2>/dev/null; rm -rf "${rd:?}"; }   # nothing in it when the suite ended by itself
   return "$code"
 }
+# B203 (P-744): with SUITES_COVERAGE=<dir>, each suite and the copy it starts write V8 coverage to <dir>/<suite> (the
+# preload lets a server stopped by SIGTERM flush it); test-graph.py turns it into the capability -> file -> suite graph.
+# Set before the copy starts (isolated.sh passes the environment on). Unset (every PR, batch and nightly run): nothing.
+cov() { [ -n "${SUITES_COVERAGE:-}" ] || return 0; export NODE_V8_COVERAGE="$SUITES_COVERAGE/${1%.*}"; mkdir -p "$NODE_V8_COVERAGE"
+  case " ${NODE_OPTIONS:-} " in *coverage-preload.mjs*) ;; *) export NODE_OPTIONS="--import=$ROOT/$S/tests/qa/coverage-preload.mjs${NODE_OPTIONS:+ $NODE_OPTIONS}";; esac; }   # absolute: a bare path is read as a package; added once, never replacing what was set
 run() {  # $1 file, $2 label, rest: command. AGAIN readies a retry (recopy ...); NORETRY says why there is none; both cleared.
   local f="$1" label="$2"; shift 2; local log="$OUT/${f%.*}.log" t0=$SECONDS code=0 code2=0 note="" a src="" rw=""; RF="$f"
   # CI only: one line per suite as it starts, on stderr (the job log), so a part stopped at its job limit, whose table
@@ -333,7 +375,7 @@ for path in "$TESTS"/check_*.ts "$TESTS"/check_*.cjs; do
   picked "$f" || continue
   myturn "$f" || continue
   case " $QUARANTINE " in *" $f "*) { [ -n "$CHANGED" ] || [ "$SKIPQ" = 1 ]; } && { rows+=("| $f | quarantined | | $(qwhy "$f") |"); continue; };; esac
-  usage=$(grep -m1 -E "studio/tests/$f" "$path")
+  usage=$(grep -m1 -E "studio/tests/$f" "$path"); cov "$f"
   if [ "$f" = check_studio_browser.cjs ]; then
     if [ "$DEMO" = 0 ] && [ "${SUITES_BROWSER_ISOLATED:-}" = 1 ]; then
       # The Mac CI runner (self-hosted, founder 30 Oct): the same suite on its own isolated copy, never the :4400 demo.
@@ -369,9 +411,10 @@ done
 # Suites outside tests/check_*: the runtime lane's (R1, two steps on one copy) and the drafting guard's (prototype/tests,
 # plain: they make their own temporary copies). Both lanes' Lead checks found CI skipping them (24 Oct).
 RT="$S/tests/runtime"; [ -n "${SUITES_TESTS_DIR:-}" ] && RT=/nonexistent; RN=$(iname runtime_r1); RP=$(iport 4430)
-if [ -f "$RT/check_case_engine.ts" ] && picked check_case_engine.ts && myturn check_case_engine.ts; then run check_case_engine.ts plain $TSX "$RT/check_case_engine.ts"; fi
+if [ -f "$RT/check_case_engine.ts" ] && picked check_case_engine.ts && myturn check_case_engine.ts; then cov check_case_engine.ts; run check_case_engine.ts plain $TSX "$RT/check_case_engine.ts"; fi
 # The three R1 suites share one copy and run in order: chosen together (select-suites.mjs) or not at all.
 if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && myturn check_runtime_r1a.ts; then
+  cov check_runtime_r1a.ts   # the three share one copy, so one coverage folder (test-graph.py says so)
   if zsh "$S/tools/isolated.sh" "$RN" "$RP" start >/dev/null 2>&1 && guarded "$OUT/setup_visitor_visa.log" $TSX "$RT/setup_visitor_visa.ts" "$RP" "xr_studio_$RN"; then
     # R1c's browser journey first: it publishes a release 2 that R1a expects (runtime lane, 24 Oct).
     # Never retried one by one (review M2): the three share one copy, so a retry would start from the first try's data.
@@ -382,8 +425,8 @@ if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked 
   else rows+=("| check_runtime_r1a.ts | FAIL | | isolated copy runtime_r1 or setup_visitor_visa.ts failed (see setup_visitor_visa.log) |"); fail=1; fi
   zsh "$S/tools/isolated.sh" "$RN" "$RP" stop >/dev/null 2>&1
 fi
-for t in check_p2_guard check_p2_launch; do
-  [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
+for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do
+  [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && cov "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
 done
 # Every unit dealt to this shard leaves a row: ran, quarantined or skipped (#1660, 12 Nov). One that left none is a
 # fault in this script, never a silent pass. (The R1 unit's row is check_runtime_r1a.ts, run or failed.)

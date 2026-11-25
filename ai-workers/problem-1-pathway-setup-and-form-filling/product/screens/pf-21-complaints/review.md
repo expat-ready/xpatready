@@ -1,4 +1,129 @@
-# Review: PF-21s part 3 (complaints list, record drawer, read-only record page)
+# Review: PF-21s (parts 3 and 4)
+
+## Part 4 review (1a2e0b232)
+
+### Re-review c72deb527..e865fa38b (18 Nov 2026, about 20:05 IST; P-277: the diff only)
+Reviewer (the same fresh agent) · commit `e865fa38befc380453b2b520b854939b595711ed` · I rebuilt `web/dist` from this commit and ran my own `review_pf21s` copy on :4573 (never :4400; stopped afterwards). Suite: `check_pf21s_complaints_browser.ts 4573 xr_studio_review_pf21s` gave **114/114, exit 0**; I restored the rewritten screenshots with `git checkout`. Web `tsc --noEmit` exit 0. The diff covers `action-drawer.tsx:25-28,62-68`, `record-page.tsx:82` (`dates={c}`), `contract.ts:71-73` and two suite hunks.
+
+**Verdict: Approve** for `e865fa38b`: no open Blocker or Major. Journey score **9.5/10**, a pass.
+
+**R1: fixed. I re-ran my clock probe.**
+* With the browser clock shifted by `page.clock.setSystemTime`, the untouched default on acknowledge and close saved at **+0 ms, +300 ms, +1.5 s, +5 s and +20 s** (it was refused from +300 ms at `c72deb527`).
+* The DB shows the minute cut (`14:30:00.000`).
+* Break m1 holds through the floor: received at `14:29:42.810`, then acknowledged at `14:29:42.810`, exactly the floor.
+* The floor follows the service's order checks:
+  * acknowledge: received;
+  * response: received or acknowledged, whichever is later;
+  * close: the latest of all three.
+  * The floor is a server-recorded date, so it is never later than the server's clock.
+* ISO strings from the server and from `zonedToIso` share one format (`…Z` with milliseconds), so the string comparison is sound.
+* The remaining exposure is a clock ahead by more than the seconds already gone in the current minute. The old code had the same exposure, and it is negligible.
+
+**The new suite case:**
+* It runs on its own page, waits outside a minute's first 4 s and last 10 s, then saves both acts.
+* It would fail on `c72deb527`: the instant would be 2 s in the future, so `saved()` times out and stops the suite.
+* The m5a change waits for focus and then judges inside `ok()`, so nothing is swallowed. The old assertion is not weakened.
+
+**Nit fixed:** the BR-3 comment is back above `canChangeHandler`.
+
+**New Minor (follow-up, does not block)**
+* `action-drawer.tsx:66-68` with `contract.ts:100-108`: going back to the minute cut also undoes breaker m7a's instant. On a fall-back day, during the second pass of the repeated hour, the untouched default is read as the first pass, an hour early. Checked: `nowLocal` at 06:30Z on 1 Nov 2026 gives Toronto "01:30", and `zonedToIso` turns that into 05:30Z. The save is accepted, because the time is earlier rather than in the future, but it is recorded an hour off. This affects one hour a year, at night. The fix is to keep the instant when it is earlier than the server-safe cut, or to compare the cut with `Date.now()` and keep the second occurrence. List it with breaker m7a.
+
+**Still open as follow-ups (agreed, none blocks):** breaker m6 (browser Back drops a panel without asking), breaker m7b and my m4 (the server's words in `api/`), my m2(a) (StrictMode, dev only), my m3 (links in the error summary).
+
+Reviewer: Approve e865fa38befc380453b2b520b854939b595711ed
+
+### Re-review 1a2e0b232..c72deb527 (18 Nov 2026, about 19:55 IST; P-277: the diff only)
+Reviewer (the same fresh agent) · commit `c72deb52761aff842b311c612d61b9ec8a3ce9c0` · I rebuilt `web/dist` from this commit and ran my own `review_pf21s` copy on :4573 (never :4400). Suite: `check_pf21s_complaints_browser.ts 4573 xr_studio_review_pf21s` gave **113/113, exit 0**, and I restored the rewritten screenshots with `git checkout`. Web `tsc --noEmit` exit 0. The diff covers `action-drawer.tsx`, `contract.ts`, `record-page.tsx` and 11 new suite checks.
+
+**Verdict: Block** for `c72deb527`: one new Major (R1), introduced by this diff. Journey score **9/10**, a pass (re-score in `journey-test-reviewer-2026-11-18.md`).
+
+**Closed by this diff (I re-ran my own repros)**
+* **M1: fixed.** Repro (a): after "Already acknowledged" and Cancel, the bar fills "Add a handling step" and the timeline shows `ACKNOWLEDGED,RECEIVED`. Repro (b): the page behind the 409 shows Closed with only "Add a note", without a reload. "Add it as a note" carries the typed text into the note panel at a fresh date, and the carried panel does not claim the session ended. Every refusal except 404 now re-reads the record (`action-drawer.tsx:73-76`). The suite has a pass and a fail for it.
+* **m1: fixed.** Response sent → Close (`contract.ts:58-64`), with a suite case. Break m2a ("answered first leads to Close, acknowledge quiet") follows from the same rule and matches concept BR-5.
+* **m2(b): fixed.** The restored notice is focused, with `role=status`. m2(a), the StrictMode cleanup, is left as a follow-up (dev only, like part 3's r1). It does not block.
+* **Breaker items:** m3 (a restored panel opens only if the act is still allowed), m4 (a restored step keeps its default), m5a/b (focus) and m7c (a cleared step date sends none) read correctly and each has a suite check. Hooks still run before every early return, and the `open` callback only reads `restoredAct` when clicked.
+
+**New finding. Major**
+* **R1 An untouched default date is now refused whenever the person's computer clock runs even slightly ahead of the server's.** `action-drawer.tsx:62` sends `new Date().toISOString()` (the browser's instant) for an untouched When on acknowledge, response and close. The service's `notFuture` (`complaints.ts:218-221`) refuses any instant later than its own clock, with no tolerance. The old minute-cut default had up to 59 s of slack; the new one has only the request latency (about 15 ms measured).
+  * Repro (Playwright `page.clock.setSystemTime(now + offset)`, the Owner, a complaint received a day ago): click the filled "Record the acknowledgement", leave the date alone, then save. At +0 ms it saves. At **+300 ms, +1.5 s and +5 s** the panel says "When: this date is in the future". The same happens with "Close with an outcome".
+  * A person who touched nothing is told their date is in the future, on the main path. CI and the demo never show it, because the browser and server share one clock.
+  * Fix (web only): for an untouched default, send the minute-cut time raised to the complaint's latest recorded instant the act must follow (received, acknowledged, response), i.e. `max(cut, floor)`. That keeps break m1's case (received seconds ago) working without depending on the browser's clock. Add a suite case with `page.clock.setSystemTime(Date.now() + 2_000)` on acknowledge and close. (Alternative: let the service fill an absent `at`, as it already does for steps. That is in `api/`, outside the touch list, so it would be a question for the tech lead.)
+
+**Nits (no fix required):** `contract.ts:71`: the BR-3 doc comment now sits above `allowedActions`'s own doc comment, so `canChangeHandler` has none; move it down one line. After a closed 409 the panel's filled button is still "Add the step", which can only be refused again, while the act that works ("Add it as a note") is the quiet one.
+
+**Follow-ups left open: none blocks**
+* Breaker m6 (browser Back drops a panel without asking): an unsaved draft is lost on a deliberate navigation, and the record drawer from part 3 behaves the same way. Minor (D5); list it.
+* Breaker m7b and my m4 (the server's words in `api/`): outside the touch list. A follow-up for the guard's and the service's owner is right.
+* My m2(a), StrictMode: dev only, the same as part 3's r1.
+* My m3, links in the error summary (BIC-13 Partly): a Should, and the summary is focused and names each field.
+
+**Verdict: Block** for `c72deb52761aff842b311c612d61b9ec8a3ce9c0`. To fix: R1.
+
+### First pass (1a2e0b232)
+Reviewer (fresh agent, did not build it) · commit `1a2e0b23272ecd9fbc0e46b6ac2a12e1ccc66d4f` · PR #2134 (draft) · 18 Nov 2026, about 19:30 IST.
+Bar: start sheet `lead-b-briefs/wave1-registers.md` "PF-21s part 4" (lead-b-front-office), concept §4 "Record page" and "Drawers", §5 "Refused", §6 DW3/DW4. Diff: `action-drawer.tsx` (new), `record-page.tsx`, `contract.ts`, the suite, screenshots, `qa/built/PF-21s.md`. Nothing in `api/`. About 330 code lines (sheet: 400–500).
+Copies: the suite on the builder's :4571 (it serves `67998d8cc`; web and api are byte-identical to `1a2e0b232`), and my walks on my own `review_pf21s` :4573. Never :4400.
+
+**Verdict: Block** (changes needed: one open Major). Journey score **8.5/10**, a pass (`journey-test-reviewer-2026-11-18.md`).
+
+### Done when, ticked (my re-run: `check_pf21s_complaints_browser.ts 4571 xr_studio_screens_pf21s` **102/102, exit 0**; screenshots restored with `git checkout`)
+| Line | Evidence | Result |
+|---|---|---|
+| DW3 the walk, one request on a second click | suite pass + 3 fails (step without a note, response before the acknowledgement, close without an outcome or note) + Withdrawn from the quiet act; mine: Enter ×3 → 1 POST, 1 NOTE row; two tabs → 1 ACKNOWLEDGED row | Met |
+| Each act refreshes the timeline, keeps the draft across an ended session | suite "break M3 (acts)" pass + fail; J1 DB `RECEIVED,ACKNOWLEDGED,STEP,RESPONSE_SENT,CLOSED`, 5 audit lines | Met |
+| DW4 hidden for a Case Manager, the server's 403 shown if forced | suite (forced through a faked `/me`); mine: Case Officer `POST /:id/handler` 403, `GET /handlers` 403 | Met |
+| DW7 a closed complaint has no action buttons | suite: acts = `["note"]` only (outline button), and a second close gets 409 | Met, as the concept says (judged below) |
+| DW8 the old handler sees "Not found" with DW5's words | suite: identical text, nothing of the record left, the step never recorded | Met |
+| Refused 403/409 shown in the page, never a toast alone | suite and mine: the words show in the panel | Met for the words; the page behind stays stale (M1) |
+| Keyboard, axe, 375/1024/1440; part 3 unchanged | suite; mine at 512 px (= 1024 at 200 %): the bar wraps, the submit is in view, axe 0; part 3's `ok(...)` lines untouched in the diff | Met |
+
+**The known choice (closed → "Add a note").** I agree with the builder. Concept §4 ("closed → none, Add a note only"), §6 DW3 ("then only Add a note"), BR-6 (the service accepts a note on a closed complaint) and the closed banner's own words ("add a note if something more happens") all say the same thing. The sheet says it is not a new concept and that gaps go to the PR, and the builder asked there. I read the sheet's "no action buttons" as no acts that change the complaint. A quiet outline note button keeps every other line true. Not a finding. Lead B confirms on the PR.
+
+### D1–D20 (part 4's diff)
+D1 4 BR-2, BR-3, BR-5 and BR-6 behave as written; one ordering line differs (m1) · D2 5 one row per act, under double submit and two tabs (the server locks) · D3 4 the words and the next-step rule are defined once in `contract.ts`; one panel component for six acts · D4 N/A · D5 3 reload, Esc and M3 drafts hold; the 409 path loops (M1) · D6 4 insert-only timeline with who and when; "From X to Y" on a handler change · D7 N/A · D8 3 where-line still "Complaints › Complaint" (part 3 m1, open) · D9 4 one filled button by state (J1); m1 · D10 4 the concept's words; the forced 403 shows a key name (m4) · D11 3 busy button, toast, focus back on the next button; the page is stale after a 409 (M1) · D12 4 team Panel, Button, Notice (`record-next-step-1440.png`) · D13 4 axe 0; 1 Tab from the h1 to the filled button; Esc returns focus; 375/512/1024/1440 · D14 4 team components only · D15 5 panels open in 34–57 ms and save in 86–126 ms; no per-row requests · D16 4 each DW has a pass and a fail; no check that the page refreshes after a 409 · D17 simulated only · D18 4 "Sample list" on outcomes, firm zone labelled · D19 3 the walk now closes on one page; J-109 joins it · D20 simulated only.
+
+### Scorecard (concept §4c: N/A as a whole; the checks it chose)
+| Check | Score | Evidence |
+|---|---|---|
+| BIC-11 one filled button, named for the act | Met | `record-next-step-1440.png`; closed → outline "Add a note" only; panel submit names the act ("Add the step", "Close the complaint") |
+| BIC-13 errors on field + summary | Partly | field + "There is a problem" summary, focused (measured), typed text kept; items are not links to their fields (m3) |
+| BIC-14 tooltips | N/A here | no new status or icon; part 3 m2 stays open |
+| BIC-18 states | Partly | normal, field errors, refused 403/409, 404 lost, closed, restored draft drawn; conflict has no reload (M1, EXPERIENCE §4 [M]) |
+| BIC-19 orange only for needs you | Met | the bar and panels add no orange |
+| BIC-20 keyboard, contrast, widths | Met | J8; axe; 375/512/1024/1440 |
+
+### Findings
+**Blocker:** none.
+
+**Major**
+* **M1 After a 409 the page shows a state the server has refused, and the filled button repeats the refused act** (EXPERIENCE §4 [M] "conflict (someone else saved: reload or merge)"; STANDARDS §4 [M] "stale save → 409 with what changed"). `action-drawer.tsx:66-68`: `onError` focuses the summary but never refreshes the complaint, so `record-page.tsx:73-74` keep the old `q.data`.
+  * Repro (a): open a new complaint as the Owner and open "Record the acknowledgement". Acknowledge it in a second tab, then save in the first. The panel says "Already acknowledged". Press Cancel: the page still shows Record the acknowledgement as the filled button, and the timeline still holds only "Complaint received" (measured `["RECEIVED"]`). Click the button again: the same 409.
+  * Repro (b): open "Add a handling step" and type a note. Close the complaint elsewhere, then save. The panel says "…add it as a note instead". Press Cancel: the page asks to discard the typed text, then still says **Open**, with all five acts and Change handler (`j5c-closed-while-working.png`, scratchpad). Only a browser reload shows the truth.
+  * Fix: on a 409 (and a 403), `void qc.invalidateQueries({ queryKey: ["pf","complaints"] })`, so the header, bar and timeline behind the panel show what changed. Add a check to the suite's 409 case: after Cancel, `[data-status="Closed"]` is shown and the acts are `["note"]`. (Should: let the closed case carry the typed text into Add a note, the "merge" half, rather than discard and retype.)
+
+**Minor**
+* m1 `contract.ts:58-63` `nextAction`: acknowledged, response sent and no step → the filled button is "Add a handling step", and Close is quiet. Concept §4 says "response sent → Close with an outcome", and §1 says "Steps are never required". Repro: acknowledge a new complaint, then use the quiet "Record the response sent". The bar fills "Add a handling step" (`j1b-response-no-step.png`). Fix: check `responseSentAt` before the step rule (`if (c.responseSentAt) return "close"`), with a suite case.
+* m2 `action-drawer.tsx:40` repeats part 3's r1: it clears the draft in an unmount cleanup while a token exists, so under React StrictMode (dev only) the restored panel opens blank. `action-drawer.tsx:91` repeats r4: the "Your session ended" notice is not focused or announced, and focus goes to When. By reading; the same code as the r1/r4 measurements. Fix with r1/r4.
+* m3 `action-drawer.tsx:94`: the summary items ("When: …", "Note: …") are not links to their fields (BIC-13). Repro: "Close with an outcome" → save empty. Fix: `<a href="#field-id">` for each item.
+* m4 `action-drawer.tsx:81` with the guard's words: a forced 403 reads "Your roles do not include the permission this needs (agent/complaint:read)" (`action-handler-refused-1440.png`). The key name is an ID (EXPERIENCE §5 [M]), though only on a forced path. The 409 closed notice also says "add a note instead" twice (concept words + `complaints.ts:47`). The guard's text is in `api/`, outside this diff: list it in the PR as a follow-up for the guard's owner rather than change `api/` here.
+
+**Observation, not a finding:** when a response was recorded before any acknowledgement (allowed by BR-5), the filled "Record the acknowledgement" defaults to now and is always refused ("the acknowledgement comes no later than the response"), so the person must back-date it. This is as the concept says. The field error is clear.
+
+### Code (STANDARDS §4–§7)
+Correct: the in-flight ref plus `busy` (`action-drawer.tsx` submit). Bodies are per §4 "Drawers": a step or note left at its default sends no date, and acknowledge, response and close send the minute. `zonedToIso` uses the firm's zone, and `Complaint.parse` checks every answer. The `kind` sent is NOTE or STEP. The 404 removes the cached record and shows `NotFound`. Hooks run before every early return. Server authorisation is unchanged and holds (J4). No migration, no per-row requests, `tsc --noEmit` (web) exit 0. Comments give reasons with finding numbers, with no status words. A rule's test fails when the rule is removed (spot-check by reading): DW7 fails if any open act shows, DW4 fails if the read key is dropped from `canChangeHandler`, and DW3's double click matches part 3's measured M1 (`dblclick` gave 2 POSTs without a ref guard). Not mutated and rebuilt here.
+
+### Graph (P-86)
+`graph.mjs`: G3 119 still lists the complaints routes as "no page uses it", including the five part 4 calls. This is the same `staffApi` template blind spot as part 3. The suite asserts the calls ("the pages call only PF-21's complaints routes"). Every new element serves this part's acts.
+
+### Could not check
+A real screen reader. A visible-browser walk (headless only). An intended user's unaided walk (D17 and D20 stay with the founder). The read-key-only person (part 3 m6). The StrictMode dev build (m2, by reading only). CI on the PR (draft).
+
+**Verdict: Block** for `1a2e0b232`. To fix: M1. Fix m1–m3 now or list them in the PR (m4 as a follow-up outside `api/`'s touch list).
+
+---
+
+## Part 3 review: PF-21s part 3 (complaints list, record drawer, read-only record page)
 
 Reviewer (fresh agent, did not build it) · commit `e47fa19fc34189f92a29152ca8fe97ab24d96dfe` · PR #1998 · 16 Nov 2026.
 Inputs: brief `PF-21s.md` rev 16.75 + `P-626-order.md` A5 (lead-b-front-office), `concept.md` (§6c part 1 = part 3), `design/layout.html`, `api/src/platform/complaints/`. Copy at :4571 (`xr_studio_screens_pf21s`, PLATFORM_IDENTITY=local).

@@ -1,0 +1,37 @@
+Tue Nov 24 04:08:44 AM UTC 2026
+== xr-staging-accesslogsbucket83982689-o8ovlnsoxz0s
+region: ca-central-1
+versioning: None
+public-block: {"BlockPublicAcls":true,"IgnorePublicAcls":true,"BlockPublicPolicy":true,"RestrictPublicBuckets":true}
+encryption: AES256	None	False
+policy: [('Deny', 's3:*', {'Bool': {'aws:SecureTransport': 'false'}}), ('Allow', 's3:PutObject', {'StringEquals': {'aws:SourceAccount': '581508167097'}, 'ArnLike': {'aws:SourceArn': 'arn:aws:s3:::xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9'}}), ('Allow', 's3:PutObject', {'StringEquals': {'aws:SourceAccount': '581508167097'}, 'ArnLike': {'aws:SourceArn': 'arn:aws:s3:::xr-staging-exportsbucket5a12738b-tfowvdipnskv'}}), ('Allow', 's3:PutObject', {'StringEquals': {'aws:SourceAccount': '581508167097'}, 'ArnLike': {'aws:SourceArn': 'arn:aws:s3:::xr-staging-importsbucket18b2d913-dtmi2f7d6nbs'}})]
+lifecycle: {"TransitionDefaultMinimumObjectSize":"all_storage_classes_128K","Rules":[{"Expiration":{"Days":90},"ID":"access-logs","Filter":{"Prefix":""},"Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}
+
+logging: 
+== xr-staging-documentsbucket9ec9deb9-6uplyey6pgi9
+region: ca-central-1
+versioning: Enabled
+public-block: {"BlockPublicAcls":true,"IgnorePublicAcls":true,"BlockPublicPolicy":true,"RestrictPublicBuckets":true}
+encryption: aws:kms	arn:aws:kms:ca-central-1:581508167097:key/5719e23a-2b19-49b9-bc53-35fe1c8462ac	True
+policy: [('Deny', 's3:*', {'Bool': {'aws:SecureTransport': 'false'}}), ('Deny', 's3:PutObject', {'StringNotEquals': {'s3:x-amz-server-side-encryption': 'aws:kms'}}), ('Deny', 's3:PutObject', {'Null': {'s3:x-amz-server-side-encryption': 'true'}})]
+lifecycle: {"TransitionDefaultMinimumObjectSize":"all_storage_classes_128K","Rules":[{"ID":"old-versions","Filter":{"Prefix":""},"Status":"Enabled","NoncurrentVersionExpiration":{"NoncurrentDays":35}},{"ID":"unfinished-uploads","Filter":{"Prefix":""},"Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}
+
+logging: {"LoggingEnabled":{"TargetBucket":"xr-staging-accesslogsbucket83982689-o8ovlnsoxz0s","TargetPrefix":"documents/"}}
+== xr-staging-exportsbucket5a12738b-tfowvdipnskv
+region: ca-central-1
+versioning: Enabled
+public-block: {"BlockPublicAcls":true,"IgnorePublicAcls":true,"BlockPublicPolicy":true,"RestrictPublicBuckets":true}
+encryption: aws:kms	arn:aws:kms:ca-central-1:581508167097:key/5719e23a-2b19-49b9-bc53-35fe1c8462ac	True
+policy: [('Deny', 's3:*', {'Bool': {'aws:SecureTransport': 'false'}}), ('Deny', 's3:PutObject', {'StringNotEquals': {'s3:x-amz-server-side-encryption': 'aws:kms'}}), ('Deny', 's3:PutObject', {'Null': {'s3:x-amz-server-side-encryption': 'true'}})]
+lifecycle: {"TransitionDefaultMinimumObjectSize":"all_storage_classes_128K","Rules":[{"ID":"old-versions","Filter":{"Prefix":""},"Status":"Enabled","NoncurrentVersionExpiration":{"NoncurrentDays":35}},{"ID":"unfinished-uploads","Filter":{"Prefix":""},"Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}
+
+logging: {"LoggingEnabled":{"TargetBucket":"xr-staging-accesslogsbucket83982689-o8ovlnsoxz0s","TargetPrefix":"exports/"}}
+== xr-staging-importsbucket18b2d913-dtmi2f7d6nbs
+region: ca-central-1
+versioning: Enabled
+public-block: {"BlockPublicAcls":true,"IgnorePublicAcls":true,"BlockPublicPolicy":true,"RestrictPublicBuckets":true}
+encryption: aws:kms	arn:aws:kms:ca-central-1:581508167097:key/5719e23a-2b19-49b9-bc53-35fe1c8462ac	True
+policy: [('Deny', 's3:*', {'Bool': {'aws:SecureTransport': 'false'}}), ('Deny', 's3:PutObject', {'StringNotEquals': {'s3:x-amz-server-side-encryption': 'aws:kms'}}), ('Deny', 's3:PutObject', {'Null': {'s3:x-amz-server-side-encryption': 'true'}})]
+lifecycle: {"TransitionDefaultMinimumObjectSize":"all_storage_classes_128K","Rules":[{"ID":"old-versions","Filter":{"Prefix":""},"Status":"Enabled","NoncurrentVersionExpiration":{"NoncurrentDays":35}},{"ID":"unfinished-uploads","Filter":{"Prefix":""},"Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}
+
+logging: {"LoggingEnabled":{"TargetBucket":"xr-staging-accesslogsbucket83982689-o8ovlnsoxz0s","TargetPrefix":"imports/"}}

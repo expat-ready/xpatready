@@ -8,6 +8,7 @@
 // Breadth, after Visitor visa: the sponsorship + PR pair (two numbers, one group, no split), citizenship envelopes.
 //   tsx studio/acceptance/C8.2.test.ts 4440 xr_studio_accept
 import { CLIENT, OFFICER, call, firms, sendFile, inDays, main, needVisitorVisa, ok, openCase, prepare, readyToFile, sql, yearsAgo, answer, itemsOf } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 
 await main("C8.2", "Record the submission per group (Visitor visa)", async () => {
   const vv = needVisitorVisa();
@@ -76,7 +77,7 @@ await main("C8.2", "Record the submission per group (Visitor visa)", async () =>
   ok("C8.2-17 pass (QA-295): its view names the officer as preparer and gives no reviewer", v3.length === 1 && v3[0]?.prepared_by?.id === officer && v3[0]?.reviewed_by === null, v3);
 
   // B149 (P-408): the fee receipt's evidence on the first case's recorded filing.
-  const page = Buffer.from("%PDF-1.4\n% SYNTHETIC SPECIMEN: IRCC Transaction Approved page (Sample)\n%%EOF\n", "latin1");
+  const page = textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "IRCC Transaction Approved page (Sample)"]); // QA-520: a PDF that opens
   let u = await sendFile(`/runtime/filings/${fP}/record/fee-receipt`, page, "transaction-approved.pdf", CLIENT);
   ok("C8.2-18 fail (B149): a client cannot upload the fee receipt (403); nothing is stored", u.status === 403 && sql(`select count(*) from fee_receipt_file where filing_id='${fP}'`) === "0", u.status);
   u = await sendFile(`/runtime/filings/${fP}/record/fee-receipt`, page, "transaction-approved.pdf", officer);

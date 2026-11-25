@@ -1,0 +1,13 @@
+web bundle does not match web/, contracts/, engine/ (missing, unstamped or built from other code; QA-181): rebuilding
+
+
+isolated qa9v on http://localhost:4477 (xr_studio_qa9v), stops itself in 15 min
+PASS  R1.31 gate A: the new prospect's screen shows Value "Not set" — "Back\nSales\n›\nPipeline\n›\nProspect\nLena Sample\nProspect\nEngaged\nP-00001\nProspect\nFrom lead\nL-00001\nValue\nNot set\nEngaged\nNov 19, 2026, 3:31 p.m.\nOwner\nRepresentative (Sample)\nMove to…\nConvert to client\nMark lost"
+FAIL  R1.31 gate A (QA-530): the prospect's screen offers a field for its value (labelled Value or Amount) — {"hasField":false}
+FAIL  R1.31 gate A (QA-530): the value typed on the screen is stored on the prospect (500000 cents with a currency) — "none"
+FAIL  R1.31 gate A at 400 px: the board's open totals show the amount the person entered (5,000), per currency — "Open prospects by value: no values yet"
+FAIL  R1.31 gate A at 1024 px: the board's open totals show the amount the person entered (5,000), per currency — "Open prospects by value: no values yet"
+FAIL  R1.31 gate A at 1440 px: the board's open totals show the amount the person entered (5,000), per currency — "Open prospects by value: no values yet"
+
+1/6 passed
+stopped qa9v (database and files removed; log in var/isolated-logs/qa9v-api.log)

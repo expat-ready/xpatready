@@ -1,0 +1,3 @@
+# STATE "Account switch" Start-here line, moved word for word by Lead 90 (series 2), 19 Nov
+
+🔁 **Account switch (A196, P-725): when this account's plan stops, the founder opens the new account and types `/lead`; that Lead runs Fable 5.2, medium effort, auto mode; first read RULES, this page and `design/journeys-2026-11-19.md` (Release 1 mapped into J0-J10 in dependency order), then review, fix and update everything in flight; restart Lead B from its 19 Nov hand-over file in the design folder of branch lead-b-front-office (J2 and J4 plans in it) and Build Lead C from its 19 Nov hand-over file in the design folder of branch claude/build-lead-c-647b40 (96c218056).**

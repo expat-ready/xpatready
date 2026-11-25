@@ -11,6 +11,7 @@ import { getActor, onActorChange, setActor, useActorId, useToast } from "@/lib/a
 import { CASE_OFFICER, GROUP_WORDS, homeOf, isFirmStaff, isStudioPerson, PEOPLE, personOf, STUDIO_AUTHOR, type Group } from "@/lib/simulated-people";
 import { cn } from "@/lib/utils";
 import { backOf, whereFromAddress, type Area, type Crumb, type Where } from "./where";
+import { useTabTitle, WorkspaceStrip } from "./workspace";
 
 export type { Area, Crumb, Where } from "./where";
 
@@ -81,15 +82,26 @@ function WhereLine({ area, where, staff }: { area: Area; where: Where; staff: bo
 
 /** The frame: header (brand, the area's name, the area's controls), an optional band under it, an optional menu column,
  *  and the main column that starts with the "where am I" line. */
-export function Frame({ area, title, subtitle, home, badge, controls, band, menu, staff = false, children }: {
-  area: Area; title: string; subtitle?: string; home?: string; badge?: React.ReactNode; controls?: React.ReactNode; band?: React.ReactNode; menu?: React.ReactNode; staff?: boolean; children: React.ReactNode;
+export function Frame({ area, title, subtitle, home, badge, controls, band, menu, staff = false, workspace = false, children }: {
+  area: Area; title: string; subtitle?: string; home?: string; badge?: React.ReactNode; controls?: React.ReactNode; band?: React.ReactNode; menu?: React.ReactNode; staff?: boolean;
+  /** PF-31 (EXPERIENCE §2.13): a staff area's pages open in workspace tabs; the strip sits under the header and the menu's links open or focus a tab. */
+  workspace?: boolean; children: React.ReactNode;
 }) {
   const loc = useLocation();
   const [own, setOwn] = React.useState<Where | null>(null);
   const where = own ?? whereFromAddress(area, loc.pathname);
-  const brand = <><img src="/brand/expat-ready-notagline-dark.svg" alt="Expat Ready" className="h-6 dark:hidden" /><img src="/brand/expat-ready-notagline.svg" alt="Expat Ready" className="hidden h-6 dark:block" /></>;
+  useTabTitle(where.crumbs.length ? where.crumbs[where.crumbs.length - 1].label : title, true);
+  // Below 375 px (Tailwind 4 `max-[375px]`: width < 375) the brand mark stands in for the wordmark (PF-18ns round 5, Lead 16
+  // on #3302; the wordmark with Find, the bell, "?" and Sign out needs 365 px): from 320 px the top bar's
+  // controls (Find, the bell, "?", Sign out) stay whole and full size; the brand gives way, never a control or its target.
+  const brand = <>
+    <img src="/brand/expat-ready-notagline-dark.svg" alt="Expat Ready" className="h-6 dark:hidden max-[375px]:hidden" />
+    <img src="/brand/expat-ready-notagline.svg" alt="Expat Ready" className="hidden h-6 dark:block dark:max-[375px]:hidden" />
+    <img src="/brand/favicon-dark.svg" alt="Expat Ready" className="hidden size-6 max-[375px]:block dark:max-[375px]:hidden" data-brand-mark />
+    <img src="/brand/favicon-white.svg" alt="Expat Ready" className="hidden size-6 dark:max-[375px]:block" data-brand-mark-dark />
+  </>;
   return (
-    <div className="flex min-h-full flex-col" data-frame={area}>
+    <div className="flex min-h-full flex-col" data-frame={area} data-workspace={workspace || undefined}>
       <header className="sticky top-0 z-30 flex h-14 min-w-0 items-center gap-3 border-b border-border bg-surface-raised px-4">
         {/* Team BrandLogo convention: the "-dark" artwork is brand blue for light surfaces; the plain one is white. */}
         {home ? <Link to={home} className="flex shrink-0 items-center gap-3" aria-label={`${title} home`}>{brand}</Link> : <span className="flex shrink-0 items-center">{brand}</span>}
@@ -98,9 +110,10 @@ export function Frame({ area, title, subtitle, home, badge, controls, band, menu
         {badge}
         <div className="ml-auto flex min-w-0 items-center gap-2">{controls}</div>
       </header>
+      {workspace ? <WorkspaceStrip /> : null}
       {band}
       <div className="flex flex-1">
-        {menu}
+        {menu && workspace ? <div className="contents" data-workspace-open>{menu}</div> : menu}
         <main className="min-w-0 flex-1 px-4 py-5 md:px-6">
           <WhereCtx.Provider value={setOwn}>
             <WhereLine area={area} where={where} staff={staff} />

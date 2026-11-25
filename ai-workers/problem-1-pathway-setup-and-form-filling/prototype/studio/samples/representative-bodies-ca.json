@@ -1,0 +1,27 @@
+{
+  "_note": "PF-6 part 2b (concept pf-6-staff r2 BR-8; AG-1-30, -31): the representative types and licensing bodies a staff member picks for their licence record in Canada. Source for every type and for the College and the Chambre: IRCC, 'Use of a Representative (IMM 5476)' instructions page, https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5476.html (page modified 2025-12-12; read from the committed copy official-sources/ircc/web-pages/page-imm5476.html, downloaded 2026-10-19), quote: 'Paid representatives are: consultants who are members in good standing of the College of Immigration and Citizenship Consultants (CICC); lawyers and paralegals who are members in good standing of a Canadian provincial or territorial law society, and students-at-law under their supervision; notaries who are members in good standing of the Chambre des notaires du Québec and students-at-law under their supervision.' The page links the College to http://college-ic.ca/ and the Chambre to https://www.cnq.org/en/. The single law societies are named on IRCC's 'authorized' page (#law-societies), which this session could not reach (network refused www.canada.ca, 18 Nov 2026): their names below are Sample until that page and each society's own site are read and dated (question for the tech lead on the PR). The server stores the words as given (1 to 100 characters) and checks no licence: 'We never verify licences.' Legal points: Unconfirmed: no counsel.",
+  "source": { "title": "Use of a Representative (IMM 5476): instructions page", "url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/application/application-forms-guides/imm5476.html", "pageModified": "2025-12-12", "read": "2026-10-19", "copy": "official-sources/ircc/web-pages/page-imm5476.html" },
+  "types": [
+    { "label": "College member (CICC)", "bodies": ["CICC"], "status": "Official" },
+    { "label": "Lawyer (law society)", "bodies": ["LAW_SOCIETY"], "status": "Official" },
+    { "label": "Paralegal (law society)", "bodies": ["LAW_SOCIETY"], "status": "Official" },
+    { "label": "Notary (Chambre des notaires du Québec)", "bodies": ["CNQ"], "status": "Official" }
+  ],
+  "bodies": [
+    { "name": "College of Immigration and Citizenship Consultants", "kind": "CICC", "site": "http://college-ic.ca/", "status": "Official", "read": "2026-10-19", "numberPattern": "R[0-9]{6}", "source": { "url": "https://college-ic.ca/protecting-the-public/working-with-an-immigration-consultant", "page": "College of Immigration and Citizenship Consultants, 'Working with an immigration consultant', tab 'Other items to note' (page last modified 22 Mar 2024)", "quote": "The licensed immigration consultant must include their full legal name and licence number (begins with the letter ‘R’ and is followed by 6 numbers. For example: R123456) on the agreement.", "date": "2026-11-23" } },
+    { "name": "Chambre des notaires du Québec", "kind": "CNQ", "site": "https://www.cnq.org/en/", "status": "Official", "read": "2026-10-19" },
+    { "name": "Law Society of British Columbia", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Alberta", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Saskatchewan", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Manitoba", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Ontario", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Barreau du Québec", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of New Brunswick", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Nova Scotia Barristers' Society", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Prince Edward Island", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Newfoundland and Labrador", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Yukon", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of the Northwest Territories", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null },
+    { "name": "Law Society of Nunavut", "kind": "LAW_SOCIETY", "site": null, "status": "Sample", "read": null }
+  ]
+}

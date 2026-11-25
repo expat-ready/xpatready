@@ -39,6 +39,35 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
     if [ -z "$a" ]; then echo "RULES LAG: RULES.md's first line needs 'as of **P-NNN**'"
     elif [ -n "$t" ] && [ $((t - a)) -gt 3 ]; then echo "RULES LAG: RULES.md is as of P-$a but DECISIONS reaches P-$t ($((t - a)) rows behind, at most 3): fold the newer rows into RULES.md, keep the old page in product/history/ (P-440)"; fi
   fi
+  # ENF-733 (b) (founder 19 Nov, P-734 (1), (2)): the engine is locked to the evening of 22 Nov. A DECISIONS row newer than
+  # P-734, dated 19 to 22 Nov, that changes the workflow is refused unless its text carries the word "fix" and says what
+  # is broken ("Broken: ..."). "Changes the workflow" is decision-impact.sh's own split, not a second one: a row listed in
+  # its EXEMPT is a workflow, tooling or scope row; any other row must already show as a capability or a build row there.
+  # A struck-through (withdrawn) row is not checked. DECISIONS dates carry no year: this block goes when the lock ends
+  # (a follow-up for the Lead after 22 Nov), or a row dated 19 to 22 Nov next year would meet it. Test: check-workflow-lock.sh.
+  if [ -f "$D" ]; then
+    ex=$(sed -nE 's/^EXEMPT="([^"]*)".*/\1/p' "$PH/tools/decision-impact.sh" 2>/dev/null | head -1)
+    grep -E '^\| P-[0-9]+ \|[^|]*\b(19|20|21|22) Nov\b[^|]*\|' "$D" | while IFS= read -r row; do
+      id=$(printf '%s\n' "$row" | sed -E 's/^\| (P-[0-9]+) .*/\1/'); [ "${id#P-}" -gt 734 ] || continue
+      if [ -z "$ex" ]; then echo "WORKFLOW LOCK: $id is dated 19 to 22 Nov and newer than P-734, but the EXEMPT list in tools/decision-impact.sh could not be read, so nothing says whether it changes the workflow (P-734)"; continue; fi
+      case "$ex" in *" $id "*) ;; *)
+        # Not in EXEMPT: decision-impact.sh passes it on a capability row or a backlog row naming it (same two lookups
+        # here). When no capability row does and every such backlog row is tooling, qa, records or the Lead's (its area
+        # cell), nothing a person can see carries it: it changes the workflow too (P-618, P-619, P-631 passed this way).
+        grep -qE "^\| C[0-9.]+ .*\b$id\b" "$PH/qa/CAPABILITIES.md" 2>/dev/null && continue
+        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md 2>/dev/null | cut -d'|' -f3)
+        [ -n "$areas" ] || continue
+        printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
+      esac
+      printf '%s\n' "$row" | grep -qiE '\bfix(es|ed|ing)?\b' && printf '%s\n' "$row" | grep -qiE '\bbroken: *[^ |]' && continue
+      # Founder exceptions to the P-734 lock (founder 20 Nov 16:0x IST chose "Exception for my approvals"; P-765): the rows
+      # below quote his typed approval (P-760 is a scope ruling, not a workflow change); from P-765 on, a row approved by
+      # him says "Lock: founder exception." and passes by itself. Anything he did not approve stays locked.
+      case " P-754 P-755 P-756 P-757 P-758 P-759 P-760 P-761 P-762 P-763 P-764 " in *" $id "*) continue;; esac
+      printf '%s\n' "$row" | grep -qE 'Lock: founder exception\.' && continue
+      echo "WORKFLOW LOCK: $id changes the workflow (it is in decision-impact.sh's EXEMPT, or only tooling, qa, records or Lead backlog rows carry it) and is dated before 23 Nov, while P-733 runs unchanged to the evening of 22 Nov (P-734 (1)). Keep it for 23 Nov, or, if it fixes something broken, say so in the row: the word fix, and \"Broken: <what is broken, with its evidence>\""
+    done
+  fi
   # P-611, P-615 (row G-3): RULES.md is a rule register, one row per rule `| ID | Rule | Enforced by | As of |` under that
   # header; a row with no enforcer field (a hook, CI step, script, or "prose") or a page over 25 KB fails, so the start
   # read stays small and every rule says what enforces it. Long text goes to product/rules/*.md. Test: check-rule-register.sh.
@@ -56,6 +85,58 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         if (c[4] !~ /^((hook|CI|script): [^ ]|prose( |$))/) print "RULES REGISTER: " c[2] " has no enforced-by (hook: <name>, CI: <name>, script: <name> or prose), found \"" c[4] "\""
         if (c[5] == "") print "RULES REGISTER: " c[2] " has no as-of"; next }
       { t = 0 }' "$R"
+    # E7 (P-772, P-611a): an enforcer file the "Enforced by" cell names (a word ending .sh, .py, .mjs, .cjs, .js, .ts, .yml
+    # or .yaml, bare or with a path) is a file on this branch, tracked or new and not ignored, by that path or ending in
+    # "/<it>", so the register never claims a check that is not there (the audit of 21 Nov found 5 stale cells). A cell
+    # that says "owed" claims nothing yet. KNOWN_STALE: the cells stale when this check landed; the tech lead fixes them
+    # in RULES.md (the proposed patch is on the E7 PR), then deletes the ID here: P-690 (plan-watch.py, never built);
+    # IDX-23 on the Lead's branch (resource-claim-guard.sh arrives with #2590). Test: check-rule-register.sh.
+    KNOWN_STALE=" P-690 IDX-23 "
+    git -C "$ROOT" ls-files -z --cached --others --exclude-standard 2>/dev/null | python3 -I -c '
+import re, sys
+files = [f for f in sys.stdin.buffer.read().decode("utf-8", "replace").split("\0") if f]
+if not files: print("RULES REGISTER: git could not list this copy'"'"'s files, so no enforcer file was checked (E7)"); sys.exit()
+have = set(files) | {f[i + 1:] for f in files for i, c in enumerate(f) if c == "/"}   # every path and every "/"-suffix
+stale = set(sys.argv[2].split()); t = False
+for line in open(sys.argv[1], encoding="utf-8"):
+    if re.match(r"^\| ID \| Rule \| Enforced by \| As of \|", line): t = True; continue
+    if t and line.startswith("|-"): continue
+    if not (t and line.startswith("|")): t = False; continue
+    c = line.split("|")
+    if len(c) != 6: continue
+    rid, cell = c[1].strip(), c[3]
+    if rid in stale or re.search(r"\bowed\b", cell, re.I): continue
+    for f in sorted(set(re.findall(r"[A-Za-z0-9_./-]+\.(?:sh|py|mjs|cjs|js|ts|yml|yaml)\b", cell))):
+        if f.removeprefix("./") not in have:
+            print(f"RULES REGISTER: {rid} is enforced by {f}, but no such file is on this branch: fix the Enforced by cell (prose, or the real file), or write \"owed\" if it is not built yet (E7, P-611a)")
+' "$R" "$KNOWN_STALE" || echo "RULES REGISTER: the enforcer-file check stopped with an error, so no enforcer file was checked (E7)"
+  fi
+  # E14 (P-772; IDX-1, -2, -4, -5): an index row stands for DECISIONS rows, so every P-ID an IDX row lists (one by one,
+  # or "P-a to P-b", every number between) is a row of DECISIONS.md or of a side file in decisions/ (struck-through
+  # rows count: the row is still there). IDX rows are read in RULES.md and in rules/*.md, where the moved full lists
+  # live. A lettered ID (P-348c) is found by its own row or its number's. Test: check-idx-integrity.sh.
+  if [ -f "$D" ]; then
+    python3 -I - "$PH" <<'PY' || echo "INDEX: the IDX check stopped with an error (python exit $?), so no index row was checked (E14)"
+import glob, os, re, sys
+ph = sys.argv[1]; have = set()
+for f in [os.path.join(ph, "DECISIONS.md")] + sorted(glob.glob(os.path.join(ph, "decisions", "*.md"))):
+    for l in open(f, encoding="utf-8"):
+        m = re.match(r"^\| *~*(P-[0-9]+[a-z]?)\b", l)
+        if m: have.add(m.group(1))
+for f in [os.path.join(ph, "RULES.md")] + sorted(glob.glob(os.path.join(ph, "rules", "*.md"))):
+    if not os.path.exists(f): continue
+    name = os.path.relpath(f, ph)
+    for n, l in enumerate(open(f, encoding="utf-8"), 1):
+        if not l.startswith("| IDX-"): continue
+        c = l.split("|"); rid = c[1].strip(); txt = c[2] if len(c) > 2 else ""
+        ids = set(re.findall(r"\bP-[0-9]+[a-z]?\b", txt))
+        for a, b in re.findall(r"\bP-([0-9]+) to P-([0-9]+)\b", txt):
+            a, b = int(a), int(b)
+            if b < a or b - a > 200: print(f"INDEX: {name} line {n} ({rid}) has the range P-{a} to P-{b}, which runs backwards or spans over 200 rows (E14)"); continue
+            ids |= {f"P-{i}" for i in range(a, b + 1)}
+        miss = sorted((i for i in ids if i not in have and re.sub(r"[a-z]$", "", i) not in have), key=lambda i: int(re.sub(r"\D", "", i)))
+        if miss: print(f"INDEX: {name} line {n} ({rid}) lists {', '.join(miss)}, not a row of DECISIONS.md or decisions/*.md: fix the ID or the index row (E14)")
+PY
   fi
   # B193 part 5 (P-619 step 6; P-188, P-611): rows moved out of the register are never lost. Each rules/rule-id-map-*.tsv
   # lists every ID the register had before a triage: "kept" is still a RULES.md row; "merged" and "retired" rows sit word
@@ -104,15 +185,32 @@ PY
     done
   done
 } | sort -u > "$out"
-# Times are read, not guessed (6 Nov): a warning, never a failure, when STATE's "updated: YYYY-MM-DD HH:MM IST" is more
-# than 30 minutes from the time it was committed (now, while STATE.md has uncommitted changes). Test: check-state-page.sh.
-if [ -f "$PH/STATE.md" ]; then
-  u=$(sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}) IST.*/\1/p' "$PH/STATE.md" | head -1)
-  c=$(cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null && git log -1 --format=%ct -- STATE.md 2>/dev/null); [ -n "$c" ] || c=$(date +%s)
-  [ -n "$u" ] && python3 -I -c 'import sys, datetime as d
+# Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
+# HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
+# STATE.md has uncommitted changes); an "updated:" line in neither form fails too. It fails when this branch wrote the
+# time: STATE.md uncommitted, or changed by a commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
+# A time already on main only warns, so one bad merge never stops every lane. Test: check-state-page.sh.
+if [ -f "$PH/STATE.md" ] && grep -q '^updated:' "$PH/STATE.md"; then
+  ul=$(grep -m1 '^updated:' "$PH/STATE.md")
+  u=$(printf '%s\n' "$ul" | sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-5][0-9x]) IST.*/\1/p')
+  mine=1; c=""
+  # The time is judged against this branch's newest STATE commit not yet on the base, merges left out: CI's test merge,
+  # or a merge of main, is never taken for it (it is dated when it is made). None: the time came from the base (warn).
+  if (cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null); then
+    b="${STATE_TIME_BASE:-origin/main}"
+    if (cd "$PH" && git rev-parse -q --verify "$b^{commit}" >/dev/null); then
+      c=$(cd "$PH" && git log -1 --no-merges --format=%ct "$b..HEAD" -- STATE.md 2>/dev/null)
+      [ -n "$c" ] || { mine=0; c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); }
+    else c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); fi
+  fi
+  [ -n "$c" ] || c=$(date +%s)
+  if [ -z "$u" ]; then msg="STATE TIME: STATE.md's first updated: line cannot be read: write 'updated: YYYY-MM-DD HH:MM IST' (or HH:Mx) from TZ=Asia/Kolkata date"
+  else msg=$(python3 -I -c 'import sys, datetime as d
 ist = d.timezone(d.timedelta(hours=5, minutes=30))
-u = d.datetime.strptime(sys.argv[1], "%Y-%m-%d %H:%M").replace(tzinfo=ist); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
-m = abs((c - u).total_seconds()) / 60
-if m > 30: print("WARN  STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"
+lo = d.datetime.strptime(sys.argv[1].replace("x", "0"), "%Y-%m-%d %H:%M").replace(tzinfo=ist)
+hi = lo + d.timedelta(minutes=9 if sys.argv[1].endswith("x") else 0); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
+m = max((lo - c).total_seconds(), (c - hi).total_seconds(), 0) / 60
+if m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"); fi
+  if [ -n "$msg" ]; then [ "$mine" = 1 ] && echo "$msg" >> "$out" || echo "WARN  ${msg#STATE TIME: } (already on ${STATE_TIME_BASE:-origin/main})"; fi
 fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0

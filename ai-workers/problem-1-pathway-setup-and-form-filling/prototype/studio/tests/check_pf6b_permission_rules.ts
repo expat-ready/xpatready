@@ -37,6 +37,7 @@ const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 const { Db } = await import("../api/src/core.ts");
 const { registerFeatures } = await import("../api/src/features.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -44,6 +45,10 @@ const { seedSampleFirmsFrontOffice } = await import("../api/src/front-office/fir
 const { EVERYONE_SEES_ALL, writeSetting } = await import("../api/src/platform/settings.ts");
 const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
+const { Signing } = await import("../api/src/front-office/signing/service.ts");
+const { SigningController } = await import("../api/src/front-office/signing/routes.ts");
+const { AnyDocuments } = await import("../api/src/front-office/signing/any-document/service.ts");
+const { PersonDocuments } = await import("../api/src/front-office/signing/any-document/person-documents.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
 const { PlatformGuard, controllerRoutes } = await import("../api/src/platform/identity/guard.ts");
@@ -54,6 +59,8 @@ const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
 const { Retainers } = await import("../api/src/front-office/retainers/service.ts");
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
+const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
+const { Timeline } = await import("../api/src/front-office/sales/timeline.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -194,8 +201,9 @@ try {
     return id;
   };
   const tpl = await svc.uploadTemplate(ctx(R), { name: "PF-6b retainer" }, { bytes: buildDocx(["Client: {client.name}", "{#fees}{label}: {amount}{/fees}"]), size: 1000 });
-  const X1 = (await svc.draft(ctx(R), prospect(600, R), { templateId: tpl.id, representativeStaffId: T })).id;
-  const X2 = (await svc.draft(ctx(O), prospect(610, O), { templateId: tpl.id, representativeStaffId: T })).id;
+  const P1 = prospect(600, R), P2 = prospect(610, O);
+  const X1 = (await svc.draft(ctx(R), P1, { templateId: tpl.id, representativeStaffId: T })).id;
+  const X2 = (await svc.draft(ctx(O), P2, { templateId: tpl.id, representativeStaffId: T })).id;
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/prospect:view.all'`);
   const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "system:check", workspaceId: await platformAuditWorkspaceId(db) });
   const sees = async (f: () => Promise<unknown>) => { try { return !!(await f()); } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 404) return false; throw e; } };
@@ -219,17 +227,50 @@ try {
   };
   const L1 = lead(620, R, "Event (PF-6b)"), L2 = lead(630, O, "Referral (PF-6b)");
   const live = (c: StaffContext): StaffContext => ({ ...c, keys: sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${c.staffId}' and g.ended_at is null`).split(",") });
-  const leads = new Leads(db, {} as never);
+  const leads = new Leads(db, {} as never), prospects = new Prospects(db, {} as never), timeline = new Timeline(db, leads, prospects);
   const LEADS: typeof EXPECT = {
     on: { "view.all holder (user-R)": [L1, L2], "own-only role copy (user-O)": [L2], "representative (user-T)": [L1, L2], "firm B (user-S)": [] },
     off: { "view.all holder (user-R)": [L1], "own-only role copy (user-O)": [L2], "representative (user-T)": [], "firm B (user-S)": [] },
   };
+  const PROSPECTS: typeof EXPECT = {
+    on: { "view.all holder (user-R)": [P1, P2], "own-only role copy (user-O)": [P2], "representative (user-T)": [P1, P2], "firm B (user-S)": [] },
+    off: { "view.all holder (user-R)": [P1], "own-only role copy (user-O)": [P2], "representative (user-T)": [], "firm B (user-S)": [] },
+  };
+  // FO-6d: one document sent from each prospect, by its owner (fake adapter, the scratch file store).
+  const anyDocs = new AnyDocuments(db, new LocalFiles(join(WORK, "files")), { now: () => new Date(clock.now()) });
+  const pdf = { bytes: new TextEncoder().encode("%PDF-1.4\n% PF-6b sweep (Sample)\n%%EOF\n"), size: 40, name: "probe.pdf" };
+  const Q1 = (await anyDocs.send(live(ctx(R)), { title: "PF-6b document 1", prospectId: P1, signerPersonIds: [u(600)] }, pdf)).id;
+  const Q2 = (await anyDocs.send(live(ctx(O)), { title: "PF-6b document 2", prospectId: P2, signerPersonIds: [u(610)] }, pdf)).id;
+  const K1 = await anyDocs.fileKey(live(ctx(R)), Q1, "original"), K2 = await anyDocs.fileKey(live(ctx(O)), Q2, "original");
+  /** PROSPECTS' table with its two ids replaced by the records that hang on P1 and P2. */
+  const byProspect = ([a, b]: [string, string]): typeof EXPECT => Object.fromEntries((["on", "off"] as const).map((k) => [k, Object.fromEntries(Object.entries(PROSPECTS[k]).map(([w, ids]) => [w, ids.map((x) => (x === P1 ? a : b))]))])) as typeof EXPECT;
+  /** A send's refusal after the visibility check (422: no signer) means the prospect was seen; a 404 that it was not. */
+  const refusedButSeen = async (f: () => Promise<unknown>) => { try { await f(); return true; } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 422) return true; throw e; } };
   /** The sweep table: every @OwnOrAll route, with how to read one record through it (DW7 fails a marked route missing here). */
   const SWEEP: Record<string, Entry> = {
     "RetainersController.read": { read: (c, id) => svc.read(c, id) },
+    // FO-6 part 3: a retainer's signing state follows the retainer read (its visibility is svc.read's).
+    "SigningController.state": { read: (c, id) => new SigningController(new Signing(db, new LocalFiles(join(WORK, "files"))), svc, db as never).state({ platform: c }, id) },
+    // FO-6 part 4c: the firm signer's link follows the retainer read too: any answer past it (409 no live request, 403 not
+    // the representative) means the record was seen; only the read's 404 means it was not.
+    "SigningController.firmLink": { read: async (c, id) => { try { return await new SigningController(new Signing(db, new LocalFiles(join(WORK, "files"))), svc, db as never).firmLink({ platform: c }, id, { consent: true, consentTextVersion: "sign-electronically-v1" }); } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 404) throw e; return true; } } },
     "SalesController.read": { read: (c, id) => leads.read(live(c), id), ids: [L1, L2], expect: LEADS },
     "SalesController.list": { read: async (c, id) => (await leads.list(live(c), "all")).find((l) => l.id === id), ids: [L1, L2], expect: LEADS },
+    // FO-2 part 3: prospects follow the leads' table (the representative of a retainer owns no prospect).
+    "SalesController.prospectRead": { read: (c, id) => prospects.read(live(c), id), ids: [P1, P2], expect: PROSPECTS },
+    "SalesController.prospectList": { read: async (c, id) => (await prospects.list(live(c), {})).find((p) => p.id === id), ids: [P1, P2], expect: PROSPECTS },
+    // FO-2 part 4: the timelines follow their record's read (a lead's or a prospect's).
+    "SalesController.leadTimeline": { read: (c, id) => timeline.lead(live(c), id), ids: [L1, L2], expect: LEADS },
+    "SalesController.prospectTimeline": { read: (c, id) => timeline.prospect(live(c), id), ids: [P1, P2], expect: PROSPECTS },
     "SalesController.sources": { read: async (c, id) => (await leads.sources(live(c))).sources.includes(SOURCE_OF[id]), ids: [L1, L2], expect: LEADS },
+    // FO-6d: a document sent for signature follows its prospect's read (the prospects' table), by prospect, request, file and person.
+    "AnyDocumentsController.send": { read: (c, id) => refusedButSeen(() => anyDocs.send(live(c), { title: "PF-6b probe", prospectId: id, signerPersonIds: [] }, undefined)), ids: [P1, P2], expect: PROSPECTS },
+    "AnyDocumentsController.list": { read: (c, id) => anyDocs.listForProspect(live(c), id), ids: [P1, P2], expect: PROSPECTS },
+    "AnyDocumentsController.signers": { read: (c, id) => anyDocs.signersFor(live(c), id), ids: [P1, P2], expect: PROSPECTS },
+    "AnyDocumentsController.state": { read: (c, id) => anyDocs.state(live(c), id), ids: [Q1, Q2], expect: byProspect([Q1, Q2]) },
+    "AnyDocumentsController.link": { read: (c, id) => anyDocs.fileKey(live(c), id, "original"), ids: [Q1, Q2], expect: byProspect([Q1, Q2]) },
+    "AnyDocumentsController.download": { read: async (c, id) => { await anyDocs.assertKeyVisible(live(c), id); return true; }, ids: [K1, K2], expect: byProspect([K1, K2]) },
+    "PersonDocumentsController.list": { read: (c, id) => new PersonDocuments(db).list(live(c), id), ids: [u(600), u(610)], expect: byProspect([u(600), u(610)]) },
   };
   const sweep = async (entry: Entry) => {
     const wrong: string[] = [];

@@ -5,6 +5,7 @@
 // has a passing and a failing case. Product routes only (no SQL write), no model call (US$0).
 //   zsh studio/tools/isolated.sh rt_m3s4 4434 start && tsx studio/tests/check_m3s4_blocking_api.ts 4434 xr_studio_rt_m3s4
 import { call, filingOf, firms, openCase, PORT, prepare, readinessOf, readyToFile, sql, yearsAgo } from "../acceptance/lib/m3.ts";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
@@ -88,7 +89,7 @@ const passIt = await call("POST", `/runtime/filings/${fid}/warnings/document_nev
 ok("C7.6 M3-S4: pass fail: the block cannot be passed with a reason (409, in words), nothing stored", passIt.status === 409 && /cannot be passed: fix it instead/.test(words(passIt)) && sql(`select count(*) from readiness_pass where filing_id='${fid}' and code='document_never_waivable'`) === "0", [passIt.status, words(passIt)]);
 
 // (5) The letter is received: Ready to file is allowed.
-const fd = new FormData(); fd.append("version", String((await lineOf(DOC))?.version ?? 0)); fd.append("file", new Blob([new TextEncoder().encode("%PDF-1.4\n% Sample synthetic letter of acceptance\n")]), "letter.pdf");
+const fd = new FormData(); fd.append("version", String((await lineOf(DOC))?.version ?? 0)); fd.append("file", new Blob([new Uint8Array(textPdf(["Sample synthetic letter of acceptance"]))]), "letter.pdf");
 const up = await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${letter?.id}/documents`, { method: "POST", headers: { "x-actor": officer }, body: fd });
 ok("C7.6 M3-S4: received pass: the letter is uploaded and the line is Received", up.status === 201 && (await lineOf(DOC))?.state === "received", up.status);
 const allowed = await readyToFile(c.id, rep);

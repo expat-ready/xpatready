@@ -10,9 +10,9 @@
 // Nest's decorators are applied as calls (identity/keys.ts says why).
 import { Injectable } from "@nestjs/common";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { FileKey, FileKeyTaken, FilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
+import { FileKey, FileKeyTaken, parseFilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
 import { FirmId } from "../../../ports/audit.ts";
 
 const STUDIO = resolve(import.meta.dirname, "..", "..", "..");
@@ -38,7 +38,7 @@ export class LocalFiles implements FilesPort {
   }
 
   async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
-    const f = FilePut.parse({ firmId, key, bytes, contentType });
+    const f = parseFilePut({ firmId, key, bytes, contentType });
     const sha256 = await sha256Hex(f.bytes), path = this.pathOf(f.firmId, f.key);
     const had = this.meta(path);
     if (had?.deletedAt) throw new FileKeyTaken(f.key);   // PF-Fd: a deleted key is retired, even for the same bytes
@@ -85,6 +85,30 @@ export class LocalFiles implements FilesPort {
     try { unlinkSync(path); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return { deleted: false }; throw e; }   // review m1: another process won
     return { deleted: true };
   }
+
+  /** PF-15 (SA-3-40): the bytes of the firm's live files (a key with its `.meta` and no tombstone); a retired key, a
+   *  `.tmp` left by a crash and the `.meta` files themselves do not count. Symlinks are not followed. */
+  async usedBytes(firmId: string): Promise<number> {
+    const firmDir = join(this.root, FirmId.parse(firmId).toLowerCase());
+    let total = 0;
+    const walk = (dir: string) => {
+      let names: string[];
+      try { names = readdirSync(dir); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return; throw e; }
+      for (const name of names) {
+        const p = join(dir, name), st = (() => { try { return lstatSync(p); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; } })();   // another process's .tmp may go (break m1)
+        if (!st) continue;
+        if (st.isDirectory()) { walk(p); continue; }
+        if (!st.isFile() || /\.(meta|tmp)$/.test(name)) continue;
+        const m = this.meta(p);
+        if (m && !m.deletedAt) total += st.size;
+      }
+    };
+    walk(firmDir);
+    return total;
+  }
+
+  /** PF-15: the key was ever written for the firm (live or retired): a put of it is a retry or a FileKeyTaken. */
+  protected known(firmId: string, key: string): boolean { return this.meta(this.pathOf(firmId, key)) !== null; }
 
   private meta(path: string): Meta | null {
     try { return JSON.parse(readFileSync(`${path}.meta`, "utf8")) as Meta; } catch { return null; }

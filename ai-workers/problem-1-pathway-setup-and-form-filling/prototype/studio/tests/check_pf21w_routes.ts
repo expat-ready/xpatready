@@ -1,6 +1,7 @@
 // PF-21w (PF-21's part 2; P-579, P-584 (8), P-606): the complaints record's routes, /api/platform/complaints, behind
 // PF-4's guard. Named cases DW1-DW9 and the walk W1 (the brief, Lead B 15 Nov), each with a passing and a failing case,
-// on the six seeded roles (one staff member per role in the Sample firm, plus firm B's Owner and an inactive person).
+// on the six seeded roles (one staff member per role in the Sample firm, plus firm B's Owner and an inactive person;
+// PF-21j: the handlers are Case Managers, who hold agent/complaint:record, as a Case Officer can no longer be one).
 // One scratch database (every migration, PF-3's Sample seed) and a Nest app built from the feature's own classes
 // (features/platform-complaints.ts) beside PF-4's (the guard, the local stand-in's tokens), the audit port real, the job
 // runner a recorder. No server of the app, no browser, no model call (US$0). The database is dropped at the end.
@@ -9,6 +10,7 @@ import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, ModulesContainer, NestFactory, Reflector } from "@nestjs/core";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { JobHandler, JobPort } from "../ports/jobs.ts";
@@ -26,6 +28,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -38,6 +41,8 @@ const { ACK_REMINDER_JOB } = await import("../api/src/platform/complaints/compla
 const { EVENT } = await import("../ports/events.ts");
 const { ComplaintJobs } = await import("../api/src/features/platform-complaints.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
+const { fakeMail } = await import("../ports/mail.ts");
 
 /** A job runner that records what it is given (the reminder's runs are PF-21's suite's). */
 const recorder = () => {
@@ -56,7 +61,7 @@ const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf21w-check-signing-key-0123456789abcdef", () => Date.now());
 async function makeApp(jobs: JobPort) {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
+    { provide: MESSAGES_MAIL, useValue: fakeMail() }, { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);
@@ -68,6 +73,7 @@ let BASE = "";
 const call = async (method: string, path: string, token?: string, body?: unknown): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
+  if (method === "POST" && path === "") headers["idempotency-key"] = randomUUID();   // PF-21i: a fresh key per create
   const r = await fetch(`${BASE}/api/platform/complaints${path}`, { method, headers, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) });
   const text = await r.text(); let b: any = text; try { b = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body: b };
@@ -88,6 +94,7 @@ try {
   for (const r of ROLES) as[r] = await person(firmA, r.toLowerCase().replace(/_/g, "-"), r);
   const ownerB = await person(firmB, "owner-b", "OWNER");
   const gone = await person(firmA, "gone", "CASE_OFFICER", "DEACTIVATED");
+  const manager2 = await person(firmA, "manager-2", "CASE_MANAGER");   // PF-21j: a second handler who may record complaints
 
   const jobs = recorder();
   const { app, base } = await makeApp(jobs);
@@ -116,7 +123,7 @@ try {
   const complaint = (handler: string, name = "Client A") => ({ subjectKind: "OTHER_PERSON", complainantName: name, receivedAt: ago(6), channel: "PHONE", category: "SERVICE", summary: "Called about a delay (Sample)", handlerStaffId: handler });
   const recorded: Record<string, string> = {};
   for (const r of ["OWNER", "ADMIN", "CASE_MANAGER"] as const) {
-    const res = await call("POST", "", as[r].token, complaint(as.CASE_OFFICER.id, `Client ${r}`));
+    const res = await call("POST", "", as[r].token, complaint(as.CASE_MANAGER.id, `Client ${r}`));
     ok(`PF-21w DW1 pass: ${r} records a complaint → 201`, res.status === 201 && res.body.status === "OPEN" && res.body.reminderScheduled === true, res);
     recorded[r] = res.body.id;
   }
@@ -125,11 +132,11 @@ try {
     ok(`PF-21w DW1 fail: ${r} records a complaint → 403 (P-601: no agent/complaint:record)`, res.status === 403 && res.body.code === "MISSING_PERMISSION", res);
   }
   ok("PF-21w DW1: the three recorded complaints each queued one reminder, and the refused ones none", jobs.scheduled.length === 3, jobs.scheduled);
-  const bad = await call("POST", "", as.OWNER.token, { ...complaint(as.CASE_OFFICER.id), summary: " " });
+  const bad = await call("POST", "", as.OWNER.token, { ...complaint(as.CASE_MANAGER.id), summary: " " });
   ok("PF-21w DW1 fail: the service's field errors come through the route (422, at the field)", bad.status === 422 && typeof bad.body.fields?.summary === "string", bad);
 
-  // A complaint handled by the case manager: not the case officer's.
-  const theirs = (await call("POST", "", as.OWNER.token, complaint(as.CASE_MANAGER.id, "Client B"))).body.id as string;
+  // A complaint handled by a second case manager, not the first one's (PF-21j: only people who may record complaints handle one).
+  const theirs = (await call("POST", "", as.OWNER.token, complaint(manager2.id, "Client B"))).body.id as string;
   const mine = recorded.OWNER;
 
   // ---------------------------------------------------------------------------------------------------------- DW2
@@ -140,12 +147,12 @@ try {
     ok(`PF-21w DW2 pass: ${r} lists every complaint of the firm`, l.status === 200 && JSON.stringify(ids(l)) === JSON.stringify(every), l);
     ok(`PF-21w DW2 pass: ${r} opens a complaint someone else handles`, (await call("GET", `/${theirs}`, as[r].token)).status === 200);
   }
-  const lo = await call("GET", "?view=all", as.CASE_OFFICER.token);
-  ok("PF-21w DW2 pass: a CASE_OFFICER handler lists only their own", lo.status === 200 && JSON.stringify(ids(lo)) === JSON.stringify(Object.values(recorded).sort()), lo);
-  const g = await call("GET", `/${mine}`, as.CASE_OFFICER.token);
+  const lo = await call("GET", "?view=all", as.CASE_MANAGER.token);
+  ok("PF-21w DW2 pass: a CASE_MANAGER handler (no read key) lists only their own", lo.status === 200 && JSON.stringify(ids(lo)) === JSON.stringify(Object.values(recorded).sort()), lo);
+  const g = await call("GET", `/${mine}`, as.CASE_MANAGER.token);
   ok("PF-21w DW2 pass: the handler opens their own, with its events", g.status === 200 && g.body.events?.[0]?.kind === "RECEIVED", g);
   for (const r of ["CASE_OFFICER", "CASE_MANAGER", "BILLING_FINANCE", "READ_ONLY"] as const) {
-    const id = r === "CASE_MANAGER" ? mine : theirs;
+    const id = theirs;   // PF-21j: the case manager handles mine, not theirs
     const x = await call("GET", `/${id}`, as[r].token);
     ok(`PF-21w DW2 fail: ${r} opening a complaint they do not handle → 404, never 403`, x.status === 404 && x.body.code === "NOT_FOUND", x);
   }
@@ -156,7 +163,8 @@ try {
   ok("PF-21w DW2 pass: the list pages with limit and cursor (2 + 2 = every one, none twice)", page.body.items.length === 2 && page2.body.items.length === 2 && JSON.stringify([...ids(page), ...ids(page2)].sort()) === JSON.stringify(every), [page.body, page2.body]);
   for (const q of ["?view=nope", "?limit=0", "?limit=abc", "?limit=101", "?view=all&view=open", "?cursor=bad"]) {
     const x = await call("GET", q, as.OWNER.token);
-    ok(`PF-21w DW2 fail: list ${q} → the service's field error (422)`, x.status === 422 && x.body.code === "COMPLAINT_FIELDS", x);
+    // A repeated key is refused by the one input rule at the door (PF-28 part 2b: INVALID, the field named), the rest by the service.
+    ok(`PF-21w DW2 fail: list ${q} → a field error (422)`, x.status === 422 && (q.includes("&view=") ? x.body.code === "INVALID" && Object.hasOwn(x.body.fields ?? {}, "view") : x.body.code === "COMPLAINT_FIELDS"), x);
   }
 
   // ---------------------------------------------------------------------------------------------------------- DW3
@@ -164,12 +172,12 @@ try {
   for (const [i, [route, body]] of steps.entries()) {
     const no = await call("POST", `/${theirs}/${route}`, as.BILLING_FINANCE.token, body(ago(5 - i)));
     ok(`PF-21w DW3 fail: a non-handler without the keys (BILLING_FINANCE) on ${route} → 404`, no.status === 404 && no.body.code === "NOT_FOUND", no);
-    const yes = await call("POST", `/${recorded.ADMIN}/${route}`, as.CASE_OFFICER.token, body(ago(5 - i)));
-    ok(`PF-21w DW3 pass: the CASE_OFFICER handler (no complaint key) on ${route}, their own complaint → 200`, yes.status === 200, yes);
+    const yes = await call("POST", `/${recorded.ADMIN}/${route}`, as.CASE_MANAGER.token, body(ago(5 - i)));
+    ok(`PF-21w DW3 pass: the CASE_MANAGER handler (record key, no read key; PF-21j) on ${route}, their own complaint → 200`, yes.status === 200, yes);
   }
   ok("PF-21w DW3: the handler's own complaint is closed RESOLVED", (await call("GET", `/${recorded.ADMIN}`, as.OWNER.token)).body.outcome === "RESOLVED");
-  const cm = await call("POST", `/${mine}/acknowledge`, as.CASE_MANAGER.token, { at: ago(5) });
-  ok("PF-21w DW3 fail: record alone (CASE_MANAGER, not the handler) cannot act on a complaint → 404", cm.status === 404, cm);
+  const cm = await call("POST", `/${mine}/acknowledge`, manager2.token, { at: ago(5) });
+  ok("PF-21w DW3 fail: record alone (another CASE_MANAGER, not the handler) cannot act on a complaint → 404", cm.status === 404, cm);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
   for (const [r, to] of [["OWNER", as.ADMIN.id], ["ADMIN", as.CASE_MANAGER.id]] as const) {
@@ -200,9 +208,9 @@ try {
   const [e0, r0] = [await events(), await row()];
   const again = await call("POST", `/${closed}/close`, as.OWNER.token, { at: ago(1), outcome: "UPHELD", note: "Again" });
   ok("PF-21w DW6 fail: a second close → the service's refusal (409 complaint closed)", again.status === 409 && again.body.code === "COMPLAINT_CLOSED", again);
-  const step = await call("POST", `/${closed}/steps`, as.CASE_OFFICER.token, { kind: "STEP", note: "Late step" });
+  const step = await call("POST", `/${closed}/steps`, as.CASE_MANAGER.token, { kind: "STEP", note: "Late step" });
   ok("PF-21w DW6 fail: a handling step on a closed complaint → 409", step.status === 409 && step.body.code === "COMPLAINT_CLOSED", step);
-  const note = await call("POST", `/${closed}/steps`, as.CASE_OFFICER.token, { kind: "NOTE", note: "Client wrote again (Sample)" });
+  const note = await call("POST", `/${closed}/steps`, as.CASE_MANAGER.token, { kind: "NOTE", note: "Client wrote again (Sample)" });
   ok("PF-21w DW6 pass: a closed complaint changes only by a new event (a note: one event more, the record as it was)", note.status === 200 && (await events()) === e0 + 1 && (await row()) === r0, note);
 
   // ---------------------------------------------------------------------------------------------------------- DW7
@@ -225,11 +233,11 @@ try {
   ok("PF-21w DW8: firm B's complaint is unchanged by firm A's calls (only its RECEIVED event)", (await db.platComplaintEvent.count({ where: { complaintId: inB.body.id } })) === 1);
 
   // ----------------------------------------------------------------------------------------------------------- W1
-  const w = await call("POST", "", as.CASE_MANAGER.token, complaint(as.CASE_OFFICER.id, "Client W"));
-  const inView = async (v: string) => ids(await call("GET", `?view=${v}`, as.CASE_OFFICER.token)).includes(w.body.id);
+  const w = await call("POST", "", as.CASE_MANAGER.token, complaint(as.CASE_MANAGER.id, "Client W"));
+  const inView = async (v: string) => ids(await call("GET", `?view=${v}`, as.CASE_MANAGER.token)).includes(w.body.id);
   ok("PF-21w W1: recorded → it appears in \"open\", not in \"closed\"", w.status === 201 && (await inView("open")) && !(await inView("closed")), w);
-  const walk = [await call("POST", `/${w.body.id}/acknowledge`, as.CASE_OFFICER.token, { at: ago(5) }), await call("POST", `/${w.body.id}/steps`, as.CASE_OFFICER.token, { kind: "STEP", note: "Called the client (Sample)", at: ago(4) }),
-    await call("POST", `/${w.body.id}/response-sent`, as.CASE_OFFICER.token, { at: ago(3) }), await call("POST", `/${w.body.id}/close`, as.CASE_OFFICER.token, { at: ago(2), outcome: "RESOLVED", note: "Resolved (Sample)" })];
+  const walk = [await call("POST", `/${w.body.id}/acknowledge`, as.CASE_MANAGER.token, { at: ago(5) }), await call("POST", `/${w.body.id}/steps`, as.CASE_MANAGER.token, { kind: "STEP", note: "Called the client (Sample)", at: ago(4) }),
+    await call("POST", `/${w.body.id}/response-sent`, as.CASE_MANAGER.token, { at: ago(3) }), await call("POST", `/${w.body.id}/close`, as.CASE_MANAGER.token, { at: ago(2), outcome: "RESOLVED", note: "Resolved (Sample)" })];
   ok("PF-21w W1: acknowledge → step → response sent → close (RESOLVED), each 200", walk.every((x) => x.status === 200) && walk[3].body.outcome === "RESOLVED", walk.map((x) => x.status));
   const out = await db.moduleEvent.findMany({ where: { subjectId: w.body.id }, orderBy: { seq: "asc" } });
   ok("PF-21w W1: it appears in \"closed\" and no longer in \"open\", with complaint.closed in the outbox", (await inView("closed")) && !(await inView("open")) && out.map((e) => e.type).join(",") === `${EVENT.COMPLAINT_RECEIVED},${EVENT.COMPLAINT_CLOSED}`, out.map((e) => e.type));

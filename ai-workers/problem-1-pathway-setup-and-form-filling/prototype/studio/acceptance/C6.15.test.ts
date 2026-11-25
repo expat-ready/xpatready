@@ -10,6 +10,7 @@
 //   tsx studio/acceptance/lib/setup_vv_m3.ts 4440 xr_studio_accept      (exits 1 on its own known gaps; fine)
 //   tsx studio/acceptance/C6.15.test.ts 4440 xr_studio_accept
 import { APPROVER, AUTHOR, CLIENT, REVIEWER, call, main, needVisitorVisa, ok, openCase, OFFICER, run, sendFile, sql, yearsAgo } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 
 const FUNDS = "proof_of_financial_support";
 const LETTER = `Letter of support from a host in Canada (Sample ${run})`, HOST_BANK = `Host's bank statements (Sample ${run})`;
@@ -17,7 +18,7 @@ type Member = { key: string; name: string; standard: boolean; when_client: strin
 type Line = { id: string; label: string; state: string; version: number; document: { key: string }; set: { name: string; mode: string; members: Member[]; words: string } | null;
   set_status: { met: boolean; words: string; missing: { name: string }[] } | null; documents: { id: string; current: boolean; member?: { key: string; name: string } }[] };
 type Checklist = { people: { subject: string; lines: Line[] }[] };
-const pdf = (what: string) => Buffer.from(`%PDF-1.4\n% SYNTHETIC SPECIMEN: ${what} (Sample)\n%%EOF\n`, "latin1");
+const pdf = (what: string) => textPdf([`SYNTHETIC SPECIMEN: ${what} (Sample)`]);
 const words = (r: { body: any }) => String(r.body?.detail ?? r.body?.message ?? JSON.stringify(r.body ?? "")).slice(0, 220); // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely
 
 /** A new library document type through the product's own path (C3.6): named while adding a line, accepted by a second

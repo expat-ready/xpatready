@@ -32,6 +32,7 @@ const generated = () => ({
   PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${rand(9)}`,
   PLATFORM_COGNITO_CLIENT_ID: rand(26),
   PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", rand(32)].join("_"),
+  PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET: ["whsec", rand(32)].join("_"),   // FO-7c part 1: optional, a secret setting (redacted and scrubbed like the rest)
   PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", rand(32)].join("_"),
   PLATFORM_SES_REGION: "ca-central-1",
   PLATFORM_BOLDSIGN_API_KEY: rand(40),
@@ -40,6 +41,9 @@ const generated = () => ({
   PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: rand(22),
   PLATFORM_SECRET_BOX_KEYS: `2:${key32()},1:${key32()}`,
   PLATFORM_SECRET_BOX_KEY_VERSION: "2",
+  PLATFORM_LOCAL_SECRET: rand(40),   // PF-24w: PF-4's stand-in key is a secret setting of the loader too (optional)
+  PLATFORM_SYSTEM_LOCAL_SECRET: rand(40),   // PF-4s: our own staff's stand-in key, a secret setting too (optional; never PLATFORM_LOCAL_SECRET's value)
+  PLATFORM_FILES_LINK_KEY: key32(),   // PF-F1b: the S3 download links' key is a secret setting of the loader too (optional)
 } as Record<string, string>);
 /** Every secret value in a generated set (each secret-box key on its own), to look for in messages, logs and responses. */
 const secretValues = (env: Record<string, string>) => SECRET_SETTING_NAMES.flatMap((n) => (n === "PLATFORM_SECRET_BOX_KEYS" ? env[n].split(",").map((e) => e.slice(e.indexOf(":") + 1)) : [env[n]])).filter(Boolean);
@@ -53,7 +57,8 @@ console.log("== 1. the loader: a missing required secret stops start with its na
     ok(`pass: PLATFORM_ENVIRONMENT=${environment} with every setting loads`, !(all instanceof Error) && (all as { environment: string }).environment === environment, all instanceof Error ? all.message : undefined);
   }
   let named = 0, silent = 0; const bad: string[] = [];
-  for (const x of SETTINGS) {
+  const REQUIRED = SETTINGS.filter((x) => !x.optional);   // PF-24w: sign-in's and the Sample seed's settings are optional everywhere
+  for (const x of REQUIRED) {
     const without: Record<string, string> = { ...env, PLATFORM_ENVIRONMENT: "production" }; delete without[x.name];
     try { loadPlatformConfig(without); bad.push(`${x.name}: loaded`); continue; } catch (e) {
       const m = e instanceof ConfigRefused ? e.message : "";
@@ -61,27 +66,27 @@ console.log("== 1. the loader: a missing required secret stops start with its na
       if (!leaks(m, values).length && !leaks(inspect(e), values).length) silent++; else bad.push(`${x.name}: a value in the message`);
     }
   }
-  ok(`fail: each of the ${SETTINGS.length} settings missing in production stops the load, naming exactly it`, named === SETTINGS.length, bad);
-  ok("fail: no refusal message (or its inspect) holds any secret value", silent === SETTINGS.length, bad);
+  ok(`fail: each of the ${REQUIRED.length} required settings missing in production stops the load, naming exactly it`, named === REQUIRED.length, bad);
+  ok("fail: no refusal message (or its inspect) holds any secret value", silent === REQUIRED.length, bad);
   const blank = { ...env, PLATFORM_ENVIRONMENT: "test", PLATFORM_ZOOM_CLIENT_SECRET: "   " };
   ok("fail: a setting that is only spaces counts as missing", throwsLike(() => loadPlatformConfig(blank), (e) => e instanceof ConfigRefused && e.missing.join() === "PLATFORM_ZOOM_CLIENT_SECRET"));
   const wrong = `not-a-database-${rand(20)}`;
   const inv = (() => { try { loadPlatformConfig({ ...env, PLATFORM_ENVIRONMENT: "test", DATABASE_URL: wrong }); return null; } catch (e) { return e as ConfigRefused; } })();
   ok("fail: an invalid value is refused, naming the setting and the rule, never the value", !!inv && inv.invalid[0]?.name === "DATABASE_URL" && /expected a postgresql/.test(inv.message) && !inv.message.includes(wrong) && !inspect(inv).includes(wrong), inv?.message);
   ok("fail: an unknown PLATFORM_ENVIRONMENT is refused", throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "prod" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_ENVIRONMENT"));
-  const local = loadPlatformConfig({});
+  const local = loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local" });
   ok("pass: local with nothing set loads (each service off; the demo database)", local.environment === "local" && local.stripe.secretKey === null && local.secretBox === null && local.databaseUrl.reveal().endsWith("/xr_studio_demo"));
-  ok("fail: local still refuses a value that is set but invalid", throwsLike(() => loadPlatformConfig({ PLATFORM_ZOOM_CLIENT_SECRET: "short" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_ZOOM_CLIENT_SECRET"));
+  ok("fail: local still refuses a value that is set but invalid", throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_ZOOM_CLIENT_SECRET: "short" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_ZOOM_CLIENT_SECRET"));
   const live = ["sk", "live", rand(32)].join("_");
   ok("pass: a Stripe live key loads in production", !throwsLike(() => loadPlatformConfig({ ...env, PLATFORM_ENVIRONMENT: "production", PLATFORM_STRIPE_SECRET_KEY: live }), () => true));
   ok("fail: a Stripe live key is refused in test and locally", ["test", "local"].every((p) => throwsLike(() => loadPlatformConfig({ ...env, PLATFORM_ENVIRONMENT: p, PLATFORM_STRIPE_SECRET_KEY: live }), (e) => e instanceof ConfigRefused && e.invalid.some((i) => i.name === "PLATFORM_STRIPE_SECRET_KEY") && !e.message.includes(live))));
-  ok("fail: a key ring without its version (or the reverse) is refused even locally", throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${key32()}` }), (e) => e instanceof ConfigRefused && e.missing.join() === "PLATFORM_SECRET_BOX_KEY_VERSION") && throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.missing.join() === "PLATFORM_SECRET_BOX_KEYS"));
+  ok("fail: a key ring without its version (or the reverse) is refused even locally", throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${key32()}` }), (e) => e instanceof ConfigRefused && e.missing.join() === "PLATFORM_SECRET_BOX_KEY_VERSION") && throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.missing.join() === "PLATFORM_SECRET_BOX_KEYS"));
   const k = key32();
   ok("fail: a version not in the ring, a version twice, one key under two versions, a key not 32 bytes: each refused",
-    throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${key32()}`, PLATFORM_SECRET_BOX_KEY_VERSION: "2" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEY_VERSION")
-    && throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${key32()},1:${key32()}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEYS")
-    && throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${k},2:${k}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEYS")
-    && throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(16).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && !e.message.includes(k)));
+    throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${key32()}`, PLATFORM_SECRET_BOX_KEY_VERSION: "2" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEY_VERSION")
+    && throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${key32()},1:${key32()}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEYS")
+    && throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${k},2:${k}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEYS")
+    && throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(16).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && !e.message.includes(k)));
 }
 
 {
@@ -94,10 +99,10 @@ console.log("== 1. the loader: a missing required secret stops start with its na
   const respelled = k.slice(0, -2) + other + "=";
   const sameBytes = Buffer.from(respelled, "base64").equals(Buffer.from(k, "base64"));
   ok("fail (break m2): one key spelled two ways, a non-canonical spelling and an all-zero key are each refused",
-    (!sameBytes || throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `2:${k},1:${respelled}`, PLATFORM_SECRET_BOX_KEY_VERSION: "2" }), (e) => e instanceof ConfigRefused))
-    && throwsLike(() => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${Buffer.alloc(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEYS"),
+    (!sameBytes || throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `2:${k},1:${respelled}`, PLATFORM_SECRET_BOX_KEY_VERSION: "2" }), (e) => e instanceof ConfigRefused))
+    && throwsLike(() => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${Buffer.alloc(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" }), (e) => e instanceof ConfigRefused && e.invalid[0]?.name === "PLATFORM_SECRET_BOX_KEYS"),
     { sameBytes });
-  const cfg = loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: `1:${key32()}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" });
+  const cfg = loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: `1:${key32()}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" });
   ok("pass (break m6): the loaded key ring reads its key", cfg.secretBox!.keys.get(1) instanceof Secret);
   ok("fail (break m6): the loaded key ring cannot be changed (set, delete, clear, nor Map.prototype.set/delete called on it)", ["set", "delete", "clear"].every((m) => throwsLike(() => (cfg.secretBox!.keys as unknown as Record<string, (...a: unknown[]) => unknown>)[m](9, new Secret("x", "y")), (e) => e instanceof TypeError))
     && throwsLike(() => Map.prototype.set.call(cfg.secretBox!.keys, 9, new Secret("x", "y")), (e) => e instanceof TypeError) && throwsLike(() => Map.prototype.delete.call(cfg.secretBox!.keys, 1), (e) => e instanceof TypeError) && cfg.secretBox!.keys.size === 1 && [...cfg.secretBox!.keys.keys()].join() === "1");
@@ -122,6 +127,7 @@ console.log("== 2. a held secret never prints, logs or serialises its value");
   const mine = generated();
   for (const n of SCRUBBED_FROM_ENV) process.env[n] = mine[n];
   process.env.PLATFORM_SECRET_BOX_KEY_VERSION = mine.PLATFORM_SECRET_BOX_KEY_VERSION;
+  process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
   const live = platformConfig();
   delete process.env.PLATFORM_SECRET_BOX_KEY_VERSION;   // not secret; removed only so the copies started below inherit nothing of this
   ok("pass (break M1): the loaded configuration still holds every secret for its adapter", SCRUBBED_FROM_ENV.every((n) => n === "PLATFORM_SECRET_BOX_KEYS" ? live.secretBox?.keys.size === 2 : JSON.stringify(live).includes(`[secret ${n}]`)) && live.zoom.clientSecret?.reveal() === mine.PLATFORM_ZOOM_CLIENT_SECRET);
@@ -133,7 +139,7 @@ console.log("== 2. a held secret never prints, logs or serialises its value");
 
 console.log("== 3. SecretBoxPort: round trip, tamper, firm A never opens for firm B");
 const FIRM_A = "0a7f3c11-1111-4111-8111-aaaaaaaaaaaa", FIRM_B = "0b7f3c22-2222-4222-8222-bbbbbbbbbbbb", FIRM_C = "0c7f3c33-3333-4333-8333-cccccccccccc";
-const ring = (current: number, keys: Record<number, string>) => loadPlatformConfig({ PLATFORM_SECRET_BOX_KEYS: Object.entries(keys).map(([v, k]) => `${v}:${k}`).join(","), PLATFORM_SECRET_BOX_KEY_VERSION: String(current) }).secretBox!;
+const ring = (current: number, keys: Record<number, string>) => loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SECRET_BOX_KEYS: Object.entries(keys).map(([v, k]) => `${v}:${k}`).join(","), PLATFORM_SECRET_BOX_KEY_VERSION: String(current) }).secretBox!;
 const K1 = key32(), K2 = key32();
 const owner = (firmId: string, purpose = "zoom", personId: string | null = null): SecretOwner => ({ firmId, purpose, personId });
 {

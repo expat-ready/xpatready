@@ -1,0 +1,18 @@
+135878881032 | check_qa401_person_rights_browser.cjs | PASS | 68 s | 14/14 passed |
+135878881034 | check_fo1p_person_port.ts | PASS | 4 s | FO-1p person port: 35 passed, 0 failed |
+135878881036 | check_fo9a_phone_edit.ts | PASS | 4 s | FO-9a phone edit: 36 passed, 0 failed |
+135878881062 | check_s5_leadcheck.ts | PASS | 11 s | 49 passed, 0 failed |
+135878881084 | check_c1110_view_per_person_browser.cjs | PASS | 56 s | 14 passed, 0 failed |
+135878881084 | check_s5_leadcheck_browser.cjs | PASS | 19 s | 21 passed, 0 failed |
+135878881122 | check_fo2p4_calls_timeline.ts | PASS | 5 s | FO-2p4 calls, notes and the timeline: 30 passed, 0 failed |
+135878881123 | check_fo2v_lead_visibility.ts | PASS | 5 s | FO-2v lead visibility: 14 passed, 0 failed |
+135878881123 | check_forms_c33_failed_run_browser.ts | PASS | 15 s | 22 passed, 0 failed (C3.3 failed run, as a person; US$0) |
+135878881127 | check_fo2p3b_arrival_port.ts | PASS | 6 s | FO-2p3b the real ArrivalPort: 51 passed, 0 failed |
+135878881148 | check_fo9b_port.ts | PASS | 1 s | 20 passed, 0 failed |
+135878881197 | check_fo2p3_prospects.ts | PASS | 4 s | FO-2p3 Individual prospects: 44 passed, 0 failed |
+135878881197 | check_qa400_principal_per_person.ts | PASS | 81 s | 20 passed, 0 failed |
+135878881200 | check_fo2_leads_prospects.ts | PASS | 6 s | FO-2 leads (parts 1-2): 113 passed, 0 failed |
+135878881216 | check_fo2b_corporate.ts | PASS | 7 s | FO-2b Corporate prospects: 61 passed, 0 failed |
+135878881322 | check_fo8_prospect_won.ts | PASS | 90 s | 43/43 passed |
+135878881322 | check_qa117_person_sections.ts | PASS | 7 s | 3 passed, 0 failed |
+135878881537 | check_fo9a_duplicates.ts | PASS | 6 s | FO-9a duplicates: 53 passed, 0 failed |

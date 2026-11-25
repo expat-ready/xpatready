@@ -1,0 +1,12 @@
+PASS  J-41 W1: the host opens My account → Availability and sees the firm's hours as "Normal hours" (Monday 09:00-17:00)
+PASS  J-41 NR (fails with no hours or day off set): the Monday offers the firm's 09:00-17:00, so "only 10:00-11:30" is false — {"open":true,"times":["09:00","09:30","10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"]}
+PASS  J-41 NR (fails with no hours or day off set): the Tuesday can be chosen and has times, so "no slots that day" is false — {"open":true,"times":["09:00","09:30","10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"]}
+PASS  J-41 W1: the host sets Monday to 10:00-12:00 on My account → Availability; "Save hours" answers Saved and the server holds it — [{"weekday":1,"start":"10:00","end":"12:00"}]
+PASS  J-41 W2: the host adds the Tuesday as a whole day off; it is listed and saved midnight to midnight (Toronto) — {"off":[{"id":"6683fb56-6804-4735-b0b2-b939c42b0a45","staffId":"be002d63-81f0-4ebe-8eb5-b4799f90e1d9","startsAt":"2026-12-01T05:00:00.000Z","endsAt":"2026-12-02T05:00:00.000Z","createdBy":"staff:be002d63-81f0-4ebe-8eb5-b4799f90e1d9"}],"row":"Tue 1 Dec 2026 (wh
+PASS  J-41 W3: the public page shows no slots on the day off (the Tuesday cannot be chosen) — {"open":false,"times":[]}
+PASS  J-41 W3: a day the host did not touch is as before (the Wednesday still offers 09:00 to 16:30) — {"open":true,"times":["09:00","09:30","10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30"]}
+PASS  J-41 W3: the public page shows slots only inside the hours (the Monday offers 10:00, 10:30, 11:00, 11:30 and nothing else) — {"open":true,"times":["10:00","10:30","11:00","11:30"]}
+PASS  J-41 W3: underneath, the slots route gives the same (Monday 10:00-11:30 only, nothing on the Tuesday) — [{"startsAt":"2026-11-30T15:00:00.000Z","endsAt":"2026-11-30T15:30:00.000Z","label":"Monday, November 30, 2026 at 10:00 a.m. (America/Toronto)"},{"startsAt":"2026-11-30T15:30:00.000Z","endsAt":"2026-11-30T16:00:00.000Z","label":"Monday, November 30, 2026 at 10
+PASS  J-41 W4: the booker picks 10:00 from the slot list and reaches "Your details" with that time (row 37's first step) — "Monday 30 November, 10:00 America/Toronto time"
+PASS  J-41: no page error in any browser — []
+PASS  secret check: no key or secret value in /home/runner/work/_temp/walk

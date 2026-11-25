@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { planted, tsFiles } from "./lib/ts-files.ts";
 import { PLATFORM_PATH } from "../api/src/platform/identity/keys.ts";
+import { SYSTEM_PATH } from "../api/src/platform/system-identity/keys.ts";
 
 const PORT = Number(process.argv[2] ?? 4459), DB = process.argv[3] ?? "xr_studio_forms_qa53";
 const API = join(import.meta.dirname, "..", "api", "src");
@@ -32,7 +33,7 @@ const sql = (q: string) => execFileSync("/opt/homebrew/opt/postgresql@18/bin/psq
 /** Every GET route in api/src (B120: its subfolders too): its full path, and whether the code marks it (on the route or
  *  on its controller). */
 function routes(dir = API) {
-  const out: { path: string; mark: "case" | "open" | null; file: string }[] = [];
+  const out: { path: string; mark: "case" | "open" | null; file: string; keys: boolean }[] = [];
   for (const f of tsFiles(dir)) {
     const lines = readFileSync(join(dir, f), "utf8").split("\n");
     let prefix = "", classMark: "case" | "open" | null = null, pending: "case" | "open" | null = null;
@@ -43,7 +44,7 @@ function routes(dir = API) {
       if (c) { prefix = c[1]; classMark = pending; pending = null; continue; }
       for (const g of l.matchAll(/(@CaseRead\(\)\s*|@OpenRead\([^)]*\)\s*)?@Get\("([^"]*)"\)/g)) {
         const mark = g[1] ? (g[1].startsWith("@CaseRead") ? "case" : "open") : classMark;
-        out.push({ path: `/${prefix}/${g[2]}`.replace(/\/+/g, "/").replace(/\/$/, ""), mark, file: f });
+        out.push({ path: `/${prefix}/${g[2]}`.replace(/\/+/g, "/").replace(/\/$/, ""), mark, file: f, keys: /@PermissionKeys\(/.test(l) });
       }
     }
   }
@@ -54,15 +55,23 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/releases": "case", "/api/activity": "case",
   "/api/health": "open", // M1: is this copy well (database, disk, fill queue, commit); no case or person data
   "/api/public/forms/:token": "open", // FO-2: a firm's public enquiry form (contracts §0.6): its words and a fresh stamp only
+  "/api/public/embed/form.js": "open", // FO-4b: the embed script a firm's own site loads (one fixed file, no firm or person data)
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
+  "/api/public/signup/:token": "open", // R1.90: the invited sign-up page: what a private link offers (its 256-bit token is the key, stored as a hash; unknown, used, expired or malformed are one 404; opening changes nothing; asked in check_r190_invited_signup.ts)
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
+  "/api/public/firms/:firmKey/branding": "open", // PF-13 part 1b: a client page's header (name, colours, tagline, image links; no id; an inactive or unknown firm 404; asked in check_pf13b_images.ts)
+  "/api/demo/billing/invoices/:id": "open", // R1.21 (P-796): the billing stand-in's invoice page, as Stripe's hosted link (its random token is the key; 404 without the stand-in, a wrong token or another firm's id; asked in check_r121_invoice_tax.ts)
+  "/api/public/sign/:token": "open", // FO-6 part 4b: a client's signing link: its state, the firm's name and the consent text, no personal data (its 256-bit firm-first token is the key, stored as a hash; unknown, malformed, other firm's or the firm signer's own token are one 404)
+  "/api/public/sign-fake/:doc/:signer/:nonce": "open", // FO-6 part 4c: the lane copy's stand-in for the signing vendor's frame (fake adapter, PLATFORM_ENVIRONMENT=local only: not registered elsewhere and the start fails if it is); its 256-bit single-use 10-minute nonce is the key; the document title and the signer's side, never a name; unknown, used or expired nonces are one 404
+  "/api/public/sign/:token/session": "open", // FO-6 part 4b: the provider's embedded link, only for the browser holding the session a right code started (HttpOnly cookie on the link's path; 401 otherwise)
+  "/api/public/firms/:firmKey/branding/:kind": "open", // PF-13 part 1b: the firm's logo, favicon or banner by its stable ?v= link (nosniff, sandbox CSP; another image or firm 404)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
-const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
+const PUBLIC_WRITES = ["/api/public/consultation-agreements/open", "/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/sign-fake/:doc/:signer/:nonce", "/api/public/sign/:token/code", "/api/public/sign/:token/code/verify", "/api/public/sign/:token/consent", "/api/public/signup/:token", "/api/public/unsubscribe/:token"];   // FO-6 part 4b: the signing door's code, verify and consent (a client's link token is the key; no person is signed in; an unknown token answers 404, asked below)   // R1.90 (Lead 15 on #3040): the invited sign-up form (its private link's token is the key; no account exists yet, so it names nobody; an unknown or malformed token is the one 404; per-IP limit; asked below and in check_r190_invited_signup.ts)   // FO-3c: the client's consultation-agreement link (its token is the key; an unknown one is the one 404; per-IP limit). PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
 /** PF-5 (contracts §0.6): the public sign-up doors name nobody by design (no account exists yet); each is asked below:
  *  an empty body is refused (400) or the door is shut on a copy without sign-up set up (503), never a 2xx. */
-const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify"];
+const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify", "/api/hooks/stripe", "/api/hooks/stripe-connect", "/api/hooks/signing/:provider"];   // PF-5 part 2: Stripe's webhook (signature first: 400, or 503 not set up); FO-7c part 1 (Lead B on #2938): Stripe's connected-accounts webhook, the same; FO-6 part 3 (Lead B, #3065): the signing provider's webhook (the provider signs the body; no person; the event is applied as the request's firm; an empty or unsigned body 400)
 /** C6.16 (B138): reads open to the shared guard because they have a guard of their own, each asked below.
  *  /api/link/*: an adult's own link (stand-in SI-21): a Bearer session from the link's code, x-actor refused (400),
  *  no session 401 (person-link.ts LinkOnlyGuard and PersonLinks.signed). /api/demo/inbox: the email stand-in SI-20,
@@ -79,6 +88,15 @@ const OWN_GUARD: Record<string, "link" | "inbox"> = {
 const PLATFORM_SOURCE = "^\\/api\\/(platform|front-office)(\\/|$)", PLATFORM_FLAGS = "i";
 const exactPlatformPath = (re: RegExp) => re.source === PLATFORM_SOURCE && re.flags === PLATFORM_FLAGS;
 const isPlatform = (path: string) => PLATFORM_PATH.test(path);
+/** PF-4s: routes under /api/system/ belong to our own staff's guard (SystemGuard: a staff session of our own pool, never
+ *  x-actor). Like PF-4t's, they leave QA-53 and QA-65 and are asked instead: no session and x-actor alone 401, never
+ *  data; the one sign-in door its exact status. The exemption is exactly SYSTEM_PATH, pinned. */
+const SYSTEM_SOURCE = "^\\/api\\/system(\\/|$)", SYSTEM_FLAGS = "i";
+const exactSystemPath = (re: RegExp) => re.source === SYSTEM_SOURCE && re.flags === SYSTEM_FLAGS;
+const isSystem = (path: string) => SYSTEM_PATH.test(path);
+/** The doors (@SystemSignIn), reviewed: this copy starts without PLATFORM_SYSTEM_IDENTITY, so the local stand-in's door
+ *  answers a well-formed body 404 STAND_IN_OFF (service.ts localSignIn: the body first, then the stand-in's gate). */
+const SYSTEM_DOORS: Record<string, number> = { "POST /api/system/session/local": 404 };
 /** PF-4f m2: the sign-in doors (@StaffSignIn: no session yet) are a reviewed list, each with the exact status it answers
  *  here (m1). This copy starts without PLATFORM_IDENTITY (the usage line), so the local stand-in's door refuses every
  *  caller with 403 LOCAL_SIGN_IN_OFF (service.ts localSignIn). A new door fails the list check until reviewed. */
@@ -110,7 +128,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok("QA-53: every runtime route is a case read (the guard leaves case people's own routes untouched)", all.filter((x) => x.path.startsWith("/api/runtime/")).every((x) => x.mark === "case") && all.some((x) => x.path.startsWith("/api/runtime/")));
 
   // Pass and fail per configuration read: nobody 401, an unknown name 401, officer 403, client 403; the author is answered.
-  const guarded = all.filter((x) => !x.mark && !isPlatform(x.path));
+  const guarded = all.filter((x) => !x.mark && !isPlatform(x.path) && !isSystem(x.path));
 
   // C6.16: each OWN_GUARD read's own guard. The link's reads: nobody 401 (no session); a simulated person, known or not,
   // 400 (x-actor refused); a made-up session 401; never data. The inbox: a client persona 403; an address that is not
@@ -165,7 +183,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const post = async (path: string, actor: string | null, body: unknown) => (await fetch(`http://localhost:${PORT}${path}`, { method: "POST", headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: JSON.stringify(body) })).status;
   // B120: api/src's subfolders too.
   const writes = (dir: string) => {
-    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], publicWrites: string[] = [], doorWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [];
+    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], publicWrites: string[] = [], doorWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [], systemWrites: { path: string; method: string; door: boolean }[] = [];
     for (const f of tsFiles(dir)) {
       const text = readFileSync(join(dir, f), "utf8"), lines = text.split("\n");
       // The controller each line belongs to (C6.16: person-link.ts holds three, so the file's first is not every route's).
@@ -179,14 +197,15 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
           else if (PUBLIC_DOOR_WRITES.includes(path.replace(/\/$/, ""))) doorWrites.push(path.replace(/\/$/, ""));
           else if (PUBLIC_WRITES.includes(path)) publicWrites.push(path);
           else if (isPlatform(path)) platformWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@StaffSignIn\(/.test(l) });
+          else if (isSystem(path)) systemWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@SystemSignIn\(/.test(l) });
           // CS-C1a (#1818): a case write behind PF-4's guard names its person by the staff session (staffOf), not x-actor.
           else if (!/x-actor|actorOf|readerOf|staffOf\(/.test(lines.slice(i, i + 3).join(" "))) unnamed.push(`${f}: ${path}`);
         }
       });
     }
-    return { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites };
+    return { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites, systemWrites };
   };
-  const { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites } = writes(API);
+  const { configPosts, unnamed, ownWrites, publicWrites, doorWrites, platformWrites, systemWrites } = writes(API);
   const plantedDir = planted({ "features/checkpoint/999-planted.ts": '@Controller("api")\nexport class P {\n  @Get("planted/read") read() {}\n  @Post("planted/write")\n  write() {}\n}\n' });
   ok("QA-53 fail (B120): a GET route planted in a subfolder is found", routes(plantedDir).map((x) => x.path).join() === "/api/planted/read");
   ok("QA-65 fail (B120): a write planted in a subfolder that names nobody is caught", writes(plantedDir).unnamed.join() === "features/checkpoint/999-planted.ts: /api/planted/write");
@@ -211,9 +230,18 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok(`C6.16 fail: each write of the adult's own link (${OWN_GUARD_WRITES.length}) refuses a simulated person (400) and, with no session or a made-up token, answers 401 or 404, never a change`, wrongWrite.length === 0, wrongWrite);
   ok("QA-65: the configuration reads made by POST are exactly the reviewed three (finder plan, AI plan, condition check)", JSON.stringify(configPosts.sort()) === JSON.stringify(["/api/ai/plan", "/api/combinations/:id/forms/find/plan", "/api/conditions/check"]), configPosts);
   ok("QA-65: every other write names its person (none answers nobody by default)", unnamed.length === 0, unnamed);
-  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w, null, {})}`));
+  // A door with a path parameter is posted with a value it serves (FO-6 part 3: the signing provider this copy runs, "fake";
+  // an unknown provider is 404 by PF-28's rule, which check_pf28_inputs and check_fo6_signing_api prove).
+  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w.replace(":provider", "fake"), null, {})}`));
   ok("PF-5: the public sign-up doors in the code are exactly PUBLIC_DOOR_WRITES, and each refuses an empty body (400) or is shut (503), never a 2xx",
     JSON.stringify([...doorWrites].sort()) === JSON.stringify([...PUBLIC_DOOR_WRITES].sort()) && doorAnswers.every((a) => / (400|503)$/.test(a)), { doorWrites, doorAnswers });
+  const unknownSign = `${"0".repeat(32)}.${"A".repeat(43)}`;
+  // Each with a body its schema takes, so the answer is the door's own about the link, never a field error.
+  const signDoor = await Promise.all(([["code", {}], ["code/verify", { code: "123456" }], ["consent", { agree: true, consentTextVersion: "sign-electronically-v1" }]] as const).map(([w, b]) => post(`/api/public/sign/${unknownSign}/${w}`, null, b)));
+  ok("FO-6 part 4b: the signing door's writes with an unknown link token answer nobody 404 (no change)", signDoor.every((s) => s === 404), signDoor);
+  // FO-6 part 4c: the stand-in page's Sign (local only; its nonce is the key) with an unknown nonce: the one 404, no change.
+  ok("FO-6 part 4c: the stand-in signing page's Sign with an unknown nonce answers nobody 404 (no change)", await postStatus(`/api/public/sign-fake/fake-${"0".repeat(8)}/${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}/${"A".repeat(43)}`, null, null) === 404);
+  ok("R1.90: the invited sign-up form with a token not of the link's shape answers nobody 404 (no change)", await postStatus(`/api/public/signup/${"x".repeat(30)}`, null, null) === 404);
   ok("FO-2: the public writes are exactly PUBLIC_WRITES, and one with an unknown token answers nobody 404 (no change)", JSON.stringify(publicWrites.sort()) === JSON.stringify(PUBLIC_WRITES) && await postStatus(`/api/public/forms/${"x".repeat(30)}/submissions`, null, null) === 404, publicWrites);
 
   // PF-4t: the platform guard's routes, asked (Lead 50 on #1775).
@@ -233,6 +261,28 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   }
   ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (a sign-in door: its exact status in DOORS), never data`,
     platformReads.length >= 2 && platformWrites.length >= 8 && wrongPlatform.length === 0, wrongPlatform);
+  // PF-4s: our own staff's routes, asked like PF-4t's.
+  ok("PF-4s: the exemption is exactly SYSTEM_PATH (source and flags pinned); a widened one fails the pin", exactSystemPath(SYSTEM_PATH) && !exactSystemPath(/^\/api\//i) && !exactSystemPath(/^\/api\/system/i), { source: SYSTEM_PATH.source, flags: SYSTEM_PATH.flags });
+  const systemReads = all.filter((x) => isSystem(x.path)), wrongSystem: string[] = [];
+  for (const r of [...systemReads.map((x) => ({ path: x.path, method: "GET", door: false })), ...systemWrites]) {
+    const path = r.path.replace(/:id\b/g, "00000000-0000-4000-8000-000000000000");
+    const door = r.door ? SYSTEM_DOORS[`${r.method} ${r.path}`] ?? -1 : undefined;   // an unreviewed door has no status: always caught
+    const send = async (actor: string | null) => {
+      const x = await fetch(`http://localhost:${PORT}${path}`, { method: r.method, headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: r.method === "GET" ? undefined : JSON.stringify(r.door ? { email: "nobody@expatready.example", secondStep: true } : {}) });
+      const text = await x.text(); let body: unknown = text; try { body = JSON.parse(text); } catch { /* text */ }
+      return { status: x.status, body };
+    };
+    for (const actor of [null, "user-A", "user-O", "user-P"]) { const a = await send(actor); if (platformWrong(a, door)) wrongSystem.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
+  }
+  ok(`PF-4s: our own staff's routes (${systemReads.length} reads, ${systemWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: its exact status in SYSTEM_DOORS), never data`,
+    systemReads.length >= 1 && systemWrites.length >= 1 && wrongSystem.length === 0, wrongSystem);
+  ok("PF-4s: the system sign-in doors in the code are exactly SYSTEM_DOORS", JSON.stringify(systemWrites.filter((w) => w.door).map((w) => `${w.method} ${w.path}`).sort()) === JSON.stringify(Object.keys(SYSTEM_DOORS).sort()), systemWrites);
+  // CS-C1s part 2 (#2169): a runtime read that declares permission keys is marked a case read, but ConfigReadGuard leaves
+  // it to PF-4's guard (a staff session only), so it is asked here like a platform route: x-actor never opens it.
+  const keyedRuntime = all.filter((x) => x.path.startsWith("/api/runtime/") && x.keys), wrongKeyed: string[] = [];
+  for (const r of keyedRuntime) for (const actor of [null, "user-Z", "user-A", "user-O", "user-P"]) { const a = await ask(fill(r.path), "GET", actor); if (platformWrong(a)) wrongKeyed.push(`${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
+  ok(`CS-C1s fail: each runtime read behind PF-4's guard (${keyedRuntime.length}) answers nobody, an unknown name and x-actor alone (author, officer, client) 401, never data`,
+    keyedRuntime.some((x) => x.path === "/api/runtime/cases/:id/decisions") && wrongKeyed.length === 0, wrongKeyed);
   ok("PF-4t fail: a seeded platform route answering 200 to x-actor alone, or 401 with data, is caught", platformWrong({ status: 200, body: { firmId: "x" } }) && platformWrong({ status: 401, body: { detail: "no", staffId: "x" } }) && platformWrong({ status: 200, body: { token: "t" } }, 403) && !platformWrong({ status: 401, body: { type: "t", title: "t", status: 401, detail: "d", code: "NOT_SIGNED_IN" } }));
   // PF-4f (PF-4t round 2 Minors m1, m2; Lead B rows rev 16.8).
   const doorsOf = (ws: { path: string; method: string; door: boolean }[]) => ws.filter((w) => w.door).map((w) => `${w.method} ${w.path}`).sort();

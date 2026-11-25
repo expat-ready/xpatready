@@ -1,0 +1,39 @@
+PASS  axe clean: list page at 1440 px
+PASS  R1.38 est 1440px: the page states the visitor's zone (Asia/Dubai)
+PASS  R1.38 est 1440px: "Friday 12 March, 19:00 Asia/Dubai time" is offered (10:00 Toronto in the visitor's zone)
+PASS  axe clean: times page at 1440 px
+PASS  R1.38 est 1440px: "You are booked" reads Friday 12 March, 19:00 Asia/Dubai time
+PASS  R1.38 est: stored in UTC (2027-03-12T15:00:00.000Z) with the booker's zone Asia/Dubai
+PASS  R1.40 est: "Add to calendar" gives the invite (200, text/calendar), DTSTART 20270312T150000Z, METHOD:REQUEST
+PASS  R1.40 est: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)
+PASS  R1.38 est: the email body reads "7:00 p.m. (Asia/Dubai)"
+PASS  axe clean: list page at 1024 px
+PASS  R1.38 edt 1024px: the page states the visitor's zone (Asia/Dubai)
+PASS  R1.38 edt 1024px: "Monday 15 March, 18:00 Asia/Dubai time" is offered (10:00 Toronto in the visitor's zone)
+PASS  axe clean: times page at 1024 px
+PASS  R1.38 edt 1024px: "You are booked" reads Monday 15 March, 18:00 Asia/Dubai time
+PASS  R1.38 edt: stored in UTC (2027-03-15T14:00:00.000Z) with the booker's zone Asia/Dubai
+PASS  R1.40 edt: "Add to calendar" gives the invite (200, text/calendar), DTSTART 20270315T140000Z, METHOD:REQUEST
+PASS  R1.40 edt: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)
+PASS  R1.38 edt: the email body reads "6:00 p.m. (Asia/Dubai)"
+PASS  axe clean: list page at 400 px
+PASS  R1.38 edt-400 400px: the page states the visitor's zone (Asia/Dubai)
+PASS  R1.38 edt-400 400px: "Tuesday 16 March, 18:00 Asia/Dubai time" is offered (10:00 Toronto in the visitor's zone)
+PASS  axe clean: times page at 400 px
+PASS  R1.38 edt-400 400px: "You are booked" reads Tuesday 16 March, 18:00 Asia/Dubai time
+PASS  R1.38 edt-400: stored in UTC (2027-03-16T14:00:00.000Z) with the booker's zone Asia/Dubai
+PASS  R1.40 edt-400: "Add to calendar" gives the invite (200, text/calendar), DTSTART 20270316T140000Z, METHOD:REQUEST
+PASS  R1.40 edt-400: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)
+PASS  R1.38 edt-400: the email body reads "6:00 p.m. (Asia/Dubai)"
+NOTE  next step: Reschedule → /book/qa-fo3w-7760/manage#<token> shows: "Your booking\n\nYour booking: Tuesday 16 March, 18:00 Asia/Dubai time, with Sample qa firm.\n\nFree consultation, 30 minutes, Video call\n\nReschedule\nCancel"
+PASS  next step (map row 42): Reschedule opens a page that can change the booking
+PASS  R1.40 by screens: the manage page offers Reschedule (else the steps below cannot run)
+PASS  R1.40 by screens: "Move to this time" (Friday 20 November, 18:00 Asia/Dubai time) says the booking is updated and a new email is sent
+PASS  R1.40 by screens: the moved mail reaches the booker's demo inbox before the cancel
+PASS  R1.40 by screens: "Cancel booking" cancels it (CANCELLED underneath)
+NOTE  manage-page invites: Your Free consultation is booked | Your Free consultation has moved | Your Free consultation is cancelled · SEQUENCE 0,1,2 · moved DTSTART DTSTART:20261120T140000Z
+PASS  R1.40 by screens: three invites to the booker (booked, moved, cancelled), one UID
+PASS  R1.40 by screens: SEQUENCE rises; METHOD REQUEST, REQUEST, CANCEL
+PASS  R1.40 / R1.38 by screens: the moved invite carries the new time in UTC (DTSTART:20261120T140000Z), not the old one
+35 passed, 0 failed
+EXIT=0

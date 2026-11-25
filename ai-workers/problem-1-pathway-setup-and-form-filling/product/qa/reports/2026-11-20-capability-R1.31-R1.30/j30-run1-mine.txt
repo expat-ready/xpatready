@@ -1,0 +1,60 @@
+
+isolated qa9b1 on http://localhost:4473 (xr_studio_qa9b1), stops itself in 25 min
+PASS  J-30 setup: both Sample firms and their front office are seeded — []
+PASS  J-30 A1 pass: every stage of the board carries its id, and a move that names one is saved — [["ENGAGED","a3506560-4d84-49fd-ba58-cf4095af1574"],["QUALIFIED","203241b3-ec5d-4bfe-8775-c56bbec0f880"],["CONSULT","c5b1cbaa-f4af-4904-9f2b-156105daa326"],["PROPOSAL","3db1b04f-78d1-4db8-9e00-1ef74721752b"],["RETAINER_SENT","81e5ebf0-b243-4660-9a49-f2d537553d
+PASS  J-30 A1 fail (R1.31): a person's move into the Won stage is refused (422 WON_BY_EVENT) and the prospect stays where it was — [422,"WON_BY_EVENT"]
+PASS  J-30 A2 pass: the reasons Mark lost offers are the firm's seven prospect reasons, never a merge's, never a lead-close one — ["NOT_ELIGIBLE","PRICE","WENT_WITH_COMPETITOR","UNRESPONSIVE","NOT_READY","DUPLICATE_PROSPECT","OTHER"]
+PASS  J-30 A2 fail: with no session the reasons are refused (401)
+PASS  J-30 W1 pass: Owner = the Case Officer shows their lead and not the Owner's; the choice is in the address — "http://localhost:4473/front-office/leads?view=all&owner=abe52c6c-1ebb-46cd-80c9-245901e50afd"
+PASS  J-30 W1 pass: Arrived from/to shows only the lead that arrived 12 days ago, and a reload keeps the filter
+PASS  J-30 W1 fail: under Mine no Owner filter is offered (it is All open's)
+PASS  J-30 W1 Leads with filters: axe finds no WCAG A/AA violation — []
+PASS  J-30 W2 DW8 pass: Engage makes one prospect in Engaged (a double click too), owned by the lead's owner, and opens it; Escape had returned focus to Engage — ["P-00002","78467d3c-266f-4840-b7ee-f040f1b18006"]
+PASS  J-30 W2 DW8 pass: a second Engage is allowed and says so, before and after ("already had prospect …")
+PASS  J-30 W3v fail (FO-2pv): three decimal places are refused at the Amount field in the brief's words, and nothing is saved — "null|CAD"
+PASS  J-30 W3v the Value panel: axe finds no WCAG A/AA violation — []
+PASS  J-30 W3v pass: the Value panel at 375 px has no sideways page scroll
+PASS  J-30 W3v pass: the Value panel at 1024 px has no sideways page scroll
+PASS  J-30 W3v pass: the Value panel at 1440 px has no sideways page scroll
+PASS  J-30 W3v pass (FO-2pv, R1.31): by keyboard only (Enter, type, Enter) the value is saved as CAD 5,000: the prospect's own currency is offered first among the fixed list, the screen shows it, 500000 cents are stored — ["CAD",162,"500000|CAD"]
+PASS  J-30 W3v pass: CAD 5000.50 is shown as CAD 5,000.50 in the toast and on the Value row (not rounded to 5,001), and the panel reopens on 5000.50 — [true,true,"5000.50"]
+PASS  J-30 W3v pass: with the firm's default currency set to USD a new value is offered and saved in USD (3,000) untouched; set back to CAD the next one is offered CAD (1,200); each kept in its own currency, nothing converted — ["USD","CAD","300000|USD","120000|CAD"]
+PASS  J-30 W3 pass (R1.31): the board shows the open totals per currency side by side (CAD 6,200 · USD 3,000) and the Engaged column's own (CAD 5,000 · USD 3,000) — ["CAD 6,200 · USD 3,000","CAD 5,000 · USD 3,000"]
+PASS  J-30 W3 fail (R1.31): no amount on the board is a sum across currencies (9,200 or 8,000 appears nowhere)
+PASS  J-30 W3 DW9 pass: "Move to…" offers the other open stages only: Won, Lost and Nurture are not offered, and the menu says how Won is set — ["Qualified","Consult","Fees discussed","Retainer sent"]
+PASS  J-30 W3 DW9 pass: chosen by keyboard only (Enter, ArrowDown, Enter), the card is in Consult, one PERSON move is recorded, and focus is on that card's Move to… again
+PASS  J-30 W3 DW9 fail: a move from a board that is out of date is refused in words, nothing changes, and the board is read again (the card is in Fees discussed)
+PASS  J-30 W3 DW9 fail: on the prospect's screen a stale version is refused naming who moved it, and the screen then shows Consult
+PASS  J-30 W3d pass: at 1440 px a card dragged to CONSULT lands there; the stage, one PERSON move, one audit line and one new timeline line read back; no sideways page scroll — ["CONSULT","3","2"]
+PASS  J-30 W3d pass: at 1024 px a card dragged to QUALIFIED lands there; the stage, one PERSON move, one audit line and one new timeline line read back; no sideways page scroll — ["QUALIFIED","4","3"]
+PASS  J-30 W3d pass: at 400 px a card dragged to CONSULT lands there; the stage, one PERSON move, one audit line and one new timeline line read back; no sideways page scroll — ["CONSULT","5","4"]
+PASS  J-30 W3d fail (R1.31): a card dragged onto Won is refused with AG-2-26 rule 3's words, and the card stays in Consult with no new move — ["CONSULT","5"]
+PASS  J-30 W3d pass: a card dragged onto Lost opens the loss flow (why was it lost?) and nothing moves until a reason is saved
+PASS  J-30 W3d pass: the keyboard "Move to…" still works beside drag (the card is back in Qualified)
+PASS  J-30 W4 DW13 pass: a column of 206 shows 200 cards and "Load more (6 more)"; its header counts all 206
+PASS  J-30 W4 DW13 pass: the board at 1440 px has no sideways page scroll (it scrolls inside itself)
+PASS  J-30 W4 DW13 pass: the board at 1024 px has no sideways page scroll (it scrolls inside itself)
+PASS  J-30 W4 DW13 pass: the board at 375 px has no sideways page scroll (it scrolls inside itself)
+PASS  J-30 W4 the board at 375 px: axe finds no WCAG A/AA violation — []
+PASS  J-30 W4 DW13 fail: before Load more the 201st card is not drawn; after it all 206 are and the button is gone
+PASS  J-30 W5 DW10 fail: Mark lost without a reason is refused at the field ("Choose why it was lost.") and the prospect is not lost
+PASS  J-30 W5 the Mark lost panel: axe finds no WCAG A/AA violation — []
+PASS  J-30 W5 DW10 pass: with a reason it is lost (reason Price kept), and its screen offers no further move
+PASS  J-30 W5 DW10 pass (R1.30): the lost prospect is not in the List until Stage: Lost is chosen; there it shows why (Price); the open one is not there
+PASS  J-30 W5 pass (R1.30): the List filters by stage (Consult: the moved prospect only) and by owner (the Case Officer has none there)
+PASS  J-30 W5 pass: the List at 375 px has no sideways page scroll
+PASS  J-30 W5 the List at 375 px: axe finds no WCAG A/AA violation — []
+PASS  J-30 W6 DW11 fail: Convert asks yes/no with AG-02's warning, and No changes nothing
+PASS  J-30 W6 DW11 pass (R1.31): Yes moves it to Won by Convert (cause CONVERT), the screen keeps the warning and offers Undo convert, never Move to…
+PASS  J-30 W6 DW11 pass: Undo convert needs a reason, then returns the prospect to the stage it was in (Consult), Won cleared
+PASS  J-30 W6 DW11 fail: with a signed retainer Undo convert is not offered on the screen, and the API answers 409 — [409,"SIGNED"]
+PASS  J-30 W6 pass (R1.31): Signed offline wins the prospect (Won, not by Convert, not a person's move); its screen says "A signed retainer" and offers no Undo convert — [200,["WON","SIGNED_OFFLINE","SIGNED_OFFLINE"]]
+PASS  J-30 W3d fail: a Won card cannot be dragged, not even by its name (no move request, the card stays in Won) — 0
+PASS  J-30 W6 end: the walk ends at the won prospect in the board's Won column, with no "Move to…" on it (the case side's first step starts from here)
+PASS  J-30 W6 BR-10 fail: without the edit, lose and convert keys the prospect's screen shows no Move to…, Mark lost or Convert, says why, and the API refuses both Mark lost and a value edit (403) — [403,403]
+PASS  J-30 W3d fail (BR-10): without agent/prospect:edit no card can be dragged, by the card or by its name: not draggable, no Lost drop place, no hint, no move request sent, no card faded, nothing moved — 0
+PASS  J-30 W6 BR-10 fail: the same person's List has no Move to… on any row
+PASS  J-30 fail: firm B's Owner gets 404 for firm A's prospect, firm B's board shows none of this run's firm A cards, and (one user) no owner on its card or in its List — 404
+
+55/55 passed
+stopped qa9b1 (database and files removed; log in var/isolated-logs/qa9b1-api.log)

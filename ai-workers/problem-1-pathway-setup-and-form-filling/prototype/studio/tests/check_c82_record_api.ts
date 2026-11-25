@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { AUTHOR, CLIENT, DB, PORT, answer, call, sendFile, fillEverything, firms, inDays, itemsOf, needVisitorVisa, openCase, prepare, readyToFile, sql, yearsAgo, type Prepare } from "../acceptance/lib/m3.ts";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
@@ -86,7 +87,8 @@ ok("fail: a stale version is refused (409, Reload)", r.status === 409 && /reload
 ok("data: none of the refusals recorded anything", sql(`select count(*) from filing_record where case_id='${c.id}'`) === "0" && sql(`select count(*) from filing_person_record where filing_id in ('${fP}','${fS}')`) === "0");
 
 // B149 (P-408): the fee receipt's evidence goes on a recorded filing only.
-const receipt = (label: string) => Buffer.from(`%PDF-1.4\n% SYNTHETIC SPECIMEN: IRCC Transaction Approved page, ${label} (Sample)\n%%EOF\n`, "latin1");
+// QA-520: a real PDF (one that opens): the door refuses a header-only "PDF" as damaged (PF-F4, as the Documents doors).
+const receipt = (label: string) => textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", `IRCC Transaction Approved page, ${label} (Sample)`]);
 const upload = (filing: string | undefined, file: Buffer, name = "transaction-approved.pdf", actor = officer) => sendFile(`/runtime/filings/${filing}/record/fee-receipt`, file, name, actor);
 let u = await upload(fP, receipt("early"));
 ok("B149 fail: a fee receipt before the submission is recorded is refused (409, says to record first), nothing stored", u.status === 409 && /Record the submission first/.test(JSON.stringify(u.body)) && sql(`select count(*) from fee_receipt_file where case_id='${c.id}'`) === "0", u);
@@ -131,7 +133,8 @@ ok("B149 fail (permissions, break m2): another firm's staff cannot reach this ca
 u = await upload(fP, Buffer.concat([Buffer.from("%PDF-1.4\n", "latin1"), Buffer.alloc(20 * 1024 * 1024 + 1 - 9)]), "big.pdf");
 ok("B149 fail (review M2, break m1): a page over 20 MB is refused (413) in its own words, naming 20 MB (not the intake's 25 MB)", u.status === 413 && /larger than 20 MB/.test(JSON.stringify(u.body)) && !/25 MB/.test(JSON.stringify(u.body)), u);
 u = await upload(fP, Buffer.from("MZ\x90\x00 not a receipt", "latin1"), "receipt.pdf");
-ok("B149 fail: a file that is not a PDF, JPEG or PNG by its bytes is refused (422), whatever its name", u.status === 422 && /PDF, JPEG or PNG/.test(JSON.stringify(u.body)), u);
+// QA-520: PF-F4's one check now judges the file: its status for a type not allowed (415) and its words, naming the allowed types.
+ok("B149 fail: a file that is not a PDF, JPEG or PNG by its bytes is refused (415, PF-F4's words), whatever its name", u.status === 415 && /Allowed here: PDF, JPEG and PNG\. Nothing was stored\./.test(JSON.stringify(u.body)), u);
 u = await upload(fP, Buffer.alloc(0), "empty.pdf");
 ok("B149 fail: an empty file is refused (400)", u.status === 400 && /empty/i.test(JSON.stringify(u.body)), u);
 u = await upload("00000000-0000-0000-0000-000000000000", receipt("none"), "x.pdf");

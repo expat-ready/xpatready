@@ -1,0 +1,7 @@
+135824586571 | check_fo3w_booking_browser.ts | PASS | 65 s | 67/67 passed |
+135824586626 | check_fo3w_manage_browser.ts | PASS | 24 s | 50/50 passed |
+135824586637 | check_fo3st2_availability_browser.ts | PASS | 23 s | 53/53 passed |
+135824586733 | check_fo3_booking.ts | PASS | 9 s | 133 passed, 0 failed |
+135824586788 | check_fo1b_booking_schema.ts | PASS | 18 s | 80 passed, 0 failed |
+135824586799 | check_fo3sa_any_time.ts | PASS | 4 s | 39 passed, 0 failed |
+135824587042 | check_fo3a_hours_timings.ts | PASS | 10 s | 26 passed, 0 failed |

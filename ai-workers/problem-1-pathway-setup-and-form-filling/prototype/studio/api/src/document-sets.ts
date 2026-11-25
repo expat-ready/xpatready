@@ -175,7 +175,7 @@ export async function withdrawApprovedSets(tx: Prisma.TransactionClient, actor: 
   const note = `${c.decisionNote ? `Approved: ${c.decisionNote.replace(/\.$/, "")}. ` : ""}Withdrawn by ${actor.name}: ${why}`.slice(0, 300);
   const done = await tx.libraryChange.updateMany({ where: { id: c.id, status: "APPROVED" }, data: { status: "WITHDRAWN", decisionNote: note } });
   if (!done.count) throw problem(409, "Already decided", "Someone released or withdrew this at the same moment. Refresh to see it.");
-  await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "withdrawn", entity: "document type", entityKey: c.key, summary: `${actor.name} withdrew the approved change "${c.label ?? c.key}"; its sets went back to what they were. Why: ${why}`.slice(0, 600), detail: { change: c.id } } });
+  await new Audit(tx as never).log(c.workspaceId, actor.id, "withdrawn", "document type", c.key, `${actor.name} withdrew the approved change "${c.label ?? c.key}"; its sets went back to what they were. Why: ${why}`.slice(0, 600), { change: c.id });
 }
 
 /** At a release (publishLibraryChanges): an approved change whose type the release published with these sets is released. */

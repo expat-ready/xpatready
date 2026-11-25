@@ -6,6 +6,12 @@
 # 2. queue-fresh: a commit status Mergify's product queue needs for app code (.mergify.yml). "failure" when main merged a
 #    PR touching the same app files, or a second migration, after the PR's green ci started; a labelled PR's ci run is
 #    then re-run (a re-run tests today's main, D6; never a cancel, P-371).
+# 3. CI-PRE (P-731, founder 19 Nov): the label also needs one green full run on the head (comment-run.yml's "/run full":
+#    main's ci.yml by workflow_dispatch) and, after a failed merge batch, its failed parts named in a PR comment; when a
+#    full run ends, its PR is judged and told the result. Asked only after a failed merge batch (P-733 (4), B206 part 2):
+#    when Mergify puts "dequeued" on a PR a failed batch held, its full run starts by itself on its head (the same run
+#    "/run full" starts), and again when a reviewer approves a new head of it. A "Batch failures covered:" comment
+#    wakes the gate too. No FULL_RUN_FROM any more.
 # Every trigger here runs the default branch's copy of this file; the job checks out main only, and never the PR's code
 # (no fetch of its commits): the PR's files are read through the API as names. Script and tests: product/tools/queue-gate.sh,
 # check-queue-gate.sh. A fork PR's ci run names no PR (workflow_run.pull_requests is empty): it gets no queue-fresh,
@@ -23,17 +29,20 @@ on:
   push:
     branches: [main]
   schedule:
+    # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
     - cron: "7,37 * * * *"   # labelled PRs judged again: a refused re-run, a lost event (review m6)
+  workflow_dispatch:   # the same pass by hand (Lead 84, 19 Nov): schedules can be dropped
 permissions: {}
 jobs:
   gate:
     # A comment only when it is a reviewer's Approve on a PR; a label only when it is `review: approved`; ci runs of PRs.
     if: >-
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'Approve') &&
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && (contains(github.event.comment.body, 'Approve') || contains(github.event.comment.body, 'Batch failures covered:')) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'review: approved') ||
-      github.event_name == 'push' || github.event_name == 'schedule'
+      (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'pull_request' ||
+       (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && startsWith(github.event.workflow_run.display_title, 'full-run PR #')))) ||
+      (github.event_name == 'pull_request_target' && (github.event.label.name == 'review: approved' || (github.event.action == 'labeled' && github.event.label.name == 'dequeued'))) ||
+      github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     # The Mac's own runner (xr-mac), not GitHub's hosted pool (Lead 81; founder "Yes, build it", 21:2x IST 18 Nov). Measured
     # 21:13 IST 18 Nov: about 50 hosted jobs ran at once and 52 waited 15-35 min, so this seconds-long gate (queue-fresh,
     # which Mergify's product queue needs) waited up to an hour behind ci shards. It checks out main only and reads the
@@ -41,7 +50,7 @@ jobs:
     # pool with no PR: set the repository variable GATE_RUNNER to "ubuntu-latest" (JSON, with the quotes).
     runs-on: ${{ fromJSON(vars.GATE_RUNNER || '["self-hosted", "macOS", "xr-mac"]') }}
     timeout-minutes: 10
-    # issues/pull-requests: the label and comments; statuses: queue-fresh; actions: re-run a stale ci run.
+    # issues/pull-requests: the label and comments; statuses: queue-fresh; actions: re-run a stale ci run, start a full run.
     permissions: { contents: read, issues: write, pull-requests: write, statuses: write, actions: write, checks: read }
     concurrency:
       # One group per PR (review m5); push and schedule share "main".

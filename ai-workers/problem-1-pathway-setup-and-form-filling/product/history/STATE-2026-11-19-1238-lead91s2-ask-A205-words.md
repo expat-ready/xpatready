@@ -1,0 +1,5 @@
+# Founder ask A205, his words exactly (typed in Lead 90's session ~12:35 IST 19 Nov, relayed to Lead 91; recorded 12:38 IST)
+
+"I don't know. Initially, you said that we are not able to prove because we are last parts are not built. Then we said we will be building journey by journey. Now we are saying uh, we will be completing all those parts. So I'm good, but you guys have to take one decision, calculate, analyze decision, and run. And we should be able to comfortable at least running on those engine for 2 to 3 days. And whatever you are suggesting should not become a line in the rule. It should be enforced by hooks or whatever is the best way so that these things get implemented and we see the results."
+
+Lead 90's reply to him (a recommendation, not his decision): P-733 is the one decision; run it unchanged to the evening of 22 Nov; each part enforced by a mechanism (focus-list guard on builder briefs, check-docs refusing a new workflow row before 23 Nov unless a fix, CI-PRE, #2233); one number a day: items Proven that day.

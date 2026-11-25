@@ -16,7 +16,7 @@ import { FORM_LINE_WORDS, formLineProblem, isFormLine, releaseLineProblems } fro
 import { identityKeyOf, insertProposals } from "./proposals.ts";
 import { nameKey, namedDocumentType, waitingDocumentType } from "./document-type-names.ts";
 import { checkCondition, diff, ordinal, validate, isDemoSnapshot, sampleContentProblems, withdrawnFieldLines, withoutWithdrawnKeys } from "../../engine/validate.ts";
-import { ACTORS, Audit, Db, fail, isDemoWorkspace, need, revise, RUNTIME_ACTORS, strip, Workspace, WORKSPACE_KEY, type Actor } from "./core.ts";
+import { ACTORS, actorWordOf, Audit, Db, fail, isDemoWorkspace, need, revise, RUNTIME_ACTORS, strip, Workspace, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { itemsOf, mergeItems, publishLibraryChanges, unapprovedWhy, unapprovedOf } from "./library-changes.ts";
 import { recordAction, snapshotLines } from "./form-uses.ts";
 import { acceptsOf } from "../../engine/channels.ts";
@@ -780,7 +780,7 @@ export class Studio {
     if (!up && at === keys.length - 1) fail(`"${title}" is already the last section.`, HttpStatus.CONFLICT);
     const to = up ? at - 1 : at + 1;
     [keys[at], keys[to]] = [keys[to], keys[at]];
-    await this.db.$transaction(keys.map((k, i) => this.db.sqrSectionSelection.update({ where: { combinationId_sectionKey: { combinationId, sectionKey: k } }, data: { sectionOrder: i } })));
+    await this.db.$transaction(async (tx) => { for (const [i, k] of keys.entries()) await tx.sqrSectionSelection.update({ where: { combinationId_sectionKey: { combinationId, sectionKey: k } }, data: { sectionOrder: i } }); }, { maxWait: 10_000, timeout: 5_000 });   // M2: interactive, never an array batch; M1 (Lead 25): its limits stated
     const nth = ordinal(to + 1);
     await this.audit.log(c.workspaceId, actor.id, "updated", "section selection", sectionKey, `${actor.name} moved the section "${title}" ${body.direction} in the questionnaire of "${c.label}": now ${nth} of ${keys.length}`, undefined, c.id);
     return { ok: true, position: to + 1, of: keys.length, order: keys.map((k) => ({ key: k, title: order.find((x) => x.key === k)!.title })) };
@@ -1281,4 +1281,4 @@ async function movedOut(db: Parameters<typeof buildSnapshot>[0], workspaceId: st
 
 /** QA-74: the simulated people's names for stored ids (one id, or several joined by commas), never "user-A" on screen. */
 const PEOPLE: readonly { id: string; name: string }[] = [...ACTORS, ...RUNTIME_ACTORS];
-export const peopleNames = (ids: string | null) => (ids ?? "").split(",").filter(Boolean).map((id) => PEOPLE.find((p) => p.id === id.trim())?.name ?? id).join(", ");
+export const peopleNames = (ids: string | null) => (ids ?? "").split(",").filter(Boolean).map((id) => PEOPLE.find((p) => p.id === id.trim())?.name ?? actorWordOf(id)).join(", ");

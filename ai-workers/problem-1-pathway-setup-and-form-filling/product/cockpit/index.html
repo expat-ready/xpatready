@@ -581,6 +581,10 @@ function rFirst(){
   var SN=F.stuck_now;
   if(SN&&SN.lines)h+=fcard("stucknow","Stuck now",'<span class="plines">'+SN.lines.map(function(x){return '<span class="pl">'+dot(x.light)+esc(x.text)+'<span class="vh"> '+esc(FLW[x.light]||x.light)+'</span></span>';}).join("")+'</span>','',
     SN.lines.map(function(x){return '<div class="srow"><b>'+dot(x.light)+esc(x.text)+'</b><span class="small">'+esc(FLW[x.light]||x.light)+' · Source: '+esc(x.src)+'</span>'+((x.items||[]).length?ul(x.items,12):'')+'</div>';}).join(""),"first.stucknow",SN.light==="red");
+  /* CK-3 (founder A151, A154): is the decided set-up in force, and is the pipeline running; machines write it, stale is never yes */
+  var EN=F.enforced;
+  if(EN&&EN.lines)h+=fcard("enforced","Enforced",'<span class="plines">'+EN.lines.map(function(x){return '<span class="pl">'+dot(x.light)+esc(x.text)+'<span class="vh"> '+esc(FLW[x.light]||x.light)+'</span></span>';}).join("")+'</span>','',
+    EN.lines.map(function(x){return '<div class="srow"><b>'+dot(x.light)+esc(x.text)+'</b><span class="small">'+esc(FLW[x.light]||x.light)+' · Source: '+esc(x.src)+(x.link&&/^https:\/\/github\.com\//.test(x.link)?' · <a href="'+esc(x.link)+'" target="_blank" rel="noopener">the run</a>':'')+'</span>'+((x.items||[]).length?ul(x.items,12):'')+'</div>';}).join(""),"first.enforced",EN.light==="red");
   h+=fcard("release","Release 1"+(R.target?" · target "+short(R.target):""),
     (R.stage_counts&&R.proven!=null?STO.map(function(s){return '<span class="stn st-'+STC[s]+'">'+esc(R.stage_counts[s]||0)+' '+STW[s]+'</span>';}).join('<span class="sep">·</span>')+'<span class="small muted"> of '+esc(R.planned)+'</span>':
       nmv(R.planned)+' Planned<span class="sep">→</span>'+nmv(R.built)+' Built<span class="sep">→</span>'+nmv(R.proven)+' Proven'),
@@ -1143,7 +1147,12 @@ var LIBRARY=[
  ["Factory plan","How we build: lanes, merges, gates; decisions D1-D6 (P-506)","History (12 Nov)","reference/2-factory-plan/","@reference/2-factory-plan/factory-plan-2026-11-12-LATEST.md"],
  ["Solution 1 one-pager","The proof of concept's requirements and workflow, draft 4.3 (D249)","History (19 Oct)","reference/1-requirements-and-workflow/","@reference/1-requirements-and-workflow/solution-1-one-pager-v4.3-LATEST.html"],
  ["Product home (PRODUCT.md)","The proof of concept's words and map","History (2 Nov)","PRODUCT.md","@PRODUCT.md"],
- ["Pathway Configurator handover","The proof's verdict, how it works, what is left (private: the Mac only)","History (10 Nov)","reference/private/",""]
+ ["Pathway Configurator handover","The proof's verdict, how it works, what is left (private: the Mac only)","History (10 Nov)","reference/private/",""],
+ ["Engineering operating model","How we code, test, review, prove, merge and run unattended, with our numbers and what proves each change (A144)","Living","library/engineering-operating-model.md","@library/engineering-operating-model.md"],
+ ["CI pipeline strategy","Why CI jams, where machine time goes, and the measured plan for capacity, tests and long unattended runs","Living","library/ci-pipeline-strategy.md","@library/ci-pipeline-strategy.md"],
+ ["Agent failure modes","How our agents make mistakes, how they get through, and the check that catches each one","Living","library/agent-failure-modes.md","@library/agent-failure-modes.md"],
+ ["Engineering System v1","One page on how the engineering system works end to end, with the decisions it rests on","Living","library/engineering-system.md","@library/engineering-system.md"],
+ ["Engineering change log","One row per change to the engineering set-up: when, what, the approval, how to check it and how to undo it","Living","library/engineering-change-log.md","@library/engineering-change-log.md"]
 ];
 function rLibrary(){
   var h='<div class="box"><table><thead><tr><th>Document</th><th>What it is</th><th>Status</th><th>Up to date?</th><th>Master</th></tr></thead><tbody>';

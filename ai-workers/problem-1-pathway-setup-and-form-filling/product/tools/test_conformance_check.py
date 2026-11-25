@@ -5,7 +5,7 @@ must fail it (mutation style: drop a deny line, switch hooks off, change max_par
 add a merge rule round the queues, ...). Also: a git ref is read like a folder, the exit code counts failures (101 when
 nothing was checked), checked_at is IST, and the real manifest (when present) has every section the tool reads.
 No network, US$0.  Run: python3 -I product/tools/test_conformance_check.py   (check-conformance-check.sh runs it)"""
-import importlib.util, json, os, shutil, subprocess, sys, tempfile, unittest
+import copy, importlib.util, json, os, shutil, subprocess, sys, tempfile, unittest
 
 try:
     import yaml
@@ -212,6 +212,51 @@ class Conformance(unittest.TestCase):
         self.assertEqual(status(r, "mergify.queue.verdicts"), "pass")
         r = self.check(edit(M, lambda d: d["queue_rules"][1]["queue_conditions"][3]["or"].reverse()))
         self.assertEqual(status(r, "mergify.queue.product"), "pass")
+
+    def test_parallel_mode_barriers_and_capacities_are_pinned(self):   # P-715, manifest 1.4.0
+        m = copy.deepcopy(MANIFEST); g = m["mergify"]
+        g.update({"mode": "parallel", "capacities_required": {"migrations": 1, "money": 1},
+                  "barrier_files_required": ["**/package-lock.json", "api/core.ts"]})
+        g["queues"]["product"]["batch_max_failure_resolution_attempts"] = 2
+        def par(d):
+            d["merge_queue"]["mode"] = "parallel"
+            d["scopes"] = {"capacities": {"migrations": 1, "money": 1, "pipeline": 1},
+                           "barrier_files": {"include": ["**/package-lock.json", "api/core.ts", ".nvmrc"]}}
+            [q for q in d["queue_rules"] if q["name"] == "product"][0]["batch_max_failure_resolution_attempts"] = 2
+        r = self.check(edit(M, par), m)
+        for i in ("mergify.mode", "mergify.capacities", "mergify.barrier_files", "mergify.queue.product"):
+            self.assertEqual(status(r, i), "pass", i)   # extra scopes and barriers are allowed
+        for fn, iid in ((lambda d: d["merge_queue"].update({"mode": "serial"}), "mergify.mode"),
+                        (lambda d: d["merge_queue"].pop("mode"), "mergify.mode"),
+                        (lambda d: d["scopes"]["capacities"].pop("migrations"), "mergify.capacities"),
+                        (lambda d: d["scopes"]["capacities"].update({"money": 3}), "mergify.capacities"),
+                        (lambda d: d["scopes"]["barrier_files"]["include"].remove("api/core.ts"), "mergify.barrier_files"),
+                        (lambda d: d.pop("scopes"), "mergify.barrier_files"),
+                        (lambda d: [q for q in d["queue_rules"] if q["name"] == "product"][0].pop(
+                            "batch_max_failure_resolution_attempts"), "mergify.queue.product")):
+            r = self.check(lambda f, fn=fn: (edit(M, par)(f), edit(M, fn)(f)), m)
+            self.assertEqual(status(r, iid), "fail", iid)
+        self.assertNotIn("mergify.mode", [x["id"] for x in self.check()["items"]])   # a manifest without them: unchecked
+
+    def test_a_family_of_scopes_is_pinned(self):   # SPD-2 fault 2 (Lead 4 on #3035): "mig-*": 1, every per-area slot at 1
+        m = copy.deepcopy(MANIFEST); g = m["mergify"]
+        g.update({"mode": "parallel", "capacities_required": {"mig-*": 1, "money": 1}})
+        def par(d):
+            d["merge_queue"]["mode"] = "parallel"
+            d["scopes"] = {"source": {"files": {"money": {"include": ["m/**"]}, "mig-cases": {"include": ["c/**"]},
+                                                  "mig-platform": {"include": ["p/**"]}}},
+                           "capacities": {"money": 1, "mig-cases": 1, "mig-platform": 1}}
+        r = self.check(edit(M, par), m)
+        self.assertEqual(status(r, "mergify.capacities"), "pass")
+        for why, fn in (("a slot at 2", lambda d: d["scopes"]["capacities"].update({"mig-cases": 2})),
+                        ("a slot with no capacity", lambda d: d["scopes"]["capacities"].pop("mig-platform")),
+                        ("no per-area slot at all", lambda d: [d["scopes"][k].pop(x) for k in ("capacities",) for x in ("mig-cases", "mig-platform")]
+                                                              + [d["scopes"]["source"]["files"].pop(x) for x in ("mig-cases", "mig-platform")]),
+                        ("the old one slot instead", lambda d: (d["scopes"]["capacities"].pop("mig-cases"), d["scopes"]["capacities"].pop("mig-platform"),
+                                                               d["scopes"]["source"]["files"].pop("mig-cases"), d["scopes"]["source"]["files"].pop("mig-platform"),
+                                                               d["scopes"]["capacities"].update({"migrations": 1})))):
+            r = self.check(lambda f, fn=fn: (edit(M, par)(f), edit(M, fn)(f)), m)
+            self.assertEqual(status(r, "mergify.capacities"), "fail", why)
 
     def test_auto_merge_off_fails(self):
         r = self.check(edit(M, lambda d: d.pop("merge_protections_settings")))

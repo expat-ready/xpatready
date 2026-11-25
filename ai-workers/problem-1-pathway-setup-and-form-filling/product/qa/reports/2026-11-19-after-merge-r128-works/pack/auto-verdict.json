@@ -1,0 +1,30 @@
+{
+  "item": "R1.28",
+  "name": "28 Consent recorded per purpose",
+  "pr": 2281,
+  "sha": "b5cad6a137001d1fbf3175a54a0917327a182b48",
+  "run_id": "44562295519",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44562295519",
+  "at": "2026-11-19T16:09:14.500Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_28.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44562295519/artifacts/14548893867",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.28-b5cad6a137001d1fbf3175a54a0917327a182b48.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}

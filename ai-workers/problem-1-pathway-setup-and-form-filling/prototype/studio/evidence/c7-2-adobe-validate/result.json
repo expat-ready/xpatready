@@ -1,18 +1,18 @@
 {
  "label": "Sample facts only (made up; never submit). Immigration values are Sample; legal: Unconfirmed: no counsel. US$0, no model call.",
- "row": "BK-20 (P-533, P-535 L2): the tech lead ran the form's own Validate in Adobe Acrobat on the Mac by computer use, 13 Nov 2026 ~18:28 IST",
+ "row": "R1.80 / QA-165 (P-533, P-726): Build Lead C ran the form's own Validate in Adobe Acrobat on the Mac by computer use, 19 Nov 2026 ~11:29 IST; the founder approved the Acrobat grant (the founder spot-checks one form)",
  "form": "IMM 5257",
  "source": "studio case copy",
  "combination": "Visitor visa (demo case SAMPLE-VV-FAMILY-1, release 2; the finished story's Paper line, Child 18 or over (Sample))",
- "copy_id": "1f7fed6b-da9d-4f52-b5b6-4e238d76b4f8",
- "copy_sha256": "8f73da30a4372af6f046e2dc9495c9949efdfe2bad8b320b3292f7e7ca84f149",
- "validated_sha256": "0d0b46db3f952a70a8d6915f90cee4ffd9fcc4c4a7bbf7779ac02a1327148c13",
- "app": "main fc31b1e95 (the :4400 demo)",
- "reader": "Adobe Acrobat (Pro, DC) on macOS",
+ "copy_id": "30154787-41b3-4db7-940c-311e022430b3",
+ "copy_sha256": "ca33c6786698ad4718cb6a15de01a377c51ffd32638e6c3273aaf8284cbdd78f",
+ "validated_sha256": "d0a2e9446231c0144629aa27cb0df1d57a3e5eb7467535919b8dfbea94732b3b",
+ "app": "main 4aa912c92 in an isolated copy (port 4461, database xr_studio_r180; finished story loaded, all 18 rows and 8 stages done)",
+ "reader": "Adobe Acrobat (Reader mode, DC) on macOS",
  "reader_version": "26.002.22031",
  "validate_message": "Validation completed successfully. Please print the entire application and sign and date the last page. This page contains bar codes that facilitates data entry of your applicaton.",
  "validate_first_press": true,
- "barcode_page": "page 6 of 6, five barcodes (IMM5257_06-2018_1 \u2026 _5)",
+ "barcode_page": "page 6 of 6, five barcodes (IMM5257_06-2018_1 ... _5)",
  "barcodes_expected": 5,
  "barcodes_decoded": 5,
  "slots_total": 186,
@@ -23,18 +23,25 @@
  "written_values_unchanged": true,
  "read_back": {
   "written": 75,
-  "equal": 75
+  "equal": 75,
+  "mismatches": 0,
+  "form_flag": "Yes",
+  "date_last_validated": "2026-11-19",
+  "other_data_leaves_changed": 39
  },
  "upload_door": {
   "status": 201,
+  "validated_copy_id": "f42934ef-c3b3-48e4-8cb4-db214e1c2ea3",
   "words": "Validated copy read back",
   "current": true,
   "barcode_words": "All 5 barcodes read; each of their 186 positions agrees with the form's answers."
  },
+ "before_this_run": "On the same isolated copy, before Acrobat was opened, the checkpoint loader re-sent the 13 Nov BK-20 validated file (0d0b46db3f95…) through the upload door: current true, 75/75 read back, 5/5 barcodes, 186/186 agree. Its facts and values hashes still equal today's copy, so the 13 Nov Validate already held on main 4aa912c92; this run is the fresh one qa asked for.",
  "screenshots": [
   "vv-paper-imm5257-opened-certified.jpg",
   "vv-paper-imm5257-validate-message.jpg",
-  "vv-paper-imm5257-barcode-page.jpg"
+  "vv-paper-imm5257-barcode-page.jpg",
+  "vv-paper-imm5257-after-save-certified.jpg"
  ],
- "screenshots_where": "the tech lead's private notes on the Mac (bk20-2026-11-13); PDFs and screenshots are never committed (AGENTS rule 1)"
+ "screenshots_where": "the shared private notes on the Mac (side-session-notes/local_28bf6046…/r180-adobe-2026-11-19); PDFs and screenshots are never committed (AGENTS rule 1)"
 }

@@ -1,0 +1,28 @@
+NOTICE:  database "xr_studio_pf19b3_5661" does not exist, skipping
+PASS  DW1 pass: a sent message plus a signed Delivery notice → DELIVERED and one DELIVERED event
+PASS  DW1 fail: the same notice twice → repeated, still one DELIVERED event, still DELIVERED
+PASS  DW1 fail: a Delivery naming another firm, or another SES message id → ignored; the row stays SENT with no event
+PASS  DW2 pass: a Bounce and then a Delivery → still BOUNCED (hard bounce); the Delivery is ignored and logged by ids only
+PASS  DW2 fail: a Delivery on a QUEUED row → ignored and logged, no state jump, no event
+PASS  DW2 pass: a Delivery and then a hard Bounce → BOUNCED (a later bounce still counts, forward), the address suppressed
+PASS  DW2 fail: FAILED is final: a Bounce leaves it FAILED (the address is suppressed), a Delivery is ignored
+PASS  DW3 fail: a Delivery with a bad signature, or from another topic → refused as for Bounce; the row stays SENT
+PASS  DW3 pass: the same notice signed properly is applied
+PASS  DW3 pass: every PF-19b part 2 test passes unchanged (tests/check_pf19b2_ses.ts)
+PASS  DW4 fail: with no notice handler connected (the suites before part 3) a local send stays SENT with no event but SENT
+PASS  DW4 pass: on the demo copy (local adapter, no SES) a booking email reads DELIVERED within one worker cycle, with SENT and DELIVERED events
+PASS  DW4 pass: a Sample bounce address reads BOUNCED (hard bounce) and the next send to it is suppressed (not sent)
+PASS  DW4 fail: a send whose transaction rolls back leaves the row QUEUED; its test event is ignored and logged
+{"time":"2026-11-20T09:07:46.929Z","level":"info","event":"platform_bypass","use":"platform.account.mail","method":"none"}
+PASS  DW4 fail: a platform account message (no firm) gets no test event and stays SENT
+PASS  DW5 pass: the lead's owner sees the lead's messages with state, class, channel, events with times and the from-name
+PASS  DW5 pass: the address is masked to its first letter and domain; no body text and no full address in the answer
+PASS  DW5 pass: the same messages by the person (FO_PERSON) as by the lead
+PASS  DW5 fail: a Read-only person who cannot see the lead (another's, everyone-sees-all off) → 404, by lead and by person
+PASS  DW5 fail: firm B's Owner → 404 with the same words, by lead and by person
+PASS  DW5 fail: no agent/prospect:show, a case party without agent/case:show or in no case of the firm, a kind not offered, a malformed id → the same 404
+PASS  DW5 pass: an unassigned lead is seen by a Read-only person (view.all: Unassigned leads are visible)
+PASS  DW5 pass: 51 messages → a page of 50, newest first, and a next page of 1 (no repeats)
+PASS  DW5 fail: a cursor that is not one we gave (text, an impossible date, an all-dash id, year 0000) → 400, never 500 (review m3)
+
+24 passed, 0 failed

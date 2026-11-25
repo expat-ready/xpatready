@@ -120,23 +120,20 @@ try {
     sql(DEMO, `select coalesce(string_agg(distinct c.table_name, ','), '') from information_schema.columns c where c.table_name like 'money\\_%' and c.column_name like '%\\_minor'
       and not exists (select 1 from information_schema.columns d where d.table_name = c.table_name and d.column_name = 'currency')`) === ""
     && sql(DEMO, `select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'MoneyCurrency'`) === "CAD,USD");
-  ok("FO-7a pass: no workspace_id (the demo reset leaves these rows), every instant is timestamptz, only due_date is a date",
+  ok("FO-7a pass: no workspace_id (the demo reset leaves these rows), every instant is timestamptz, only due_date and a trust refund's refunded_on (FO-7ts part 3) are dates",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name = 'workspace_id'`) === "0"
-    && sql(DEMO, `select coalesce(string_agg(table_name || '.' || column_name, ',' order by table_name, column_name), '') from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and data_type in ('timestamp without time zone', 'date', 'time without time zone', 'time with time zone')`) === "money_invoice.due_date");
+    && sql(DEMO, `select coalesce(string_agg(table_name || '.' || column_name, ',' order by table_name, column_name), '') from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and data_type in ('timestamp without time zone', 'date', 'time without time zone', 'time with time zone')`) === "money_invoice.due_date,money_trust_entry.refunded_on");
   ok("FO-7a: no secret column — no money_ column is named like a password, secret, token or API key (AG-16-18)",
-    sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name ~ '(password|secret|token|api_key|access_key)'`) === "0");
+    sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name ~ '(password|secret|token|api_key|access_key)' and column_name !~ '_token_hash$'`) === "0");
   // ------------------------------------------------------------------------------------------- settings and account
   const firmA = sql(DEMO, `select id from platform_firm where key='sample-firm'`), firmB = sql(DEMO, `select id from platform_firm where key='sample-solo'`);
-  const settings = (f: string) => `insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'user-O', now()) returning trust_enabled || ':' || default_currency || ':' || due_in_days || ':' || tax_rates::text`;
-  ok("FO-7a pass (AG-6-59, -46): a firm's money settings start with trust off, CAD, due in 14 days and no tax rates", sql(DEMO, settings(firmA)) === "false:CAD:14:[]" && sql(DEMO, settings(firmB)) === "false:CAD:14:[]");
+  const settings = (f: string) => `insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'user-O', now()) returning trust_answer || ':' || default_currency || ':' || due_in_days`;
+  // FO-7ts part 1: the three-state trust answer replaces trust_enabled; the firm's rate list is gone (AG-6-4 §13).
+  ok("FO-7a pass (AG-6-59, -46): a firm's money settings start with trust off (unanswered), CAD and due in 14 days", sql(DEMO, settings(firmA)) === "UNANSWERED:CAD:14" && sql(DEMO, settings(firmB)) === "UNANSWERED:CAD:14");
   ok("FO-7a fail: money settings for a firm that does not exist are refused (23503), and a second row for a firm is refused",
     refused(DEMO, settings(u(999)), /money_payment_settings_firm_id_fkey/, "23503") && refused(DEMO, settings(firmA), /money_payment_settings_pkey/, "23505"));
-  ok("FO-7a pass: the firm's tax rates are a list of names and rates in parts per million (Sample HST 13 %; Quebec's QST 9.975 % is exact; review round 2, Major 1)",
-    sql(DEMO, `update money_payment_settings set tax_rates = '[{"name":"HST","ratePpm":130000},{"name":"GST","ratePpm":50000},{"name":"QST","ratePpm":99750}]', trust_enabled = true where firm_id = '${firmA}' returning 1`) === "1");
-  ok("FO-7a fail: tax rates that are not a list of { name, ratePpm 0..1000000 } are refused",
-    refused(DEMO, `update money_payment_settings set tax_rates = '{"name":"HST"}' where firm_id = '${firmA}'`, /money_payment_settings_tax_rates_check/)
-    && refused(DEMO, `update money_payment_settings set tax_rates = '[{"name":"HST","ratePpm":99750.5}]' where firm_id = '${firmA}'`, /money_payment_settings_tax_rates_check/)
-    && refused(DEMO, `update money_payment_settings set tax_rates = '[{"name":"HST","ratePpm":2000000}]' where firm_id = '${firmA}'`, /money_payment_settings_tax_rates_check/));
+  ok("FO-7a pass: the Owner answers the trust question Yes (trust on for the cases below)",
+    sql(DEMO, `update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'user-O' where firm_id = '${firmA}' returning 1`) === "1");
   ok("FO-7a fail: a firm's money settings never move to another firm", refused(DEMO, `update money_payment_settings set firm_id = '${firmB}' where firm_id = '${firmA}'`, /firm_id never changes|money_payment_settings_pkey/));
   const acct = (f: string, id: string | null, status: string, charges = false) =>
     `insert into money_payment_account (firm_id, stripe_account_id, status, charges_enabled, updated_at) values ('${f}', ${id ? `'${id}'` : "null"}, '${status}', ${charges}, now()) on conflict (firm_id) do update set stripe_account_id = excluded.stripe_account_id, status = excluded.status, charges_enabled = excluded.charges_enabled returning status`;
@@ -401,7 +398,7 @@ try {
   // ---------------------------------------------------------------------------------------------------- trust ledger
   // ck: a correction of a deposit says why (FO-7mv's correction_kind, a later migration).
   const entry = (kind: string, amount: number, extra: { pay?: string; inv?: string; reason?: string; party?: string; pid?: string; req?: string; corrects?: string; ck?: string } = {}) =>
-    `insert into money_trust_entry (firm_id, ${extra.party ?? "person_id"}, kind, amount_minor, currency, payment_id, invoice_id, trust_request_id, corrects_entry_id, ${extra.ck ? "correction_kind, " : ""}reason, created_by) values ('${firmA}', '${extra.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${extra.pay ? `'${extra.pay}'` : "null"}, ${extra.inv ? `'${extra.inv}'` : "null"}, ${extra.req ? `'${extra.req}'` : "null"}, ${extra.corrects ? `'${extra.corrects}'` : "null"}, ${extra.ck ? `'${extra.ck}', ` : ""}${extra.reason ? `'${extra.reason}'` : "null"}, 'user-R') returning id`;
+    `insert into money_trust_entry (firm_id, ${extra.party ?? "person_id"}, kind, amount_minor, currency, payment_id, invoice_id, trust_request_id, corrects_entry_id, ${extra.ck ? "correction_kind, " : ""}reason, ${kind === "REFUND_TO_CLIENT" ? "refund_method, refunded_on, " : ""}created_by) values ('${firmA}', '${extra.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${extra.pay ? `'${extra.pay}'` : "null"}, ${extra.inv ? `'${extra.inv}'` : "null"}, ${extra.req ? `'${extra.req}'` : "null"}, ${extra.corrects ? `'${extra.corrects}'` : "null"}, ${extra.ck ? `'${extra.ck}', ` : ""}${extra.reason ? `'${extra.reason}'` : "null"}, ${kind === "REFUND_TO_CLIENT" ? "'E_TRANSFER', current_date, " : ""}'user-R') returning id`;
   // Money into trust and its deposit entry are one transaction (a payment into TRUST alone is refused at commit).
   const deposit = (pid: string, key: string, amount: number, opts: { req?: string; inv?: string; party?: string; who?: string } = {}) =>
     `${pay(pid, key, { req: opts.req, inv: opts.inv, into: "TRUST", amount })}; ${entry("DEPOSIT", amount, { pay: pid, party: opts.party, pid: opts.who })}`;
@@ -602,7 +599,8 @@ try {
   const own = new Set([...readFileSync(join(MIG, NEW, "migration.sql"), "utf8").matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi)].map((m) => m[1]));
   for (const f of own) later.delete(f);
   const added = fns(DEMO).filter((f) => !fns(BARE).includes(f) && !later.has(f));
-  ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them)", added.length === 21 && added.every((f) => f.startsWith("money_")), added);
+  // FO-7ts part 1 drops money_tax_rates_ok (the firm's rate list goes, AG-6-4 §13): 20 of FO-7a's 21 remain.
+  ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them, 20 after FO-7ts part 1)", added.length === 20 && added.every((f) => f.startsWith("money_")), added);
 } finally {
   for (const c of conns) await c.end().catch(() => undefined);
   for (const d of dbs) await d.$disconnect().catch(() => undefined);

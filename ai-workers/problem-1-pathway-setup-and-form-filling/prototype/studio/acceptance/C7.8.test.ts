@@ -8,6 +8,7 @@
 //   tsx studio/acceptance/C7.8.test.ts 4440 xr_studio_accept
 import { createHash } from "node:crypto";
 import { CLIENT, AUTHOR, FAMILY, FIRM_READERS, answer, call, confirmAll, fillEverything, filingOf, generateCopy, itemsOf, main, needVisitorVisa, ok, openCase, prepare, readinessOf, sendFile, sql, PORT } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 import { walker } from "./lib/browser.ts";
 
 type Addable = { form: string; title: string; edition: string | null; kind: "fills" | "blank"; blank_why: string | null; why_not: { code: string; words: string } | null };
@@ -92,7 +93,7 @@ await main("C7.8", "Add a library form to one filing", async () => {
   p = (await prepare(c.id)).p;
   const passed = (readinessOf(p, fP)?.passed ?? []).some((x) => x.code === "hand_filled_copy");
   const blankItem = itemsOf(p, P, blank?.form)[0];
-  const up = await sendFile(`/runtime/items/${blankItem?.id}/signed-scan`, Buffer.from(`%PDF-1.4\n% SYNTHETIC SPECIMEN: completed ${blank?.form} (Sample)\n%%EOF\n`, "latin1"), "completed.pdf", c.officer);
+  const up = await sendFile(`/runtime/items/${blankItem?.id}/signed-scan`, textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", `Completed ${blank?.form} (Sample)`]), "completed.pdf", c.officer);
   p = (await prepare(c.id)).p;
   ok("C7.8-8 pass: C7.6: a blank form with no completed copy is a CRITICAL \"Filled by hand: upload the completed copy\" line; it passes only with a reason; uploading the completed copy clears it and makes the item Ready",
     line?.severity === "critical" && /upload the completed copy/.test(line.words) && noReason.status >= 400 && withReason.status === 200 && passed && up.status === 201 && !hf() && !(readinessOf(p, fP)?.passed ?? []).some((x) => x.code === "hand_filled_copy") && itemsOf(p, P, blank?.form)[0]?.state === "ready",

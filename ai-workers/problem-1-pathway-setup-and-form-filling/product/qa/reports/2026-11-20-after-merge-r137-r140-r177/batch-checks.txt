@@ -1,0 +1,62 @@
+# Run identities, read from the GitHub API by qa 7 on 20 Nov 01:27 IST
+run 44562311132 workflow=item-proof · ee24ed8b1922746b6996fc451e444bcf88179dec event=push head_sha=ee24ed8b1922746b6996fc451e444bcf88179dec branch=main conclusion=success
+  job 135694616187 detect success
+  job 135695093462 prove (R1.37) success
+  job 135704111912 report success
+run 44600062791 workflow=walks event=workflow_dispatch head_sha=c66a41c9609d57922c7c20f702975835ddbd8cd2 branch=main conclusion=success
+  job 135828713669 plan success
+  job 135829239467 walk j_0_fails (self-test, fails on purpose) success
+  job 135829239530 walk j_37 success
+  job 135829239772 walk j_0_throws (self-test, fails on purpose) success
+run 44600075318 workflow=walks event=workflow_dispatch head_sha=c66a41c9609d57922c7c20f702975835ddbd8cd2 branch=main conclusion=success
+  job 135828751443 plan success
+  job 135829147812 walk j_38 success
+  job 135829147841 walk j_0_throws (self-test, fails on purpose) success
+  job 135829147888 walk j_0_fails (self-test, fails on purpose) success
+run 44600084855 workflow=walks event=workflow_dispatch head_sha=c66a41c9609d57922c7c20f702975835ddbd8cd2 branch=main conclusion=success
+  job 135828789476 plan success
+  job 135829118189 walk j_38 success
+  job 135829118196 walk j_0_fails (self-test, fails on purpose) success
+  job 135829118225 walk j_0_throws (self-test, fails on purpose) success
+run 44600094672 workflow=walks event=workflow_dispatch head_sha=c66a41c9609d57922c7c20f702975835ddbd8cd2 branch=main conclusion=success
+  job 135828826686 plan success
+  job 135829183035 walk j_0_fails (self-test, fails on purpose) success
+  job 135829183143 walk j_77 success
+  job 135829183169 walk j_0_throws (self-test, fails on purpose) success
+run 44600106989 workflow=walks event=workflow_dispatch head_sha=c66a41c9609d57922c7c20f702975835ddbd8cd2 branch=main conclusion=success
+  job 135828865849 plan success
+  job 135829221381 walk j_77 success
+  job 135829221530 walk j_0_fails (self-test, fails on purpose) success
+  job 135829221569 walk j_0_throws (self-test, fails on purpose) success
+run 44575502680 workflow=ci event=pull_request head_sha=6f1ef9c369b806bc514eeaa2320a2c184b377115 branch=mergify/merge-queue/999866466b conclusion=success
+  job 135741762329 kind success
+  job 135744273608 types success
+  job 135744273649 regression-plan success
+  job 135744274032 shard (2) success
+  job 135744274060 shard (10) success
+  job 135744274094 shard (16) success
+  job 135744274118 shard (11) success
+  job 135744274126 shard (12) success
+  job 135744274224 shard (7) success
+  job 135744274239 fast success
+  job 135744274241 shard (4) success
+  job 135744274257 shard (5) success
+  job 135744274284 shard (18) success
+  job 135744274292 shard (13) success
+  job 135744274298 shard (14) success
+  job 135744274354 shard (8) success
+  job 135744274375 shard (9) success
+  job 135744274422 shard (15) success
+  job 135744274446 shard (6) success
+  job 135744274692 shard (1) success
+  job 135744275351 shard (17) success
+  job 135744276358 shard (3) success
+  job 135744725299 regression (C6.18,C1.3,C5.4,C6.14,C7.1,C8.1,C9.5,C1.6,C2.6,C3.6,C3.13,C4.2,C5.1,C11.7,C11.13, 16,... success
+  job 135744725338 regression (C6.4,C7.6,C6.11,C6.17,C7.8,C9.1,C11.6,C3.4,C3.11,C3.16,C4.6,C11.1,C11.11,C11.16, 16, 25) success
+  job 135744725492 regression (C6.12,C7.10,C6.13,C6.19,C7.9,C9.2,C1.5,C2.4,C3.5,C3.12,C4.1,C4.7,C11.3,C11.12,C11.17,... success
+  job 135744725580 regression (C7.3,C4.11,C6.9,C6.16,C7.7,C8.3,C10.2,C3.2,C3.10,C3.15,C4.5,C6.2,C11.10,C11.15, 17, 25) success
+  job 135744727120 regression (C6.5,C4.8,C6.3,C6.15,C7.5,C8.2,C10.1,C2.12,C3.8,C3.14,C4.4,C5.2,C11.8,C11.14, 16, 25) success
+  job 135762073644 ci success
+  job 135762191425 retry-comment success
+
+Tree evidence (git, qa 7): studio folder tree at c66a41c96 = 1b360046e = at batch #2344 head 6f1ef9c36 = at main 298f75651. Main c66a41c96's own batch #2362 (head 7750c2be8, ci 44594750686) ran fast + types only (records change).

@@ -21,11 +21,11 @@ Q='{"at":"2026-11-15T12:00:00Z","body":"## Question for the tech lead: may I tou
 A_LATE='{"at":"2026-11-15T12:10:00Z","body":"**Tech lead (Lead 60):** yes"}'
 A_B='{"at":"2026-11-15T12:10:00Z","body":"**Lead B (6) (row owner):** yes"}'
 
-# Q: a question unanswered for 60 min is a MISS; answered by the tech lead or Lead B is not; 20 min old is only due.
+# Q: a question unanswered for 60 min is a MISS; answered by the tech lead or Lead B is not; 8 min old is only due (P-798: target 10).
 case_ "Q broken: unanswered 60 min" "MISS +Q #1:" 1 "{$NOW,\"prs\":[$(pr 1 '[]' 2026-11-15T12:59:00Z "[$Q]")]}"
 case_ "Q met: tech lead answered" "!Q #1:" 0 "{$NOW,\"prs\":[$(pr 1 '[]' 2026-11-15T12:59:00Z "[$Q,$A_LATE]")]}"
 case_ "Q met: Lead B answered" "!Q #1:" 0 "{$NOW,\"prs\":[$(pr 1 '[]' 2026-11-15T12:59:00Z "[$Q,$A_B]")]}"
-case_ "Q due: 20 min" "due +Q #1:" 0 "{\"now\":\"2026-11-15T12:20:00Z\",\"board_at\":\"2026-11-15T12:10:00Z\",\"prs\":[$(pr 1 '[]' 2026-11-15T12:19:00Z "[$Q]")]}"
+case_ "Q due: 8 min" "due +Q #1:" 0 "{\"now\":\"2026-11-15T12:08:00Z\",\"board_at\":\"2026-11-15T12:00:00Z\",\"prs\":[$(pr 1 '[]' 2026-11-15T12:07:00Z "[$Q]")]}"
 
 # A: approved 45 min and not queued is a MISS, and a shadowing skipped ci from another PR is named (step 2, #1811).
 SH=',"approved_at":"2026-11-15T12:15:00Z","ci":[{"conclusion":"success","status":"completed","completed_at":"2026-11-15T11:42:00Z","run":"1","owner":null},{"conclusion":"skipped","status":"completed","completed_at":"2026-11-15T10:35:00Z","run":"2","owner":[1830]}]'

@@ -1,0 +1,2 @@
+Entry points: FO-9b (R1.33, P-747): every arrival door (public enquiry, Add a lead, a company's new contact, the FO person port, the public booking door, the duplicate check) reads a phone through `duplicates/phone.ts` `phoneE164Exact` (also 00 dialling); one it cannot read is kept as typed with `phone_readable` false, never refused; the shared ArrivalPort contract's ArrivalPerson takes `phoneReadable: false` with a number kept as typed
+Tests: tests/check_fo9b_phone_doors.ts, tests/journeys/j_33.ts

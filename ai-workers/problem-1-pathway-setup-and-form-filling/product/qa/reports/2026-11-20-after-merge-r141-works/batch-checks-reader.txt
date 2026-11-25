@@ -1,0 +1,3 @@
+Merge batch draft #2366 head c6d80860b: ci 44598210725, all jobs success (ci-jobs.txt); studio tree d0dd16d62 = merge commit 292847c32's = main's.
+Auto item-proof (pack): run 44603961304 job 135842994804 on 292847c32 (#2302 merge), PASS.
+Independent re-run (walks.yml, tech lead): run 44604534795 job 135845046995 on main 292847c32.

@@ -1,0 +1,4 @@
+135698182280 plan success
+135698578548 walk j_0_throws (self-test, fails on purpose) success
+135698579276 walk j_0_fails (self-test, fails on purpose) success
+135698580119 walk j_28 success

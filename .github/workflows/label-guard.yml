@@ -10,6 +10,10 @@
 # as for `review: approved` (whoever put the label on), and the job "sweep" (product/tools/label-sweep.sh) removes any
 # `review: approved` that github-actions[bot] put on; the sweep also runs when Mergify opens a batch PR (a PR could put
 # `queued` on itself first, so Mergify's own adds no event), every 10 minutes and after each ci run.
+# CI-PRE (P-731, founder 19 Nov): the guard also takes the label off a reviewed head with no green full run ("/run full")
+# and, when the label was just put on after a failed merge batch, with a failed part not named in a "Batch failures
+# covered:" line (label-guard.sh asks main's queue-gate.sh proof). The sweep's checkout holds main's history: a full run
+# counts only when its own commit is on it.
 # Removing the label takes the PR out of the queue. Main's copy only, as above. Test: check-label-sweep.sh.
 name: label-guard
 on:
@@ -18,7 +22,9 @@ on:
     # merge; the sweep runs then too, even if a PR put `queued` on itself first (#1270 breaker, round 2).
     types: [synchronize, labeled, opened]
   schedule:
+    # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
     - cron: "*/10 * * * *"
+  workflow_dispatch:   # the sweep by hand (Lead 84, 19 Nov): schedules can be dropped
   workflow_run:
     workflows: [ci]
     types: [completed]
@@ -54,6 +60,10 @@ jobs:
           BEFORE: ${{ github.event.before }}
           # A labeled event carries no push, so no "after": the PR's head then (the script re-reads it from GitHub anyway).
           AFTER: ${{ github.event.after || github.event.pull_request.head.sha }}
+          LABELED: ${{ github.event.action == 'labeled' && github.event.label.name || '' }}
+          # As the sweep below: queue-gate.sh counts an Approve by the owner's account or a login in REVIEWERS, and
+          # since the org move the owner is the organisation, so without REVIEWERS nobody's Approve would count here.
+          REVIEWERS: ${{ vars.REVIEWERS }}
         run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/label-guard.sh
       - name: the guard could not finish, so the label comes off (fails closed)
         if: failure() || cancelled()
@@ -70,7 +80,7 @@ jobs:
   sweep:
     # B134: no PR labels itself. Main's code only (schedule, workflow_run and pull_request_target all run the default
     # branch's copy); it reads labels and issue events through the API and checks out no pull request.
-    if: "github.event_name == 'schedule' || github.event_name == 'workflow_run' || (github.event.action == 'labeled' && github.event.label.name == 'queued') || (github.event.action == 'opened' && startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/'))"
+    if: "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' || (github.event.action == 'labeled' && github.event.label.name == 'queued') || (github.event.action == 'opened' && startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/'))"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency: { group: label-sweep, cancel-in-progress: false }
@@ -78,10 +88,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
           sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
       - name: "label sweep (review: approved put on by github-actions[bot] comes off)"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          # queue-gate.sh eligible counts an Approve by the repository owner's account or a login in REVIEWERS. Since the
+          # org move (18 Nov) the owner is the organisation, so without REVIEWERS no Approve counted here and the sweep
+          # took off every label queue-gate.yml had put on (#2197, #2199, 19 Nov). Same value as queue-gate.yml's.
+          REVIEWERS: ${{ vars.REVIEWERS }}
         run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/label-sweep.sh

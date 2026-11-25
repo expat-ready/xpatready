@@ -18,12 +18,14 @@ The web app's shell: routes, the API client, module pages seam, shared words and
 - `actor` is the one current person; only `setActor` changes it (P-484).
 - The simulated person travels as `x-actor`; the server decides and refuses in plain words.
 - Firm-staff pages (`modules/front-office/`, `modules/platform/`) call `/api/platform/*` and `/api/front-office/*` with PF-4's bearer token through `modules/platform/session.ts` (`staffApi`, `useMe`; `sales/session.ts` is its re-export), never `lib/api.ts`; a change of person drops every `["fo", …]` and `["pf", …]` answer (FO-4, PF-6).
+- Our console's pages (`modules/system/`) call `/api/system/*` with our own staff's token through `modules/system/session.ts` (`systemApi`, sessionStorage `xr-system-session`), never `staffApi` or `lib/api.ts`; neither session's token is sent to the other's routes, and a change of session drops every `["sys", …]` answer (PF-17 part 4).
 - Demo-only controls sit in one menu, never part of the product (P-35); the menu offers the six agreed combinations (P-148).
 - `styles/tokens.css` is the team's tokens, copied unchanged.
 - One way to say who can be in an application (`lib/people.ts`, P-161 (2)).
 
 **Tables.** none directly (web).
 **Tests.** `tests/check_pf1_module_routes.ts`, `tests/check_fo4_sales_browser.ts`, `tests/check_bk4a.ts`, `tests/check_forms_held_conditions_pure.ts`, `tests/check_bk3_frame.ts`, `tests/check_pf6a_frame_browser.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Edit `styles/tokens.css` by hand.

@@ -1,11 +1,14 @@
-// PF-4: the audit lines of staff, roles, invitations and sessions. AUD-1 (AuditPort.record) has not merged, so each
-// change writes audit_event's existing columns in its own transaction (contracts §7 §0), fail-closed: a failed line rolls
-// the change back. workspace_id is required by the column; platform rows belong to no demo workspace (PF-3), so their
-// lines carry the platform's own workspace row, key "platform-audit": the demo reset deletes the demo workspace's lines
-// only, so it never deletes a platform line (P-571 (1); PF-3 review m3 / B-6). When AUD-1 adds firm_id, these lines move to
-// AuditPort.record and this file goes. A licence number is never written here (AG-1-30, -31): callers pass field names only.
+// PF-4: the audit lines of staff, roles, invitations and sessions. AUD-1m part 2b (PF-0a, Lead 94's ruling on #2289):
+// each line goes through AuditPort.record (platform/audit/audit-event.ts) inside the caller's own transaction, fail-closed:
+// a refused or failed line rolls the change back. The adapter writes the platform's own workspace row (key
+// "platform-audit"), so the demo reset never deletes a platform line (P-571 (1); PF-3 review m3 / B-6); it fills firm_id,
+// actor_type and correlation, keeps detail.firmId, and refuses a line naming another firm than the request's. The strict
+// AuditEntry holds: ids and facts only in detail, so a free-text reason holding an email address is refused (the one
+// behaviour change). R1.8 (QA-594, P-687): each line carries the row's before and after values in full (a licence
+// number included, shown only to holders of the audit permission); never a secret.
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { platformAuditWorkspaceId as raceSafeWorkspaceId } from "../audit/audit-event.ts";
+import type { AuditEntry, AuditValues } from "../../../../ports/audit.ts";
+import { auditEvent, platformAuditWorkspaceId as raceSafeWorkspaceId } from "../audit/audit-event.ts";
 
 type Tx = Prisma.TransactionClient;
 export const PLATFORM_AUDIT_WORKSPACE = "platform-audit";
@@ -16,18 +19,22 @@ export async function platformAuditWorkspaceId(db: PrismaClient | Tx): Promise<s
   return raceSafeWorkspaceId(db as Tx);
 }
 
-export type AuditLine = { firmId: string; firmKey: string; actor: string; action: string; entityKey: string; summary: string; detail: Record<string, unknown> };
+export type AuditLine = { firmId: string; firmKey: string; actor: string; action: string; entityKey: string; summary: string; detail: Record<string, unknown>;
+  /** R1.8 (QA-594): the row's values before (null: a create) and after (null: a delete) the change. */
+  before: AuditValues | null; after: AuditValues | null };
+
+/** The fields both lines share: the firm's key leads the summary and stays in detail, as before. */
+const lineOf = (l: AuditLine) => ({ firmId: l.firmId, actor: l.actor, action: l.action, entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600),
+  detail: { firmKey: l.firmKey, ...l.detail } as AuditEntry["detail"] });
 
 /** One audit line about a staff member (status, roles, licence record, sessions). */
 export async function auditStaff(tx: Tx, l: AuditLine) {
-  const workspaceId = await platformAuditWorkspaceId(tx);
-  await tx.auditEvent.create({ data: { workspaceId, actor: l.actor, action: l.action, entity: "platform_staff", entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600), detail: { firmId: l.firmId, firmKey: l.firmKey, ...l.detail } as Prisma.InputJsonValue } });
+  await auditEvent.record(tx, { entity: "platform_staff", ...lineOf(l), before: l.before, after: l.after });
 }
 
 /** One audit line about an invitation. */
 export async function auditInvitation(tx: Tx, l: AuditLine) {
-  const workspaceId = await platformAuditWorkspaceId(tx);
-  await tx.auditEvent.create({ data: { workspaceId, actor: l.actor, action: l.action, entity: "platform_invitation", entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600), detail: { firmId: l.firmId, firmKey: l.firmKey, ...l.detail } as Prisma.InputJsonValue } });
+  await auditEvent.record(tx, { entity: "platform_invitation", ...lineOf(l), before: l.before, after: l.after });
 }
 
 /** The actor word of a staff member on audit lines and events (their staff id; the Sample staff's actor id is in detail). */

@@ -1,0 +1,3 @@
+# STATE item 2 (queue at 12:14 IST), word for word (moved by Lead 91, 19 Nov 12:39 IST)
+
+2. **Queue at 12:14:** main 8cefcc6c6: batch #2228 passed, 8 merges at 12:06-12:07 (#2199, #2200, #2209, #2219, #2195, #2103, #2197, #2205 = R1.6's Works record). Under test: #2236 (#2196 + #2224), #2237 (#2232), #2239 (#2235, R1.80 evidence). #2195's card fragments made these approved PRs conflict (dequeued, label kept): #2029, #2012, #2102, #1961 → cloud fixer A (task_7b0cf5de); #2000, #2214, #2177, #2169 → cloud fixer B (task_2e3d72ff); also dirty: #2032, #2213 (qa record), #2207 (its lane asked by PR comment; fresh lane if no push by 13:00). A red `module-cards` on a PR does not block the queue; the label needs `ci` green.

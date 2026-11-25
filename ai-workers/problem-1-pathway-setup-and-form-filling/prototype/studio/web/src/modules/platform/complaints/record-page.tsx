@@ -1,8 +1,10 @@
-// PF-21s part 3 (concept screens/pf-21-complaints §4 "Record page", Workspace pattern; BR-1, BR-2, BR-4, BR-6, BR-8):
-// one complaint read only: header (who it is from, status, handler), the overdue or closed line, Facts on the left and
+// PF-21s part 3 + part 4 (concept screens/pf-21-complaints §4 "Record page", Workspace pattern; BR-1..BR-4, BR-6, BR-8):
+// one complaint: header (who it is from, status, handler), the overdue or closed line, Facts on the left and
 // "What happened" (every event, newest first) on the right; below 768 px the facts sit above the timeline. Not found has
-// one wording for another firm's, someone else's and a bad id (BR-4). The next-step bar and the action drawers are
-// PF-21s part 4; until then a person who may not act sees the read-only reason.
+// one wording for another firm's, someone else's and a bad id (BR-4). Part 4: a next-step bar with the one filled
+// button by status and the quiet secondary acts, each one panel (action-drawer.tsx); Change handler only with both keys
+// while open; a closed complaint takes a note only. A person who may not act sees the read-only reason instead. An act
+// refused with 404 (access lost while working) shows the not-found words and keeps nothing of the record on screen.
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -11,7 +13,8 @@ import { Loading } from "@/modules/front-office/sales/loading";
 import { cn } from "@/lib/utils";
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError } from "../session";
-import { canAct, CATEGORY, CHANNEL, day, dayTime, daysLeftWords, Detail, EVENT, fromOf, KIND, nameOf, NOT_FOUND, OUTCOME, READ_ONLY, statusOf, word, zoneName } from "./contract";
+import { ActionDrawer, keptAction } from "./action-drawer";
+import { ACTION, type Action, allowedActions, canAct, canChangeHandler, CATEGORY, CHANNEL, day, dayTime, daysLeftWords, Detail, EVENT, fromOf, KIND, nameOf, nextAction, NOT_FOUND, otherActions, OUTCOME, READ_ONLY, statusOf, word, zoneName } from "./contract";
 
 const Sample = ({ what = "Sample" }: { what?: string }) => <span className="ml-1 text-[11px] text-text-muted">{what}</span>;
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
@@ -27,9 +30,12 @@ function eventLine(e: Detail["events"][number], people: Record<string, string>):
 }
 
 export function NotFound() {
+  // Focus lands on the words, also after an act that found the complaint gone (break m5b).
+  const h = React.useRef<HTMLHeadingElement>(null);
+  React.useEffect(() => { h.current?.focus(); }, []);
   return (
     <div className="mx-auto mt-6 flex max-w-xl flex-col items-start gap-3 rounded-xl border border-border bg-surface-raised p-6" data-not-found>
-      <h1 className="text-lg font-semibold">Complaint not found</h1>
+      <h1 ref={h} tabIndex={-1} className="text-lg font-semibold outline-none">Complaint not found</h1>
       <p className="text-sm text-text-muted">{NOT_FOUND}</p>
       <Link to="/platform/complaints" className="text-sm font-medium text-text-link hover:underline">Back to Complaints</Link>
     </div>
@@ -44,7 +50,16 @@ function RecordBody({ id }: { id: string }) {
   // The page opens on its heading, so a keyboard or screen reader starts at the complaint (review m3, break m11).
   const heading = React.useRef<HTMLHeadingElement>(null);
   React.useEffect(() => { heading.current?.focus(); }, [q.data?.id]);
-  if (!isId) return <NotFound />;
+  // A panel left open when the session ended comes back after signing in again as the same person (break M3).
+  const [act, setAct] = React.useState<Action | null>(() => keptAction(me.staffId, id));
+  const [lost, setLost] = React.useState(false);
+  const primary = React.useRef<HTMLButtonElement>(null), opener = React.useRef<HTMLElement | null>(null);
+  // Focus goes back to the button that opened the panel while it is still on the page, else the filled one (break m5a).
+  const open = React.useCallback((a: Action) => { restoredAct.current = false; opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setAct(a); }, []);
+  // Only a panel brought back after sign-in is checked against what the complaint now allows (break m3); a panel the
+  // person opened stays open to show its own refusal.
+  const restoredAct = React.useRef(act !== null);
+  if (!isId || lost) return <NotFound />;
   if (q.isPending) return <Loading label="Loading the complaint" rows={4} />;
   if (q.isError) return q.error instanceof StaffApiError && (q.error.status === 404 || q.error.status === 403) ? <NotFound />
     : <p role="alert" className="text-sm text-text-danger">{q.error instanceof StaffApiError ? q.error.message : "Could not load the complaint."} <Button variant="link" size="sm" onClick={() => q.refetch()}>Try again</Button></p>;
@@ -63,6 +78,8 @@ function RecordBody({ id }: { id: string }) {
       {c.overdue && left ? <Notice tone="warn" title="Needs you">This complaint was due to be acknowledged by {day(c.acknowledgeBy, zone)} ({left.text}).</Notice> : null}
       {c.status === "CLOSED" ? <Notice tone="info" title={`Closed on ${c.closedAt ? day(c.closedAt, zone) : "—"} · outcome: ${word(OUTCOME, c.outcome)}`}>A closed complaint is kept as it is; add a note if something more happens. <span className="text-[11px]">Outcomes are a Sample list.</span></Notice> : null}
       {c.status === "OPEN" && !canAct(me, c) ? <p className="text-sm text-text-muted" data-read-only>{READ_ONLY}</p> : null}
+      {canAct(me, c) ? <NextStep c={c} me={me} onAct={open} primary={primary} /> : null}
+      {canAct(me, c) ? <ActionDrawer action={act && (!restoredAct.current || allowedActions(me, c).includes(act)) ? act : null} onAct={open} onClose={() => setAct(null)} complaint={c.id} dates={c} zone={zone} handlerId={c.handlerStaffId} onLost={() => { setAct(null); setLost(true); }} returnFocus={() => (opener.current?.isConnected && opener.current.dataset.act ? opener.current : primary.current ?? heading.current)} /> : null}
       <div className="grid gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <section aria-labelledby="pf-facts" className="rounded-xl border border-border bg-surface-raised px-4 py-3">
           <h2 id="pf-facts" className="text-sm font-semibold">Facts</h2>
@@ -96,6 +113,20 @@ function RecordBody({ id }: { id: string }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/** The next-step bar: the one filled button named for the act, the other acts quiet beside it, Change handler a link. */
+function NextStep({ c, me, onAct, primary }: { c: Detail; me: ReturnType<typeof usePlatformStaff>; onAct: (a: Action) => void; primary: React.RefObject<HTMLButtonElement | null> }) {
+  const next = nextAction(c), others = otherActions(c);
+  return (
+    <section aria-label="Next step" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 py-3" data-next-step={next}>
+      {c.status === "OPEN"
+        ? <Button ref={primary} onClick={() => onAct(next)} data-act={next}>{ACTION[next].title}</Button>
+        : <Button ref={primary} variant="outline" onClick={() => onAct("note")} data-act="note">{ACTION.note.title}</Button>}
+      {others.map((a) => <Button key={a} variant="secondary" onClick={() => onAct(a)} data-act={a}>{ACTION[a].title}</Button>)}
+      {canChangeHandler(me, c) ? <Button variant="link" className="ml-auto" onClick={() => onAct("handler")} data-act="handler">{ACTION.handler.title}</Button> : null}
+    </section>
   );
 }
 

@@ -15,8 +15,25 @@ export type JobPayload = z.infer<typeof JobPayload>;
  *  are one space across every firm (and `cancel` takes only the key), so a key must carry a uuid or the firm id: never a
  *  per-firm number alone (`invoice:INV-0001` of firm B would be lost behind firm A's). The firm is the tenant the job
  *  works for. */
-export const JobOptions = z.strictObject({ key: z.string().min(1).max(200), firmId: FirmId });
-export type JobOptions = z.infer<typeof JobOptions>;
+export const JobKey = z.string().min(1).max(200);
+/** PF-19p (Lead B rev 16.66 on #1961): the only queues a platform job may run on. A platform job (`platform: true`, no
+ *  firm) is the platform's own work for no firm: today only sending a platform account message (sign-up's verification
+ *  email, PLATFORM_ACCOUNT rows). Any other queue with `platform: true` is refused, here and by the runner, so "no job
+ *  without a firm" holds everywhere else. A platform job runs as the system role (PF-12) and never touches a firm's rows. */
+export const PLATFORM_JOB_QUEUES: readonly string[] = Object.freeze(["messages.send"]);
+/** Either `firmId` (a firm's job) or `platform: true` (a platform job), never both and never neither: a job naming
+ *  neither is refused as a firm job without its firmId. */
+export const JobOptions = z.discriminatedUnion("platform", [
+  z.strictObject({ platform: z.undefined().optional(), key: JobKey, firmId: FirmId }),
+  z.strictObject({ platform: z.literal(true), key: JobKey }),
+]);
+export type JobOptions = z.input<typeof JobOptions>;
+/** The firm a job is for, or null for a platform job; a platform job on a queue not in PLATFORM_JOB_QUEUES is refused. */
+export function jobFirmOf(name: string, o: z.output<typeof JobOptions>): string | null {
+  if (o.platform !== true) return o.firmId.toLowerCase();
+  if (!PLATFORM_JOB_QUEUES.includes(name)) throw new Error(`jobs: ${name}: a platform job (no firm) on a queue not in PLATFORM_JOB_QUEUES`);
+  return null;
+}
 /** A recurring schedule: five cron fields (minute hour day-of-month month day-of-week) read in an IANA zone. */
 export const CronSpec = z.object({
   cron: z.string().refine((c) => { try { parseCron(c); return true; } catch { return false; } }, "five cron fields: minute hour day month weekday"),
@@ -59,11 +76,11 @@ export function fakeJobs(clock: FakeClock): FakeJobs {
   const queue = (name: string, at: Date, payload: JobPayload, opts: JobOptions): { queued: boolean } => {
     JobName.parse(name);
     const p = JobPayload.parse(JSON.parse(JSON.stringify(JobPayload.parse(payload))) as unknown);
-    const o = JobOptions.parse(opts);
+    const o = JobOptions.parse(opts), firmId = jobFirmOf(name, o);
     if (!Number.isFinite(at.getTime())) throw new RangeError("schedule: `at` is not a time");
     if (used.has(`${name}\u0000${o.key}`)) return { queued: false };
     used.add(`${name}\u0000${o.key}`);
-    jobs.push({ id: nextId++, name, payload: p, key: o.key, firmId: o.firmId.toLowerCase(), runAt: new Date(at), attempt: 1, status: "waiting" });
+    jobs.push({ id: nextId++, name, payload: p, key: o.key, firmId, runAt: new Date(at), attempt: 1, status: "waiting" });
     return { queued: true };
   };
 

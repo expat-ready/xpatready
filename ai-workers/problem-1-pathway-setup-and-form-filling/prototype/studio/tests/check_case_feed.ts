@@ -60,7 +60,9 @@ ok("the platform list overlaps neither other list", [...PLATFORM_ENTITIES].every
 // line whose words name "case …" uses a case entity. PF-0p: every AuditPort write (`audit….record(tx, { entity, summary
 // … })`) is read too: its entity is a literal area entity (ports/audit.ts AREA_ENTITY), on neither case-side list, and its
 // words never name a case; the interim adapter (platform/audit/audit-event.ts) passes on what its callers give it, so
-// its callers are what the sweep reads (as core.ts's Audit.log).
+// its callers are what the sweep reads (as core.ts's Audit.log). AUD-1m: an AuditPort write that names a workspaceId is
+// a case line (ports/audit.ts CaseEntry, core.ts's Audit.log): its entity is a case or configuration entity, never an
+// area entity, so a case line is never read as a platform line, and the reverse.
 const DYNAMIC: Record<string, string[]> = {
   "L.name.toLowerCase()": ["pathway", "program", "category", "sub-category"],
   "LEVEL_WORD[c.level].toLowerCase()": ["pathway", "program", "category", "sub-category"],
@@ -80,21 +82,23 @@ function sweep(f: string, text: string, found: { where: string; entity: string; 
   const visit = (n: ts.Node) => {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
       const name = n.expression.name.text, callee = n.expression.getText(src), where = `${f.startsWith(API) ? f.slice(API.length + 1) : f}:${src.getLineAndCharacterOfPosition(n.getStart(src)).line + 1}`;
-      let entity: ts.Expression | undefined, words: ts.Expression | undefined, isWrite = false, isPort = false;
+      let entity: ts.Expression | undefined, words: ts.Expression | undefined, isWrite = false, isPort = false, isCaseLine = false;
       const fieldsOf = (arg: ts.Expression | undefined, nested: string | null) => {
         const data = nested && arg && ts.isObjectLiteralExpression(arg) ? arg.properties.find((p) => p.name?.getText(src) === nested) : undefined;
         const obj = !nested ? (arg && ts.isObjectLiteralExpression(arg) ? arg : undefined) : data && ts.isPropertyAssignment(data) && ts.isObjectLiteralExpression(data.initializer) ? data.initializer : undefined;
         const prop = (k: string) => { const p = obj?.properties.find((x) => x.name?.getText(src) === k); return p && ts.isPropertyAssignment(p) ? p.initializer : p && ts.isShorthandPropertyAssignment(p) ? p.name : undefined; };
         if (!obj) wrong.push(`${where} (an audit write whose data the sweep cannot read: ${arg?.getText(src).slice(0, 60)})`);
-        return { entity: prop("entity"), words: prop("summary") };
+        return { entity: prop("entity"), words: prop("summary"), workspace: !!obj?.properties.some((x) => x.name?.getText(src) === "workspaceId") };
       };
       if (name === "log" && !/^console\b/.test(callee) && n.arguments.length >= 5) { isWrite = true; entity = n.arguments[3]; words = n.arguments[5]; }
       else if ((name === "create" || name === "createMany") && /auditEvent$/.test(n.expression.expression.getText(src))) {
         isWrite = true;
         ({ entity, words } = fieldsOf(n.arguments[0], "data"));
       } else if (name === "record" && /audit\w*$/i.test(n.expression.expression.getText(src)) && n.arguments.length === 2) {
-        isWrite = true; isPort = true;   // PF-0p: an AuditPort write
-        ({ entity, words } = fieldsOf(n.arguments[1], null));
+        isWrite = true;   // PF-0p: an AuditPort write; AUD-1m: a case line when it names its workspace
+        let workspace: boolean;
+        ({ entity, words, workspace } = fieldsOf(n.arguments[1], null));
+        isPort = !workspace; isCaseLine = workspace;
         if (!entity && ts.isObjectLiteralExpression(n.arguments[1])) wrong.push(`${where} (an AuditPort write with no entity the sweep can read)`);
       }
       if (isWrite && entity) {
@@ -110,6 +114,7 @@ function sweep(f: string, text: string, found: { where: string; entity: string; 
             if (names) wrong.push(`${where} "${v}" is an AuditPort write whose words name a case`);
             continue;
           }
+          if (isCaseLine && (AREA_ENTITY.test(v) || PLATFORM_ENTITIES.has(v))) { wrong.push(`${where} "${v}" is a case line (CaseEntry) whose entity is an area or platform entity`); continue; }
           if (!CASE_ENTITIES.has(v) && !isConfigEntity(v) && !PLATFORM_ENTITIES.has(v)) wrong.push(`${where} "${v}" is on no list`);
           if (names && !CASE_ENTITIES.has(v)) wrong.push(`${where} "${v}" names a case but is not a case entity`);
         }
@@ -126,6 +131,13 @@ for (const f of files(API)) sweep(f, readFileSync(f, "utf8"), found, wrong);
   sweep("fo/leak.ts", "await this.audit.record(tx, { entity: \"sign step\", summary: `marked case ${c}` }); await audit.record(tx, { entity: kind, summary: \"x\" });", badF, badW);
   ok("pass (PF-0p): an AuditPort write of an area entity whose words name no case is read and accepted", okF.length === 1 && okF[0].entity === "fo_retainer" && okW.length === 0, okW);
   ok("fail (PF-0p): an AuditPort write of a case entity, words naming a case, or a dynamic entity is refused", badW.length === 3 && badW.some((w) => /not an area entity/.test(w)) && badW.some((w) => /name a case/.test(w)) && badW.some((w) => /dynamic/.test(w)), badW);
+  // AUD-1m: a case line through the port (it names its workspace) is read as a case line, never as a platform line.
+  const caseF: typeof found = [], caseW: string[] = [], leakF: typeof found = [], leakW: string[] = [];
+  sweep("case-thing.ts", "await auditEvent.record(db, { workspaceId, actor, action: \"signed\", entity: \"sign step\", entityKey: id, summary: `marked on case ${c}` });", caseF, caseW);
+  sweep("case-leak.ts", "await auditEvent.record(db, { workspaceId, entity: \"platform_staff\", summary: \"x\" }); await auditEvent.record(db, { workspaceId, entity: \"fo_retainer\", summary: \"x\" }); await auditEvent.record(db, { workspaceId, entity: thing, summary: \"x\" });", leakF, leakW);
+  ok("pass (AUD-1m): a case line through AuditPort (workspaceId, a case entity, words naming a case) is read as a case line and accepted", caseF.length === 1 && caseF[0].entity === "sign step" && caseF[0].names && caseW.length === 0, caseW);
+  ok("fail (AUD-1m): a case line through AuditPort of a platform or area entity, or of a dynamic entity, is refused", leakW.length === 3 && leakW.filter((w) => /area or platform entity/.test(w)).length === 2 && leakW.some((w) => /dynamic/.test(w)), leakW);
+  ok("pass (AUD-1m): no case or configuration entity is an area entity, and every platform entity is one", [...CASE_ENTITIES, ...CONFIG_ENTITIES].every((e) => !AREA_ENTITY.test(e)) && [...PLATFORM_ENTITIES].every((e) => AREA_ENTITY.test(e)));
 }
 const naming = found.filter((x) => x.names);
 ok(`the sweep reads the API's audit writes (${found.length} entity uses; ${naming.length} name a case, incl. filing-record.ts's new Audit(tx).log)`, naming.length >= 30 && naming.some((x) => x.entity === "sign step") && naming.some((x) => x.entity === "signed scan") && naming.some((x) => x.where.startsWith("filing-record.ts")), { naming: naming.length });

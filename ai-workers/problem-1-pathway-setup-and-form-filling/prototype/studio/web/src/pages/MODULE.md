@@ -21,6 +21,7 @@ The configuration studio's pages: programs, combinations and their workspace, li
 
 **Tables.** none directly (web).
 **Tests.** `tests/check_bk4a.ts`, `tests/check_gcore_b2_door.ts`, `tests/check_c316_field_scope.ts`, `tests/check_c46_preview_channels_browser.cjs`, `tests/check_forms_s4_library_browser.cjs`, `tests/check_bk5_start_browser.cjs`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Add a route outside `App.tsx` or `modules/` (README there).

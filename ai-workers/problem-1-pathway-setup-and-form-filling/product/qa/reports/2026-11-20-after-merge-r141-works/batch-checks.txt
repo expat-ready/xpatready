@@ -1,0 +1,6 @@
+# Run identities, read from the GitHub API by qa 7 on 20 Nov 01:39 IST
+run 44603961304 workflow=item-proof · 292847c320c35ecd74a4f7f5712579681be96db8 event=push head_sha=292847c320c35ecd74a4f7f5712579681be96db8 branch=main conclusion=success
+run 44604534795 workflow=walks event=workflow_dispatch head_sha=292847c320c35ecd74a4f7f5712579681be96db8 branch=main conclusion=success
+run 44598210725 workflow=ci event=pull_request head_sha=c6d80860b082b2a00fba6490d9024f4440eb27e2 branch=mergify/merge-queue/9de8f52fbf conclusion=success
+
+Merge batch: Mergify draft #2366 (holding #2302), head c6d80860b; studio folder tree d0dd16d62 at the batch head = at merge commit 292847c32 = at main 292847c32 (git, qa 7).

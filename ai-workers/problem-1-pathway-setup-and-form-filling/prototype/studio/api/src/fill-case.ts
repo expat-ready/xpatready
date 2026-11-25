@@ -38,6 +38,7 @@ import { solutionFile, writeForm } from "./fill.ts";
 import { trialFor, type EditionMap } from "./fill-trials.ts";
 import { ADDED_TAG, addedOn, dayWords, additionsOf, additionsOfStage, completedSince, withAdditions, type AddedRecord } from "../../engine/runtime/added-forms.ts";
 import { Runtime, type Reached } from "./runtime.ts";
+import { logPort } from "./platform/observability/log.ts";
 
 type H = string | undefined;
 /** `channel` (C11.6, Devin on #1056): the person's channel when the copy was asked for, frozen with its facts. */
@@ -378,7 +379,7 @@ export class CaseForms implements OnModuleInit {
     if (this.running) return;
     this.running = true;
     // A failing job never ends the server (break M7): each one is caught and its copy marked failed where it still exists.
-    try { for (let id = this.queue.shift(); id; id = this.queue.shift()) { try { await this.run(id); } catch (e) { console.error(`form copy ${short(id)}: ${(e as Error).message.slice(0, 200)}`); } } } finally { this.running = false; }
+    try { for (let id = this.queue.shift(); id; id = this.queue.shift()) { try { await this.run(id); } catch (e) { logPort.error("form_copy_failed", e, { copyId: id }); } } } finally { this.running = false; }
   }
 
   /** The job: writes exactly the facts frozen with the copy (not today's), so a copy is what was asked for. */

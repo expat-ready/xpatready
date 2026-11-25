@@ -4,6 +4,8 @@
 # check-label-guard.sh's. US$0, no network.   bash product/tools/check-g4-rules.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
+# ENF-803: a start brief's Duplicate check names the main sha and the exact IST time (brief-fresh.py); HEAD stands for main here
+export BRIEF_MAIN=HEAD; FRESH_DUP="read main $(git rev-parse --short=9 HEAD) at $(TZ=Asia/Kolkata date +%H:%M) IST;"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
 mkdir "$T/bin"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; W="$ROOTD/.github/workflows/pr-rules.yml"
@@ -57,7 +59,7 @@ merged=$(g rev-parse lane/merged); closed=$(g rev-parse lane/closed); after=$(g 
 g push -q origin --all 2>/dev/null; g fetch -q origin
 echo "[{\"headRefName\":\"lane/open\",\"headRefOid\":\"x\",\"state\":\"OPEN\"},{\"headRefName\":\"lane/merged\",\"headRefOid\":\"$merged\",\"state\":\"MERGED\"},{\"headRefName\":\"lane/after\",\"headRefOid\":\"$after\",\"state\":\"MERGED\"},{\"headRefName\":\"lane/closed\",\"headRefOid\":\"$closed\",\"state\":\"CLOSED\"}]" > "$T/all.json"
 echo '[{"id":"G-9","branch":"lane/reported"}]' > "$T/items.json"; printf '#!/bin/sh\ncase "$*" in *"--state all"*) cat "%s";; *) echo "[]";; esac\n' "$T/all.json" > "$T/bin/fakegh"
-out=$(cd "$R" && SWEEP_GH="sh $T/bin/fakegh" ITEMS="$T/items.json" bash "$TOOLS/branch-sweep.sh"); r=$?
+out=$(cd "$R" && SWEEP_GH="sh $T/bin/fakegh" ITEMS="$T/items.json" SWEEP_STATE_DIR="$T/sweep" bash "$TOOLS/branch-sweep.sh"); r=$?
 ok "(5) a branch ahead with no PR and no report is listed" "$(echo "$out" | grep -q '^ACT   lane/none: 1 commit' && echo 1)" "$out"
 ok "(5) a branch whose PR closed unmerged is listed" "$(echo "$out" | grep -q '^ACT   lane/closed' && echo 1)" "$out"
 ok "(5) a branch pushed after its PR merged is listed" "$(echo "$out" | grep -q '^ACT   lane/after: 2 commit' && echo 1)" "$out"
@@ -79,9 +81,11 @@ ps 900 100 "Size exception: P-1"; ok "(6) an exception naming a row that is not 
 grep -q 'pr-size.sh" "$CODE" 0' "$W" && grep -q 'contents: read' "$W" && grep -q 'screens|qa' "$W"; ok "(6) pr-rules.yml runs pr-size.sh on code and test lines only (records under screens/ and qa/ not counted), contents: read" "$([ $? = 0 ] && echo 1)"
 
 # (7) A lane start brief with no model and effort line is refused by lane-preflight.sh --hook (cloud starts too).
-lp() { out=$(jq -n --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{prompt:$p}}' | bash "$TOOLS/lane-preflight.sh" --hook); }
+# The stand-in row X-1 is a real backlog row: a throwaway focus list holds it, so ENF-733's focus-check.py (test: check-focus-list.sh) is not what (7) sees.
+printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"
+lp() { out=$(jq -n --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" bash "$TOOLS/lane-preflight.sh" --hook); }
 lp mcp__claude-code-remote__create_session "$GOOD"; ok "(7) a brief with no model and effort line is refused" "$(deny)" "$out"
-lp mcp__claude-code-remote__create_session "$GOOD"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a brief naming model and effort starts" "$([ -z "$out" ] && echo 1)" "$out"
+lp mcp__claude-code-remote__create_session "${GOOD/Duplicate check: /Duplicate check: $FRESH_DUP }"$'\nModel: Opus 5.5, effort: medium\nItem: R1.2'; ok "(7) a brief naming model and effort starts (R1.2 is Proven: wave 0, always open)" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a start naming no row (qa, standby) needs only the model and effort line" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session $'/next screens B124\nModel: Opus 5.5, effort: medium'; ok "(7) a /next brief naming a row (B124) still needs Done when and Duplicate check" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"

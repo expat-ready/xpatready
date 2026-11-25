@@ -2,10 +2,11 @@
 // the client uploading, another firm, an upload after Not applicable, a waiting line, two requests at once. US$0.
 //   tsx studio/tests/qa/check_qa_vv_1102_c64_storage.ts <port> <db>   (copy prepared by setup_visitor_visa.ts + setup_vv_m3.ts)
 import { CLIENT, FAMILY, OFFICER, PORT, call, main, needVisitorVisa, ok, openCase } from "../../acceptance/lib/m3.ts";
+import { textPdf } from "../../acceptance/lib/fixtures.ts"; // a PDF that opens: the case doors read it whole since CS-D1t (#2253)
 
 type Line = { id: string; label: string; state: string };
-const up = async (lineId: string | undefined, actor: string, bytes = "%PDF-1.4\n% Sample synthetic passport\n%%EOF\n", name = "sample.pdf") => {
-  const fd = new FormData(); fd.append("file", new Blob([new TextEncoder().encode(bytes)]), name);
+const up = async (lineId: string | undefined, actor: string, bytes: string | Uint8Array = new Uint8Array(textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Sample synthetic passport"])), name = "sample.pdf") => {
+  const fd = new FormData(); fd.append("file", new Blob([typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes]), name);
   const res = await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: { "x-actor": actor }, body: fd });
   return { status: res.status, body: await res.json().catch(() => null) as { detail?: string; state?: string } | null };
 };

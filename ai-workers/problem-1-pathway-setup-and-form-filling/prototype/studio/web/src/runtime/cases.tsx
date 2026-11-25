@@ -16,6 +16,7 @@ import { FindingsPanel } from "./findings";
 import { ReviewPage } from "./review";
 import { AnswerSheetPage } from "./answer-sheet"; // C7.3 (QA-317)
 import { SubmissionPanel } from "./submission"; // C8.2
+import { CaseDecisionPanel, CaseEndLine, CaseStatusPill } from "./case-decision"; // CS-C1s
 import { DocumentsPanel } from "./checklist"; // C6.4 (a)
 import { CaseTeamChip, OpeningTeam, useFirm } from "./team";
 import { EmployerLinkFor, EmployerLinkLine } from "./employer";
@@ -24,11 +25,13 @@ import { EligibilityCard, EligibilityPage } from "./eligibility";
 import { clientOf, PeopleAndFilings } from "./filing-changes"; // C6.13, A24-3
 import { ReleaseNotice } from "./release-update"; // C9.5
 import { EarlierStages, earlierOf, StageStrip } from "./stages"; // C6.17
+import { GovernmentSteps } from "./milestones"; // CS-DL3 part 2
 import { OfficerPeoplePanel } from "./privacy"; // C6.16
 import { RepresentativeReviewLatest, RepresentativeReviewPage } from "./representative-review"; // C8.3
 import { CaseReadinessPill } from "./readiness-figure"; // C7.10
 import { HandOff, handedFrom } from "./hand-off"; // BK-4c
 import { clientCardState } from "./client-card"; // QA-427
+import { CaseAreaNav } from "./clients"; // CS-K1s
 import type { CaseListRow, OpenableRelease } from "../../../contracts/runtime";
 
 /** Simulated case people (the firm and the clients of lib/simulated-people.ts, BK-4a); the picker is demo chrome. */
@@ -58,8 +61,8 @@ export function RuntimeApp() {
   if (!isCasePerson(getActor())) return casesLeaving() || !personChosen() ? null : <NotACasePerson />;
   const client = isClient(actor);
   return (
-    <Frame area={client ? "client" : "cases"} title={client ? "Your application" : "Cases"} home={client ? undefined : "/cases"} staff={!client}
-      controls={<PersonPicker area={client ? "client" : "cases"} />}>
+    <Frame area={client ? "client" : "cases"} workspace={!client} title={client ? "Your application" : "Cases"} home={client ? undefined : "/cases"} staff={!client}
+      controls={<>{client ? null : <CaseAreaNav />}<PersonPicker area={client ? "client" : "cases"} /></>}>
       <Routes>
         <Route index element={<CaseList />} />
         <Route path="clients" element={<Navigate to="/cases" replace />} />
@@ -84,7 +87,7 @@ function NotACasePerson() {
   const me = personOf(getActor());
   const officer = personOf(CASE_OFFICER)!;
   return (
-    <Frame area="cases" title="Cases" home="/cases" staff controls={<PersonPicker area="cases" />}>
+    <Frame area="cases" workspace title="Cases" home="/cases" staff controls={<PersonPicker area="cases" />}>
       <div className="mx-auto max-w-5xl space-y-4" data-not-case-person>
         <h1 className="text-2xl font-semibold">Cases</h1>
         <Notice title="Cases are worked by the firm" action={<Button size="sm" variant="secondary" onClick={() => setActor(CASE_OFFICER)} data-continue-as-officer>Continue as {officer.name} <ArrowRight /></Button>}>
@@ -358,7 +361,8 @@ function CasePage() {
     <div className="mx-auto max-w-7xl space-y-5">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold [overflow-wrap:anywhere]"><span data-case-number-h className="tabular-nums">{c.case_number}</span>{c.reference ? <span className="text-lg font-normal text-text-muted" data-case-own-reference>{c.reference}</span> : null}<Pill>{c.status === "OPEN" ? "Open" : c.status}</Pill><ReleasePill c={c} /></h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold [overflow-wrap:anywhere]"><span data-case-number-h className="tabular-nums">{c.case_number}</span>{c.reference ? <span className="text-lg font-normal text-text-muted" data-case-own-reference>{c.reference}</span> : null}<CaseStatusPill caseId={c.id} status={c.status} /><ReleasePill c={c} /></h1>
+          <CaseEndLine caseId={c.id} />
           <div className="mt-1 empty:hidden"><CaseReadinessPill caseId={c.id} /></div>
           {/* BK-3 PR 3 (P-447 (2)): the case names its client and opens their page; the person acting stays the same.
               A24-3 (P-492, CS-8): by the client person's name (one client per case), then a link to the simulated login's cases
@@ -390,6 +394,8 @@ function CasePage() {
         </div>
       </div>
       <StageStrip caseId={c.id} />
+      {/* CS-DL3 part 2 (R1.74, QA-591): IRCC's steps with the due date on its letter, under the stage deadline. */}
+      <GovernmentSteps caseId={c.id} />
       <ReleaseNotice caseId={c.id} />
       {/* C6.13 (B135): people with their filings, Make principal, Remove filing and Add filing back. */}
       <PeopleAndFilings caseId={c.id} people={c.people} canAdd={c.can_add ?? []} onAdd={setAdding} roleOf={roleOf} nameOf={nameOf} />
@@ -401,6 +407,7 @@ function CasePage() {
       <FormsPanel caseId={c.id} />
       <FindingsPanel caseId={c.id} people={c.people} openLink={`/cases/${c.id}/review`} />
       <SubmissionPanel caseId={c.id} />
+      <CaseDecisionPanel caseId={c.id} />
       {/* C6.16: who answers for each person and their own links, next to the Agent view where their answers are (placed
           below the case panels so its late load never moves them: check_c69_page_browser's focus check). */}
       <OfficerPeoplePanel caseId={c.id} />

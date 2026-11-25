@@ -1,0 +1,78 @@
+Official sources: 0 fetched and verified, 0 failed, nothing pending.
+PASS  J-77 setup: Demo › Load the configured checkpoint — 201
+PASS  J-77 setup: a Visitor visa case for Sample Client J77 is Ready to file (C7.6) — {"ready":["b004ff24-2cee-47e6-8e6b-b97bc99d99d8"],"fA":"b004ff24-2cee-47e6-8e6b-b97bc99d99d8"}
+PASS  J-77 setup: case C has a filing, not submitted
+PASS  J-77 setup: firm B (Sample solo firm) has its own case — 201
+PASS  J-77 axe: the Record the submission dialog: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the Record the submission dialog: no sideways page scroll
+PASS  J-77 1024 px: the Record the submission dialog: no sideways page scroll
+PASS  J-77 W1 pass: the case officer records the application number and the UCI on the case page; the filing is submitted — ["V300077001","1177-0077"]
+PASS  J-77 W2 pass: with no firm staff sign-in the panel offers the sign-in in place, no act
+PASS  J-77 axe: the Decision and closing panel, a submitted filing: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the Decision and closing panel, a submitted filing: no sideways page scroll
+PASS  J-77 1024 px: the Decision and closing panel, a submitted filing: no sideways page scroll
+PASS  J-77 DW1 pass: the panel offers exactly what the server's read lists in `can` (decide on the submitted filing, withdraw; no close, no reopen) — [{"decide":["b004ff24-2cee-47e6-8e6b-b97bc99d99d8"],"withdraw":true,"close":false,"reopen":false},{"decide":1,"withdraw":1,"close":0,"reopen":0}]
+PASS  J-77 DW1 NR: against the stand-in the judge fails: the self-trusting screen's buttons are not the server's `can` (it offers Close) — [{"decide":[],"withdraw":true,"close":false,"reopen":false},{"decide":0,"withdraw":1,"close":1,"reopen":0}]
+PASS  J-77 DW1 NR: and the API refuses it (409), shown in the screen's words with no rule number; the case stays open — "Every filing needs a decision before the case is closed. Before any decision, withdraw the case."
+PASS  J-77 DW4 NR: against the stand-in (a refused close on an active case, whose success would take it off) the judge fails: the count did not move — {"before":3,"now":3}
+PASS  J-77 DW1: the stand-in's route ran without error — []
+PASS  J-77 DW1 pass: on case C the panel offers exactly the server's `can` (withdraw only: its filing is not submitted)
+PASS  J-77 axe: the Withdraw the case dialog: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the Withdraw the case dialog: no sideways page scroll
+PASS  J-77 1024 px: the Withdraw the case dialog: no sideways page scroll
+PASS  J-77 W4b pass: withdrawn, the header reads Withdrawn, with the withdrawal date and the reason — "Withdrawn \nSample\n on 17 Nov 2026 (recorded 19 Nov 2026) · Reason: The client withdrew before any decision (Sample)"
+PASS  J-77 W4b data: the case is CLOSED WITHDRAWN with one WITHDRAWAL row dated as typed
+PASS  J-77 DW2 pass: the withdrawal wrote one audit line, case.withdrawn by staff:<the representative's id> — ["case.withdrawn|staff:beb41b92-057b-48a3-8ad3-6d9952716cec"]
+PASS  J-77 DW4 pass: the withdrawal took case C off the active count — {"before":3,"now":2}
+PASS  J-77 axe: the case header, withdrawn: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the case header, withdrawn: no sideways page scroll
+PASS  J-77 1024 px: the case header, withdrawn: no sideways page scroll
+PASS  J-77 axe: the Record a decision dialog: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the Record a decision dialog: no sideways page scroll
+PASS  J-77 1024 px: the Record a decision dialog: no sideways page scroll
+PASS  J-77 W2 pass: Approved (Sample) is recorded with the authority's date and the note; the row says so, marked Sample
+PASS  J-77 W3 pass: on a decided filing the act is Correct the decision, which keeps the earlier one
+PASS  J-77 W3 pass: Refused (Sample) is the latest; 1 earlier decision opens the history in place, with who recorded each — "Refused (Sample) · decided 19 Nov 2026 · recorded by Representative (Sample) on 19 Nov 2026\nApproved (Sample) · decided 18 Nov 2026 · recorded by Representative (Sample) on 19 Nov 2026 · “Visa counterfoil received (Sample)”"
+PASS  J-77 axe: the panel with the decision history open: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the panel with the decision history open: no sideways page scroll
+PASS  J-77 1024 px: the panel with the decision history open: no sideways page scroll
+PASS  J-77 W4 pass: once a filing is decided the panel no longer offers Withdraw
+PASS  J-77 W4 fail: the Withdraw held open in another tab is refused in the screen's words; the case stays open
+PASS  J-77 DW2 pass: the decision and its correction each wrote one audit line on the case, actor staff:<the representative's id> — ["case.decision.recorded|staff:beb41b92-057b-48a3-8ad3-6d9952716cec","case.decision.recorded|staff:beb41b92-057b-48a3-8ad3-6d9952716cec"]
+PASS  J-77 DW4 pass: the decision took the case off the active count (every filing decided) — {"before":2,"now":1}
+PASS  J-77 DW2 NR: against the stand-in (the simulated person's header, no session) the act is 401 and the judge fails: no line — 401
+PASS  J-77 axe: the Close the case dialog: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the Close the case dialog: no sideways page scroll
+PASS  J-77 1024 px: the Close the case dialog: no sideways page scroll
+PASS  J-77 W5 pass: closed with the reason; the header reads Closed and the line gives how, when, the decision and the reason — "Closed by staff \nSample\n on 19 Nov 2026 · Decision: Refused \nSample\n · Reason: Refusal explained to the client; file complete (Sample)"
+PASS  J-77 axe: the case header and panel, closed: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the case header and panel, closed: no sideways page scroll
+PASS  J-77 1024 px: the case header and panel, closed: no sideways page scroll
+PASS  J-77 W5 data: the case row is CLOSED, CLOSED_BY_STAFF, with the reason and the stage it closed from
+PASS  J-77 DW2 pass: the close wrote one more line by the same staff member — ["case.closed|staff:beb41b92-057b-48a3-8ad3-6d9952716cec"]
+PASS  J-77 DW4 pass: closed, the case stays off the active count — {"before":2,"now":1}
+PASS  J-77 W6 pass: Reopen says where the case goes back to
+PASS  J-77 axe: the Reopen the case dialog: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the Reopen the case dialog: no sideways page scroll
+PASS  J-77 1024 px: the Reopen the case dialog: no sideways page scroll
+PASS  J-77 W6 pass: reopened, the header is Open again with no closing line, and the case is at the stage it closed from
+PASS  J-77 DW4 pass: reopening put the case back on the active count — {"closed":1,"now":2}
+PASS  J-77 DW2 pass: one line per act, in order, each by staff: decision, correction, close, reopen — ["case.decision.recorded|staff:beb41b92-057b-48a3-8ad3-6d9952716cec","case.decision.recorded|staff:beb41b92-057b-48a3-8ad3-6d9952716cec","case.closed|staff:beb41b92-057b-48a3-8ad3-6d9952716cec","case.reopened|staff:beb41b92-057b-48a3-8ad3-6d9952716cec"]
+PASS  J-77 DW3 pass: firm A's session gets 404 on firm B's case; firm B's own session reads it (200) — [404,200]
+PASS  J-77 DW3 NR: against the stand-in (the simulated-person read, its firm taken from the header) the judge fails: 200 on firm B's case — 200
+PASS  J-77 DW3 break: firm A's session with firm B's person in the header is still 404, never B's rows — 404
+PASS  J-77 DW3 pass (screen): on firm B's case page the panel says, in words, that the case is not in the signed-in firm; no act
+PASS  J-77 axe: the firm B notice in the panel: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the firm B notice in the panel: no sideways page scroll
+PASS  J-77 1024 px: the firm B notice in the panel: no sideways page scroll
+PASS  J-77 W7 pass: with an earlier-stage filing never submitted, Close is not offered; the panel counts 1 of 2 decided and names that filing — "Close the case once every filing has a decision: 1 of 2 decided. Not submitted yet: Sample Client J77 W (Study permit (Sample, earlier stage))."
+PASS  J-77 W7 pass: the earlier stage's filing is a row of its own, marked as the earlier stage and Not submitted yet
+PASS  J-77 axe: the panel with an earlier-stage filing: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the panel with an earlier-stage filing: no sideways page scroll
+PASS  J-77 1024 px: the panel with an earlier-stage filing: no sideways page scroll
+PASS  J-77 end: the walk ends on the case list, where the reopened case is listed Open (the next step: its work goes on)
+PASS  J-77 axe: the case list: no WCAG 2.2 A/AA violation — []
+PASS  J-77 1440 px: the case list: no sideways page scroll
+PASS  J-77 1024 px: the case list: no sideways page scroll
+PASS  J-77: no error in the browser — []
+76/76 passed

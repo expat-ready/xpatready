@@ -11,7 +11,7 @@ import { carriedFacts, employerLinkOffer, factState, LINKED_FILE, STAND_IN_SI10,
 import { inStoredOrder } from "../../engine/runtime/team.ts";
 import { checkValue } from "../../engine/runtime/case.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { actorOf, CaseRead, Db, fail, type Actor } from "./core.ts";
+import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { employerCasesOf, linkedOf, RELIED_ON, type Linked } from "./employer-cases.ts";
 import { Runtime } from "./runtime.ts";
 
@@ -111,8 +111,8 @@ export class EmployerLinks {
         out.push(l.fact);
       }
       const linked: Linked = { from_case: r.c.id, to_case: ec!.key, label: ec!.label, kind: "worker_permit", status: "ACTIVE", created_by: actor.id, created_at: at, facts: out };
-      await tx.auditEvent.create({ data: { workspaceId: r.c.workspaceId, actor: actor.id, action: RELIED_ON, entity: "case", entityKey: r.c.id, combinationId: r.c.combinationId, detail: linked as object,
-        summary: `${actor.name} linked case ${r.c.id.slice(0, 8)} to the employer case ${ec!.key} and copied ${out.length} fact${out.length === 1 ? "" : "s"} (${out.join(", ") || "none"}); later changes there are not copied` } });
+      await new Audit(tx as never).log(r.c.workspaceId, actor.id, RELIED_ON, "case", r.c.id,
+        `${actor.name} linked case ${r.c.id.slice(0, 8)} to the employer case ${ec!.key} and copied ${out.length} fact${out.length === 1 ? "" : "s"} (${out.join(", ") || "none"}); later changes there are not copied`, linked, r.c.combinationId);
       return out;
     }).catch((e: unknown) => { if ((e as { code?: string }).code === "P2002") stale(["an answer saved at the same moment"]); throw e; });
     return { ...(await this.list(actor, caseId)), copied: written,

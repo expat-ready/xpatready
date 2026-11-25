@@ -4,7 +4,7 @@ import { HttpException } from "@nestjs/common";
 import type { Use, UsesView } from "../../contracts/structure.ts";
 import type { Prisma } from "@prisma/client";
 import { manifest } from "../../engine/import.ts";
-import { ACTORS, type Db } from "./core.ts";
+import { ACTORS, actorWordOf, type Db } from "./core.ts";
 import { combinationTrails, formLines, formReleases } from "./where-used.ts";
 
 const problem = (status: number, title: string, detail: string) => new HttpException({ type: `https://expatready.local/problems/${title.toLowerCase().replace(/[^a-z]+/g, "-")}`, title, status, detail }, status);
@@ -42,7 +42,7 @@ export async function formUses(db: Db, workspaceId: string, code: string, except
   // Break M1: a retired line still points to it (its history keeps the form), so it can only be retired, never deleted.
   const retiredOnly = [...newest.values()].filter((l) => l.status === "RETIRED");
   const p = pending ? "A change to it is already open." : null;
-  const history = (await db.auditEvent.findMany({ where: { workspaceId, entityKey: code }, orderBy: { at: "desc" }, take: 10, select: { at: true, actor: true, summary: true } })).map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (r.actor === "system" ? "The studio" : r.actor), what: r.summary }));
+  const history = (await db.auditEvent.findMany({ where: { workspaceId, entityKey: code }, orderBy: { at: "desc" }, take: 10, select: { at: true, actor: true, summary: true } })).map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (actorWordOf(r.actor) === "system" ? "The studio" : r.actor), what: r.summary }));
   return { key: code, label: `${code} · ${def.displayName}`, trail: [code], retired: !!def.retiredAt, released: wasReleased, uses,
     can: {
       delete: p ?? (approved ? "Its approved official file is kept, never deleted: retire it instead." : wasReleased ? "It was released, so it is retired, never deleted (released versions and cases point to its exact edition)." : retiredOnly.length ? `A retired line on ${trails.get(retiredOnly[0].combinationId) ?? retiredOnly[0].combination.label} still points to it: retire it instead.` : blocking.length ? `Still used: ${blocking.slice(0, 3).map((u) => u.label).join("; ")}. Remove it there first.` : def.retiredAt ? "It is retired." : null),

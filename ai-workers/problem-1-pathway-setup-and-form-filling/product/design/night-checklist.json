@@ -1,0 +1,41 @@
+{
+  "about": "Night checklist (A334 fix 1, A332): product first, operating-system work beside it. Read by tools/night-checklist.py each check (lead-watch.sh step 10b). An item is done only when proof is {\"pr\": N} and #N is merged on main; prose never counts. due_ist is IST. The Lead adds product items and sets proof after the merge.",
+  "items": [
+    {
+      "id": "OS-1",
+      "track": "operating system",
+      "title": "Idle-lane alarm and the enforced night checklist in the Lead's check (A334 (1))",
+      "owner": "cloud tooling lane",
+      "done_when": "check-lead-watch-idle.sh passes on main and lead-watch.sh prints the idle-lane ACT lines and this checklist",
+      "due_ist": "2026-11-25 23:59",
+      "proof": null
+    },
+    {
+      "id": "OS-2",
+      "track": "operating system",
+      "title": "The 26's parts in focus-list.md (A334 (2))",
+      "owner": "the Lead",
+      "done_when": "focus-list.md on main lists the parts of each of the 26",
+      "due_ist": "2026-11-25 23:59",
+      "proof": null
+    },
+    {
+      "id": "OS-3",
+      "track": "operating system",
+      "title": "#3035 (SPD-2: one migration slot per schema area, re-stamp check at queue time, PR suites by module) (A334 (3))",
+      "owner": "the Lead",
+      "done_when": "#3035 merged on main",
+      "due_ist": "2026-11-25 23:59",
+      "proof": {"pr": 3035}
+    },
+    {
+      "id": "OS-4",
+      "track": "operating system",
+      "title": "The nine suites that fail packed (A334 (4))",
+      "owner": "cloud tooling lane",
+      "done_when": "the nine suites that fail when packed pass packed on main",
+      "due_ist": "2026-11-25 23:59",
+      "proof": null
+    }
+  ]
+}

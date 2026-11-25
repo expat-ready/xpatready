@@ -20,7 +20,7 @@ const S = join(HERE, "../../prototype/studio"), TSC = join(S, "node_modules/.bin
 const args = process.argv.slice(2), opt = (name) => args.flatMap((a, i) => (a === name ? [args[i + 1]] : []));
 const projects = opt("--project").length
   ? opt("--project").map((p) => { const [name, ...rest] = p.split("="); return { name, path: resolve(rest.join("=")) }; })
-  : ["api", "web"].map((name) => ({ name, path: join(S, name, "tsconfig.json") }));
+  : [["api", "tsconfig.check.json"], ["web", "tsconfig.json"]].map(([name, file]) => ({ name, path: join(S, name, file) }));   // api: its own tsconfig plus one shared Prisma client type (api/check/prisma-client.ts says why)
 const KNOWN = opt("--known")[0] ? resolve(opt("--known")[0]) : join(HERE, "typecheck-known.txt");
 if (!existsSync(TSC)) { console.log("tsc is missing: run npm ci in prototype/studio (cloud-setup.sh); nothing was checked"); process.exit(2); }
 

@@ -34,13 +34,13 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { LETTER_READ_CARD, runCardUsd } from "../../../p2/ledger.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { cleanName, INVISIBLE, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, MAX_REASON, MEDIA, mediaOf } from "../../contracts/documents.ts";
+import { INVISIBLE, MAX_DOCUMENT_BYTES, MAX_REASON } from "../../contracts/documents.ts";
 import { CODED_IDENTITY, identityOf, identityWords, isIdentityName, isPassportPhoto } from "../../engine/identity-documents.ts";
 import { MRZ_FACTS, readPassport } from "../../engine/runtime/mrz.ts";
 import { isFilingFact } from "../../engine/resolver.ts";
 import { checkValue, shapeOf } from "../../engine/runtime/case.ts";
 import type { Snapshot } from "../../engine/snapshot.ts";
-import { CaseActorGuard, utf8Name } from "./case-checklist.ts";
+import { CaseActorGuard, checkedCaseFile } from "./case-checklist.ts";
 import { actorOf, Audit, CaseRead, Db, fail, PROTOTYPE, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { aiLive } from "./sources.ts";
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
@@ -48,7 +48,7 @@ import { sameValue } from "./document-values.ts";
 export { sameValue };
 
 type H = string | undefined;
-type Upload = { fieldname?: string; originalname?: string; buffer?: Buffer; size?: number };
+type Upload = { fieldname?: string; originalname?: string; mimetype?: string; buffer?: Buffer; size?: number };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FACT = /^[a-z][a-z0-9_]*\.[a-z0-9_.]+$/;
 const short = (id: string) => id.slice(0, 8);
@@ -289,13 +289,9 @@ export class CaseDocuments {
     if (!CASE_KINDS[b.documentType]) fail(this.typesOf(c).some((t) => t.key === b.documentType) ? `${this.typeName(c, b.documentType)} has its own line on the person's checklist: upload it there. Nothing was stored.` : `"${b.documentType}" is not a document that can be added without a checklist line. Nothing was stored.`, HttpStatus.UNPROCESSABLE_ENTITY);
     const f = (files ?? []).filter((x) => x.buffer);
     if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
-    const bytes = f[0].buffer!;
-    if (!bytes.length) fail("The file is empty. Nothing was stored.");
-    if (bytes.length > MAX_DOCUMENT_BYTES) fail(`The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
-    const media = mediaOf(bytes);
-    if (!media) fail("Send a PDF, JPEG or PNG file (judged by the file itself, not its name). Nothing was stored.", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    const bytes = f[0].buffer!, checked = await checkedCaseFile(f[0]);   // CS-D1t (R1.67): PF-F4's one check, before anything is written
     const docId = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
-    const rel = join("people", who.subjectId, "documents", `${docId}.${MEDIA[media!]}`), abs = join(DOCS(), rel);
+    const rel = join("people", who.subjectId, "documents", `${docId}.${checked.extension}`), abs = join(DOCS(), rel);
     const now = new Date();
     try {
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
@@ -303,13 +299,13 @@ export class CaseDocuments {
         // One current file per person and type (case_document_one_current): the earlier one is kept as history.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-document|${who.subjectId}|${b.documentType}`}))`;
         await tx.caseDocument.updateMany({ where: { subjectId: who.subjectId, documentType: b.documentType, current: true }, data: { current: false, supersededAt: now } });
-        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: who.subjectId, documentType: b.documentType, checklistLineId: null, fileName: cleanName(utf8Name(f[0].originalname)),
-          mediaType: media!, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
+        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: who.subjectId, documentType: b.documentType, checklistLineId: null, fileName: checked.name,
+          mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
       });
     } catch (e) { rmSync(abs, { force: true }); throw e; }
-    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${this.typeName(c, b.documentType)} for the ${who.role.replace(/_/g, " ")} on case ${short(c.id)} (${MEDIA[media!].toUpperCase()}, ${bytes.length} bytes; no checklist line)`);
-    return { document: { id: docId, subject: who.subjectId, document_type: b.documentType, document_name: this.typeName(c, b.documentType), current: true, file_name: cleanName(utf8Name(f[0].originalname)),
-      media_type: media, size_bytes: bytes.length, sha256, uploaded_by: actor.id, uploaded_at: now.toISOString() } };
+    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${this.typeName(c, b.documentType)} for the ${who.role.replace(/_/g, " ")} on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes; no checklist line${checked.flagWords})`);
+    return { document: { id: docId, subject: who.subjectId, document_type: b.documentType, document_name: this.typeName(c, b.documentType), current: true, file_name: checked.name,
+      media_type: checked.mediaType, size_bytes: bytes.length, sha256, uploaded_by: actor.id, uploaded_at: now.toISOString() } };
   }
 
   /** The section's facts and the person's current documents that can give one of them, each with its reader. */
@@ -403,14 +399,23 @@ export class CaseDocuments {
    *  case's firm only, so the officer can see the page while checking names and dates. Never a client's other case,
    *  never another firm (404 in the same words as an unknown id). */
   async file(actor: Actor, documentId: string) {
+    const x = await this.reachDocument(actor, documentId);
+    const bytes = await x.bytes();
+    await this.audit.log(x.workspaceId, actor.id, "viewed", "case document", x.document.id, `${actor.name} viewed ${x.typeName} on case ${short(x.caseId)}`);
+    return { bytes, media: x.document.mediaType, name: x.document.fileName };
+  }
+
+  /** CS-D5 (the one export it adds here): a stored document reached exactly as `file()` reaches it (staff of the case's
+   *  firm, `"officer"`; 404 in the same words for an unknown id or another firm), WITHOUT writing "viewed": its record,
+   *  its case's workspace and number, its type's name and a reader of its checked bytes. The preview writes its own line. */
+  async reachDocument(actor: Actor, documentId: string) {
     if (!UUID.test(documentId)) fail("No such document.", HttpStatus.NOT_FOUND);
     const d = await this.db.caseDocument.findUnique({ where: { id: documentId.toLowerCase() } });
     const p = d ? await this.db.caseParticipant.findFirst({ where: { subjectId: d.subjectId }, select: { caseId: true } }) : null;
     if (!d || !p) fail("No such document.", HttpStatus.NOT_FOUND);
     const c = await this.r.reach(actor, p!.caseId, "officer").catch((e: unknown) => { if (e instanceof HttpException && e.getStatus() === HttpStatus.NOT_FOUND) fail("No such document.", HttpStatus.NOT_FOUND); throw e; });
-    const bytes = await this.bytesOf(d!.id);
-    await this.audit.log(c.workspaceId, actor.id, "viewed", "case document", d!.id, `${actor.name} viewed ${this.typeName(c, d!.documentType)} on case ${short(c.id)}`);
-    return { bytes, media: d!.mediaType, name: d!.fileName };
+    const document = d!;
+    return { document, workspaceId: c.workspaceId, caseId: c.id, typeName: this.typeName(c, document.documentType), bytes: () => this.bytesOf(document.id) };
   }
 
   /** A stored document's bytes, checked against its sha256. */

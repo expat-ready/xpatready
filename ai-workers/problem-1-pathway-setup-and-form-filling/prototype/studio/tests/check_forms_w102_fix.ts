@@ -40,7 +40,7 @@ const onlineEdition = (ws: string, defId: string, label: string) => sql(`insert 
   ok("C3.8: break M1 fail cases: a form with its PDF, and a checklist, have no such error", channelProblems(snap([{ form_number: "IMM 1295", form_kind: "data_form" }, { form_number: "IMM 5488", form_kind: "document_checklist", online_only: true }])).length === 0);
 
   await call("POST", "/demo/load");
-  const ws = sql("select id from workspace limit 1");
+  const ws = sql("select id from workspace where key <> 'platform-audit' limit 1");
   const wp = sql("select id from combination where combination_key='wp.family'");
   const vv = sql("select id from combination where combination_key='vv.single'");
   const status = (await call("GET", "/demo/status")).body.scope?.rows ?? {};

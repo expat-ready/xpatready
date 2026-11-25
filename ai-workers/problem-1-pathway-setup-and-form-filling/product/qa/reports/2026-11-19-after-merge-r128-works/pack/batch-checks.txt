@@ -1,0 +1,12 @@
+135671454162 | check_fo3w_manage_browser.ts | PASS | 18 s | 50/50 passed |
+135671454263 | check_fo2_leads_prospects.ts | PASS | 7 s | FO-2 leads (parts 1-2): 113 passed, 0 failed |
+135671454340 | check_fo2p3b_arrival_port.ts | PASS | 7 s | FO-2p3b the real ArrivalPort: 51 passed, 0 failed |
+135671454340 | check_pf19a_messages_schema.ts | PASS | 21 s | 94 passed, 0 failed |
+135671454363 | check_fo2v_lead_visibility.ts | PASS | 6 s | FO-2v lead visibility: 14 passed, 0 failed |
+135671454363 | check_pf19b_mail.ts | PASS | 8 s | 28 passed, 0 failed |
+135671454403 | check_fo3w_booking_browser.ts | PASS | 67 s | 67/67 passed |
+135671454438 | check_fo2p3_prospects.ts | PASS | 6 s | FO-2p3 Individual prospects: 44 passed, 0 failed |
+135671454509 | check_pf19b_sending.ts | PASS | 5 s | 40 passed, 0 failed |
+135671454573 | check_fo2p4_calls_timeline.ts | PASS | 5 s | FO-2p4 calls, notes and the timeline: 30 passed, 0 failed |
+135671454573 | check_pf19b2_ses.ts | PASS | 10 s | 44 passed, 0 failed |
+135671454849 | check_fo2b_corporate.ts | PASS | 6 s | FO-2b Corporate prospects: 61 passed, 0 failed |

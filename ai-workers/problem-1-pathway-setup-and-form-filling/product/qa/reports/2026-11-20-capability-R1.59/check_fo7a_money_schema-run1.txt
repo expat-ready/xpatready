@@ -1,0 +1,127 @@
+NOTICE:  database "xr_studio_fo7a_empty_27255" does not exist, skipping
+NOTICE:  database "xr_studio_fo7a_demo_27255" does not exist, skipping
+NOTICE:  database "xr_studio_fo7a_bare_27255" does not exist, skipping
+PASS  FO-7a: the migration has its own stamp, later than every one before it (newest before it: 20261115013000_fo13_compliance_tables; P-348 (8), P-600 (4)), and after PF-3's
+PASS  FO-7a fail: before FO-7a's migration there is no money_ table and the schema differs (diff names money_invoice)
+PASS  FO-7a pass: every migration applies to an empty database; the fourteen money_ tables exist
+PASS  FO-7a pass: migrate diff from the migrated empty database to the schema names no money table or type
+PASS  FO-7a fail: the migration does not apply twice (it is never re-run silently)
+PASS  FO-7a pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were
+PASS  FO-7a pass: migrate diff after it on the demo-data copy names no money table or type
+PASS  FO-7a pass: firm_id is first in every index of every money_ table (primary keys aside), but the one global index on the Stripe account id (webhooks are routed by it before the firm is known; review round 1, m1)
+PASS  FO-7a fail: this check sees an index without firm_id first (one made and dropped for the test)
+PASS  FO-7a pass: every amount is an integer — every *_minor column is integer, and no money_ column is a float or a decimal
+PASS  FO-7a pass: every table with an amount carries its currency, as an enum of CAD and USD
+PASS  FO-7a pass: no workspace_id (the demo reset leaves these rows), every instant is timestamptz, only due_date is a date
+PASS  FO-7a: no secret column — no money_ column is named like a password, secret, token or API key (AG-16-18)
+PASS  FO-7a pass (AG-6-59, -46): a firm's money settings start with trust off (unanswered), CAD and due in 14 days
+PASS  FO-7a fail: money settings for a firm that does not exist are refused (23503), and a second row for a firm is refused
+PASS  FO-7a pass: the Owner answers the trust question Yes (trust on for the cases below)
+PASS  FO-7a fail: a firm's money settings never move to another firm
+PASS  FO-7a pass (AG-16-14..18): the payment account starts NOT_CONNECTED, then PENDING and ACTIVE with charges on, with the firm's own acct_ id
+PASS  FO-7a fail: an ACTIVE account without an id, charges on while PENDING, a malformed id, or another firm's account id are refused
+PASS  FO-7a fail (parallel, REPEATABLE READ; review round 1 m1, break B-3): two firms connecting one Stripe account at once — one holds it, the other is refused (23505)
+PASS  FO-7a pass (AG-6-1 rule 4): an invoice is written as a draft with no number, on a person
+PASS  FO-7a fail: an invoice on both a person and a company, or on neither, is refused (party = a person or a company, AG-6-1 rule 1)
+PASS  FO-7a fail (AG-6-44 rule 7): a draft written with a number, or given a number by hand, is refused; the number is the database's
+PASS  FO-7a fail: an invoice with no lines is not issued
+PASS  FO-7a pass (AG-6-4): a fee line taxed at 13 % (1,000.00 → 130.00) and a government fee line with no tax are added to the draft
+PASS  FO-7a fail (AG-6-4 rule 3): a government fee line with a tax rate or tax is refused
+PASS  FO-7a fail: a line whose amount is not quantity × unit amount, a negative unit amount, or a line in another currency is refused
+PASS  FO-7a fail: an amount that is not a whole number of cents is refused ("10.5" into unit_amount_minor and amount_minor)
+PASS  FO-7a fail: a firm B line on firm A's invoice is refused (23503; the check finds no such invoice in firm B, and the composite key would too)
+PASS  FO-7a fail: a tax more than a cent from the line's amount at its rate is refused — 2,000,000,000 tax on a 1-cent line, or 130.02 on 1,000.00 at 13 %
+PASS  FO-7a pass (review round 2, Major 1; AG-6-4 rule 1): a Quebec line, GST + QST 14.975 % (149750 ppm) on 1,000.00 = 149.75, and on 3.33 with the two taxes rounded apart (0.17 + 0.33 = 0.50 against 0.4987)
+PASS  FO-7a pass: issuing takes the firm's first number, INV-0001 (AG-6-44 rule 1), stamped now even when the caller sends another time (break B-10: no backdating)
+PASS  FO-7a fail: an invoice whose total is past what one amount column holds (21,474,836.47) is not issued
+PASS  FO-7a fail (AG-6-1 rule 6): an issued invoice's lines, tax, party, currency and number refuse change; it is never deleted
+PASS  FO-7a pass (AG-6-46 rule 2): an issued invoice's due date may still change
+PASS  FO-7a pass (AG-6-1 rule 4): a draft's lines change and a draft (lines first) is deleted, using no number
+PASS  FO-7a fail: an issue without a due date is refused (and gives its number back)
+PASS  FO-7a pass (AG-6-44 rule 9, AG-6-1 rule 5): 20 parallel issues on 20 connections take INV-0002 … INV-0021 — no repeat, no skip (D1, refused above, used none)
+PASS  FO-7a fail → pass: an issue rolled back gives its number back; the next issue takes it (INV-0022), so no gap
+PASS  FO-7a fail: next_number never goes back (numbers are never reused) and a series row is never deleted
+PASS  FO-7a pass (AG-6-44 rule 1): another firm counts on its own from INV-0001
+PASS  FO-7a fail (break B-6; review round 2, Minor 3): once a series has given numbers it moves only by taking one — a jump, or a direct "+ 1" that would skip a number, is refused
+PASS  FO-7a fail (break round 3, B-13 a): a number is taken only by writing the numbered row — a direct money_take_number call is refused, and PUBLIC may not execute it
+PASS  FO-7a fail (break round 3, B-13 b, c): no setting opens the series — with money.taking_number on, a jump of 100, a direct "+ 1" on both columns, or a reset to 1 / 0 then delete is refused
+PASS  FO-7a pass (AG-6-44 rule 2; review round 2, Minor 3): before its first number a firm may correct its starting number, or remove the series
+PASS  FO-7a pass (AG-6-44 rules 1-2): a firm moving over sets its first number when it writes the series (9999), and INV-9999 is followed by INV-10000
+PASS  FO-7a fail (break B-6; review round 2, Minor 4): another series' default prefix, or a prefix with a digit or no dash, is refused
+PASS  FO-7a pass (AG-6-44 rule 5): a prefix change applies to the next number only (TOR-10001)
+PASS  FO-7a fail (break B-6): two series of a firm sharing a prefix is refused (23505)
+PASS  FO-7a fail (break round 4, B-20, parallel at read committed): moving the invoices off TOR- while the credit notes take TOR- never commits both
+PASS  FO-7a fail (break round 4, B-20, parallel at repeatable read): moving the invoices off TOR- while the credit notes take TOR- never commits both
+PASS  FO-7a fail (break round 4, B-20): after the invoices move from TOR- to INV-, the credit notes cannot take TOR- (it printed TOR-10001); not as a later prefix change either
+PASS  FO-7a pass (B-20; AG-6-44 rule 5): a series may go back to a prefix it printed with, a prefix that printed nothing is free, and the used prefixes are the database's
+PASS  FO-7a fail: a hand-made number that repeats one already issued in the firm is refused by the unique index
+PASS  FO-7a pass (AG-6-19): an offline e-transfer and a card payment (with its payment intent) are recorded on an issued invoice
+PASS  FO-7a fail: the same idempotency key twice in a firm, or the same payment intent id twice, is refused (a double click or a repeated webhook records one payment)
+PASS  FO-7a pass: two parallel writers with one idempotency key record one payment (the other is refused 23505)
+PASS  FO-7a fail: a payment on a draft invoice, in another currency, card into trust (contracts §7 §2.5), or a payment intent on an offline payment is refused
+PASS  FO-7a fail: a firm B payment on firm A's invoice is refused (23503; no such invoice in firm B)
+PASS  FO-7a pass (AG-6-63 rule 7): a cheque waits to clear and is ticked Cleared once
+PASS  FO-7a fail: a payment never changes (amount, or un-clearing) and is never deleted
+PASS  FO-7a pass (AG-6-23): a part refund with a reason and its own key
+PASS  FO-7a fail: refunds beyond the payment, without a reason, with a key used before, or to a card for an offline payment are refused
+PASS  FO-7a fail (parallel; review round 1 Major 1, break B-2): two refunds of 700.00 on one 1,000.00 payment at once — one written, the other refused, at READ COMMITTED (23514) and at REPEATABLE READ (23505: the refund ordinal)
+PASS  FO-7a fail (break B-1): a row that names another written later in the same statement is refused, not left to the foreign key at the statement's end — a payment on a draft invoice, a 1,000,000.00 USD card refund of a 1-cent cash payment
+PASS  FO-7a fail: the same rows written in the other order in one statement are refused by the rules themselves (draft invoice takes no payment)
+PASS  FO-7a pass (AG-6-63): a payment receipt takes R-0001 from the receipt series
+PASS  FO-7a fail: a second receipt for one payment, a receipt with a hand-made number, or a payment receipt for money with no invoice is refused
+PASS  FO-7a pass: 20 parallel receipts take R-0002 … R-0021 — no repeat, no skip
+PASS  FO-7a pass (AG-6-48): a part credit note with a reason takes CN-0001
+PASS  FO-7a fail: a credit note beyond what is left on the invoice, on a draft, without a reason, or a 'full' one that is not all that is left is refused
+PASS  FO-7a pass: 20 parallel credit notes take CN-0002 … CN-0021 — no repeat, no skip
+PASS  FO-7a fail (parallel, REPEATABLE READ; review round 1): two credit notes of 60.00 at once on an invoice with 112.99 left — one written, the other fails to serialise (40001); never more than the total
+PASS  FO-7a fail (break B-9): a reason that only looks written — an ideographic space, a right-to-left mark, a line separator — or one carrying a bidi override is refused
+PASS  FO-7a fail (break round 3, B-17): a reason that is only a braille blank, a tag space, U+1D159, U+17B4, a lone skin-tone modifier or a variation selector is refused; an emoji with its skin tone is still text
+PASS  FO-7a fail (break round 4, B-21): a reason that is only an interlinear, shorthand or Egyptian format control, a prepended mark, a lone combining mark, a noncharacter, an unassigned or a private-use character is refused
+PASS  FO-7a pass (B-21): written text in any script is still text — a decomposed é, Hindi with its vowel sign, Hebrew, Arabic, CJK, a symbol, an emoji, a number
+PASS  FO-7a fail (AG-6-59): with trust off (firm B never said Yes) no trust request is written and no money is received into trust
+PASS  FO-7a pass (AG-6-61, -44 rule 7): a prepared request has no number; sending it takes DR-0001, stamped now (break B-10)
+PASS  FO-7a pass: 20 parallel sends take DR-0002 … DR-0021 — no repeat, no skip
+PASS  FO-7a fail: a sent request's party, currency and number never change; it is never deleted; a cancel needs a reason
+PASS  FO-7a fail: a trust request is never paid by card, nor into operating (contracts §7 §2.5)
+PASS  FO-7a pass (Code s. 32(b), (d)): a deposit from a payment into trust is the party's first entry (seq 1, balance 1,000.00), names its request, and gets a TRUST receipt
+PASS  FO-7a fail: money received into trust with no deposit entry in its transaction is refused at commit (the ledger always follows the money)
+PASS  FO-7a fail: a deposit from a payment into operating, of another amount, or a deposit used twice is refused
+PASS  FO-7a fail (break B-1): a 1,000,000.00 trust deposit naming a 1-cent card payment into operating that the same statement writes after it is refused
+PASS  FO-7a fail (review round 1, m7): a payment received into trust is not refunded as a refund (it goes back as a trust entry)
+PASS  FO-7a fail: trust entries refuse update, delete and truncate (insert-only)
+PASS  FO-7a fail (Code s. 32(f)): a trust withdrawal without an invoice is refused
+PASS  FO-7a fail: a withdrawal to a draft invoice, or to another party's invoice, is refused
+PASS  FO-7a pass: a withdrawal of 300.00 to the party's issued invoice leaves 700.00 (seq 2)
+PASS  FO-7a fail: a withdrawal of 800.00 from 700.00 is refused — the balance never goes below zero
+PASS  FO-7a fail (review round 1 m4, break B-5): trust never pays more than is open on the invoice — 6.00 to a 5.00 invoice is refused; 5.00 is written; then 0.01 more is refused
+PASS  FO-7a pass (review round 2, Major 2): money returned to trust from an application (a correction naming it) frees that amount — 2.00 back, then 2.00 applied again, then 0.01 more refused
+PASS  FO-7a fail: a return from an application that is negative, or more than was applied, is refused
+PASS  FO-7a fail (break round 3, B-12; P-603): a correction of a return is refused, so the loop withdraw → return → correct the return → withdraw takes at most 100.00 for a 100.00 invoice
+PASS  FO-7a fail (P-603; review round 1 note, s. 32(f) by the back door): a correction naming no entry, naming a refund, or taking money out of a withdrawal is refused
+PASS  FO-7a fail: a refund to the client or a correction without a reason is refused; with one it is written
+PASS  FO-7a fail (P-603): a correction naming a refund to the client is refused, either sign (money left trust to the client; a new deposit brings it back)
+PASS  FO-7a pass (parallel, READ COMMITTED): 10 withdrawals of 100.00 at once from 694.00 — 6 written, 4 refused (23514), balance 94.00, never below zero
+PASS  FO-7a pass (parallel, REPEATABLE READ, stale snapshots): 8 withdrawals of 10.00 at once from 594.00 — the ledger never forks or goes below zero; the others are refused (40001, 23505 or 23514)
+PASS  FO-7a fail: an entry on another party's trust request is refused
+PASS  FO-7a fail (review round 1, m2): a "Trust first" payment on Client B's invoice cannot be held for Client A
+PASS  FO-7a pass / fail (AG-6-69 rule 5; review round 1, m3): a "Trust first" payment on the party's own invoice is held for it and gets the payment receipt; a trust receipt for it is refused
+PASS  FO-7a pass: the ledger per party sums to its entries — seq runs 1..n with no gap, and each balance is the running sum
+PASS  FO-7a fail (P-603): a correction of a deposit takes money out, at most the deposit — +0.01 refused; 40.00 written; 20.01 more refused; 20.00 written
+PASS  FO-7a fail (parallel, READ COMMITTED; P-603): two corrections of 40.00 at once on a 60.00 deposit — one written, the other refused (23514); never more than the deposit
+PASS  FO-7a fail (parallel, REPEATABLE READ; P-603): two corrections of 40.00 at once on a 60.00 deposit with stale snapshots — one written, the other refused (40001, 23505 or 23514)
+PASS  FO-7a fail (parallel, break B-4): an amount change racing a payment on the request waits for it, then is refused (money is recorded on it)
+PASS  FO-7a fail (parallel, REPEATABLE READ; review round 2, Minor 1): an amount change whose snapshot predates a payment on the request fails to serialise (40001)
+PASS  FO-7a pass (parallel; review round 2, Minor 2): "Trust first" beside another withdrawal on the same invoice, 4 rounds — never a deadlock (40P01), every write goes through
+PASS  FO-7a pass (parallel; review round 3, Minor 1; break round 3, B-14): a credit note then a withdrawal, or a credit note then a return, in one transaction beside another withdrawal on the same invoice — no deadlock (40P01), all go through
+PASS  FO-7a pass (AG-6-76): a write-off of an issued invoice's small balance with a reason
+PASS  FO-7a fail (rev 13): a second write-off on one invoice is refused
+PASS  FO-7a fail (rev 13): a write-off update or delete is refused (insert-only)
+PASS  FO-7a fail: a write-off on a draft, without a reason, or over what is left is refused
+PASS  FO-7a fail (break B-8): after a full credit note nothing is left to write off (and after a write-off, a full credit note credits only the rest: 87.99)
+PASS  FO-7a pass: every money foreign key is RESTRICT on delete and on update, and every key between money rows includes firm_id
+PASS  FO-7a pass: a firm with no money row can still be deleted (as before FO-7a)
+PASS  FO-7a fail: a firm with money rows cannot be deleted or change id (RESTRICT: 23001)
+PASS  FO-7a pass: every insert-only money table also refuses truncate
+PASS  FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them, 20 after FO-7ts part 1)
+
+122 passed, 0 failed

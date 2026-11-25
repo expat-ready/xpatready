@@ -1,8 +1,9 @@
 import * as React from "react";
 import { RunChip } from "@/components/run-card";
-import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Activity, BookOpen, Boxes, CheckSquare, ChevronDown, DoorOpen, Scale, Database, FileStack, FileText, Inbox, Layers, ListTree, Moon, RotateCcw, Sparkles, Sun, Upload } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, getActor, personChosen, useAction, useActorId, useApi, useToast } from "@/lib/api";
 import { Button, Dialog, Input, Notice, Pill, Table } from "@/components/ui/controls";
@@ -24,6 +25,7 @@ import { StructurePage } from "@/pages/structure";
 import { EditionImpactPage, HeldFilePage, LibraryChangePage, MergeReviewPage, FormFieldsPage } from "@/pages/review-items";
 import { ChangeBatchPage, ProposalsPage } from "@/pages/proposals";
 import { RuntimeApp } from "@/runtime/cases";
+import { ClientsApp } from "@/runtime/clients"; // CS-K1s
 import { DemoInbox, LinkApp } from "@/runtime/link-page";
 import { draftBarWords } from "../../contracts/status-words";
 import { FINISHED_STORY_TIP, FinishedStoryDialog } from "@/components/demo-finished-story";
@@ -33,6 +35,7 @@ import { Frame, PersonNotice, PersonPicker } from "@/components/frame";
 import { SignInPage } from "@/pages/sign-in";
 import { personOf } from "@/lib/simulated-people";
 import { moduleRoutes } from "@/modules";
+import { useTabActive, WorkspaceRouter } from "@/components/workspace";   // PF-31: one router per workspace tab
 
 export default function App() {
   // BK-3: every route renders through the one Frame (components/frame.tsx): the Studio below, the case area (runtime
@@ -40,7 +43,8 @@ export default function App() {
   // simulated people.
   // BK-4a: the sign-in page (P-484 (3): a page, not a gate), one notice for every change of person, and a stored person
   // this workspace does not know goes to the sign-in page (BR-6) instead of a refusal on every screen.
-  return <BrowserRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></BrowserRouter>;
+  // PF-31: the notice sits outside the workspace router, so it is mounted once, not once per open tab.
+  return <><PersonNotice /><WorkspaceRouter><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></WorkspaceRouter></>;
 }
 
 /** BK-4a BR-6: a person chosen in this browser who is not one of the simulated people opens the sign-in page. A browser
@@ -77,9 +81,10 @@ function Shell() {
   // QA-80: the browser tab names the page ("<page> · Product Studio"), from the menu item the address belongs to.
   // A page reached from the draft bar, not the menu, names itself too (QA-80 retest: "/release" said "Product Studio" alone).
   const here = nav.find((n) => n.match ? n.match(loc.pathname) : loc.pathname.startsWith(n.to)) ?? (loc.pathname === "/release" ? { label: "Review and release" } : loc.pathname === "/start" ? { label: "Starting points" } : undefined); // BK-5: Demo › Starting points
-  React.useEffect(() => { document.title = here ? `${here.label} · Product Studio` : "Product Studio"; }, [here?.label]);
+  const shownTab = useTabActive();   // PF-31: only the shown workspace tab names the browser tab (breaker m3 on 2fd5352aa)
+  React.useEffect(() => { if (shownTab) document.title = here ? `${here.label} · Product Studio` : "Product Studio"; }, [here?.label, shownTab]);
   return (
-    <Frame area="studio" title="Product Studio" subtitle="Pathway Configurator" home="/" staff={!casePerson}
+    <Frame area="studio" workspace title="Product Studio" subtitle="Pathway Configurator" home="/" staff={!casePerson}
       badge={<Pill tone="warn" className="ml-1 hidden lg:inline-flex" title="Working prototype on a local demo database: simulated people signed in by role, no passwords, not production">Prototype · demo workspace</Pill>}
       controls={<>
         <RunChip />
@@ -99,6 +104,7 @@ function Shell() {
           {nav.slice(3, 9).map((n) => <NavItem key={n.to} {...n} />)}
           <p className="px-2 pb-1 pt-4 text-xs font-medium text-text-muted">History</p>
           {nav.slice(9).map((n) => <NavItem key={n.to} {...n} />)}
+          <p className="px-2 pb-1 pt-4 text-xs font-medium text-text-muted">Release 1</p><NavItem to="/home" label="Release 1 screens" icon={DoorOpen} />{/* DEMO-LINK: the staff Home lists every Release 1 screen */}
           <div className="mt-auto rounded-lg border border-border bg-surface p-3 text-[11px] leading-relaxed text-text-muted">
             Simulated people; local PostgreSQL demo database. AI drafting uses the guarded prototype route (synthetic or public official inputs only). Not production.
           </div>
@@ -207,7 +213,7 @@ function DemoControls({ loaded, programsExist }: { loaded: boolean; programsExis
   const item = "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-text/5 data-[disabled]:cursor-default data-[disabled]:opacity-50";
   return (
     <div className="flex items-center gap-1.5">
-      <DropdownMenu.Root>
+      <MenuRoot>
         <DropdownMenu.Trigger asChild><Button size="sm" variant="secondary" busy={load.isPending || loadConf.isPending}>Demo <ChevronDown /></Button></DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-[260px] rounded-lg border border-border bg-surface-raised p-1 text-sm shadow-lg">
@@ -222,7 +228,7 @@ function DemoControls({ loaded, programsExist }: { loaded: boolean; programsExis
             <DropdownMenu.Item className={item} onSelect={() => navTo("/cases")}><FileText className="size-4" />Open the case area (runtime preview)</DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      </MenuRoot>
       <ResetDialog open={resetOpen} onOpenChange={setResetOpen} />
       <FinishedStoryDialog open={storyOpen} onOpenChange={setStoryOpen} />
       <ResetToSixDialog open={sixOpen} onOpenChange={setSixOpen} onDone={(r) => { setLoaded6(r); navTo("/"); }} />

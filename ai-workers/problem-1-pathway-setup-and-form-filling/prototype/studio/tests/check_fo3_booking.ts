@@ -62,7 +62,8 @@ try {
   await copyFirmHoursTo(db, B.id, [B1.id]);
   await copyFirmHoursTo(db, H.id, [H1.id]);
   await writeSetting(db, { firmId: A.id, key: CLOSED_DAYS.key, value: ["2026-10-28"], by: "seed:fo3", workspaceId: ws.id });
-  const type = (firmId: string, slug: string, hosts: string[], extra: Record<string, unknown> = {}) => db.foConsultationType.create({ data: { firmId, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: hosts, minutes: 30, ...extra } });
+  // Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+  const type = (firmId: string, slug: string, hosts: string[], extra: Record<string, unknown> = {}) => db.foConsultationType.create({ data: { requireAgreement: false, firmId, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: hosts, minutes: 30, ...extra } });
   const T = {
     base: await type(A.id, "free", [A1.id]),
     team: await type(A.id, "team", [A1.id, A2.id]),
@@ -145,21 +146,21 @@ try {
   const ref = async (body: Record<string, unknown>) => (await thrown(async () => S.publicBook(A.key, "free", body, "ip")))?.status;
   const good = await form(S, "free", "2026-10-29 09:00", "form");
   // FO-3pa: the tick is optional (AG-4-19 rule 3); a tick without the wording it agreed to is still refused.
-  ok("FO-3 form fail: the consent tick without its wording id → 400", await ref({ ...good, consentWordingId: undefined }) === 400);
-  ok("FO-3 form fail: a missing last name → 400", await ref({ ...good, familyName: "" }) === 400);
-  ok("FO-3 form fail: phone mode without a phone → 400", await ref({ ...good, mode: "PHONE" }) === 400);
-  ok("FO-3 form fail: a mode the type does not offer → 400", await ref({ ...good, mode: "IN_PERSON" }) === 400);
-  ok("FO-3 form fail: the honeypot filled → 400", await ref({ ...good, website: "http://spam.example" }) === 400);
+  ok("FO-3 form fail: the consent tick without its wording id → 422", await ref({ ...good, consentWordingId: undefined }) === 422);
+  ok("FO-3 form fail: a missing last name → 422", await ref({ ...good, familyName: "" }) === 422);
+  ok("FO-3 form fail: phone mode without a phone → 422", await ref({ ...good, mode: "PHONE" }) === 422);
+  ok("FO-3 form fail: a mode the type does not offer → 422", await ref({ ...good, mode: "IN_PERSON" }) === 422);
+  ok("FO-3 form fail: the honeypot filled → 422", await ref({ ...good, website: "http://spam.example" }) === 422);
   ok("FO-3 form fail: another consent wording than the firm's → 409", await ref({ ...good, consentWordingId: "00000000-0000-4000-8000-000000000bad" }) === 409);
-  ok("FO-3 form fail: a forged form stamp → 400", await ref({ ...good, formStamp: `${clock.now().getTime() - 60_000}.forged` }) === 400);
+  ok("FO-3 form fail: a forged form stamp → 422", await ref({ ...good, formStamp: `${clock.now().getTime() - 60_000}.forged` }) === 422);
   const fast = await S.publicSlots(A.key, "free", {}, "ip");
-  ok("FO-3 form fail: sent 1 s after the page loaded (minimum fill time) → 400", await ref({ ...good, formStamp: fast.formStamp }) === 400);
-  ok("FO-3 form fail: an invisible-only name, a right-to-left override, U+2028 → 400 (break B-9)", await ref({ ...good, givenNames: "\u200b" }) === 400 && await ref({ ...good, familyName: "Ann\u202eX" }) === 400 && await ref({ ...good, familyName: "A\u2028B" }) === 400);
-  ok("FO-3 form fail: a Hangul filler, RLM, ALM or tag characters → 400 (break B-9 round 2)", await ref({ ...good, givenNames: "\u3164" }) === 400 && await ref({ ...good, givenNames: "Ana\u200f" }) === 400 && await ref({ ...good, givenNames: "Ana\u061c" }) === 400 && await ref({ ...good, givenNames: "Ana\u{e0041}" }) === 400);
+  ok("FO-3 form fail: sent 1 s after the page loaded (minimum fill time) → 422", await ref({ ...good, formStamp: fast.formStamp }) === 422);
+  ok("FO-3 form fail: an invisible-only name, a right-to-left override, U+2028 → 422 (break B-9)", await ref({ ...good, givenNames: "\u200b" }) === 422 && await ref({ ...good, familyName: "Ann\u202eX" }) === 422 && await ref({ ...good, familyName: "A\u2028B" }) === 422);
+  ok("FO-3 form fail: a Hangul filler, RLM, ALM or tag characters → 422 (break B-9 round 2)", await ref({ ...good, givenNames: "\u3164" }) === 422 && await ref({ ...good, givenNames: "Ana\u200f" }) === 422 && await ref({ ...good, givenNames: "Ana\u061c" }) === 422 && await ref({ ...good, givenNames: "Ana\u{e0041}" }) === 422);
   ok("FO-3 form pass: a name in another script (Arabic, Korean, accented Latin) is taken by the name rule", ["\u0639\u0644\u064a", "\uc9c0\ubbfc", "Zo\u00eb", "O'Brien-Smith"].every((n) => PublicBookingBody.shape.givenNames.safeParse(n).success) && !PublicBookingBody.shape.givenNames.safeParse("\u3164").success);
-  ok("FO-3 form fail: a zone the database does not take (Etc/GMT0) → 400, never 500 (break B-2)", await ref({ ...good, timeZone: "Etc/GMT0" }) === 400);
-  ok("FO-3 form fail: a start in year 0001 → 400; slots asked from year 0001 → 400 (break B-2)", await ref({ ...good, startsAt: "0001-01-01T10:00:00Z" }) === 400 && (await thrown(() => S.publicSlots(A.key, "free", { from: "0001-01-01T00:00:00Z" }, "ip")))?.status === 400);
-  ok("FO-3 form fail: a line break in a name → 400 (never 500)", await ref({ ...good, givenNames: "Ana\r\nBcc: x@y.example" }) === 400);
+  ok("FO-3 form fail: a zone the database does not take (Etc/GMT0) → 422, never 500 (break B-2)", await ref({ ...good, timeZone: "Etc/GMT0" }) === 422);
+  ok("FO-3 form fail: a start in year 0001 → 422; slots asked from year 0001 → 422 (break B-2)", await ref({ ...good, startsAt: "0001-01-01T10:00:00Z" }) === 422 && (await thrown(() => S.publicSlots(A.key, "free", { from: "0001-01-01T00:00:00Z" }, "ip")))?.status === 422);
+  ok("FO-3 form fail: a line break in a name → 422 (never 500)", await ref({ ...good, givenNames: "Ana\r\nBcc: x@y.example" }) === 422);
   const phoneOk = await full(await S.publicBook(A.key, "free", { ...good, mode: "PHONE", phone: "+1 416 555 0100" }, "ip"));
   const caps = await full(await S.publicBook(A.key, "free", { ...(await form(S, "free", "2026-10-29 11:00", "caps")), timeZone: "America/TORONTO" }, "ip"));
   ok("FO-3 form pass: America/TORONTO is kept in IANA's spelling, America/Toronto (break B-10)", (await db.foBooking.findUniqueOrThrow({ where: { id: caps.id } })).bookerTimeZone === TZ);
@@ -316,7 +317,7 @@ try {
   // -------------------------------------------------------------------- reminders, attendance question, no auto no-show
   const rem = make();
   await rem.svc.registerJobs();
-  const ctxA = fakeStaff({ firmId: A.id, firmKey: A.key, staffId: A1.id, keys: ["agent/booking:create", "agent/booking:edit", "agent/booking:list"] });
+  const ctxA = fakeStaff({ firmId: A.id, firmKey: A.key, staffId: A1.id, keys: ["agent/booking:create", "agent/booking:edit", "agent/booking:list", "agent/prospect:assign"] });   // FO-3vr: AG-4-67 rule 3, a not-linked booking needs the unassigned-lead rule
   await clock.set(at("2026-11-02 08:00"));
   const rb = await book(rem.svc, "free", "2026-11-06 10:00", "remind");
   const scheduled = rem.jobs as ReturnType<typeof fakeJobs>;
@@ -361,8 +362,8 @@ try {
   const kimNow = main.arrival.prospects.find((p) => p.id === kimPros.id)!;
   ok("FO-3 staff pass: a staff booking moves the person's only open prospect to Consult with its cause, and names it", kb.prospectId === kimPros.id && kimNow.stage === "CONSULT" && kimNow.causes.join() === "consult booked", { kb, kimNow });
   const bPerson = main.arrival.addPerson(B.id, { givenNames: "Bo", familyName: "Sample", email: "bo@client.example" });
-  ok("FO-3 staff fail: a prospect id in the body is refused (400); a person of firm B booked by firm A → 404, nothing saved",
-    (await thrown(() => S.staffCreate(ctxA, { ...sb, prospectId: kimPros.id, startsAt: iso("2026-11-09 14:00") })))?.status === 400
+  ok("FO-3 staff fail: a prospect id in the body is refused (422); a person of firm B booked by firm A → 404, nothing saved",
+    (await thrown(() => S.staffCreate(ctxA, { ...sb, prospectId: kimPros.id, startsAt: iso("2026-11-09 14:00") })))?.status === 422
       && (await thrown(() => S.staffCreate(ctxA, { ...sb, personId: bPerson, startsAt: iso("2026-11-09 14:00") })))?.status === 404
       && await db.foBooking.count({ where: { firmId: A.id, startsAt: at("2026-11-09 14:00") } }) === 0);
   ok("FO-3 staff fail: a booking id that is not a uuid → 404 (never 500)", (await thrown(() => S.staffGet(ctxA, "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz")))?.status === 404 && (await thrown(() => S.staffCancel(ctxA, "------------------------------------")))?.status === 404);
@@ -415,7 +416,7 @@ try {
   const refusedJoin = [];
   for (const n of badJoin) refusedJoin.push((await thrown(async () => S.publicBook(A.key, "fo3f", await form3(S, "zw", { givenNames: n }), "ip")))?.status);
   next3 -= badJoin.length;   // none booked
-  ok("FO-3f m10 fail: a joiner at the start or end, beside a space, digit or hyphen, doubled, or alone → 400 (the B-9 rule stays)", refusedJoin.every((x) => x === 400), refusedJoin);
+  ok("FO-3f m10 fail: a joiner at the start or end, beside a space, digit or hyphen, doubled, or alone → 422 (the B-9 rule stays)", refusedJoin.every((x) => x === 422), refusedJoin);
 
   // item 2, m3: the emails are keyed jobs; a failed send is retried after commit
   const fj = fakeJobs(clock), handlers = new Map<string, JobHandler>();
@@ -481,8 +482,8 @@ try {
   await clock.set(new Date(Number(String(edge.formStamp).split(".")[0]) + 2 * 60 * 60_000 + 1));
   const pastEdge = await thrown(() => S.publicBook(A.key, "fo3f", { ...edge, startsAt: slot3(), email: "edge3@client.example" }, "ip"));
   await clock.set(edgeBack);
-  ok("FO-3f B-8 fail: at exactly 2 h after the page was drawn (the stamp's last valid moment), a used stamp is still refused 409 FORM_ALREADY_SENT; 1 ms later the age rule refuses it 400 (review m1, break F1)",
-    atEdge?.body.code === "FORM_ALREADY_SENT" && pastEdge?.status === 400, { atEdge, pastEdge });
+  ok("FO-3f B-8 fail: at exactly 2 h after the page was drawn (the stamp's last valid moment), a used stamp is still refused 409 FORM_ALREADY_SENT; 1 ms later the age rule refuses it 422 (review m1, break F1)",
+    atEdge?.body.code === "FORM_ALREADY_SENT" && pastEdge?.status === 422, { atEdge, pastEdge });
   /** Holds the host's transaction lock (as a booking for that host would), so a public booking for A2 waits inside its
    *  transaction, after the firm's lock and its gate, until `free()` (break F2/F3: a booking in flight). */
   const holdHost = async () => {
@@ -619,7 +620,7 @@ try {
   for (let i = 0; i < 4; i++) many.push((await get(`/api/public/firms/${A.key}/book/free/slots`)).status);
   ok("FO-3 http fail: past 5 slot reads from one IP in the window (the 404s count too) → 429 (rate limit); pass: the fifth is 200", many[0] === 200 && many.slice(1).every((s) => s === 429), many);
   const post = await fetch(`${base}/api/public/firms/${A.key}/book/free/bookings`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ givenNames: "x" }) });
-  ok("FO-3 http fail: a POST with a half-filled form → 400 with the issues listed, nothing booked", post.status === 400 && Array.isArray((await post.json()).issues));
+  ok("FO-3 http fail: a POST with a half-filled form → 422 with the issues listed, nothing booked", post.status === 422 && Array.isArray((await post.json()).issues));
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-3 check stopped: ${e instanceof Error ? e.stack : String(e)}`);

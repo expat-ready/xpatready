@@ -1,0 +1,2 @@
+Entry points: FO-2w: sales/prospects.ts `winProspect(tx, ctx, prospectId, { via, at, retainerId?, audit })`, the one win: Convert and Signed offline call it, FO-6's e-signature win will; it raises prospect.won with the subject part (contracts §7 §2.6) once per prospect, in the win's transaction, under the prospect's row lock, and a second win writes nothing. Nothing else raises prospect.won.
+Tests: tests/check_fo2w_won_event.ts

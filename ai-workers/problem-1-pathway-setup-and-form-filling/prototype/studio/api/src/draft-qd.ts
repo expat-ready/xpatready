@@ -25,6 +25,7 @@ import type { Prisma } from "@prisma/client";
 import { pairOf, roundBudgetUsd, StepRunner, type AiStep, type RoundContext, type RoundOut } from "./rounds.ts";
 import { aiLive, Sources } from "./sources.ts";
 import { conditionsFromRounds, conditionsShapeOk, CONDITIONS_STEP, type CondAnswer, type CondRound } from "../../engine/qd-conditions.ts";
+import { logPort } from "./platform/observability/log.ts";
 
 /** Step 5's AI step (C4.11 part 2b): a draft round and a blind checker round on the shared step runner, replayed from
  *  saved real answers (US$0); or live on the guarded launcher (live wiring 5a). Prompts: p2/prompts/conditions{,-check}.v1.md. */
@@ -153,7 +154,7 @@ export class DraftQd {
     else {
       const ctx: RoundContext = { trail: g.trail, contextKey: c.combinationKey, inputs: inputsOf(g), mode: "live", wanted: async () => !(await stopped()), batchId };
       // Break L3: a round that throws ends as a failed round, so a paid first round's cost is still counted and said.
-      const safe = async (isCheck: boolean): Promise<RoundOut<CondAnswer>> => { try { return await this.runner.round<CondAnswer>(CONDITIONS_AI, isCheck, ctx); } catch (e) { console.warn(`[draft-qd] conditions ${batchId}:`, String(e).slice(0, 300)); return { ok: false, costUsd: 0, reason: "The AI step stopped on this computer." }; } };
+      const safe = async (isCheck: boolean): Promise<RoundOut<CondAnswer>> => { try { return await this.runner.round<CondAnswer>(CONDITIONS_AI, isCheck, ctx); } catch (e) { logPort.error("qd_conditions_round_failed", e, { batchId }); return { ok: false, costUsd: 0, reason: "The AI step stopped on this computer." }; } };
       d = await safe(false);
       k = d.ok && !(await stopped()) ? await safe(true) : d.ok ? { ok: false, cancelled: true, costUsd: 0, reason: "Stopped before the checker round was sent: nothing more was charged." } : null;
     }
@@ -267,7 +268,7 @@ export class DraftQd {
     if ("again" in batch) return { runId: batch.again, status: ["QUEUED", "RUNNING"].includes(batch.status) ? "running" : batch.status.toLowerCase(), again: true };
     await this.db.draftingJob.createMany({ data: QD_STEPS.map((s, i) => ({ workspaceId: c.workspaceId, combinationId: c.id, batchId: batch.id, kind: s.kind, mode: plan.mode === "rules" || !s.ai ? "LOCAL" : plan.mode === "live" && (s.kind === "qd_conditions" || s.kind === "pqr_picks") ? "LIVE" : "REPLAY", status: "WAITING", message: "Waits for the step before it", startedBy: actor.id, startedAt: new Date(Date.now() + i) })) });
     // Break/review M1: the steps run in the background, so the run card (with Stop) shows at once where it was started.
-    void this.execute(batch.id, actor, c, plan).catch((e) => console.warn(`[draft-qd] run ${batch.id}: ${String((e as Error).message ?? e).slice(0, 300)}`));
+    void this.execute(batch.id, actor, c, plan).catch((e) => logPort.error("qd_run_failed", e, { batchId: batch.id }));
     return { runId: batch.id, status: "running" };
   }
 
@@ -310,7 +311,7 @@ export class DraftQd {
           await end(s.kind, r.status, r.message, r.detail);
         } else if (s.kind === "qd_conditions") {
           // Round 2 M2: whatever goes wrong in this step fails this step only, never the whole run.
-          const r: StepOut = await this.conditions(c, plan.mode, batch.id, jobs.get("qd_conditions")!, snapshot, stopped).catch((e) => { console.warn(`[draft-qd] conditions ${batch.id}: ${String((e as Error).message ?? e).slice(0, 300)}`); return { status: "FAILED", message: "This step stopped on this computer, so nothing of it is proposed; the other steps ran.", proposed: 0, detail: {} }; });
+          const r: StepOut = await this.conditions(c, plan.mode, batch.id, jobs.get("qd_conditions")!, snapshot, stopped).catch((e) => { logPort.error("qd_conditions_failed", e, { batchId: batch.id }); return { status: "FAILED", message: "This step stopped on this computer, so nothing of it is proposed; the other steps ran.", proposed: 0, detail: {} }; });
           out.proposed += r.proposed; out.usd = round2(out.usd + (r.usd ?? 0)); out.offer_saved ||= !!r.offerSaved;
           await end(s.kind, r.status, r.message, r.detail, r.usd ?? 0);
         } else if (s.kind === "qd_facts") {
@@ -339,7 +340,7 @@ export class DraftQd {
         }
       }
     } catch (e) {
-      console.warn(`[draft-qd] run ${batch.id} stopped: ${String((e as Error).message ?? e).slice(0, 300)}`);
+      logPort.error("qd_run_stopped", e, { batchId: batch.id });
       await this.db.draftingJob.updateMany({ where: { batchId: batch.id, status: { in: ["WAITING", "RUNNING"] } }, data: { status: "CANCELLED", finishedAt: new Date(), message: "Not run: the step before it stopped." } });
       await this.db.aiBatch.update({ where: { id: batch.id }, data: { status: "FAILED", finishedAt: new Date(), message: e instanceof HttpException ? String((e.getResponse() as { detail?: string }).detail ?? e.message) : "A step stopped on this computer; the steps already done stand. Run it again." } });
       out.status = "failed";

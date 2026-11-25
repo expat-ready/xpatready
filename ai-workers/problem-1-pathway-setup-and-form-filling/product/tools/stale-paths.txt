@@ -1,0 +1,3 @@
+# Paths a repository clean-up stage moved or removed (product/design/repo-cleanup-plan-2026-11-17.md). No live file may
+# name one (check-stale-paths.sh). Each stage adds its lines in the same pull request; docs/PATHS-MOVED.md says where
+# each one went. A path is matched as plain text, so name it exactly as code would write it.

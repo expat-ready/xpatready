@@ -1,10 +1,14 @@
 // PF-3 (contracts §7 "Firm settings", Lead 37 ruling; AG-16-3, -24, -59): the typed settings home. A module registers a
 // key with a zod schema, a default and the permission key that may change it; a firm's value is read with the default
 // when unset; a write whose value fails the key's schema is refused; every change writes one audit_event line in its
-// own transaction (AUD-1 owns the trail; until it adds firm_id, the line carries the caller's workspace and the firm in its
-// entity key and detail). PF-4 (P-571 (1), B-6): platform callers pass the platform's own audit workspace
-// (identity/audit.ts), which the demo reset never deletes, and the reset returns the Sample firms' values through
-// writeSetting (identity/demo-reset.ts), so every value keeps its trail.
+// own transaction. AUD-1m part 2c (PF-0a; Lead 94's rulings (A) and (A1) on #2289): the line goes through AuditPort.record
+// (the strict AuditEntry, platform/audit/audit-event.ts) in the same transaction, on the platform's own audit workspace,
+// which the demo reset never deletes (PF-4, P-571 (1), B-6), with the firm's id on the line (firm_id and detail.firmId), so
+// the firm's own audit view (R1.88) reads it. The reset returns the Sample firms' values through writeSetting
+// (identity/demo-reset.ts), so every value keeps its trail. Who: a typed word as given, the reset's bare "system" as
+// system:demo-reset, a Sample person's id (user-R) as staff:<their staff id> (one row per Sample person). A value that is not a short
+// scalar is kept as fromJson/toJson, pieces of at most 200 characters that join back to its JSON text exactly (joinPieces);
+// a long reason is cut in detail only (200), the full reason staying in the summary.
 // The zod schema in code is the authority (PF-3 review m4): the stored value_schema says as much as JSON Schema can (each
 // pattern, enum and constant), and names in its description the checks only code can make (a zone this runtime knows,
 // opening before closing, each day once).
@@ -12,7 +16,10 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { AuditActor, type AuditEntry } from "../../../ports/audit.ts";
+import { auditEvent } from "./audit/audit-event.ts";
 import { firmScope } from "./firm-scope.ts";
+import { PLATFORM_ACCOUNT_FROM_SAMPLE } from "../../../ports/messages.ts";
 
 export type SettingDefinition<T> = {
   key: string;
@@ -22,6 +29,10 @@ export type SettingDefinition<T> = {
   default: T;
   /** The permission key that may change it (SA-06 §10b); routes check it (PF-4). */
   changePermission: string;
+  /** PF-13: a value that may be personal (an address, a phone number, an email in a signature). Its audit line keeps the
+   *  key in `detail` (ids and facts only, AuditDetail) and the value in `before`/`after` (AuditValues, which may hold
+   *  personal data, R1.8), never in `detail`. */
+  personal?: boolean;
 };
 
 type Tx = Prisma.TransactionClient;
@@ -101,7 +112,7 @@ export type SettingWrite = {
   value: unknown;
   /** Who changes it (the staff member's actor or staff id). */
   by: string;
-  /** audit_event's workspace column (required until AUD-1 adds firm_id): the platform's audit workspace (PF-4). */
+  /** Kept for callers; the line is written on the platform's own audit workspace by AuditPort (AUD-1m part 2c). */
   workspaceId: string;
   /** Why, when the change is not a person's own edit (e.g. "demo reset"); kept on the audit line. */
   reason?: string;
@@ -110,6 +121,38 @@ export type SettingWrite = {
 /** Saves a firm's value of a registered key and writes one audit line, in one transaction: a value that fails the key's
  *  schema is refused (nothing written), and a failed audit line rolls the change back. Given a transaction client, it
  *  runs inside the caller's transaction. */
+/** AuditDetail's caps (ports/audit.ts): a string of at most 200 characters, a list of at most 50. */
+const PIECE = 200, PIECES = 50;
+/** A value as the audit line keeps it: a short scalar as itself; anything else as the pieces of its JSON text. */
+function asDetail(name: "from" | "to", v: unknown): Record<string, unknown> {
+  if (v === null || typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= PIECE)) return { [name]: v };
+  // Pieces end on whole characters (review 2c minor 2): a piece cut inside a surrogate pair would hold half a character,
+  // which PostgreSQL's jsonb refuses.
+  const text = JSON.stringify(v), pieces: string[] = [];
+  let piece = "";
+  for (const ch of text) { if (piece.length + ch.length > PIECE) { pieces.push(piece); piece = ""; } piece += ch; }
+  if (piece) pieces.push(piece);
+  if (pieces.length > PIECES) throw new SettingRefused(`The value for this setting is too long for its audit line (${text.length} characters; at most ${PIECE * PIECES}).`);
+  return { [`${name}Json`]: pieces };
+}
+/** The value an audit line's detail kept for `from` or `to` (a scalar, or its JSON pieces joined back). */
+export function joinPieces(detail: Record<string, unknown>, name: "from" | "to"): unknown {
+  const pieces = detail[`${name}Json`];
+  return Array.isArray(pieces) ? JSON.parse(pieces.join("")) : detail[name];
+}
+/** At most 200 UTF-16 units (AuditDetail's count), never half of a character. */
+const cut = (t: string) => { let out = ""; for (const ch of t) { if (out.length + ch.length > PIECE) break; out += ch; } return out; };
+/** The actor word the audit line takes (AuditEntry's staff:, system: or seed:): a typed word as given; the demo reset's
+ *  bare "system" as system:demo-reset; a Sample person's id as staff:<their staff id> (the person the word named before;
+ *  each Sample person has one staff row, PF-3). Else refused. */
+async function auditActorOf(tx: Tx, by: string): Promise<string> {
+  if (AuditActor.safeParse(by).success) return by;
+  if (by === "system") return "system:demo-reset";
+  const staff = /^user-[A-Z]$/.test(by) ? await tx.platformStaff.findMany({ where: { actorId: by }, select: { id: true }, take: 2 }) : [];
+  if (staff.length === 1) return `staff:${staff[0].id}`;
+  throw new SettingRefused(`"${by.slice(0, 60)}" is not a known staff member, so the change cannot be recorded.`);
+}
+
 export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: string; value: unknown; changed: boolean }> {
   const def = definitionOf(w.key);
   if (typeof w.by !== "string" || !w.by.trim()) throw new SettingRefused("A setting change needs who makes it.");
@@ -130,11 +173,16 @@ export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: 
       create: { firmId: scope.firmId, key: w.key, value, changedBy: w.by },
       update: { value, changedBy: w.by, changedAt: new Date() },
     });
-    await tx.auditEvent.create({ data: {
-      workspaceId: w.workspaceId, actor: w.by, action: "platform.setting.change", entity: "platform_firm_setting",
+    await auditEvent.record(tx, {
+      firmId: scope.firmId, actor: await auditActorOf(tx, w.by), action: "platform.setting.change", entity: "platform_firm_setting",
       entityKey: `${scope.firmId}:${w.key}`, summary: `Firm ${firm.key}: setting ${w.key} ${changed ? "changed" : "saved unchanged"}${w.reason ? ` (${w.reason})` : ""}`.slice(0, 600),
-      detail: { firmId: scope.firmId, firmKey: firm.key, key: w.key, from, to: value, ...(w.reason ? { reason: w.reason } : {}) },
-    } });
+      // PF-13: a personal value goes in before/after only (a string of at most 4,000 characters, or null), never in detail.
+      // R1.8 (QA-594): any other setting's before and after are its from and to in detail (asDetail, read by AUD-4 as "key: from → to").
+      detail: (def.personal
+        ? { firmKey: firm.key, key: w.key, personal: true, ...(w.reason ? { reason: cut(w.reason) } : {}) }
+        : { firmKey: firm.key, key: w.key, ...asDetail("from", from), ...asDetail("to", value), ...(w.reason ? { reason: cut(w.reason) } : {}) }) as AuditEntry["detail"],
+      before: def.personal ? { value: from as string | null } : null, after: def.personal ? { value: value as string | null } : null,
+    });
     return { key: w.key, value: parsed.data, changed };
   };
   return "$transaction" in db ? (db as PrismaClient).$transaction(run) : run(db as Tx);
@@ -202,6 +250,10 @@ export const EVERYONE_SEES_ALL = registerSetting({
   description: "Everyone in the firm sees every client, case, prospect and task (SA6-D1 seeds the view.all keys on every starter role); off means each person sees their own.",
   schema: z.boolean(), default: true,
 });
+/** PF-19p: a platform value, not a firm's. The settings store holds firm values only, so messages read this definition's
+ *  default: changing it is a code change until ExpatReady staff get a platform settings route (PF-17's console; its key
+ *  system/settings:manage is held by no firm role, so no firm route can set it). Break F2. */
+export const ACCOUNT_MAIL_FROM = registerSetting({ key: "platform.account_mail_from", ownerModule: "platform", changePermission: "system/settings:manage", description: "The From and Reply-To address of platform account emails (sign-up's verification), sent as ExpatReady. A platform value: messages read this default, never a firm's value. Sample no-reply@expatready.com.", schema: z.email(), default: PLATFORM_ACCOUNT_FROM_SAMPLE });
 export const REQUIRE_TWO_STEP = registerSetting({
   key: "platform.require_two_step", ownerModule: "platform", changePermission: "agent/security-policy:manage",
   description: "Require two-step sign-in for all staff (AG-1-40, AG-16-24): fixed on, not offered as a choice (question 3, decided by Lead B under P-566 (3), confirmed by the founder P-567; contracts §7 §1.2). Enforced at every request by the platform guard (PF-4).",

@@ -8,6 +8,8 @@
 // 500 today are the reviewed ALLOW_500 list (fixed in CS-V1 PR 2-3b). Named cases DW1-DW3. US$0, no model call.
 // CS-V1 part 2: DW4, for each file whose inputs now parse, an oversized value, a wrong type and an unknown field each
 // answer 400 naming the field and store nothing (rows counted before and after); a correct one still answers.
+// CS-V1 part 3: DW4 for the last five (the case list, the questionnaire, the PDF copy, a signing step, the signed scan);
+// DW5: the allow-list is empty, and a planted unparsed route fails the check.
 //   zsh studio/tools/isolated.sh runtime_csv1 4486 start && tsx studio/tests/check_csv1_inputs.ts 4486 xr_studio_runtime_csv1
 import { join } from "node:path";
 import { planted } from "./lib/ts-files.ts";
@@ -21,14 +23,8 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
 
 /** The reviewed list of today's unparsed inputs, "<file> <VERB> <path> <body|query>[(key)]". It only shrinks: each line
  *  goes when its method parses (CS-V1 PR 2: review-rounds/readiness/form-additions; PR 3a: person-link, case-prepare,
- *  sign-steps; PR 3b: runtime.ts). Measured on main by this check (16 Nov); each confirmed by reading its service method. */
-export const ALLOW = new Set([
-  "case-prepare.ts POST /api/runtime/items/:id/pdf-copy body",             // CasePrepare.pdfCopy: fields read by hand
-  "runtime.ts GET /api/runtime/cases query",                               // Runtime.list: take/after/client/q by hand
-  "runtime.ts GET /api/runtime/cases/:id/questionnaire query(mode)",       // the handler compares m to "pqr"/"agent"
-  "sign-steps.ts POST /api/runtime/items/:id/sign-steps/:key body",        // SignSteps.step
-  "sign-steps.ts POST /api/runtime/items/:id/signed-scan body",            // SignSteps.scan: the upload's text fields
-]);
+ *  sign-steps; PR 3b: runtime.ts; done in part 3, 19 Nov). A new unparsed input fails the check (DW5). */
+export const ALLOW = new Set<string>([]);   // CS-V1 part 3: empty (pdfCopy, Runtime.list, the questionnaire, SignSteps.step and .scan parse)
 /** The reviewed list of routes that answer 500 to a malformed id today, "<VERB> <path>" (DW3). Only shrinks. */
 export const ALLOW_500 = new Set<string>([]);
 
@@ -98,14 +94,20 @@ const viaDestructure = route("").replace("@Body() b: unknown) { return this.t.pu
 ok("CS-V1 DW1 fail: a body read off @Req() (req.body) is unparsed, not missing", fails({ "things.ts": viaReq }));
 ok("CS-V1 DW1 fail: a destructured @Body() is unparsed, not missing", fails({ "things.ts": viaDestructure }));
 
-// ---- DW2: the allow-list only shrinks.
-const unfixed = [...ALLOW][0], dropped = new Set([...ALLOW].filter((k) => k !== unfixed));
-const dw2a = judge(found, dropped);
-ok("CS-V1 DW2 fail: a method taken off the list without a fix fails", dw2a.unlisted.join() === unfixed, dw2a);
+// ---- DW2: the allow-list only shrinks. The list is empty since part 3, so "taken off without a fix" is asked of a
+// planted unparsed route: listed it passes, taken off it fails.
+const unfixedFound = inputs(planted({ "things.ts": route("const b = body as { name?: string };") })), unfixed = "things.ts POST /api/runtime/things/:id body";
+const dw2a = judge(unfixedFound, new Set()), dw2listed = judge(unfixedFound, new Set([unfixed]));
+ok("CS-V1 DW2 fail: a method taken off the list without a fix fails", dw2a.unlisted.join() === unfixed && !dw2listed.unlisted.length && !dw2listed.fixedButListed.length, { dw2a, dw2listed });
 const fixedKey = "runtime.ts PUT /api/runtime/cases/:id/answers/:subject/:field body";   // parses today (Runtime.saveAnswer)
 const dw2b = judge(found, new Set([...ALLOW, fixedKey, "gone.ts POST /api/runtime/gone body"]));
 ok("CS-V1 DW2 fail: a method fixed (or gone) but still listed fails", dw2b.fixedButListed.sort().join("|") === ["gone.ts POST /api/runtime/gone body", fixedKey].sort().join("|"), dw2b);
 ok("CS-V1 DW2 pass: today's list matches the code exactly", j.unlisted.length === 0 && j.fixedButListed.length === 0);
+
+// ---- DW5 (part 3): the list is empty and the check passes; a planted unparsed route (in any file) fails it.
+ok("CS-V1 DW5 pass: ALLOW is empty and every case-side body and query reaches a zod parse", ALLOW.size === 0 && j.unlisted.length === 0 && j.fixedButListed.length === 0, { allow: [...ALLOW], ...j });
+const dw5 = judge([...found, ...inputs(planted({ "features/things/things.ts": route("const b = body as { name?: string };") }))], ALLOW);
+ok("CS-V1 DW5 fail: a planted unparsed route fails the check with the empty list", dw5.unlisted.join() === "features/things/things.ts POST /api/runtime/things/:id body", dw5);
 
 // ---- DW3: every route with an id parameter answers 404 to a malformed id (a running copy). Every path parameter is
 // asked (review of #2007 m3: :run, :doc, :answer, :row are ids too), each set to the malformed value.
@@ -143,12 +145,15 @@ if (reached) {
   const studio = join(import.meta.dirname, ".."), tsx = join(studio, "node_modules", ".bin", "tsx");
   const releases = () => Number(m3.sql(`select coalesce(max(r.version), 0) from config_release r join combination c on c.id = r.combination_id where c.combination_key = 'vv.single'`) ?? 0);
   if (releases() < 1) spawnSync(tsx, ["--tsconfig", join(studio, "api", "tsconfig.json"), join(studio, "tests/runtime/setup_visitor_visa.ts"), String(PORT), m3.DB], { cwd: join(studio, ".."), stdio: "ignore", timeout: 900_000 });
-  ok("DW4 setup: the copy has a Visitor visa release", releases() >= 1, releases());
+  // Part 3 (review m1): release 2, with signers and channels (acceptance/lib/setup_vv_m3.ts, as check_c81_signing_api runs
+  // it; its own red lines, other rows' S2w and S7a, do not stop it), so a filled case has IMM 5476 signed by hand and scanned.
+  if (releases() < 2) spawnSync(tsx, ["--tsconfig", join(studio, "api", "tsconfig.json"), join(studio, "acceptance/lib/setup_vv_m3.ts"), String(PORT), m3.DB], { cwd: join(studio, ".."), stdio: "ignore", timeout: 900_000 });
+  ok("DW4 setup: the copy has Visitor visa release 2", releases() >= 2, releases());
   const f = await m3.firms(), officer = f.officer ?? m3.OFFICER, rep = f.rep ?? "user-R";
   const c = await m3.openCase(m3.needVisitorVisa(), [{ role: "principal", name: "Sample Client V", dob: m3.yearsAgo(40) }], { representative: rep, caseOfficers: [officer] });
   const subject = c.subjects["Sample Client V"], fid = m3.filingOf((await m3.prepare(c.id, officer)).p, subject)?.id ?? "";
   ok("DW4 setup: a case with a filing", !!fid, { case: c.id, fid });
-  const rows = () => m3.sql("select (select count(*) from audit_event) || '/' || (select count(*) from filing_review) || '/' || (select count(*) from readiness_pass) || '/' || (select count(*) from filing_form_addition) || '/' || (select count(*) from filing_form_addition where removed_at is not null)");
+  const rows = () => m3.sql("select (select count(*) from audit_event) || '/' || (select count(*) from filing_review) || '/' || (select count(*) from readiness_pass) || '/' || (select count(*) from filing_form_addition) || '/' || (select count(*) from filing_form_addition where removed_at is not null) || '/' || (select count(*) from form_instance) || '/' || (select count(*) from sign_step) || '/' || (select count(*) from signed_scan)");
   const named = (b: { errors?: { field?: string; message?: string }[]; detail?: string } | undefined, field: string) => (b?.errors ?? []).some((e) => e.field === field || (field === "body" && /Not part of|Not a filter/.test(e.message ?? "")));
   /** Each bad request answers 400 naming its field and changes no row; the good one is not refused by the schema. */
   const dw4 = async (file: string, method: string, path: (q: string) => string, actor: string, bad: { why: string; body?: unknown; q?: string; field: string }[], good: { body?: unknown; q?: string; expect: (s: number) => boolean }) => {
@@ -210,6 +215,72 @@ if (reached) {
     { why: "an oversized original", q: `?original=${"1".repeat(50)}`, field: "original" },
     { why: "an unknown filter", q: "?original=1&extra=1", field: "body" },
   ], { q: "?original=1", expect: (s) => s === 404 });   // no such copy: the flag passes the schema, the copy is not found, as before
+
+  // ---- DW4 (part 3): the last five. The case list and the questionnaire (runtime.ts), the PDF copy (case-prepare.ts),
+  // a signing step and the signed scan (sign-steps.ts). A refused write says "Nothing was stored." (rows counted).
+  const stored = (b: { detail?: string } | undefined) => /Nothing was stored\.$/.test(b?.detail ?? "");
+  const page = await dw4("runtime.ts", "GET", (q) => `/runtime/cases${q}`, officer, [
+    { why: "q given twice", q: "?q=a&q=b", field: "q" },
+    { why: "an oversized q", q: `?q=${"x".repeat(300)}`, field: "q" },
+    { why: "take given twice", q: "?take=1&take=2", field: "take" },
+    { why: "an oversized after", q: `?after=${"x".repeat(300)}`, field: "after" },
+    { why: "an unknown filter", q: "?take=5&extra=1", field: "body" },
+  ], { q: "?take=5", expect: (s) => s === 200 });
+  ok("CS-V1 DW4 pass (runtime.ts): the case list keeps take's limit and its default (a take that is not a number is 50, as before; 1.5 is 1, not a 500)", (page.body?.cases ?? []).length <= 5 && (await m3.call("GET", "/runtime/cases?take=abc", undefined, officer)).status === 200 && (await m3.call("GET", "/runtime/cases?take=1.5", undefined, officer)).status === 200, page.body?.cases?.length);
+  await dw4("runtime.ts", "GET", (q) => `/runtime/cases/${c.id}/questionnaire${q}`, officer, [
+    { why: "mode given twice", q: "?mode=agent&mode=pqr", field: "mode" },
+    { why: "an oversized mode", q: `?mode=${"a".repeat(300)}`, field: "mode" },
+    { why: "a mode that is not one of its words", q: "?mode=everything", field: "mode" },
+    { why: "an unknown filter", q: "?mode=agent&extra=1", field: "body" },
+  ], { q: "?mode=agent", expect: (s) => s === 200 });
+  ok("CS-V1 DW4 pass (runtime.ts): the questionnaire still answers pqr, sqr, client and none", (await Promise.all(["?mode=pqr", "?mode=sqr", "?mode=client", ""].map(async (q) => (await m3.call("GET", `/runtime/cases/${c.id}/questionnaire${q}`, undefined, officer)).status))).every((s) => s === 200));
+  type Item = { id: string; kind: string; form?: string; subject: string; channel?: string; signature?: string };
+  // Review m1: a second case with every fact filled, so its forms take their channels and signatures (IMM 5476 signed by
+  // hand and scanned, as check_c81_signing_api reaches it) and the stored 201 path runs here too.
+  const c2 = await m3.openCase(m3.needVisitorVisa(), [{ role: "principal", name: "Sample Client W", dob: m3.yearsAgo(40) }], { representative: rep, caseOfficers: [officer] });
+  await m3.fillEverything(c2.id);
+  const items = ((await m3.prepare(c2.id, officer)).p?.items ?? []) as Item[];
+  const online = items.find((i) => i.kind === "form" && i.channel === "ONLINE"), hand = items.find((i) => i.kind === "form" && i.signature === "HAND_SCANNED");
+  const anyForm = online ?? hand ?? items.find((i) => i.kind === "form");
+  ok("DW4 setup (part 3): the filled case has an Online form and a form signed by hand and scanned", !!online && !!hand, items.map((i) => `${i.form} ${i.channel} ${i.signature}`));
+  const writeRefused = async (file: string, why: string, field: string, send: () => Promise<{ status: number; body?: { errors?: { field?: string; message?: string }[]; detail?: string } }>) => {
+    const before = rows(), r = await send(), after = rows();
+    ok(`CS-V1 DW4 fail (${file}): ${why} answers 400 naming ${field}, "Nothing was stored.", nothing stored`, r.status === 400 && named(r.body, field) && stored(r.body) && before === after, { status: r.status, body: r.body, before, after });
+  };
+  const pdfItem = online ?? anyForm;
+  for (const [why, body, field] of [["an unknown field", { extra: 1 }, "body"], ["a wrong type (idempotencyKey: 5)", { idempotencyKey: 5 }, "idempotencyKey"], ["an oversized idempotencyKey", { idempotencyKey: big }, "idempotencyKey"]] as const)
+    await writeRefused("case-prepare.ts", why, field, () => m3.call("POST", `/runtime/items/${pdfItem?.id}/pdf-copy`, body, officer));
+  const pdf = await m3.call("POST", `/runtime/items/${pdfItem?.id}/pdf-copy`, { idempotencyKey: `csv1-${Date.now()}` }, officer);
+  ok(`CS-V1 DW4 pass (case-prepare.ts): a correct PDF copy still answers as before (${online ? "an Online item: queued, 202" : "no Online item: refused in words, 409/422"})`, online ? pdf.status === 202 : pdf.status === 409 || pdf.status === 422, { status: pdf.status, body: pdf.body });
+  // The 202 queues a background job (fill-case.ts run()) that, when it ends, writes its own audit line ("Copy <id8> of …
+  // generated" or "… failed"); left running, that line lands during the refusals below and moves rows()' first count
+  // (audit_event) with nothing the refused request stored (batch of 20 Nov: 556 -> 557). So wait until the job has
+  // written it: the queue runs one copy at a time, oldest first, so every earlier copy has settled too.
+  const copyId = String(pdf.body?.id ?? "");
+  if (pdf.status === 202) ok("DW4 setup (part 3): the queued PDF copy has finished and written its audit line before the next refusals are counted", /^[0-9a-f-]{36}$/.test(copyId) && await m3.until(async () => m3.sql(`select count(*) from audit_event where entity = 'form copy' and action in ('generated', 'failed') and summary like 'Copy ${copyId.slice(0, 8)} of %'`) === "1", 120_000), copyId);
+  const stepItem = hand ?? anyForm;
+  for (const [why, body, field] of [["an unknown field", { copy: null, extra: 1 }, "body"], ["a wrong type (copy: 5)", { copy: 5 }, "copy"], ["an oversized copy", { copy: big }, "copy"]] as const)
+    await writeRefused("sign-steps.ts", `a signing step with ${why}`, field, () => m3.call("POST", `/runtime/items/${stepItem?.id}/sign-steps/print`, body, officer));
+  /** The signed scan: one real Sample PDF in "file", plus the text fields given. */
+  const upload = async (fields: [string, string][]) => {
+    const fd = new FormData(); fd.append("file", new Blob([new Uint8Array(m3.signedScan(stepItem?.form ?? "IMM 5476"))]), "scan-signed.pdf");
+    for (const [k, v] of fields) fd.append(k, v);
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/runtime/items/${stepItem?.id}/signed-scan`, { method: "POST", headers: { "x-actor": officer }, body: fd }).catch(() => null);
+    return { status: res?.status ?? 0, body: await res?.json().catch(() => undefined) };
+  };
+  for (const [why, fields, field] of [["an unknown field", [["extra", "1"]], "body"], ["copy given twice (a list)", [["copy", "a"], ["copy", "b"]], "copy"], ["an oversized copy", [["copy", "c".repeat(200)]], "copy"]] as const)
+    await writeRefused("sign-steps.ts", `a signed scan with ${why}`, field, () => upload(fields.map(([k, v]) => [k, v] as [string, string])));
+  if (hand) { // the whole order on a "signed by hand and scanned" item: print a generated copy, sign, upload its scan
+    const copy = await m3.generateCopy(c2.id, hand.form!, hand.subject);
+    const printed = await m3.call("POST", `/runtime/items/${hand.id}/sign-steps/print`, { copy }, officer);
+    const signed = await m3.call("POST", `/runtime/items/${hand.id}/sign-steps/signed`, { copy }, officer);
+    ok("CS-V1 DW4 pass (sign-steps.ts): correct steps still answer as before (Printed, then Signed by hand: 200)", printed.status === 200 && signed.status === 200, { printed: printed.status, signed: signed.status, body: signed.status === 200 ? undefined : signed.body ?? printed.body });
+    const before = rows(), scan = await upload(copy ? [["copy", copy]] : []), after = rows();
+    ok("CS-V1 DW4 pass (sign-steps.ts): a real Sample signed scan naming its printed copy is still stored (201, one signed_scan row)", scan.status === 201 && Number(after?.split("/")[7]) === Number(before?.split("/")[7]) + 1, { status: scan.status, body: scan.body, before, after });
+  } else { // no such item in this release: the schema takes the request, and the route refuses it in its own words, as before
+    const step = await m3.call("POST", `/runtime/items/${stepItem?.id}/sign-steps/print`, { copy: null }, officer), scan = await upload([]);
+    ok("CS-V1 DW4 pass (sign-steps.ts): correct requests still answer as before (not signed by hand: 409 in words)", step.status === 409 && scan.status === 409, { step, scan });
+  }
 }
 { // case-close.ts (CS-C1a): its checks and words, now in zod (contracts/runtime.ts).
   const { CaseDecisionBody, CaseReasonBody, CaseWithdrawBody } = await import("../contracts/runtime.ts");

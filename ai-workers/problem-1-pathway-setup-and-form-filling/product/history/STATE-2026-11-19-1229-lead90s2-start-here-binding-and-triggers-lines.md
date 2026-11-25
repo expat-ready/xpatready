@@ -1,0 +1,5 @@
+# STATE Start-here "Binding" and "Triggers" lines, moved word for word by Lead 90 (series 2), 19 Nov
+
+🏭 **Binding for every agent from 19 Nov 10:4x IST (RULES as of P-724): P-721 protect the merge path · P-722 proof per item, automatic · P-723 drain to ~13:30, then journeys · P-724 factory: ≤6 items in flight per journey, start one only when one is Proven · P-726 two tracks: Build Lead C J1 → J7 → J8 → J9; Lead B J2 → J3 → J4 → J5 → J6 · P-728 ten a day: J-test in the item's last PR, 6 batches at once (held, P-730), automatic proof now, J4 beside J2, 4 qa lanes.**
+
+⏰ **Triggers to act on:** #2195 merges → relabel any PR it unblocks; #2029 merges → type into #1959's lane (session_018BSQJnvhgfTkPP1HqhHhJV) "continue: #2029 merged; follow Lead B's comment 7000777630 on #1959", then read and label #1959; #2169 merges → J-77 opens; #2196 merges → J-37 opens; #2012 merges → J-109 opens. Older pointer lines: `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1110-lead87s2-pointer-lines.md`.

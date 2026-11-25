@@ -57,6 +57,7 @@ const ALLOWED: Record<string, number> = {
   "runtime/cases.tsx": 2, // the first person of a browser with none (BR-6/BR-8); BR-8's "Continue as Case officer"
   "runtime/hand-off.tsx": 1, // BK-4c: the case area's hand-off button (to the case's client, back to the firm, to the representative)
   "pages/sign-in.tsx": 1, // signing in
+  "runtime/clients.tsx": 1, // CS-K1s (breaker M1): before landing on a client's case, act as the signed-in staff member's own case-side person (said by PersonNotice)
   // pages/start.tsx: none since BK-5 PR 2 (its "Sign in as the Configuration author" is a link to the sign-in page).
   "components/hand-off.tsx": 2, // BK-4b's HandOff button (#1582, reviewed): its one call, plus its doc comment "default setActor(to.id)"
   "lib/api.ts": 0, // defines setActor
@@ -87,7 +88,7 @@ ok("BR-1: every use of the person-changing helpers is listed (frame link, releas
 const writers = files.filter((f) => !f.endsWith("lib/api.ts") && /localStorage\.setItem\(\s*["']xr-actor/.test(readFileSync(f, "utf8"))).map((f) => relative(WEB, f));
 ok("BR-1: nothing but lib/api.ts writes the stored person", writers.length === 0, writers);
 ok("BR-1 fail side: a new setActor call in a page would be caught", (() => { const s = { ...sites, "pages/review.tsx": 1 }; return Object.entries(s).some(([f, n]) => (ALLOWED[f] ?? 0) !== n); })());
-ok("BR-1: every change of person is said once by the frame's notice, mounted once outside the routes", /<BrowserRouter><PersonNotice \/>/.test(read("App.tsx")) && /Now: \$\{p\.name\} \(simulated\)/.test(read("components/frame.tsx")));
+ok("BR-1: every change of person is said once by the frame's notice, mounted once outside the routes", /<(BrowserRouter|)><PersonNotice \/><(WorkspaceRouter|Routes)>/.test(read("App.tsx")) && /Now: \$\{p\.name\} \(simulated\)/.test(read("components/frame.tsx")));
 
 // (4) BK-4a's own scope: no "switch to" words left in its files (4b and 4c guard theirs; the last to merge checks web/src).
 for (const f of ["App.tsx", "components/frame.tsx", "pages/sign-in.tsx", "runtime/cases.tsx"]) ok(`BK-4a (4): no "switch to" words in ${f}`, !/switch to/i.test(read(f)), (read(f).match(/.{0,40}switch to.{0,40}/i) ?? [])[0]);
@@ -96,7 +97,7 @@ for (const f of ["App.tsx", "components/frame.tsx", "pages/sign-in.tsx", "runtim
 const w = whereFromAddress("outside", "/sign-in");
 ok("BK-4a (5): the sign-in page names itself and is a first page (no Back)", w.crumbs.map((c) => c.label).join(" › ") === "Sign in" && backOf(w) === null, w);
 ok("BK-4a (5): /sign-in is a route of the app, outside both areas", /<Route path="\/sign-in" element=\{<SignInPage \/>\} \/>/.test(read("App.tsx")) && /<Frame area="outside"/.test(read("pages/sign-in.tsx")));
-ok("BR-6: a chosen person this workspace does not know is sent to the sign-in page; Studio and case routes are guarded", /personChosen\(\) && !personOf\(id\) \? <Navigate to="\/sign-in\?unknown=1"/.test(read("App.tsx")) && (read("App.tsx").match(/<KnownPerson>/g) ?? []).length === 2);
+ok("BR-6: a chosen person this workspace does not know is sent to the sign-in page; Studio and case routes are guarded", /personChosen\(\) && !personOf\(id\) \? <Navigate to="\/sign-in\?unknown=1"/.test(read("App.tsx")) && (read("App.tsx").match(/<KnownPerson>/g) ?? []).length === 3);   // Studio, case area, CS-K1s's /clients
 ok("BR-6: a browser with no stored person is the Configuration author, as before (a page, not a gate, P-484 (3))", /let actor = stored \?\? "user-A";/.test(read("lib/api.ts")) && /let chosen = stored !== null;/.test(read("lib/api.ts")));
 ok("BR-8: the case area switches silently only a browser with no person chosen; a chosen Studio person gets the notice and one named button", /!casesLeaving\(\) && !personChosen\(\) && !isCasePerson\(getActor\(\)\)/.test(read("runtime/cases.tsx")) && /<NotACasePerson \/>/.test(read("runtime/cases.tsx")) && /Continue as \{officer\.name\}/.test(read("runtime/cases.tsx")));
 

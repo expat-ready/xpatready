@@ -3,7 +3,8 @@
 // ports/entitlement.ts). Named cases CS-C1 DW9-DW14, each a pass and a fail. Needs an isolated copy: the configured
 // checkpoint gives a released, startable combination (Visitor visa, single) to open cases on. The openings with a test
 // plan limit go through an in-process app on the copy's own database (the same Runtime and RuntimeController, only its
-// EntitlementPort bound to the test's limits; the copy's own server keeps the allow-all fake). Count fixtures are SQL
+// EntitlementPort bound to the test's limits, and to the allow-all fake explicitly between them: PF-15c's Runtime has no
+// default; the copy's own server reads the Sample plans through PgEntitlements). Count fixtures are SQL
 // cases in this check's own workspace (a case, a CURRENT stage, a group, filings, C8.2's filing_record), moved by
 // CS-C1a's CaseClose service (decision, withdrawal, close, reopen). No browser, no model call (US$0).
 //   zsh studio/tools/isolated.sh csc1b_count 4578 start && tsx studio/tests/check_csc1_count.ts 4578 xr_studio_csc1b_count
@@ -25,6 +26,8 @@ const VV = comboId("vv.single")!;
 const { Db, Workspace, Audit } = await import("../api/src/core.ts");
 const { Programs } = await import("../api/src/programs.ts");
 const { Runtime, RuntimeController } = await import("../api/src/runtime.ts");
+const { FO_PERSON_PORT } = await import("../ports/fo-person.ts");
+const { foPersonPort } = await import("../api/src/front-office/people/fo-person-port.ts");   // CS-K1 part 2: an opening links its client
 const { CaseClose } = await import("../api/src/case-close.ts");
 const { PgCaseCount } = await import("../api/src/case-count.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -37,11 +40,12 @@ type Harness = import("../ports/contracts/case-count-port.contract.ts").CaseCoun
 
 // Programs' only use in Runtime is the startable check (S4); its own providers (Studio, the library) are not this check's.
 // The copy's own server opens a case on the same combination below, so it is startable; the stand-in says so.
-@Module({ controllers: [RuntimeController], providers: [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime] }) class CountApp {}
+@Module({ controllers: [RuntimeController], providers: [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: FO_PERSON_PORT, useValue: foPersonPort }] }) class CountApp {}
 const app = await NestFactory.create(CountApp, { logger: false, abortOnError: false });
 await app.listen(0, "127.0.0.1");
 const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}/api`;
 const runtime = app.get(Runtime), db = app.get(Db);
+runtime.useEntitlements(fakeEntitlements());   // PF-15c: bound explicitly (this app loads no features/platform-entitlements.ts)
 type Res = { status: number; body: any }; // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely, as in the other checks
 const local = async (method: string, path: string, body: unknown, actor: string): Promise<Res> => {
   const r = await fetch(`${BASE}${path}`, { method, headers: { "content-type": "application/json", "x-actor": actor }, body: JSON.stringify(body) });
@@ -204,7 +208,7 @@ try {
   const open = (actor = "user-O", extra: Record<string, unknown> = {}) => local("POST", "/runtime/cases", { combinationId: VV, clientActor: "user-P", principal: { displayName: "Sample Client N" }, ...(actor === "user-O" && rep ? { representative: rep, caseOfficers: ["user-O"] } : {}), ...extra }, actor);
   const caseNo = (r: Res) => Number(String(r.body?.case_number ?? "").slice(7));
   const opened = await open();
-  ok("CS-C1 DW11 pass: with the allow-all fake (the default binding) opening behaves as today: 201 with a case number", opened.status === 201 && Number.isInteger(caseNo(opened)), [opened.status, opened.body?.detail]);
+  ok("CS-C1 DW11 pass: with the allow-all fake (bound explicitly) opening behaves as today: 201 with a case number", opened.status === 201 && Number.isInteger(caseNo(opened)), [opened.status, opened.body?.detail]);
   const used = (await A.activeCounts()).individual, N = used + 1;
   const parties = () => Number(sql(`select count(*) from party`)), counter = () => sql(`select string_agg(firm_key || ':' || next_value, ',' order by firm_key) from firm_case_counter`);
   const p0 = parties();

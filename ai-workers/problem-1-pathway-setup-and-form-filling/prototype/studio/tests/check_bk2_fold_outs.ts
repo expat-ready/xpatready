@@ -23,6 +23,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) pass++
 export const NOT_FOLD_OUTS: { file: string; on: string; why: string }[] = [
   { file: "components/add-to-structure.tsx", on: 'role="combobox"', why: "a combobox: aria-expanded tells that its list of choices is showing" },
   { file: "runtime/add-form.tsx", on: 'role="combobox"', why: "a combobox: aria-expanded tells that its list of choices is showing" },
+  { file: "modules/platform/find/find-box.tsx", on: 'role="combobox"', why: "PF-30s find box: a combobox, aria-expanded tells that its list of results is showing" },
   { file: "components/own-questions.tsx", on: "data-own-ask", why: "an action: opens the form to ask the field as its own question" },
   { file: "components/rule-facts.tsx", on: ">Add the fact this rule needs<", why: "an action: opens the form to add a fact" },
   { file: "components/rule-facts.tsx", on: ">Work it out instead<", why: "an action: opens the form to work the fact out" },
@@ -30,6 +31,8 @@ export const NOT_FOLD_OUTS: { file: string; on: string; why: string }[] = [
   { file: "pages/job.tsx", on: "data-accept", why: "an action: Accept, or opens the reason form for a near match" },
   { file: "pages/job.tsx", on: ">Decide<", why: "an action: opens the decision form for one form field" },
   { file: "runtime/release-update.tsx", on: "Show the first", why: "a longer list (show all n / show the first n), like the other show-all buttons, not a fold-out section" },
+  { file: "modules/front-office/booking/calendar/detail-panel.tsx", on: "data-more-menu", why: "a menu button: aria-expanded tells that its menu of actions is open" },
+  { file: "modules/front-office/booking/calendar/new-booking.tsx", on: "data-zone-change", why: "an action: opens the time-zone picker" },
 ];
 
 /** Code on one line, comments left out. */

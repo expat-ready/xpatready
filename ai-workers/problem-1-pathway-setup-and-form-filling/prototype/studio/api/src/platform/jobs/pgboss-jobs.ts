@@ -21,14 +21,18 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { PgBoss, type ConstructorOptions, type JobWithMetadata } from "pg-boss";
 import { z } from "zod";
-import { CronSpec, JobName, JobOptions, JobPayload, type JobHandler, type JobPort } from "../../../../ports/jobs.ts";
+import { CronSpec, JobKey, JobName, JobOptions, JobPayload, PLATFORM_JOB_QUEUES, type JobHandler, type JobPort } from "../../../../ports/jobs.ts";
 import { firmScope } from "../firm-scope.ts";
 import { jobIdOf } from "./job-key.ts";
+import { logPort } from "../observability/log.ts";
 
 /** pg-boss's schema in our database (created by pg-boss at start, never by Prisma). */
 export const JOBS_SCHEMA = "platform_jobs";
 /** The one dead-letter list: every job that failed after its last retry, with its error. */
 export const DEAD_LETTER = "platform.dead_letter";
+/** The most dead-letter entries one read returns: pg-boss findJobs orders by created_on, so a read keeps the list's OLDEST
+ *  entries up to this cap (PF-17 part 4, m1: the console says when a read reached it). */
+export const DEAD_LETTER_CAP = 10_000;
 
 /** A job never waits for a fetch longer than this before pg-boss would delete it (and free its key): 10 years. */
 const KEEP_WAITING_SECONDS = 10 * 365 * 24 * 3600;
@@ -46,7 +50,7 @@ export const DEFAULT_RETRY: RetryPolicy = { retryLimit: 3, retryDelay: 30, retry
 const FIRM = z.string().refine((f) => { try { firmScope(f); return true; } catch { return false; } }, "not a firm id");
 /** What pg-boss stores as a job's data: our envelope around the caller's payload. A recurring schedule's envelope has
  *  no firm and `recurring: true`; each of its runs gets the key `<name>@<minute, ISO>` (as PF-0p's fake gives). */
-const ENVELOPE = z.object({ key: z.string().min(1).max(200), firmId: FIRM.nullable(), payload: JobPayload, recurring: z.literal(true).optional(), due: z.iso.datetime().optional() });
+const ENVELOPE = z.object({ key: z.string().min(1).max(200), firmId: FIRM.nullable(), payload: JobPayload, recurring: z.literal(true).optional(), platform: z.literal(true).optional(), due: z.iso.datetime().optional() });
 type Envelope = z.infer<typeof ENVELOPE>;
 
 /** A job that refused to run or failed after its last retry. */
@@ -100,7 +104,7 @@ export class PgBossJobs implements JobPort {
     this.boss = new PgBoss({ connectionString: o.connectionString, schema: this.schema, max: 3, application_name: "xr-studio-jobs", ...o.boss });
     // pg-boss emits "error" for background failures (maintenance, a lost connection); an EventEmitter "error" with no
     // listener would end the process, so it always has one.
-    this.boss.on("error", (e) => (o.onError ?? ((x: Error) => console.error(`jobs: ${x.message}`)))(e));
+    this.boss.on("error", (e) => (o.onError ?? ((x: Error) => logPort.error("jobs_background_error", x)))(e));
   }
 
   get started() { return this.#state === "started"; }
@@ -188,7 +192,7 @@ export class PgBossJobs implements JobPort {
   /** Cancels the waiting job with this key, of whatever name; true when one was waiting. A job already running is not
    *  cancelled (it finishes). Its key stays used either way. */
   async cancel(key: string): Promise<boolean> {
-    JobOptions.shape.key.parse(key);
+    JobKey.parse(key);
     await this.#whenStarted();
     const id = jobIdOf(key);
     let affected = 0;
@@ -219,10 +223,10 @@ export class PgBossJobs implements JobPort {
     if (this.#state === "started") await this.#applySchedule(name, cron, zone);
   }
 
-  /** The dead-letter list, newest first (read from its oldest 10 000; the list keeps a year, Sample). */
+  /** The dead-letter list, newest first (read from its oldest DEAD_LETTER_CAP entries; the list keeps a year, Sample). */
   async deadLetters(limit = 100): Promise<DeadLetter[]> {
     await this.#whenStarted();
-    const rows = await this.boss.findJobs<Record<string, unknown>>(DEAD_LETTER, { limit: 10_000 });
+    const rows = await this.boss.findJobs<Record<string, unknown>>(DEAD_LETTER, { limit: DEAD_LETTER_CAP });
     return rows.map(toDeadLetter).sort((a, b) => b.failedAt.getTime() - a.failedAt.getTime()).slice(0, limit);
   }
 
@@ -236,12 +240,14 @@ export class PgBossJobs implements JobPort {
     JobName.parse(name);
     const o = JobOptions.safeParse(opts);
     if (!o.success) throw new JobRefused(`jobs: ${name}: ${o.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+    // PF-19p: a platform job (no firm) only on PLATFORM_JOB_QUEUES; refused before anything is queued.
+    if (o.data.platform === true && !PLATFORM_JOB_QUEUES.includes(name)) throw new JobRefused(`jobs: ${name}: a platform job (no firm) on a queue not in PLATFORM_JOB_QUEUES`);
     const p = JobPayload.safeParse(payload);
     if (!p.success) throw new JobRefused(`jobs: ${name}: the payload is a JSON object of ids and facts`);
     await this.#whenStarted();
     await this.#queue(name);
     const due = (at ?? new Date(this.#now())).toISOString();
-    const data: Envelope = { key: o.data.key, firmId: firmScope(o.data.firmId).firmId, payload: p.data, due };
+    const data: Envelope = o.data.platform === true ? { key: o.data.key, firmId: null, platform: true, payload: p.data, due } : { key: o.data.key, firmId: firmScope(o.data.firmId).firmId, payload: p.data, due };
     const id = await this.boss.send(name, data, { id: jobIdOf(o.data.key), ...(at ? { startAfter: at } : {}) });
     return { queued: id !== null };
   }
@@ -278,7 +284,8 @@ export class PgBossJobs implements JobPort {
     const env = ENVELOPE.safeParse(job.data);
     if (!env.success) throw new JobRefused(`jobs: ${name}: the job's data is not a PF-14 envelope (${env.error.issues[0]?.path.join(".")})`);
     const firmId = env.data.firmId === null ? null : firmScope(env.data.firmId).firmId;
-    if (firmId === null && !env.data.recurring) throw new JobRefused(`jobs: ${name}: a job without a firm`);
+    if (env.data.platform && (firmId !== null || !PLATFORM_JOB_QUEUES.includes(name))) throw new JobRefused(`jobs: ${name}: a platform job on a queue not in PLATFORM_JOB_QUEUES, or naming a firm`);
+    if (firmId === null && !env.data.recurring && !env.data.platform) throw new JobRefused(`jobs: ${name}: a job without a firm`);
     // runAt never changes between attempts (a retry rewrites pg-boss's start_after): a job's due time is in its
     // envelope; a recurring run's instant is the minute pg-boss created it in (its cron pass runs a moment into the
     // cron minute; pg-boss's default `missed: skip` sends nothing for minutes the app was down), and its key names

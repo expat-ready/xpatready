@@ -1,0 +1,7 @@
+{
+  "name": "@expat-ready/repo-paths",
+  "private": true,
+  "type": "module",
+  "description": "Finds the repository root by AGENTS.md and names where each area lives (repository clean-up, stage 2a).",
+  "exports": "./index.ts"
+}

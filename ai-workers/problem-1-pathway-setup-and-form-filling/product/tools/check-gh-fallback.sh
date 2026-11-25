@@ -12,6 +12,7 @@ cat > "$T/bin/gh" <<'EOF'
 #!/bin/bash
 echo "gh $*" >> "$FX/gh.log"
 [ "$1 $2" = "auth token" ] && { echo tok123; exit 0; }
+[ -z "${FAKE_FLAG:-}" ] || : > "$FAKE_FLAG"
 [ "${FAKE_GH:-tls}" = ok ] && { echo '[{"number":1}]'; exit 0; }
 [ "${FAKE_GH:-tls}" = 404 ] && { echo "HTTP 404: Not Found (https://api.github.com/repos/o/r/pulls/9)" >&2; exit 1; }
 echo 'Post "https://api.github.com/graphql": tls: failed to verify certificate: x509: OSStatus -26276' >&2; exit 1
@@ -58,12 +59,25 @@ ok "... and never on curl's command line, where ps shows it (review m8)" "$( ! g
 
 run bash "$GH" pr list --state merged --search "merged:>=2026-11-06T00:00:00Z" --json number,title -q '.[]|"#\(.number)"'
 ok "pr list --state merged --search: a GraphQL search with is:merged and the terms, --jq applied" "$([ $r = 0 ] && echo "$out" | grep -qx '#1052' && tail -1 "$T/curl.log" | grep -q 'is:pr is:merged merged:>=2026-11-06T00:00:00Z' && echo 1)" "exit $r: $out $err"
+# ENF-761 part 5: with GH_TLS_NOTE_ONCE (lead-watch.sh sets one per run) three TLS fallbacks say so once; without it, each says so.
+rm -f "$T/once"; e3=""; for i in 1 2 3; do run env GH_TLS_NOTE_ONCE="$T/once" bash "$GH" run list --limit 2 --json databaseId; e3="$e3$err"$'\n'; done
+ok "GH_TLS_NOTE_ONCE: three fallbacks in one run print the curl notice once" "$([ "$(grep -c 'answered through curl' <<< "$e3")" = 1 ] && echo 1)" "$e3"
+# lead-watch.sh's reads start together (24 Nov): another read can make the flag while this one's gh is still failing.
+rm -f "$T/once"; run env GH_TLS_NOTE_ONCE="$T/once" FAKE_FLAG="$T/once" bash "$GH" run list --limit 2 --json databaseId
+ok "... the flag made by another read while gh fails here: answered, and the notice is not printed again" "$([ $r = 0 ] && ! grep -q 'answered through curl' <<< "$err" && echo 1)" "exit $r: $err"
+e3=""; for i in 1 2 3; do run bash "$GH" run list --limit 2 --json databaseId; e3="$e3$err"$'\n'; done
+ok "... and without it, each fallback prints it (3)" "$([ "$(grep -c 'answered through curl' <<< "$e3")" = 3 ] && echo 1)" "$e3"
+rm -f "$T/once"; run env GH_TLS_NOTE_ONCE="$T/no-such-dir/once" bash "$GH" run list --limit 2 --json databaseId
+ok "... a flag file that cannot be made: the notice is still printed (never silent)" "$(grep -q 'answered through curl' <<< "$err" && echo 1)" "$err"
+grep -q 'export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"' "$TOOLS/lead-watch.sh"; ok "lead-watch.sh sets GH_TLS_NOTE_ONCE per run" "$([ $? = 0 ] && echo 1)"
 run bash "$GH" pr view 1052 --json files,mergeable --jq '.files[].path'
 ok "pr view --json files --jq" "$([ $r = 0 ] && [ "$out" = a.ts ] && echo 1)" "exit $r: $out $err"
 run bash "$GH" run list --limit 2 --json databaseId,status,headBranch
 ok "run list --json maps the REST names to gh's" "$([ $r = 0 ] && echo "$out" | jq -e '.[1] == {databaseId:43,status:"queued",headBranch:"x"}' >/dev/null && echo 1)" "exit $r: $out $err"
 run bash "$GH" api repos/o/r/issues/1/events --paginate --jq '[.[]|select(.event=="labeled")]|length'
 ok "api --paginate follows the Link header and joins the pages" "$([ $r = 0 ] && [ "$out" = 2 ] && echo 1)" "exit $r: $out $err"
+run bash "$GH" api -X POST repos/o/r/actions/workflows/walks.yml/dispatches -f ref=main -f 'inputs[journeys]=j_74'
+ok "api -f 'inputs[k]=v' nests like gh: a workflow dispatch sends {inputs:{journeys:...}} (21 Nov, Lead 6)" "$([ $r = 0 ] && tail -1 "$T/curl.log" | grep -q '"inputs": {"journeys": "j_74"}' && ! tail -1 "$T/curl.log" | grep -q 'inputs\[' && echo 1)" "exit $r: $(tail -1 "$T/curl.log")"
 run bash "$GH" repo view --json nameWithOwner -q .nameWithOwner
 ok "repo view reads the repository from git, with no request" "$([ $r = 0 ] && echo "$out" | grep -qE '^[^/]+/[^/]+$' && echo 1)" "exit $r: $out $err"
 run bash "$GH" pr merge 1052
