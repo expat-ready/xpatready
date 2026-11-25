@@ -56,7 +56,7 @@ export class StripeCardRail implements CardRail {
       if (e instanceof Stripe.errors.StripePermissionError || (e as { code?: string }).code === "account_invalid") throw new RailAccountGone();
       // Break n2: Stripe down, rate-limited or refusing our key is still "card not offered now" for the client (offline
       // details, never a 500); the reason, with Stripe's type and code (never a key), goes to the log by the caller.
-      if (e instanceof Stripe.errors.StripeError) throw new RailRefused(`stripe ${e.type}${e.code ? `/${e.code}` : ""}${e.statusCode ? ` (${e.statusCode})` : ""}`);
+      if (e instanceof Stripe.errors.StripeError) { const kind = `stripe ${e.type}${e.code ? `/${e.code}` : ""}${e.statusCode ? ` (${e.statusCode})` : ""}`; throw new RailRefused("the processor refused this hosted payment", kind.replace(/[^\w ./()-]/g, "").slice(0, 80)); }
       throw e;
     }
     if (!s.url) throw new Error("Stripe answered a Checkout session without a url");

@@ -177,11 +177,11 @@ export class CardPay {
         let s: { id: string; url: string };
         try { s = await this.p.rail.createHostedPayment({ ...ask, idempotencyKey: `fo7c-pay-${v.id}-${snap.payments}-${sha(JSON.stringify(ask)).slice(0, 40)}` }); } catch (e) {
           if (!(e instanceof RailRefused || e instanceof RailAccountGone)) throw e;   // refused, Stripe down, or the account no longer ours
-          logPort.warn("card_pay_refused_by_rail", { invoiceId: v.id, reason: e instanceof RailAccountGone ? "account gone" : e.message });
+          logPort.warn("card_pay_refused_by_rail", { invoiceId: v.id, kind: e instanceof RailAccountGone ? "account gone" : e.kind });
           return offline(v);
         }
         try { await this.p.rail.expireOtherHostedPayments(account, v.id, s.id); } catch (e) {
-          logPort.warn("card_pay_expire_failed", { invoiceId: v.id, reason: e instanceof Error ? e.message.slice(0, 200) : "unknown" });   // the old page lapses by its own expiry
+          logPort.warn("card_pay_expire_failed", { invoiceId: v.id, kind: e instanceof RailRefused ? e.kind : e instanceof Error ? e.constructor.name : "unknown" });   // the old page lapses by its own expiry
         }
         return { url: s.url };
       });

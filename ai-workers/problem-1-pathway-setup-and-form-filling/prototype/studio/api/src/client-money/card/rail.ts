@@ -34,7 +34,8 @@ export class RailSignatureError extends Error { constructor() { super("the event
 /** The account can no longer be read with our platform's access (the firm removed it, or it never was ours). */
 export class RailAccountGone extends Error { constructor() { super("the connected account cannot be read"); } }
 /** The processor refused a refund (part 3: "Record an offline refund instead"). */
-export class RailRefused extends Error {}
+/** `kind` is a fixed word for the log (Stripe's error type, code and status, or "fake"), never the processor's text (PF-23m). */
+export class RailRefused extends Error { constructor(message: string, readonly kind = "refused") { super(message); } }
 
 export interface CardRail {
   /** A new connected account for the firm, by controller properties: the firm pays the processor's fees, the processor
