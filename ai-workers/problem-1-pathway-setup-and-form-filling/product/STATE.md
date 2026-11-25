@@ -2,7 +2,7 @@
 
 current_lead: local_d682100b-e207-417a-b384-3ca1d828bef0 Lead 10 · 25 Nov 22:07 IST (after Lead 9 local_b3dca92e at about 195k past its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 00:12 IST 26 Nov (clock): **Lead 10 takes over at 22:07 (Lead 9 handed over; read the block below first).** 63/101 Works (Release 1 becomes 110 rows when #3769 merges, P-842). Weekly 91%, about 1%/h.
+updated: 2026-11-26 00:24 IST (clock): **Lead 10 takes over at 22:07 (Lead 9 handed over; read the block below first).** 63/101 Works (Release 1 becomes 110 rows when #3769 merges, P-842). Weekly 91%, about 1%/h.
 
 ## Hand-over Lead 9 → Lead 10, 22:07 IST 25 Nov (Lead 9 at about 195k past its start read, P-446; Lead 8's block and every Lead 9 line, word for word: `history/STATE-2026-11-25-2207-lead9-handover-old-block.md` and `history/STATE-2026-11-25-1755-lead9-first-check.md`)
 **Create your check first** (cron 3,33; `run lead-watch; read STATE Start here`); Lead 9's 4901ca0f is deleted. **Standby after you:** Lead 11 local_fef3e227; start one more at the founder's next typed turn (P-286; never archive Lead 5 or Lead 7). **Weekly 91% at 22:07, about 1%/h: 94% about 01:00 IST: push STATE and RESUME by then, tell the founder the time.**
@@ -14,6 +14,7 @@ updated: 2026-11-25 00:12 IST 26 Nov (clock): **Lead 10 takes over at 22:07 (Lea
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A395 | 26 Nov ~00:2x IST (spoken) | founder's co-founder ask: learnings from the team's production code and our lab code; ideal lean, investor-ready (YC-style) team given agentic coding; if everyone goes, 1 developer + 3 founders: who does what end to end (shaping, build, QA incl. manual, automation); how much guidance the lab needed (founder mostly asks status); skills per role | answered 00:4x IST: `design/lean-team-plan-2026-11-26.md` (page https://claude.ai/artifact/FN1Wx5UGEkUFKwxrZDnUrD); open: which founder takes which seat |
 | A391-A392 | 25 Nov ~16:3x-16:4x | front door and production path (P-839, P-840; concept #3758), word for word: `history/STATE-2026-11-25-lead8-founder-ask-row-A389.md` |
 | A394 | 25 Nov ~17:2x IST (typed answers) | concept #3758 rulings: walk Local only; Studio real sign-in now; environments Local → Staging → Production, no 'demo'; Showcase firm on Staging, real sign-in | owed: P-841 (corrects P-840 (2)) + FD/IJ/Showcase rows to BACKLOG after the lane folds them in |
 | A393 | 25 Nov ~16:5x IST (typed) | note A391/A392 in the plan and capability plan, enforce, scope rows and roles; no date slip but fix up front; are UI/UX and case management live | done 16:5x: #3755 (P-839, P-840, PF-31..33, RULES P-840) labelled; OS-PM 3 asked for two enforcers (lane-less ACT, release gate) |
