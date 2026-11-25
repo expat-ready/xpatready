@@ -55,8 +55,9 @@ const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
-const features = await Promise.all(["client-money-invoices", "client-money-reads", "client-money-refunds", "client-money-trust", "client-money-reports"].map(async (n) => (await import(`../api/src/features/${n}.ts`)).default as { controllers: unknown[]; providers: unknown[] }));
-const reports = features[4]!;
+const reports = (await import("../api/src/features/client-money-reports.ts")).default;
+const features: { controllers: unknown[]; providers: unknown[] }[] = [(await import("../api/src/features/client-money-invoices.ts")).default, (await import("../api/src/features/client-money-reads.ts")).default,
+  (await import("../api/src/features/client-money-refunds.ts")).default, (await import("../api/src/features/client-money-trust.ts")).default, reports];
 const { MoneyStatement } = await import("../api/src/client-money/reports/statement.ts");
 const { MoneySummary } = await import("../api/src/client-money/reports/summary.ts");
 const { MoneyReportsController } = await import("../api/src/client-money/reports/routes.ts");
