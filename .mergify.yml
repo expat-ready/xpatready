@@ -468,7 +468,8 @@ queue_rules:
       # comment lines above it.
       - check-success = pr-rules
       - -label=records
-      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" below, never a product batch.
+      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" (listed above product while P-827
+      # holds), never a product batch.
       - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
       # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
       # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
