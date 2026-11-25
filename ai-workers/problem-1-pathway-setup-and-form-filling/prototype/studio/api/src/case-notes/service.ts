@@ -11,14 +11,20 @@
 // CS-NT1 part 3 (map row 76, "a note on a case or a person"): the same notes on a case client (CS-K1's case_client),
 // one service for both subjects (`Subject`: the case or the client, each read only within the session's firm); a client
 // note's audit line is a "case client" line keyed by the client, naming no case (so no case's feed reads it). The case
-// timeline is timeline.ts. Not here: @mentions (NotificationPort), rich text and delete (part 2), the panel (part 4).
-import { HttpException, Inject, Injectable } from "@nestjs/common";
+// timeline is timeline.ts. @mentions (AG-13-22): an add or a text edit names same-firm staff by id (`mentions`, picked
+// from a list, never read from the words); each is told once per note version through NotificationPort (PF-18n), in
+// the note's transaction, pointing at the case (or the client); the writer is never told of their own note; a person
+// of another firm, or no such person, is 400 and nothing is written. An idempotent replay tells no one again.
+// Not here: rich text and delete (part 2), the panel (part 4).
+import { HttpException, Inject, Injectable, Optional } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { INVISIBLE, LONE } from "../../../contracts/runtime.ts";
 import { clientCode } from "../clients.ts";
 import { Audit, Db } from "../core.ts";
+import { NOTIFICATION_KIND, type NotificationPort } from "../../../ports/notifications.ts";
+import { NOTIFICATION_PORT } from "../platform/notifications/store.ts";
 import { forbidden, problem, type StaffContext } from "../platform/identity/keys.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -56,8 +62,9 @@ const strict = <T extends z.ZodRawShape>(shape: T) => z.strictObject(shape, { me
 export const NoteAddBody = strict({
   text: noteText, visibility: visibility.optional(), pinned: z.boolean({ message: "true or false." }).optional(),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9._:-]{1,100}$/, "1-100 letters, digits, . _ : -").optional(),
+  mentions: z.array(z.string().regex(UUID, "A staff member's id."), { message: "A list of staff ids." }).max(20, "At most 20 people.").optional(),
 });
-export const NoteTextBody = strict({ text: noteText, version });
+export const NoteTextBody = strict({ text: noteText, version, mentions: NoteAddBody.shape.mentions });
 export const NotePinBody = strict({ pinned: z.boolean({ message: "true or false." }), version });
 export const NoteVisibilityBody = strict({ visibility, version });
 
@@ -94,7 +101,19 @@ export async function clientNotesOf(db: Pick<Db, "$queryRaw">, caseId: string) {
 
 @Injectable()
 export class CaseNotes {
-  constructor(@Inject(Db) private readonly db: Db) {}
+  constructor(@Inject(Db) private readonly db: Db, @Optional() @Inject(NOTIFICATION_PORT) private readonly notifications?: NotificationPort<Tx>) {}
+
+  /** AG-13-22: tell each person mentioned (same firm, never the writer) once, in the note's transaction; else 400. */
+  private async mention(tx: Tx, ctx: StaffContext, c: Subject, ids: string[] | undefined) {
+    const want = [...new Set((ids ?? []).map((x) => x.toLowerCase()))];
+    if (!want.length) return [];
+    const found = await tx.platformStaff.findMany({ where: { id: { in: want }, firmId: c.firmId }, select: { id: true } });
+    if (found.length !== want.length) invalid("mentions", "Mention people of your firm only.");
+    if (!this.notifications) return problem(503, "Not possible now", "Mentions cannot be sent here (no notifications); nothing was saved.", { code: "MENTIONS_UNAVAILABLE" });
+    const told = want.filter((id) => id !== ctx.staffId.toLowerCase());
+    for (const staffId of told) await this.notifications.notify(tx, { staffId }, NOTIFICATION_KIND.NOTE_MENTION, { kind: c.kind === "case" ? "case" : "case-client", id: c.id });
+    return told;
+  }
 
   /** Called last inside every change's transaction; a test overrides it to force a rollback. */
   protected async beforeCommit(_tx: Tx): Promise<void> {}
@@ -182,7 +201,7 @@ export class CaseNotes {
   /** POST notes: a new note, version 1 (agent/case:edit; CLIENT_VISIBLE also agent/note:share-with-client). 201. */
   async add(ctx: StaffContext, caseId: string, b: unknown, kind: SubjectKind = "case") {
     const v = parsed(NoteAddBody, b), vis: NoteVisibility = v.visibility ?? "INTERNAL", pinned = v.pinned ?? false, key = v.idempotencyKey ?? null;
-    const fingerprint = createHash("sha256").update(JSON.stringify([v.text, vis, pinned])).digest("hex");
+    const fingerprint = createHash("sha256").update(JSON.stringify([v.text, vis, pinned, ...(v.mentions?.length ? [[...new Set(v.mentions.map((x) => x.toLowerCase()))].sort()] : [])])).digest("hex");
     const replay = async (db: Tx | Db, c: Subject) => {
       if (!key) return null;
       const again = await db.caseNote.findFirst({ where: { ...own(c), idempotencyKey: key } });
@@ -199,7 +218,8 @@ export class CaseNotes {
         if (vis === "CLIENT_VISIBLE") needShare(ctx);
         const by = `staff:${ctx.staffId}`;
         const row = await tx.caseNote.create({ data: { firmId: c.firmId, workspaceId: c.workspaceId, ...own(c), noteKey: randomUUID(), version: 1, text: v.text, visibility: vis, pinned, author: by, byActor: by, idempotencyKey: key, idempotencyFingerprint: key ? fingerprint : null } });
-        await this.audit(tx, ctx, c, "case.note.added", `Note added${vis === "CLIENT_VISIBLE" ? " and marked client-visible" : ""}${pinned ? ", pinned" : ""}`, { noteKey: row.noteKey, versionId: row.id, version: 1, visibility: vis, pinned });
+        const told = await this.mention(tx, ctx, c, v.mentions);
+        await this.audit(tx, ctx, c, "case.note.added", `Note added${vis === "CLIENT_VISIBLE" ? " and marked client-visible" : ""}${pinned ? ", pinned" : ""}`, { noteKey: row.noteKey, versionId: row.id, version: 1, visibility: vis, pinned, ...(told.length ? { mentioned: told } : {}) });
         const [n] = await this.current(tx, c, row.noteKey);
         return { note: this.view(n, await this.names(tx, c.firmId, [by]), ctx) };
       });
@@ -212,7 +232,7 @@ export class CaseNotes {
 
   /** One change to a note: the next version, made on the version the person saw (else 409 NOTE_CHANGED with the current
    *  note). The note is held (an advisory lock on its key) for the transaction, so two changes never write one version. */
-  private async change(ctx: StaffContext, kind: SubjectKind, caseId: string, key: string, seen: number, may: (n: Current) => void, make: (n: Current) => { text?: string; visibility?: NoteVisibility; pinned?: boolean; action: string; summary: string } | null) {
+  private async change(ctx: StaffContext, kind: SubjectKind, caseId: string, key: string, seen: number, may: (n: Current) => void, make: (n: Current) => { text?: string; visibility?: NoteVisibility; pinned?: boolean; mentions?: string[]; action: string; summary: string } | null) {
     return this.run(async (tx) => {
       const c = await this.subjectOf(tx, ctx, kind, caseId);
       if (typeof key !== "string" || !UUID.test(key)) return notFound("note");
@@ -227,7 +247,8 @@ export class CaseNotes {
       if (!d) return { note: this.view(n, names, ctx), unchanged: true };
       const by = `staff:${ctx.staffId}`;
       const row = await tx.caseNote.create({ data: { firmId: c.firmId, workspaceId: c.workspaceId, ...own(c), noteKey, version: n.version + 1, text: d.text ?? n.text, visibility: d.visibility ?? n.visibility, pinned: d.pinned ?? n.pinned, author: n.author, byActor: by } });
-      await this.audit(tx, ctx, c, d.action, d.summary, { noteKey, beforeVersionId: n.id, afterVersionId: row.id, version: row.version, visibility: row.visibility, pinned: row.pinned });
+      const told = await this.mention(tx, ctx, c, d.mentions);
+      await this.audit(tx, ctx, c, d.action, d.summary, { noteKey, beforeVersionId: n.id, afterVersionId: row.id, version: row.version, visibility: row.visibility, pinned: row.pinned, ...(told.length ? { mentioned: told } : {}) });
       const [after] = await this.current(tx, c, noteKey);
       return { note: this.view(after, names, ctx) };
     });
@@ -239,7 +260,7 @@ export class CaseNotes {
     return this.change(ctx, kind, caseId, noteKey, v.version, (n) => {
       if (n.author !== `staff:${ctx.staffId}` && !mayEditAny(ctx)) forbidden("Only the note's author, an Owner or an Admin edits a note.", "NOT_NOTE_AUTHOR");
       if (n.visibility === "CLIENT_VISIBLE") needShare(ctx);   // review m1: changing words the client reads is showing them
-    }, (n) => (n.text === v.text ? null : { text: v.text, action: "case.note.edited", summary: "Note edited" }));
+    }, (n) => (n.text === v.text ? null : { text: v.text, mentions: v.mentions, action: "case.note.edited", summary: "Note edited" }));
   }
 
   /** PUT notes/:noteKey/pin: pin or unpin (AG-13-23). */

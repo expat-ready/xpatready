@@ -7,6 +7,8 @@
 //               with no skip or duplicate across 120 lines of one timestamp
 //   CS-NT1 DW14 a kind, author and date filter returns only those lines; firm B's lines never appear on firm A's case
 //               (a line of firm B's naming firm A's case, written before AUD-1m's case_id, is left out); firm B → 404
+//   CS-NT1 DW12 an @mention tells the person once (a replay of the same add tells no one again), never the writer; a
+//               person of another firm, or no such person → 400 and nothing written (AG-13-22)
 //   break F1, F2, F3, F5 (product/screens/CS-NT1c/break-report.md): an out-of-range cursor, pages left empty by the
 //               prefilter, a same-prefix case's line, a client moved to another firm
 // It runs in this process, as check_csnt1_notes.ts: a scratch database (every migration, PF-3's Sample seed, staff of
@@ -83,11 +85,16 @@ const { PlatformIdentityController } = await import("../api/src/platform/identit
 const feature = (await import("../api/src/features/case-notes.ts")).default;
 const { CaseTimelineController, ClientNotesController } = await import("../api/src/case-notes/routes.ts");
 const { TIMELINE_PAGE } = await import("../api/src/case-notes/timeline.ts");
+const { NOTIFICATION_PORT } = await import("../api/src/platform/notifications/store.ts");
+const { NOTIFICATION_KIND } = await import("../ports/notifications.ts");
+/** Every notify call, as made (the port itself folds repeats; DW12 counts the calls). */
+const told: { staffId: string; kind: string; item: { kind: string; id: string } }[] = [];
+const countingPort = { async notify(_tx: unknown, r: { staffId: string }, kind: string, item: { kind: string; id: string }) { told.push({ staffId: r.staffId, kind, item }); } };
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("csnt1c-check-signing-key-0123456789abcdef", () => clock.now());
-const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }, ...feature.providers];
+const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: NOTIFICATION_PORT, useValue: countingPort }, ...feature.providers];
 @Module({ controllers: [PlatformIdentityController, ...feature.controllers] as never[], providers: providers as never[] }) class TestApp {}
 const app = await NestFactory.create(TestApp, { logger: false });
 await app.listen(0, "127.0.0.1");
@@ -193,6 +200,19 @@ try {
   } while (cursor && pages < 10);
   ok(`CS-NT1 DW13 pass: 120 lines of one timestamp page at ${TIMELINE_PAGE}, 50 + 50 + 20, with no skip and no duplicate`,
     sizes.join(",") === "50,50,20" && seen.length === 120 && new Set(seen).size === 120, { sizes, seen: seen.length, unique: new Set(seen).size });
+  // Review m3: notes and audit lines of one microsecond across a page boundary (both sources tie on the time).
+  const tie = newCase(), t8 = tie.id.slice(0, 8);
+  sql(`insert into case_note (firm_id, workspace_id, case_id, note_key, version, text, author, by_actor) select '${FA}', '${W}', '${tie.id}', gen_random_uuid(), 1, 'Tie note ' || g, 'staff:${STAFF.OFFICER}', 'staff:${STAFF.OFFICER}' from generate_series(1, 30) g`);
+  const tieAt = sql(`select min(created_at)::text from case_note where case_id = '${tie.id}'`);
+  sql(`set session_replication_role = replica; insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, firm_id, case_id, actor_type)
+    select gen_random_uuid(), '${W}', '${tieAt}', 'csnt1c-officer', 'answered', 'case fact', null, 'Tie answer on case ${t8} #' || g, '${FA}', '${tie.id}', 'FIRM_STAFF' from generate_series(1, 40) g`);
+  const tieSeen: string[] = [], tieSizes: number[] = [];
+  for (let cur: string | null = null, i = 0; i === 0 || (cur && i < 5); i++) {
+    const p: Res = await call(BASE, "GET", TL(tie.id, cur ? `?cursor=${cur}` : ""), { token: T.OWNER });
+    tieSizes.push(p.body.lines.length); tieSeen.push(...p.body.lines.map((l: { source: string; refId: string }) => `${l.source}:${l.refId}`)); cur = p.body.nextCursor;
+  }
+  ok("CS-NT1 DW13 pass: 30 notes and 40 audit lines of one microsecond page 50 + 20 with no skip and no duplicate (notes first at a tie)",
+    sql(`select count(distinct created_at) from case_note where case_id = '${tie.id}'`) === "1" && tieSizes.join(",") === "50,20" && new Set(tieSeen).size === 70 && tieSeen.filter((x) => x.startsWith("note:")).length === 30 && tieSeen.slice(0, 30).every((x) => x.startsWith("note:")), { tieSizes, unique: new Set(tieSeen).size });
   const badCursor = await Promise.all(["not-a-cursor", Buffer.from(JSON.stringify(["1", "nope", randomUUID()])).toString("base64url")].map((x) => call(BASE, "GET", TL(big.id, `?cursor=${x}`), { token: T.OWNER })));
   ok("CS-NT1 DW13 fail: a cursor this timeline did not give → 400 INVALID", badCursor.every((x) => x.status === 400 && x.body.code === "INVALID" && x.body.fields?.cursor), badCursor.map((x) => x.body));
 
@@ -216,6 +236,23 @@ try {
   ok("CS-NT1 DW14 fail: firm B reading firm A's case timeline → 404 (an unknown case 404, no session 401), and firm B's own case timeline answers with its own line",
     crossTl[0].status === 404 && !JSON.stringify(crossTl[0].body).includes("visitor") && crossTl[1].status === 404 && crossTl[2].status === 401
     && (await call(BASE, "GET", TL(b1.id), { token: TB })).body?.lines?.some((l: { summary: string }) => l.summary.startsWith("Firm B upload")), crossTl.map((x) => x.status));
+
+  // --------------------------------------------------------------------------------- DW12: @mentions (AG-13-22)
+  const m = newCase(), body = { text: "Please check the passport scan.", mentions: [STAFF.OFFICER2, STAFF.OFFICER, STAFF.OFFICER2], idempotencyKey: "csnt1c-mention-1" };
+  const m1 = await call(BASE, "POST", `/api/runtime/cases/${m.id}/notes`, { token: T.OFFICER, body });
+  const m2 = await call(BASE, "POST", `/api/runtime/cases/${m.id}/notes`, { token: T.OFFICER, body });
+  const toO2 = told.filter((x) => x.staffId === STAFF.OFFICER2);
+  ok("CS-NT1 DW12 pass: a note mentioning a colleague (twice in the list) tells them once, as a note-mention pointing at the case; the writer is not told; a replay of the same add tells no one again",
+    m1.status === 201 && m2.status === 201 && m2.body.replayed === true && told.length === 1 && toO2.length === 1 && toO2[0].kind === NOTIFICATION_KIND.NOTE_MENTION && toO2[0].item.kind === "case" && toO2[0].item.id === m.id
+    && sql(`select detail->'mentioned' from audit_event where action = 'case.note.added' and detail->>'noteKey' = '${m1.body.note.id}'`) === `["${STAFF.OFFICER2}"]`, { told, m2: m2.body });
+  const e1 = await call(BASE, "PUT", `/api/runtime/cases/${m.id}/notes/${m1.body.note.id}/text`, { token: T.OFFICER, body: { text: "Please check the passport scan today.", version: 1, mentions: [STAFF.OWNER] } });
+  const cm = await call(BASE, "POST", CN(m.client), { token: T.OFFICER, body: { text: "Ask about the address.", mentions: [STAFF.OWNER] } });
+  ok("CS-NT1 DW12 pass: an edit's mention tells that person for the new version; a client note's mention points at the client",
+    e1.status === 200 && told.length === 3 && told[1].staffId === STAFF.OWNER && told[1].item.kind === "case" && cm.status === 201 && told[2].item.kind === "case-client" && told[2].item.id === m.client, told);
+  const sB = sql(`select id from platform_staff where actor_id = 'user-S'`), before12 = sql(`select count(*) from case_note`);
+  const bad12 = await Promise.all([[sB], [randomUUID()], ["not-an-id"]].map((ids) => call(BASE, "POST", `/api/runtime/cases/${m.id}/notes`, { token: T.OFFICER, body: { text: "Mentioning", mentions: ids } })));
+  ok("CS-NT1 DW12 fail: a person of another firm, no such person or not an id → 400 INVALID on mentions; no note written, no one told",
+    bad12.every((x) => x.status === 400 && x.body.code === "INVALID" && x.body.fields?.mentions) && sql(`select count(*) from case_note`) === before12 && told.length === 3, bad12.map((x) => [x.status, x.body?.fields]));
 
   // ----------------------------------------------------------------------- the breaker's findings (break-report.md)
   const huge = Buffer.from(JSON.stringify(["9999999999999999999", "audit", randomUUID()])).toString("base64url"), top = Buffer.from(JSON.stringify(["9223372036854775807", "audit", randomUUID()])).toString("base64url");

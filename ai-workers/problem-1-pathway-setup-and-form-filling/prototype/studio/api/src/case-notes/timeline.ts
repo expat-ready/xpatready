@@ -86,8 +86,8 @@ export class CaseTimeline {
             case when a.entity = 'case note' then 'NOTE' when a.entity = 'case document' then 'DOCUMENT'
                  when a.action in ('case.decision.recorded', 'case.withdrawn') then 'DECISION' else 'ACTIVITY' end as kind
           from audit_event a
-          where (a.case_id = ${c.id}::uuid
-                 or (a.case_id is null and a.workspace_id = ${c.workspaceId}::uuid and (a.entity_key = ${c.id} or strpos(lower(a.summary), ${short}) > 0)))
+          where a.workspace_id = ${c.workspaceId}::uuid   -- review m2: a case's lines are in its workspace (the index)
+            and (a.case_id = ${c.id}::uuid or (a.case_id is null and (a.entity_key = ${c.id} or strpos(lower(a.summary), ${short}) > 0)))
             and not (a.entity = 'case note' and a.action = 'case.note.added')) t
         where true ${after(f, "audit", actors)}
         order by t.us desc, t.id collate "C" desc limit ${take}`;
@@ -157,8 +157,8 @@ export class CaseTimeline {
           case when a.entity = 'case note' then 'NOTE' when a.entity = 'case document' then 'DOCUMENT'
                when a.action in ('case.decision.recorded', 'case.withdrawn') then 'DECISION' else 'ACTIVITY' end as kind
         from audit_event a
-        where (a.case_id = ${c.id}::uuid
-               or (a.case_id is null and a.workspace_id = ${c.workspaceId}::uuid and (a.entity_key = ${c.id} or strpos(lower(a.summary), ${short}) > 0)))
+        where a.workspace_id = ${c.workspaceId}::uuid   -- review m2: a case's lines are in its workspace (the index)
+          and (a.case_id = ${c.id}::uuid or (a.case_id is null and (a.entity_key = ${c.id} or strpos(lower(a.summary), ${short}) > 0)))
           and not (a.entity = 'case note' and a.action = 'case.note.added')) t
       where true ${after(f, "audit", actors)}
       order by t.us desc, t.id collate "C" desc offset ${take - 1} limit 1`;
