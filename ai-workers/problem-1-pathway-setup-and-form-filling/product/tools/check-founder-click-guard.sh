@@ -66,6 +66,12 @@ for m in 'Archive the forms-2 session.' 'Merge #2413.' 'Dispatch the nightly.' '
 for m in 'Merge of #2413 landed at 10:02.' 'Dispatch of the nightly finished; run 4551 is green.' 'Would you like me to merge it now?' \
          'You should not merge it yourself; the queue merges it on green.'; do
   r=$(stop lead "$m"); ok "passes (#3665 review 2, a report or an offer): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'No need to wait: please merge #12 now.' 'I can'"'"'t, so could you archive it?' 'I can see CI is green, so please merge #12.' \
+         'Never mind the earlier note, please close #3601.' 'Please merge #12, there is no need to wait for me.' 'Could you merge it before the demo, I should not touch it?' \
+         'Please close all of the old branches.'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 3, an offer or no-need clause beside an ask): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I can merge it now if you want.' 'Shall I close the stale issue?' 'Archive of the old lanes is done.' 'Next I merge #12 and archive the forms-2 session.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 3): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 for m in 'Can you archive the two old forms sessions?' 'Please archive both stale forms-2 and runtime-1 sessions.' 'Please dispatch lead-watch by hand.' \
          'Could you trigger the nightly from the Actions tab?'; do
   r=$(stop lead "$m"); ok "refused (#3665 review 2): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
