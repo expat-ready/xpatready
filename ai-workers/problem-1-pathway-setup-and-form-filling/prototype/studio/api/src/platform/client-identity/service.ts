@@ -94,7 +94,7 @@ export class ClientIdentity {
       await this.db.$transaction((tx) => this.line(tx, a, "platform.client.sign_in_refused", `a client's sign-in was refused (account ${a.status.toLowerCase().replace(/_/g, " ")})`, { status: a.status }, null, null));
       return refuseStatus(a.status);
     }
-    const out = await this.db.$transaction(async (tx) => {
+    const out = await this.db.$transaction(async (tx): Promise<{ refused: string } | { at: number }> => {
       const [row] = await tx.$queryRaw<{ last: Date | null; ended: Date | null; status: string }[]>`select last_sign_in_at as last, sessions_ended_at as ended, status::text as status from platform_client_account where id = ${a.id}::uuid and firm_id = ${firm.id}::uuid for update`;
       if (!row) return { refused: "REVOKED" };
       if (row.status !== "ACTIVE") {   // suspended or revoked while signing in: its own words and its refused line (breaker m5)
