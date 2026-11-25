@@ -13,7 +13,7 @@ import { NotificationBell } from "@/modules/platform/notifications/bell";   // P
 import { cn } from "@/lib/utils";
 import { Assignees, can, LeadRows, seesUnassigned, type Me } from "./contract";
 import { Loading } from "./loading";
-import { REVIEW_KEY, reviewQuery } from "../duplicates/contract";
+import { REVIEW_KEY, reviewQuery } from "../duplicates/review-contract";
 import { setStaffToken, staffApi, StaffApiError, useMe, useStaffToken } from "./session";
 const MeCtx = React.createContext<Me | null>(null);
 /** The signed-in staff member (inside SalesFrame only). */
