@@ -1,7 +1,7 @@
 // platform-automation.prisma — the automation engine's tables (PF-20, from FO-12a by P-584 (2)) (FO-12c adds
 // message many's in its own migration). Owner: the platform (Lead B, P-559); code api/src/platform/automation/. Each
 // module registers its recipes (registry.ts); a firm's row keeps its on/off and its steps' wording, timing and mode
-// (AG-2-31 rule 2). Firm-scoped behind PF-12; checks in the migration (<stamp>_pf20_automation_tables).
+// (AG-2-31 rule 2). Firm-scoped behind PF-12; checks in the migration (<stamp>_platform-automation__pf20_automation_tables).
 
 /// What a step does when its time comes (AG-12-52's three choices on the Automatic messages page).
 enum AutoStepMode {
