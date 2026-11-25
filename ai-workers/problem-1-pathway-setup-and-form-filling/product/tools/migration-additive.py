@@ -1,29 +1,36 @@
 #!/usr/bin/env python3
 """P-823: is a migration's added SQL additive? Used by queue-gate.sh destructive() (read first unless this says yes).
 
-An allowlist, not a word list (review of #3661, Blocker 1-2): the added lines of a new migration.sql (GitHub's patch, on
-stdin) are additive only when every statement, read by a small SQL scanner, is one of
-  CREATE TABLE · CREATE [UNIQUE] INDEX · CREATE SEQUENCE · CREATE TYPE ... AS ENUM · CREATE TRIGGER (a new one) ·
-  ALTER TABLE ... ADD ... (and nothing that drops, renames, alters a column, disables, enables, changes owner or schema) ·
-  ALTER TYPE ... ADD VALUE · COMMENT ON · INSERT INTO (never ON CONFLICT ... DO UPDATE).
-Everything else is read first: DROP, RENAME, TRUNCATE, DELETE, UPDATE, GRANT, REVOKE, ALTER COLUMN, DISABLE TRIGGER or
-ROW LEVEL SECURITY, CREATE OR REPLACE, DO blocks and functions. The scanner skips -- comments and reads 'strings' (with
-'' and E'\\' escapes) and "names" whole; it refuses (read first) a block comment, a dollar-quoted body ($$ or $tag$), an
-unclosed string or name, and a patch line it cannot place (fails closed).
+An allowlist, not a word list (reviews of #3661): the added lines of a new migration.sql (GitHub's patch, on stdin) are
+additive only when every statement, read by a small SQL scanner, is one of
+  CREATE TABLE <name> (...)          not AS, OF, PARTITION OF or INHERITS
+  CREATE [UNIQUE] INDEX ... ON <t>   (any table: a short write lock on an existing one, review m5 noted)
+  CREATE SEQUENCE · CREATE TYPE <name> AS ENUM (...) · ALTER TYPE <name> ADD VALUE '...' · COMMENT ON ...
+  ALTER TABLE <t> ADD ...            and none of DROP, RENAME, ALTER, DISABLE, ENABLE, FORCE, OWNER, REPLICA, CLUSTER,
+                                     SET, RESET, INHERIT, OF, ATTACH, DETACH, VALIDATE, GENERATED
+  CREATE TRIGGER ... ON <t>          only on a table this migration creates (review 2 M3)
+  INSERT INTO <t> [(cols)] VALUES    only into a table this migration creates, never SELECT or ON CONFLICT
+and no statement calls a function: a name followed by "(" counts only when it is a type size or a constraint word
+(VARCHAR(n), DECIMAL(p,s), TIMESTAMP(3), KEY, UNIQUE, CHECK, VALUES, ENUM, a column list); DEFAULT now() is read first.
+The scanner skips -- comments and reads 'strings' ('' and E'\\' escapes) and "names" whole, keeping names (for the
+tables-created check); it refuses (read first) a block comment, ANY $ outside a string or name (dollar quotes with
+any tag, $-names: review 2 B1-B2), U& strings, an unclosed string or name, and a patch line it cannot place.
 Prints "yes" or "no: <the first statement or reason, 80 characters>"; exit 0. Test: check-queue-gate.sh (P-823 rows).
 """
 import re, sys
 
-ALLOW = [re.compile(p, re.I) for p in (
-    r"^CREATE TABLE\b", r"^CREATE (UNIQUE )?INDEX\b", r"^CREATE SEQUENCE\b", r"^CREATE TYPE \S+ AS ENUM\b",
-    r"^CREATE TRIGGER\b", r"^ALTER TABLE (IF EXISTS )?(ONLY )?\S+ ADD\b", r"^ALTER TYPE \S+ ADD VALUE\b",
-    r"^COMMENT ON\b", r"^INSERT INTO\b")]
-NOT_IN_ALTER = re.compile(r"\b(DROP|RENAME|DISABLE|ENABLE|OWNER|ALTER|INHERIT|DETACH|ATTACH|NO FORCE|SET (SCHEMA|TABLESPACE|LOGGED|UNLOGGED|WITHOUT|ACCESS))\b", re.I)
-NEVER = re.compile(r"\b(DROP|RENAME|TRUNCATE|DELETE\s+FROM|UPDATE\s+\S+\s+SET|GRANT|REVOKE|DO\s+UPDATE)\b", re.I)
+I = re.I
+NAME = r'("[^"]*"|[A-Za-z_][\w]*)(\.("[^"]*"|[A-Za-z_][\w]*))?'
+ALTER_BAD = re.compile(r"\b(DROP|RENAME|ALTER|DISABLE|ENABLE|FORCE|OWNER|REPLICA|CLUSTER|SET|RESET|INHERIT|OF|ATTACH|DETACH|VALIDATE|GENERATED|NO)\b", I)
+TABLE_BAD = re.compile(r"\b(AS|OF|INHERITS|PARTITION|LIKE)\b", I)
+NEVER = re.compile(r"\b(DROP|RENAME|TRUNCATE|DELETE\s+FROM|UPDATE\s+\S+\s+SET|GRANT|REVOKE|DO\s+UPDATE|SELECT)\b", I)
+CALL_OK = {"varchar", "char", "character", "varying", "decimal", "numeric", "timestamp", "timestamptz", "time", "timetz",
+           "interval", "bit", "varbit", "float", "key", "unique", "check", "values", "enum", "exists", "index", "on",
+           "references", "include", "using", "btree", "hash", "gin", "gist", "where", "in"}   # CHECK ("state" IN (...))
 
 
 def statements(sql):
-    """→ (statements with strings and names blanked, None) or (None, reason)."""
+    """→ (statements with strings blanked and names kept, None) or (None, reason)."""
     out, cur, i, n = [], [], 0, len(sql)
     while i < n:
         c, two = sql[i], sql[i:i + 2]
@@ -31,9 +38,12 @@ def statements(sql):
             j = sql.find("\n", i); i = n if j < 0 else j; continue
         if two == "/*":
             return None, "a block comment"
-        if c == "$" and re.match(r"\$[A-Za-z_]*\$", sql[i:]):
-            return None, "a dollar-quoted body"
-        if c == "'" or (c in "eE" and sql[i + 1:i + 2] == "'" and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] == "_"))):
+        if c == "$":
+            return None, "a $ outside a string (a dollar-quoted body or a $-name)"
+        if two.upper() == "U&":
+            return None, "a U& string or name"
+        prev = sql[i - 1] if i else " "
+        if c == "'" or (c in "eE" and sql[i + 1:i + 2] == "'" and not (prev.isalnum() or prev in "_$\"")):
             esc = c in "eE"; i += 2 if esc else 1
             while True:
                 if i >= n:
@@ -52,7 +62,7 @@ def statements(sql):
                 j = sql.find('"', j + 2)
             if j < 0:
                 return None, "an unclosed quoted name"
-            cur.append('"x"'); i = j + 1; continue
+            cur.append('"' + re.sub(r"\W", "_", sql[i + 1:j]) + '"'); i = j + 1; continue
         if c == ";":
             out.append("".join(cur)); cur = []; i += 1; continue
         cur.append(c); i += 1
@@ -60,9 +70,23 @@ def statements(sql):
     return [re.sub(r"\s+", " ", s).strip() for s in out if s.strip()], None
 
 
+def key(name):
+    return name.lower() if not name.startswith('"') else name
+
+
+def calls(s):
+    """A name directly followed by "(" that is not a type size or a constraint word: a function call."""
+    for m in re.finditer(r'([A-Za-z_]\w*)\s*\(', s):
+        if re.search(r"\bEXECUTE (FUNCTION|PROCEDURE) $", s[:m.start()], I) and re.match(r"\s*\(\s*\)", s[m.end() - 1:]):
+            continue   # a trigger's EXECUTE FUNCTION f(): allowed only on a table this migration creates (below)
+        if m.group(1).lower() not in CALL_OK:
+            return m.group(1)
+    return None
+
+
 def judge(patch):
     added = []
-    for l in patch.split("\n"):
+    for l in patch.replace("\r", "").split("\n"):
         if l.startswith("+"):
             added.append(l[1:])
         elif l.startswith(("@@", " ", "\\")) or l == "":
@@ -72,8 +96,32 @@ def judge(patch):
     sts, why = statements("\n".join(added))
     if sts is None:
         return f"no: {why}"
+    created = set()
     for s in sts:
-        if NEVER.search(s) or not any(a.search(s) for a in ALLOW) or (s.upper().startswith("ALTER TABLE") and NOT_IN_ALTER.search(s[len("ALTER TABLE"):])):
+        m = re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I)
+        if m:
+            created.add(key(m.group(2) + (m.group(3) or "")))
+    for s in sts:
+        u, ok = s.upper(), False
+        if NEVER.search(s) or calls(s):
+            return "no: " + s[:80]
+        if re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I):
+            ok = not TABLE_BAD.search(s[s.index("("):])
+        elif re.match(r"^CREATE (UNIQUE )?INDEX\b", s, I) or re.match(r"^CREATE SEQUENCE\b", s, I) \
+                or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE ('' ?)?$", s + " ", I) \
+                or re.match(r"^COMMENT ON\b", s, I):
+            ok = True
+        elif re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + r" ADD\b", s, I):
+            rest = re.sub(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + " ", "", s, flags=I)
+            ok = not ALTER_BAD.search(re.sub(r"\bON (DELETE|UPDATE) (SET (NULL|DEFAULT)|NO ACTION)\b", "", rest, flags=I))   # FK actions
+        else:
+            m = re.match(r"^CREATE TRIGGER " + NAME + r" .*? ON " + NAME + r"( |$)", s, I)
+            if m:
+                ok = key(m.group(4) + (m.group(5) or "")) in created
+            m = re.match(r"^INSERT INTO " + NAME + r"( \([^()]*\))? VALUES ", s, I)
+            if m:
+                ok = key(m.group(1) + (m.group(2) or "")) in created and "ON CONFLICT" not in u
+        if not ok:
             return "no: " + s[:80]
     return "yes"
 

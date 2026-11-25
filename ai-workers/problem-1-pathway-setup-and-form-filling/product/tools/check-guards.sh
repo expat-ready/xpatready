@@ -698,7 +698,9 @@ MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
 P823 allow|product/tools/migration-additive.py|s/^        if NEVER.search(s) or/        if False and/|check-queue-gate.sh
 P823 block comment|product/tools/migration-additive.py|s/if two == "\/\*":/if False:/|check-queue-gate.sh
-P823 dollar|product/tools/migration-additive.py|s/if c == "\$" and re.match/if False and re.match/|check-queue-gate.sh
+P823 dollar|product/tools/migration-additive.py|s/^        if c == "\$":/        if False:/|check-queue-gate.sh
+P823 calls|product/tools/migration-additive.py|s/^        if NEVER.search(s) or calls(s):/        if NEVER.search(s):/|check-queue-gate.sh
+P823 created|product/tools/migration-additive.py|s/^                ok = key(m.group(4) + (m.group(5) or "")) in created/                ok = True/|check-queue-gate.sh
 P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
 P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
 P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh

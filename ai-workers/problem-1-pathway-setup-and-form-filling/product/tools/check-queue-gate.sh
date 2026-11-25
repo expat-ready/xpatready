@@ -598,8 +598,28 @@ SQL
 )
 for h in HIDE1 HIDE2; do fp 9 "$MG" added "${!h}"; run label 9
   ok "P-823 plant (#3661 review): a DROP after a quote inside a $([ $h = HIDE1 ] && echo block comment || echo dollar string): refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'read first' <<< "$out" && echo 1)" "$out / $log"; done
+# Review 2 of #3661 (B1-B2, M3, M4): $ tags, $-names, function calls, existing tables, more ALTER actions
+R2=$(cat <<'SQL'
+dollar tag with a digit|COMMENT ON TABLE "x" IS $a1$'$a1$; DROP TABLE "User"; --';
+an E after a $-name|CREATE TYPE q$E AS ENUM ('\'); INSERT INTO t (c) VALUES (q$E'\'); DROP TABLE "User"; --');
+setval in an insert|INSERT INTO "AuditLog" ("n") VALUES (setval('x', 1));
+an insert into an existing table|INSERT INTO "RolePermission" ("role", "perm") VALUES ('BUILDER', '*');
+CREATE TABLE AS|CREATE TABLE "junk" AS SELECT 1;
+a trigger on an existing table|CREATE TRIGGER "t" BEFORE INSERT ON "Payment" FOR EACH ROW EXECUTE FUNCTION existing_wipe();
+GENERATED with a function|ALTER TABLE "Fee" ADD COLUMN "c" int GENERATED ALWAYS AS (existing_fn("id")) STORED;
+FORCE ROW LEVEL SECURITY|ALTER TABLE "Fee" ADD COLUMN "c" int, FORCE ROW LEVEL SECURITY;
+REPLICA IDENTITY and SET (|ALTER TABLE "Fee" ADD COLUMN "c" int, REPLICA IDENTITY NOTHING, SET (autovacuum_enabled = false);
+DEFAULT with a function call|ALTER TABLE "Fee" ADD COLUMN "c" TEXT DEFAULT gen_random_uuid();
+SQL
+)
+while IFS='|' read -r what sql; do [ -n "$what" ] || continue
+  fp 9 "$MG" added "@@ -0,0 +1 @@"$'\n'"+$sql"; run label 9
+  ok "P-823 plant (#3661 review 2): $what: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+done <<< "$R2"
 ALLF=$(cat <<'SQL'
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,8 @@
++CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
++CREATE TRIGGER "n_guard" BEFORE UPDATE OR DELETE ON "n" FOR EACH ROW EXECUTE FUNCTION no_change();
 +CREATE TYPE "Kind" AS ENUM ('a', 'b');
 +ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 +CREATE UNIQUE INDEX "i" ON "case"("kind");
