@@ -110,7 +110,7 @@ try {
     started.status === 201 && /^[0-9a-f-]{36}$/.test(S) && started.body.mode === "READ" && started.body.reason === REASON && span === 3600 && started.body.header === "X-Support-Session"
     && Date.parse(started.body.endsAt) - Date.parse(started.body.startedAt) === 3_600_000 && JSON.stringify(started.body.alwaysBlocked) === JSON.stringify(ALWAYS_BLOCKED) && ALWAYS_BLOCKED.includes("Starting another session"), started.body);
   ok("AUD-3b SS1 pass (SA-11-11, SA-2-29): one platform.support_session.started line on firm A's own trail, OUR_STAFF, naming our Support, the session, the reason and the mode; none on firm B's",
-    startLine === `OUR_STAFF|ourstaff:${SUPPORT}|${S}|${REASON}|READ` && lines(`firm_id = '${firmA}'`) === a0 + 1 && lines(`firm_id = '${firmB}'`) === b0, startLine);
+    startLine === `OUR_STAFF|ourstaff:${SUPPORT}|${S}|${REASON}|READ` && lines(`firm_id = '${firmA}'`) === a0 + 1 && lines(`firm_id = '${firmA}' and action = '${STARTED}' and support_session_id = '${S}'`) === 1 && lines(`firm_id = '${firmB}'`) === b0, startLine);
   const n0 = sessions(), l0 = lines("true");
   const noReason = await call(base, "POST", START(firmB), { token: ownerT, body: {} });
   const blank = await call(base, "POST", START(firmB), { token: ownerT, body: { reason: "   " } });
@@ -160,6 +160,14 @@ try {
     [other, across, nested].map((r) => [r.status, r.body?.code, r.body?.detail]));
   ok("AUD-3b SS3 pass (SA-2-17: a refusal is logged): each refusal wrote one platform.support_session.refused line on firm A's trail, naming the route, under the session",
     lines(`firm_id = '${firmA}' and action = '${REFUSED}'`) === r0 + 3 && refusals === `/api/system/firms/:id=${S},/api/system/firms=${S},/api/system/firms/:id/support-sessions=${S}`, refusals);
+  const day = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString().slice(0, 10);
+  const x0 = lines(`firm_id = '${oFirm}' and action = 'audit.exported'`);
+  const exp = await call(base, "GET", `/api/system/firms/${oFirm}/access-report/export?from=${day(-1)}&to=${day(2)}`, { token: ownerT, session: O });
+  const rep = await call(base, "GET", `/api/system/firms/${oFirm}/access-report?from=${day(-1)}&to=${day(2)}`, { token: ownerT, session: O });
+  ok("AUD-3b SS3 fail (round 1, breaker M1; SA-2-17 \"bulk export\"): a CSV export in a session (a GET of the session's own firm) → 403, no file, no audit.exported line; the same report read on screen answers 200",
+    exp.status === 403 && exp.body.code === "SUPPORT_SESSION_REFUSED" && /bulk export/.test(exp.body.detail) && lines(`firm_id = '${oFirm}' and action = 'audit.exported'`) === x0 && rep.status === 200, { exp: exp.body, rep: rep.status });
+  const head = await fetch(`${base}/api/system/firms/${oFirm}`, { method: "HEAD", headers: { authorization: `Bearer ${ownerT}`, "x-support-session": O } });
+  ok("AUD-3b SS3 pass (round 1, breaker m6): HEAD of the session's own firm is a read (200), never refused as a change", head.status === 200, head.status);
   const h0 = Number(sql(`select count(*) from plat_legal_hold`));
   const hold = await call(base, "POST", "/api/system/register/holds", { token: ownerT, session: O, body: { reason: REASON, firmId: oFirm, scope: { kind: "FIRM" } } });
   ok("AUD-3b SS3 fail (read-only, P-607 (4)): a change in a session (our Platform Owner placing a legal hold) → 403 before it runs; no hold placed; one refusal line on the session's firm",
@@ -177,8 +185,9 @@ try {
   const late = await call(base, "GET", `/api/system/firms/${firmA}`, { token: supportT, session: S });
   ok("AUD-3b SS4 fail (SA-2-18: 60 minutes, never refreshed): at minute 61 the session answers 401 SUPPORT_SESSION_ENDED and nothing is read", late.status === 401 && late.body.code === "SUPPORT_SESSION_ENDED"
     && lines(`correlation_id = '${late.requestId}'`) === 0, late.body);
-  const again = await call(base, "POST", START(firmB), { token: supportT, body: { reason: REASON } });
-  ok("AUD-3b SS4 pass: once the session has ended, our Support may start a new one (201)", again.status === 201 && again.body.id !== S, again.status);
+  const again = await call(base, "POST", START(firmB), { token: supportT, session: S, body: { reason: "ticket 43 \u0000\u202Etxt.exe\u202C" } });
+  ok("AUD-3b SS4 pass (round 1, breaker m2, m5): once the session has ended, our Support may start a new one (201), even sending the ended session's header; its reason is the guard's cleaned one (no NUL, no direction characters: never a 500)",
+    again.status === 201 && again.body.id !== S && !/[\u0000\u202A-\u202E\u2066-\u2069]/.test(again.body.reason) && sql(`select reason from plat_support_session where id = '${again.body.id}'`) === again.body.reason && /ticket 43/.test(again.body.reason), again.body);
 
   // ------------------------------------------------------------------------------------------------ SS5: the register
   ok("AUD-3b SS5 fail (SA-2-19: kept): a session cannot be deleted or truncated, its reason or end time cannot be changed, and it cannot be ended twice (by any user, the owner included)",

@@ -13,6 +13,9 @@
 //     firms (a session is one firm's); starting another session;
 //   * an ended, expired, unknown or another person's session answers 401 SUPPORT_SESSION_ENDED (SA-2-18: never refreshed).
 // The session itself is our own register (plat_support_session, walled; its definers are the only way in).
+// Stated (round 1): a session applies to the calls that send its header (the firm's own routes under a session are a
+// later part), so a call without it is an ordinary console call, logged as one; a refusal line is written for each
+// refused call (no throttle yet); a call refused first by another interceptor (If-Match) writes no refusal line.
 // Later parts (stated): change mode and the firm's setting (SA-2-28), payment hold and security lock (SA-2-30), the end
 // with our staff member's own session (SA-2-41), the Owner's email (SA-2-29), the sessions list (SA-2-19), the firm's
 // own routes under a session (SA-11-11's "the firm's context").
@@ -27,8 +30,9 @@ import { auditEvent } from "../audit/audit-event.ts";
 import { ChangesFirm, FIRM_DATA, type FirmData } from "../audit/access/declare.ts";
 import { ourStaff } from "../audit/access/lines.ts";
 import { AuditActionNames } from "../audit/firm-read/action-names.ts";
-import { parseInput, strict } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { problem } from "../identity/keys.ts";
+import { reasonOf } from "../system-identity/guard.ts";
 import { SYSTEM_ACCESS, SYSTEM_PATH, SystemKeys, SystemReason, SystemStepUp, systemStaffOf, type SystemAccess, type SystemStaffContext } from "../system-identity/keys.ts";
 
 export const IMPERSONATE_KEY = "system/firm:impersonate", SESSION_HEADER = "x-support-session";
@@ -41,7 +45,7 @@ export const ALWAYS_BLOCKED = Object.freeze([
   "Starting another session", "Waiving a deficiency, approving a review, recording a decision, exporting a case", "Keeping the current message wording, switching automatic messages on or off",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const StartBody = strict({ reason: z.string().trim().min(1, "Give a reason or a ticket reference.").max(REASON_LIMIT) });
+export const StartBody = strict({ reason: z.string().trim().min(1, "Give a reason or a ticket reference.").max(500) });
 
 export type OpenSession = { id: string; firmId: string; reason: string; mode: string; startedAt: Date; endsAt: Date };
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -50,8 +54,12 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 export class SupportSessions {
   constructor(@Inject(Db) private readonly db: PrismaClient) {}
 
-  async start(staff: SystemStaffContext, firmId: string, body: unknown) {
-    const { reason } = parseInput(StartBody, body ?? {});
+  async start(staff: SystemStaffContext, firmId: string, body: unknown, req?: { supportSession?: { id: string; reason: string } }) {
+    const raw = parseInput(StartBody, body ?? {}).reason;
+    // Round 1 (breaker m2): the reason the guard checked and logged, cleaned the same way (no control or direction
+    // characters, no NUL), at most 200 characters by code point, as the database counts them.
+    const reason = reasonOf(raw);
+    if (!reason || [...reason].length > REASON_LIMIT) problem(FIELD_ERROR_STATUS, "Check the details", `Give a reason or a ticket reference of 1-${REASON_LIMIT} characters, in plain text. Nothing was opened.`, { code: "INVALID", fields: { reason: `A reason of 1-${REASON_LIMIT} characters.` } });
     if (typeof firmId !== "string" || !UUID.test(firmId)) problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
     const firm = firmId.toLowerCase(), { actor } = ourStaff();
     return this.db.$transaction(async (tx) => {
@@ -60,6 +68,7 @@ export class SupportSessions {
       if (r?.status === "FIRM_NOT_FOUND") problem(404, "Firm not found", "No firm has this id.", { code: "FIRM_NOT_FOUND" });
       if (r?.status === "OPEN") problem(409, "A support session is open", `You already have a support session open until ${r.ends_at?.toISOString()}. Finish it first: one session at a time.`, { code: "SUPPORT_SESSION_OPEN", sessionId: r.id });
       if (r?.status !== "STARTED" || !r.id || !r.started_at || !r.ends_at) problem(500, "Not started", "The support session could not be started. Nothing was opened.", { code: "SUPPORT_SESSION_NOT_STARTED" });
+      if (req) req.supportSession = { id: r!.id!, reason: reason! };   // round 1 (breaker m1): the start line is the session's own (its column)
       await auditEvent.record(tx, { firmId: firm, actor, action: STARTED, entity: SESSION_ENTITY, entityKey: r!.id!,
         summary: `ExpatReady support started a read-only support session in this firm, until ${r!.ends_at!.toISOString()}.`,
         detail: { supportSessionId: r!.id!, reason, mode: "READ", startedAt: r!.started_at!.toISOString(), endsAt: r!.ends_at!.toISOString() }, before: null, after: null });   // a session start changes no firm record
@@ -88,9 +97,11 @@ type CallReq = { method: string; path?: string; url?: string; headers: Record<st
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
 
 /** What a call in a session may do: null (allowed) or the plain reason it is refused. */
-export function refusalInSession(data: FirmData | undefined, method: string, params: Record<string, unknown> | undefined, s: OpenSession, starts: boolean): string | null {
+export function refusalInSession(data: FirmData | undefined, method: string, params: Record<string, unknown> | undefined, s: OpenSession, starts: boolean, keys: readonly string[] = []): string | null {
   if (starts) return "starting another session is never allowed in a support session.";
-  if (method !== "GET") return "a support session is read-only: no change is made in it.";
+  if (method !== "GET" && method !== "HEAD") return "a support session is read-only: no change is made in it.";
+  // Round 1 (breaker M1; SA-2-17 "bulk export"): a route that needs an export key is never used in a session, even a GET.
+  if (keys.some((k) => /:export$/.test(k))) return "bulk export is never allowed in a support session.";
   if (!data) return "this action declares no firm data, so it is refused in a support session.";
   if (data.kind === "reads-firm") {
     const firm = params?.[data.param];
@@ -116,14 +127,16 @@ export class SupportSessionCalls implements NestInterceptor {
     if (!access || access.kind === "sign-in" || !req.systemStaff) return next.handle();
     const base = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, ctx.getClass()) ?? "")[0] ?? "", path = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, ctx.getHandler()) ?? "")[0] ?? "";
     const call = { method: req.method, route: join(base, path) };
-    return from(this.check(req, typeof raw === "string" ? raw : "", this.reflector.getAllAndOverride<FirmData>(FIRM_DATA, targets), call, ctx.getClass() === SupportSessionController)).pipe(mergeMap(() => next.handle()));
+    const keys = access.kind === "keys" ? access.keys : [];
+    return from(this.check(req, typeof raw === "string" ? raw : "", this.reflector.getAllAndOverride<FirmData>(FIRM_DATA, targets), call, ctx.getClass() === SupportSessionController, keys)).pipe(mergeMap(() => next.handle()));
   }
 
-  private async check(req: CallReq, id: string, data: FirmData | undefined, call: { method: string; route: string }, starts: boolean): Promise<void> {
+  private async check(req: CallReq, id: string, data: FirmData | undefined, call: { method: string; route: string }, starts: boolean, keys: readonly string[]): Promise<void> {
     const s = await this.sessions.open(id, req.systemStaff!.staffId);
+    if (!s && starts) return;   // round 1 (breaker m5): an ended session's header never stops a new start
     if (!s) problem(401, "Support session ended", "This support session has ended, has expired (60 minutes, never refreshed) or is not yours. Start a new one.", { code: "SUPPORT_SESSION_ENDED" });
     req.supportSession = s;   // the refusal line below is the session's too
-    const why = refusalInSession(data, call.method, req.params, s!, starts);
+    const why = refusalInSession(data, call.method, req.params, s!, starts, keys);
     if (why) {
       await this.db.$transaction(async (tx) => { await this.sessions.refused(tx, s!, call, why); });
       problem(403, "Not in a support session", `Refused: ${why}`, { code: "SUPPORT_SESSION_REFUSED" });
@@ -137,5 +150,5 @@ export class SupportSessionController {
 
   @Post(":id/support-sessions") @HttpCode(201) @SystemKeys(IMPERSONATE_KEY) @SystemStepUp() @SystemReason(StartBody)
   @ChangesFirm("starts a read-only support session in one firm and writes its line on that firm's trail")
-  start(@Req() r: { systemStaff?: SystemStaffContext }, @Param("id") id: string, @Body() b: unknown) { return this.sessions.start(systemStaffOf(r), id, b); }
+  start(@Req() r: { systemStaff?: SystemStaffContext; supportSession?: { id: string; reason: string } }, @Param("id") id: string, @Body() b: unknown) { return this.sessions.start(systemStaffOf(r), id, b, r); }
 }
