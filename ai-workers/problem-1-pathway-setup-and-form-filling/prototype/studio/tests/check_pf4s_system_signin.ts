@@ -301,6 +301,8 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     // Unconfirmed against SA-07 Appendix A: list for the Owner and the read-only Auditor, export for the Owner only.
     ["system/audit-log:list", "(Sample, Unconfirmed against Appendix A) Read a firm's access report", [Own, Aud]],
     ["system/audit:export", "(Sample, Unconfirmed against Appendix A) Export a firm's access report as CSV", [Own]],
+    // AUD-3b part 1's migration (20261125060000_shared__aud3b_support_session): "Start a support session (read-only unless the firm allowed changes)" — Own, Sup.
+    ["system/firm:impersonate", "Start a support session (read-only unless the firm allowed changes)", [Own, Sup]],
   ];
   const seeded = new Map(sql(`select permission_key || '=' || string_agg(role_code, ',' order by role_code) from plat_system_role_permission group by permission_key`).split("\n").map((l) => l.split("=") as [string, string]));
   const wrong = APPENDIX_A.filter(([key, , r]) => seeded.get(key) !== [...r].sort().join(","));
