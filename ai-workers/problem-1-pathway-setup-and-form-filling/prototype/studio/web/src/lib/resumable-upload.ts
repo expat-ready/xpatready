@@ -65,9 +65,10 @@ export type ResumableUploadOptions = {
 export type ResumableUploadHandle = { done: Promise<string>; abort: () => void; retry: () => Promise<string> };
 
 const answered = (status: number) => status > 0;
-/** No answer, a server error, a lock, or tus's own offset conflict (a plain-text 409; our refusals are problem+json):
- *  try again. Any other answer is the server's decision. */
-const tryAgain = (status: number, type?: string | null) => status === 0 || status >= 500 || status === 423 || (status === 409 && !(type ?? "").includes("json"));
+/** No answer, a server error, a lock, or tus's own offset conflict (its 409 body "Upload-Offset conflict"): try again.
+ *  Any other answer is the server's decision, the rail's plain-text 409s too ("This file is already stored.", a plan
+ *  limit; review n2 of #3640). */
+const tryAgain = (status: number, body?: string) => status === 0 || status >= 500 || status === 423 || (status === 409 && (body ?? "").trim() === "Upload-Offset conflict");
 
 /** Starts one file's upload; `done` resolves with the stored file's id, or rejects with the words shown. */
 export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): ResumableUploadHandle {
@@ -102,7 +103,7 @@ export function resumableUpload(file: File | Blob, o: ResumableUploadOptions): R
     current = null; clearTimeout(stall);
     if (settled || stopped) return;
     const words = () => refusalWords(status, res?.body, res?.type);
-    if (tryAgain(status, res?.type)) {
+    if (tryAgain(status, res?.body)) {
       if (answered(status) && failures >= delays.length) return refuse(words());   // rule 1: a lasting server error is said; the upload is kept for retry()
       if (answered(status)) return later();
       if (!paused) { paused = true; tell("paused"); }

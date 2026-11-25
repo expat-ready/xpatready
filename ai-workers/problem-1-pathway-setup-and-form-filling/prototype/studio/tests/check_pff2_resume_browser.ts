@@ -204,6 +204,10 @@ try {
   const refusedFinish = await run(P_REFUSE, { retryDelays: [0, 200] }, undefined, 25, false);
   ok("PF-F2 DW8e fail (break B1, M4): a refused finish (409 problem+json) ends failed in its detail words, never done, nothing stored",
     refusedFinish.result === undefined && refusedFinish.failed === "Your plan's storage is full. Nothing was stored." && !refusedFinish.phases.includes("done") && rowsFor(P_REFUSE) === 0, { failed: refusedFinish.failed, words: refusedFinish.words.slice(-3) });
+  // Review n2 of #3640: the rail's refusals are text/plain, so a 409 that is not tus's "Upload-Offset conflict" is final at
+  // its first answer: no HEAD, no second try (before, it was tried again through every delay).
+  ok("PF-F2 DW8e fail (review n2 of #3640): the refused finish is said at its first answer, never tried again (no HEAD, no offset sent twice)",
+    refusedFinish.reqs.filter((r) => r.startsWith("HEAD")).length === 0 && new Set(refusedFinish.reqs).size === refusedFinish.reqs.length, refusedFinish.reqs);
   await refusedFinish.ctx.close();
 
   // Break M2: a cut the browser never notices (navigator.onLine stays true) longer than every retry delay.
