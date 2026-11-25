@@ -15,7 +15,7 @@
 //    upload, so a repeated finish writes no second version.
 import { HttpException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
-import { MAX_DOCUMENT_BYTES } from "../../contracts/documents.ts";
+import { MAX_DOCUMENT_BYTES } from "../../../contracts/documents.ts";
 import { CASE_FILE_KINDS, checkedCaseFile } from "../case-checklist.ts";
 import type { CaseDocuments } from "../case-documents.ts";
 import { actorOf, type Actor, type Db } from "../core.ts";

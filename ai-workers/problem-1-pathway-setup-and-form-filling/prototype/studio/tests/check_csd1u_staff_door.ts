@@ -8,7 +8,8 @@
 //   DW2 another firm's staff member (sample-solo's Owner) asking for this firm's case → 404 at creation, nothing staged;
 //       this firm's Owner is let in.
 //   DW3 a staff member without agent/document:create (labelled test data: the second representative's roles ended and
-//       Read only given) → 404, nothing staged; a sign-in linked to no case user → 404 too.
+//       Read only given), a sign-in linked to no case user, or to a client login (B6) → 403 in words, nothing staged;
+//       a sample-solo session bridged to a sample-firm case user → 404 (the door's own firm check); with roles back → 201.
 //   DW4 a type with its own checklist line → refused in the multipart route's words, nothing staged or stored; the kind
 //       with no line is let in (DW1).
 //   DW5 bytes of no allowed kind behind a .pdf name → PF-F4's words at the finish, no plat_file row, no document; a PDF
@@ -17,8 +18,12 @@
 //   DW7 a second upload of the type keeps one current per person and type, the earlier kept as history.
 //   DW8 the multipart route still stores (other suites use it); the checklist read lists the person's documents with no
 //       line and the kinds staff may add.
+//   DW9 a role ended between creation and finish → 403 in words at the finish; no row, no stored bytes, no staging copy.
+//   DW10 the case documents' 20 MB limit: 20 MB + 1 declared → 413 in words, nothing staged; exactly 20 MB opens.
+//   DW11 a sound PDF whose check takes longer than 5 s (90,000 pages) is stored: the check runs outside the transaction.
+//   DW12 names come through the rail as sent (no latin1 "repair").
 // Sample people and synthetic files only; US$0, no model call. Run from prototype/:
-//   zsh studio/tools/isolated.sh csd1u 4463 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh csd1u 4463 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_csd1u_staff_door.ts 4463 xr_studio_csd1u
+//   zsh studio/tools/isolated.sh csd1u 4433 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh csd1u 4433 stop' EXIT && npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_csd1u_staff_door.ts 4433 xr_studio_csd1u
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -29,7 +34,7 @@ import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "./runtime/api.ts";
 
-const PORT = Number(process.argv[2] ?? 4463), DBNAME = process.argv[3] ?? "xr_studio_csd1u", NAME = DBNAME.replace(/^xr_studio_/, "");
+const PORT = Number(process.argv[2] ?? 4433), DBNAME = process.argv[3] ?? "xr_studio_csd1u", NAME = DBNAME.replace(/^xr_studio_/, "");
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const BASE = `http://127.0.0.1:${PORT}`, STUDIO = join(import.meta.dirname, "..");
 const { ok, summary } = recorder();
@@ -76,6 +81,9 @@ try {
   const send = async (token: string, bytes: Uint8Array, m: Record<string, string> = {}) => { const c = await create(token, bytes.length, m); const id = idOf(c); return { c, id, p: c.status === 201 ? await patch(token, id, 0, bytes) : null }; };
   const staged = (id: string) => !!id && existsSync(join(STUDIO, "var", `isolated-${NAME}`, "upload-staging", `${id}.json`));
   const fileRows = () => Number(sql(`select count(*) from plat_file`));
+  const firmAId = sql(`select id from platform_firm where key = 'sample-firm'`).toLowerCase();
+  /** The FilesPort copy of an upload's bytes (the local adapter's folder), whether or not a row names it. */
+  const storedBytes = (id: string) => !!id && existsSync(join(STUDIO, "var", `isolated-${NAME}`, "front-office-files", firmAId, "case-documents", person, id));
   const docRows = (type = "letter_of_invitation") => Number(sql(`select count(*) from case_document where subject_id = '${person}' and document_type = '${type}'`));
   const pdf = (tag: string) => new Uint8Array(textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Letter of invitation (Sample)", `CS-D1u ${tag} ${run}`]));
 
@@ -113,13 +121,23 @@ try {
     insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${firmA}', '${rep2}', 'READ_ONLY', 'CS-D1u test (Sample)')`);
   const tReadOnly = await signIn(REP2);
   const ro = await create(tReadOnly, bytes1.length);
-  ok("CS-D1u DW3 fail: a staff member of the firm whose only role is Read only (no agent/document:create) → 404 at creation, nothing staged",
-    !!tReadOnly && ro.status === 404 && !idOf(ro), { signedIn: !!tReadOnly, status: ro.status });
+  ok("CS-D1u DW3 fail: a staff member of the firm whose only role is Read only (no agent/document:create) → 403 in words (\"Your role cannot add documents to cases. Nothing was stored.\"), nothing staged",
+    !!tReadOnly && ro.status === 403 && ro.text === "Your role cannot add documents to cases. Nothing was stored." && !idOf(ro), { signedIn: !!tReadOnly, status: ro.status, text: ro.text });
   rawSql(`update platform_staff set actor_id = null where id = '${rep2}'; update platform_role_grant set ended_at = null, ended_by = null, end_reason = null where staff_id = '${rep2}' and role <> 'READ_ONLY'; update platform_role_grant set ended_at = now(), ended_by = 'CS-D1u test (Sample)', end_reason = 'Sample: roles back' where staff_id = '${rep2}' and role = 'READ_ONLY'`);
   const tUnlinked = await signIn(REP2, "sample-firm", sql(`select email from platform_staff where id = '${rep2}'`));
   const unlinked = tUnlinked ? await create(tUnlinked, bytes1.length) : null;
-  ok("CS-D1u DW3 fail: a sign-in with the upload right but linked to no case user → 404 at creation", unlinked?.status === 404, unlinked?.status);
-  rawSql(`update platform_staff set actor_id = '${REP2}' where id = '${rep2}'`);
+  ok("CS-D1u DW3 fail: a sign-in with the upload right but linked to no case user → 403 in words at creation", unlinked?.status === 403 && /not linked to a case user/.test(unlinked.text), { status: unlinked?.status, text: unlinked?.text });
+  // B6 (labelled test data): the sign-in linked to a client login is no staff case user → 403 in the same words.
+  rawSql(`update platform_staff set actor_id = '${CLIENT}' where id = '${rep2}'`);
+  const tAsClient = await signIn(REP2, "sample-firm", sql(`select email from platform_staff where id = '${rep2}'`)), asClient = await create(tAsClient, bytes1.length);
+  ok("CS-D1u DW3 fail (B6): a sign-in linked to a client login (not a firm staff case user) → 403 in words, nothing staged", asClient.status === 403 && /not linked to a case user/.test(asClient.text) && !idOf(asClient), { status: asClient.status, text: asClient.text });
+  // Review 6 (labelled test data): the door's own firm check. sample-solo's Owner's sign-in linked to a sample-firm case
+  // user: Runtime.reach lets that user in, so only the door's check (the case's platform firm is the session's) refuses.
+  const soloStaff = sql(`select id from platform_staff where actor_id = '${OTHER}'`);
+  rawSql(`update platform_staff set actor_id = null where id = '${rep2}'; update platform_staff set actor_id = '${REP2}' where id = '${soloStaff}'`);
+  const tCross = await signIn(OTHER, "sample-solo", sql(`select email from platform_staff where id = '${soloStaff}'`)), cross = await create(tCross, bytes1.length);
+  ok("CS-D1u DW3 fail (the door's firm check): a sample-solo session bridged to a sample-firm case user → 404, nothing staged", !!tCross && cross.status === 404 && !idOf(cross), { status: cross.status, text: cross.text });
+  rawSql(`update platform_staff set actor_id = '${OTHER}' where id = '${soloStaff}'; update platform_staff set actor_id = '${REP2}' where id = '${rep2}'`);
   const tRep2 = await signIn(REP2), rep2Ok = await create(tRep2, bytes1.length);
   ok("CS-D1u DW3 pass: the same person with their Case manager role back and their case user linked is let in (201)", rep2Ok.status === 201, rep2Ok.status);
 
@@ -139,8 +157,8 @@ try {
     bad.c.status === 201 && bad.p?.status === 415 && /Allowed here: PDF, JPEG and PNG\./.test(bad.p.text) && /Nothing was stored\./.test(bad.p.text) && fileRows() === files5 && docRows() === docs5, { create: bad.c.status, patch: bad.p?.status, text: bad.p?.text });
   const broken = new TextEncoder().encode(`%PDF-1.4\n% Sample, CS-D1u ${run}: no objects, it does not open\n${"A".repeat(3000)}\n%%EOF\n`);
   const dmg = await send(tOfficer, broken);
-  ok("CS-D1u DW5 fail: a PDF that does not open is refused at the finish in CS-D1t's words; no plat_file row, no document",
-    dmg.c.status === 201 && dmg.p?.status === 400 && /could not be read: it may be damaged/.test(dmg.p.text) && fileRows() === files5 && docRows() === docs5, { create: dmg.c.status, patch: dmg.p?.status, text: dmg.p?.text });
+  ok("CS-D1u DW5 fail: a PDF that does not open is refused at the finish in CS-D1t's words; no plat_file row, no document, no stored bytes, no staging copy",
+    dmg.c.status === 201 && dmg.p?.status === 400 && /could not be read: it may be damaged/.test(dmg.p.text) && fileRows() === files5 && docRows() === docs5 && !storedBytes(dmg.id) && !staged(dmg.id), { create: dmg.c.status, patch: dmg.p?.status, text: dmg.p?.text, bytes: storedBytes(dmg.id), staged: staged(dmg.id) });
   ok("CS-D1u DW5 pass: a whole PDF is stored (DW1's)", !!f1 && row1.includes("|SCANNING|"));
 
   // ----------------------------------------------------------------------------------- DW6: a repeated finish
@@ -171,6 +189,41 @@ try {
   const others = (v1?.people?.[0]?.other_documents ?? []) as { sha256: string; current: boolean; document_type: string }[];
   ok("CS-D1u DW8 pass: the checklist read lists the person's documents with no line (newest first, three versions, one current) and the kinds staff may add",
     others.length === 3 && others[0].sha256 === sha(bytes3) && others.filter((x) => x.current).length === 1 && (v1?.case_kinds ?? []).some((k: { key: string }) => k.key === "letter_of_invitation"), { n: others.length, kinds: v1?.case_kinds });
+
+  // ------------------------------------------- DW9 (review 1, 6): access lost between creation and finish
+  const bytes9 = pdf("dw9"), files9 = fileRows(), docs9 = docRows();
+  const tRep2b = await signIn(REP2), c9 = await create(tRep2b, bytes9.length), id9 = idOf(c9);
+  rawSql(`update platform_role_grant set ended_at = now(), ended_by = 'CS-D1u test (Sample)', end_reason = 'Sample: role ended mid-upload' where staff_id = '${rep2}' and ended_at is null`);
+  const p9 = c9.status === 201 ? await patch(tRep2b, id9, 0, bytes9) : null;
+  ok("CS-D1u DW9 fail: a role ended between creation and finish → refused at the finish in words (403); no row, no document, no stored bytes, no staging copy",
+    p9?.status === 403 && /Your role cannot add documents/.test(p9.text) && fileRows() === files9 && docRows() === docs9 && !storedBytes(id9) && !staged(id9), { create: c9.status, patch: p9?.status, text: p9?.text, bytes: storedBytes(id9), staged: staged(id9) });
+  rawSql(`update platform_role_grant set ended_at = null, ended_by = null, end_reason = null where staff_id = '${rep2}' and role <> 'READ_ONLY'`);
+
+  // ------------------------------------------- DW10 (B2): the case documents' 20 MB limit
+  const MAX = 20 * 1024 * 1024, files10 = fileRows();
+  const over = await create(tOfficer, MAX + 1), at = await create(tOfficer, MAX);
+  ok("CS-D1u DW10 fail: a declared 20 MB + 1 byte is refused at creation (413, in words), nothing staged", over.status === 413 && /at most 20 MB here\. Nothing was stored\./.test(over.text) && !idOf(over) && fileRows() === files10, { status: over.status, text: over.text });
+  ok("CS-D1u DW10 pass: exactly 20 MB opens (201)", at.status === 201, at.status);
+
+  // ------------------------------------------- DW11 (B1): a sound PDF slower than 5 s to check is stored
+  // The breaker's recipe: ~90,000 pages sharing one content stream (pypdf takes about 7 s; the transaction's limit is 5 s).
+  const manyPages = (n: number) => {
+    const objs = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${Array.from({ length: n }, (_, i) => `${i + 4} 0 R`).join(" ")}] /Count ${n} >>`, "<< /Length 0 >>\nstream\n\nendstream",
+      ...Array.from({ length: n }, () => "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 3 0 R >>")];
+    const parts: string[] = ["%PDF-1.4\n"]; let at = parts[0].length; const offs: number[] = [];
+    objs.forEach((o, i) => { offs.push(at); const t = `${i + 1} 0 obj\n${o}\nendobj\n`; parts.push(t); at += t.length; });
+    parts.push(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`);
+    return new Uint8Array(Buffer.from(parts.join(""), "latin1"));
+  };
+  const slow = manyPages(90_000), docs11 = docRows(), t11 = Date.now();
+  const u11 = await send(tOfficer, slow, { filename: "many-pages.pdf" });
+  ok(`CS-D1u DW11 pass: a sound ${(slow.length / 1048576).toFixed(1)} MB PDF of 90,000 pages, whose check takes longer than the transaction's 5 s, is stored (204, one version) in ${((Date.now() - t11) / 1000).toFixed(1)} s`,
+    u11.p?.status === 204 && docRows() === docs11 + 1 && sql(`select sha256 from case_document where subject_id = '${person}' and document_type = 'letter_of_invitation' and current`) === sha(slow), { create: u11.c.status, patch: u11.p?.status, text: u11.p?.text });
+
+  // ------------------------------------------- DW12 (B5): a name already right is kept as sent
+  const u12 = await send(tOfficer, pdf("dw12"), { filename: "Ã©tude.pdf" }), u12b = await send(tOfficer, pdf("dw12b"), { filename: "étude café.pdf" });
+  const names = rawSql(`select file_name from case_document where subject_id = '${person}' and document_type = 'letter_of_invitation' order by uploaded_at desc limit 2`).split("\n");
+  ok("CS-D1u DW12 pass: names come through the rail as sent (\"étude café.pdf\"; \"Ã©tude.pdf\" is not \"repaired\" to \"étude.pdf\")", u12.p?.status === 204 && u12b.p?.status === 204 && names[0] === "étude café.pdf" && names[1] === "Ã©tude.pdf", names);
 } finally {
   await db.$disconnect();
 }
