@@ -5,6 +5,7 @@
 // (api/runtime/clients/:id/notes), and the case's timeline (GET api/runtime/cases/:id/timeline, timeline.ts).
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query, Req } from "@nestjs/common";
 import { CaseRead } from "../core.ts";
+import { idParam } from "../platform/http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../platform/identity/keys.ts";
 import { CaseNotes } from "./service.ts";
 import { CaseTimeline } from "./timeline.ts";
@@ -24,16 +25,16 @@ export class CaseNotesController {
   history(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string) { return this.svc.history(staffOf(r), id, k); }
 
   @Post() @PermissionKeys("agent/case:edit")
-  add(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.add(staffOf(r), id, b); }
+  add(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.add(staffOf(r), idParam(id, "case"), b); }   // R1.10 A5: malformed ids are the one 404 before the body
 
   @Put(":noteKey/text") @HttpCode(200) @PermissionKeys("agent/case:edit")
-  edit(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string, @Body() b: unknown) { return this.svc.editText(staffOf(r), id, k, b); }
+  edit(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string, @Body() b: unknown) { return this.svc.editText(staffOf(r), idParam(id, "case"), idParam(k, "note"), b); }
 
   @Put(":noteKey/pin") @HttpCode(200) @PermissionKeys("agent/case:edit")
-  pin(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string, @Body() b: unknown) { return this.svc.pin(staffOf(r), id, k, b); }
+  pin(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string, @Body() b: unknown) { return this.svc.pin(staffOf(r), idParam(id, "case"), idParam(k, "note"), b); }
 
   @Put(":noteKey/visibility") @HttpCode(200) @PermissionKeys("agent/case:edit")
-  visibility(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string, @Body() b: unknown) { return this.svc.setVisibility(staffOf(r), id, k, b); }
+  visibility(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string, @Body() b: unknown) { return this.svc.setVisibility(staffOf(r), idParam(id, "case"), idParam(k, "note"), b); }
 }
 
 /** CS-NT1 part 3 (AG-13-20, "a note on a case or a person"): the same notes on a case client, with the same keys. */
