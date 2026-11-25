@@ -54,3 +54,27 @@ Scores (N/A not scored): task completed ½ · next step obvious 1 (alarm text na
 **Score: 6 of 8 = 7.5/10: below the pass mark.** Fixing Majors 1-3 raises task completed, feedback and error recovery.
 
 **Verdict: Block** (Ship after fixes): fix Majors 1, 2 and 3. Minors are optional.
+
+## Round 2 (diff only: `3e877239..7b9b28e9`, head `7b9b28e9f709f9cfb0955876a6eca02a00a8a0d7`)
+**Runs:** `check_aud1c_verify.ts` 24/24 · `check_aud2_archive.ts` 43/43 · `run-suites.sh --only check_pf21c_breaches.ts` 49/49 · CDK 140/140.
+**Mutations** (each restored with `git checkout`): handler calls `v.pass("full")` → M1 and M2 tests FAIL (22/24) · `sliceAt` always 0 → same two FAIL · archive list read by every slice → m4 test FAILS (23/24) · new kind dropped from `BREACH_ALERT_KINDS` → pf21c FAILS.
+
+* **M1: closed.** The spy goes through the feature's real handler (`tests/check_aud1c_verify.ts:199-209`); the mutations prove it.
+* **M2: closed.** I judge that a stateless daily cycle meets "resumable in chunks":
+  * a run lost to a stopped worker is made good the same hour the next day; a failed run keeps its hour across retries and pages through `job-failures`;
+  * a slice would have to be missed 7 days running before SA-11-6's weekly bar is missed.
+  * Cost: each run costs the same as before; the total is 7 times the weekly one. Every chain is re-read from seq 1 daily, and each chain's archive ledger GETs every anchor daily (`daily-export.ts:96-120`; one anchor per export day, so about 2,555 per chain at 7 years). Small today, but stricter than the brief's "weekly" (Minor 4).
+* **M3: closed.** `check_pf21c_breaches.ts:302-304` posts the new kind and expects a 201 DRAFT with the chain wording.
+* **Breaker m4: sound.** `verify.ts:76` reads the archive list only in slice 0 (or an unsliced pass); a chain only the archive holds is checked there whatever its hash, then its check row puts it in its own slice (still once a day).
+* **Breaker m2: done** (`design/platform-and-front-office-contracts-2026-11-14.md:64`).
+
+### New Minors (optional)
+4. Put the 7x daily cost and the stricter-than-weekly cadence in the PR for the Lead (WAY-OF-WORKING: never deviate silently).
+5. Stale "weekly" wording: `verify.ts:3` and `:63`, `features/audit-chain.ts:1`, `audit/chain/routes.ts:69`; `qa/built/R1.97.md:1` ("weekly from seq 1 (… every day …)", "the weekly slices").
+6. The m4 test (`check_aud1c_verify.ts:193`):
+   * `r.findings.length >= 0` is always true; drop it.
+   * If `sliceOf(ghost)` were 0, the test could not tell slice 0's archive branch from the ordinary slice; a fixed ghost key in another slice removes the doubt.
+
+**Journey, round 2:** task completed 1 · feedback and state ½ (a lost run leaves no trace, but is made good in 24 h) · error recovery 1; the rest as in round 1. **7 of 8 = 8.8/10: pass.**
+
+**Verdict, round 2: Approve.** No open Blocker or Major.

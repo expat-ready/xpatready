@@ -54,3 +54,19 @@ Scores (N/A criteria not scored):
 **Score: 7 of 8 = 8.8/10: pass.**
 
 **Verdict: Approve.** Minors 1-4 are optional and can ride with part 5's fixes.
+
+## Round 2 (diff only: `af57fa17..55dcc7d5`, head `55dcc7d5cf3157ee04c35fcf5b8b53e2be8f533a`)
+* **What changed:** the head merges part 5 (`7b9b28e9`, reviewed in AUD-1c-5 round 2) and adds records text. `git diff af57fa17 55dcc7d5 -- '*/deploy/cdk/*'` is empty, so the CDK lib, test and README are byte for byte the ones approved in round 1.
+* **Runs:**
+  * CDK `node --test test/*.test.ts`: 140/140, with `node_modules` linked;
+  * `check_aud1c_verify.ts`: 24/24;
+  * `check_aud2_archive.ts`: 43/43;
+  * pf21c via `run-suites.sh`: 49/49.
+* **The filter still holds after part 5's change.** The daily deep slices write `mode: "full"`, which `ChainVerifyOk` does not count (round 1 probe; `LINES.chainOkWeekly`). Running deep slices every hour adds no heartbeat lines.
+* **Records:** `qa/built/R1.97.md` now owes "the heartbeat alarm staying OK for 24 hours" on staging, which closes my round-1 Minor 4.
+  * It still opens with "weekly from seq 1 (the deep check: every chain in full every day …)" and "the weekly slices". That wording is stale; it is part 5's Minor 5 and lives in the same file.
+* **Round-1 Minors 1-3 (the blind fail half, the hand-built line, the about-90-minute window):** unchanged. Still optional.
+
+**Journey, round 2:** unchanged, 7 of 8 = 8.8/10: pass.
+
+**Verdict, round 2: Approve.**
