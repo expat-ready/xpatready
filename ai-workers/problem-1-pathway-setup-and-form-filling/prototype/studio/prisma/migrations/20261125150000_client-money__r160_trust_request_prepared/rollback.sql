@@ -1,10 +1,10 @@
--- Rollback of 20261125060000_client-money__r160_trust_request_prepared (R1.60 part a1), by hand, in one transaction:
+-- Rollback of 20261125150000_client-money__r160_trust_request_prepared (R1.60 part a1), by hand, in one transaction:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f rollback.sql
 -- Contract step only after part a2 and part b are rolled back (they read these columns). It puts back
 -- money_trust_request_write() exactly as 20261118200000_fo7ts_money_settings left it, with PF-12's definer settings,
 -- then drops the two checks and the two columns. A prepared request keeps its row: it reads as #3033's unsent one
 -- ("Waiting") afterwards, and a person cancels it with a reason. Then delete this migration's _prisma_migrations row:
---   DELETE FROM _prisma_migrations WHERE migration_name = '20261125060000_client-money__r160_trust_request_prepared';
+--   DELETE FROM _prisma_migrations WHERE migration_name = '20261125150000_client-money__r160_trust_request_prepared';
 CREATE OR REPLACE FUNCTION money_trust_request_write() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
