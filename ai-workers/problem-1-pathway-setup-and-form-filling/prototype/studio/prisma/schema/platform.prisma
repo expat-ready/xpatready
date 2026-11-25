@@ -128,6 +128,9 @@ model PlatformFirm {
   platImportMappings     PlatImportMapping[]
   platImportAttestations PlatImportAttestation[]
 
+  // back-relation slot: automation (PF-20, R1.36)
+  autoRecipes AutoRecipe[] // platform-automation.prisma
+
   @@map("platform_firm")
 }
 
