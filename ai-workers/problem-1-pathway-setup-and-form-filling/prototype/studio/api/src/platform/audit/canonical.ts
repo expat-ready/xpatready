@@ -1,5 +1,5 @@
 // AUD-1c part 1 (SA-11-4@4cfd3199, NFR5-08): the TypeScript mirror of the database's canonical form of an audit line,
-// aud_event_canonical in migration 20261118150000_aud1c_audit_chain, byte for byte. Pure: no database, no clock.
+// aud_event_canonical in migration 20261125113000_aud1c_audit_chain, byte for byte. Pure: no database, no clock.
 // entryHash = sha256(prevHash || UTF-8 of canonical(line)). AUD-1c part 2's checker recomputes each line's hash with it.
 // A line is read from SQL as text (never through a JS Date, which keeps milliseconds only, or a parsed detail, which
 // loses `1.0`): `at` as to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), `detail` as detail::text. The
