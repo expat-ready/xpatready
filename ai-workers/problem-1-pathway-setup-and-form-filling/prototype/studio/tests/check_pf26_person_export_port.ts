@@ -77,7 +77,7 @@ ok("PF-26 fail (AG-2-93 rules 3, 11; SA-11-40; review M1, m1): exporterCases cat
   let deep: unknown = "x"; for (let i = 0; i < 20_000; i++) deep = [deep];
   const tooDeep = fails(sec([{ v: deep }]));
   ok("PF-26 fail (review m2, m3, m4): an item holding a __proto__ key, a NaN under an email-like key, and an item nested 20,000 deep each fail as the module's ExporterFailed, and no message holds the key",
-    proto instanceof ExporterFailed && /__proto__/.test(proto.message) && email instanceof ExporterFailed && !email.message.includes("example.com") && tooDeep instanceof ExporterFailed && tooDeep.module === "front-office",
+    proto instanceof ExporterFailed && /__proto__/.test(proto.message) && email instanceof ExporterFailed && !email.message.includes("@") && tooDeep instanceof ExporterFailed && tooDeep.module === "front-office",
     [String(proto), String(email), String(tooDeep)]);
   const p = fakePersonExport(); p.register({ module: "front-office", declares: ["notes"], sections: async () => sec([]) as never });
   const UP = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", pkg = await buildPersonPackage(p, (fn) => fn(undefined), { firmId: UP.replace(/A/g, "B"), personId: UP, records: [UP.toLowerCase()] }, new Date(0));
