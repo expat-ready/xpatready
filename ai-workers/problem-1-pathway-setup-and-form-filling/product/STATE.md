@@ -2,7 +2,7 @@
 
 current_lead: local_9bab465f-b88c-4c62-b36d-cc75d9e31bf8 Lead 5 · 25 Nov 10:5x IST (after Lead 4 local_d66eb914 at 48% context; Opus 5.5 medium, P-788)
 
-updated: 2026-11-25 11:20 IST (clock): **Lead 5 took over 10:49; 48-hour plan v4 on the control-room page (claude.ai/artifact/DmNfxoqNqmoPYTkX6XvZb2, A385).** 62/101 Works; 52 merged since 00:00. Queue: #3527 R1.29, #3637 R1.34, #3645 R1.45. Pipeline: #3643 (P-827) and #3651 (OS backlog) labelled 11:1x-11:2x; #3632 (P-822) red ci/fast; #3623 red pr-rules. Weekly 45% at 11:12 (4.6%/h since 07:33, 8%/h last 30 min): switch prepared at 80%, likely 15:30-21:00 IST. Standbys: Lead 6 local_dc554820, Lead 7 local_26cae5f0. Check b23f1c39 (cron 3,33).
+updated: 2026-11-25 12:51 IST (clock): **Lead 5 since 10:49; the v4 plan on the control-room page is in force (A386).** 62/101 Works (no new Works yet today; R1.86 and R1.13 queued). Every claude.ai lane read and answered at 12:1x and 12:4x. CI jam: about 70 runs waiting. Weekly 64% at 12:43 (12%/h, 95% about 15:20 IST; the founder switches at 95-96%). Standbys: Lead 6 local_dc554820, Lead 7 local_26cae5f0. Check b23f1c39 (cron 3,33).
 
 ## Lead 5 working block, 11:20 IST 25 Nov
 **Plan:** control-room page v4 (claude.ai/artifact/DmNfxoqNqmoPYTkX6XvZb2; source `design/control-room-2026-11-25.html`): on-plan verdicts, gaps G1-G8 with enforcers, OS go-live order 1-11, hour by hour to 27 Nov 12:00, monitoring steps 1-8. Every check follows it and names any late line with its recovery.
