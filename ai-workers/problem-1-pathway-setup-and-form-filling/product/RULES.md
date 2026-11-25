@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-838**, 25 Nov 15:3x IST; earlier: `history/RULES-2026-11-25-1530-lead8-as-of-P-828.md` + older)
+# Rule register (Lead keeps it; as of **P-840**, 25 Nov 16:52 IST; earlier: `history/RULES-2026-11-25-1530-lead8-as-of-P-828.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -55,7 +55,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-609 | Release 1 = all 101 together, 12 Dec, aim 6-7 Dec (P-815); re-decide 1 Dec if under 72 proven. | prose | 24 Nov |
 | P-820 | Nearest Partials first; Not-built only where a Partial needs it. | prose | 25 Nov |
 | P-821 | Outside accounts in one sitting; the founder types every key; test mode, US$0. | prose | 25 Nov |
-| IDX-28 | 25 Nov rows P-824 to P-838 (pipeline first, OS-PM lane, plan no limit, P-822 blocks, switch at 95-96%, self-checking builders, Partial %) stand in DECISIONS. | prose | 25 Nov |
+| IDX-28 | 25 Nov rows P-824 to P-840 (pipeline first, OS-PM lane, plan no limit, P-822 blocks, 95-96% switch, self-checking builders, Partial %, front door) stand in DECISIONS. | prose | 25 Nov |
 | P-615 | Environment as memory: this register (start read ≤ 70k tokens), module cards checked by CI, why-comments, three behaviour numbers; no memory agent. | script: check-docs.sh (part: register, 25 KB) | 15 Nov |
 | IDX-11 | (P-608: model and effort at every start) stands: word for word in `rules/goal-and-order.md`; P-725 overrides it for the new account's Lead. | hook: lane-preflight.sh | 19 Nov |
 | P-557 | Always committed, always resumable: push every step; STATE says what is true, in flight and next (AGENTS rule 10). | prose | 13 Nov |
