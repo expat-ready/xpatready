@@ -15,7 +15,7 @@
 //      (tests/runtime/setup_visitor_visa.ts, as check_c69_gates.ts does).
 // Every value here is Sample (invented keys and rules, example pages); no immigration value (AGENTS rule 4). No browser,
 // no model call (US$0).
-//   zsh studio/tools/isolated.sh evidence_as2a 4436 start && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_as2a_cited_gates.ts 4436 xr_studio_evidence_as2a
+//   zsh studio/tools/isolated.sh evidence_as2a 4436 start && tsx studio/tests/check_as2a_cited_gates.ts 4436 xr_studio_evidence_as2a
 import { checkGates, checkSource, eligibilityChanges, gateProblems, snapshotEligibility, ASSESSMENT_ONLY_WORDS } from "../engine/eligibility-gates.ts";
 import { missingItems, releaseLineProblems, ASSESSMENT_ONLY_CASE_WORDS } from "../engine/programs.ts";
 import { emptyProblem } from "../api/src/studio.ts";
