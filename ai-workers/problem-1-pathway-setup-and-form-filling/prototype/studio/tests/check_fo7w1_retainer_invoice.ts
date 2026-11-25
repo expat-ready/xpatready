@@ -7,7 +7,7 @@
 //   R4 DRAFT, SENT, CLIENT_SIGNED, WITHDRAWN → 409 RETAINER_NOT_SIGNED; SIGNED_OFFLINE is billed;
 //   R5 another client's retainer, a consultation agreement, firm B's retainer → 404, nothing written;
 //   R6 a USD draft on a CAD retainer → 422 at currency; the CAD draft takes it;
-//   R7 billed once: the same retainer twice → the second draft holds no line; named again → 409 ROW_ON_INVOICE; two at
+//   R7 billed once: the same retainer twice → 409 NOTHING_TO_BILL, no empty draft (break m1); named again → 409 ROW_ON_INVOICE; two at
 //      once → one line only; the database's unique index refuses a second line of the same row;
 //   R8 a Case Officer (agent/invoice:create) may start it; issuing still needs agent/invoice:issue (403);
 //   R9 one transaction, one invoice.draft_created audit line naming the retainer and the row ids; a refusal writes none;
@@ -118,6 +118,18 @@ try {
   // A row larger than one line holds (fee rows go to 1e10 minor; a line to MINOR_MAX): refused, nothing written (review m3).
   const rBig = retainer(A, staffA, PA, "SIGNED", [{ amount: 2_147_483_648, when: "WHEN_DONE" }]), cBig = drafts(), dBig = await start({ retainerId: rBig.id });
   ok("FO-7w1 R1 fail: a fee row above what one line holds (21,474,836.47) → 422 at feeRowIds, nothing written", dBig.status === 422 && dBig.body.fields?.feeRowIds && drafts() === cBig, dBig.body);
+  // Break m3: one row, or rows together, whose total with tax is more than issue accepts → refused, so no draft can never be issued.
+  const rTot = retainer(A, staffA, PA, "SIGNED", [{ amount: 1_100_000_000, when: "WHEN_DONE" }, { amount: 1_000_000_000, when: "WHEN_DONE" }]), cTot = drafts(), dTot = await start({ retainerId: rTot.id });
+  ok("FO-7w1 R1 fail (break m3): rows that together with tax pass 21,474,836.47 → 422 at feeRowIds, nothing written; one of them alone is billed", dTot.status === 422 && dTot.body.fields?.feeRowIds && drafts() === cTot
+    && (await start({ retainerId: rTot.id, feeRowIds: [rTot.rows[1]] })).status === 201, dTot.body);
+  // Break m2: a label with an invisible direction mark (the fee row's own check accepts it) is copied without the mark.
+  const rMark = retainer(A, staffA, PA, "SIGNED", [{ label: "Fee \u202eSample", amount: 10000, when: "WHEN_DONE" }]), dMark = await start({ retainerId: rMark.id });
+  ok("FO-7w1 R1 pass (break m2): a label holding a direction mark is copied without it (\"Fee Sample\"), not refused", dMark.status === 201 && dMark.body.lines[0]?.description === "Fee Sample", dMark.body);
+  // Break m4: a firm whose default is USD, no currency sent → the retainer's CAD, never a refusal at a field not sent.
+  sql(`update money_payment_settings set default_currency = 'USD' where firm_id = '${A}'`);
+  const rCur = retainer(A, staffA, PA, "SIGNED", [{ amount: 10000, when: "WHEN_DONE" }]), dCur = await call(tA, "POST", M, { personId: PA, retainerId: rCur.id }), dPlain = await call(tA, "POST", M, { personId: PA });
+  sql(`update money_payment_settings set default_currency = 'CAD' where firm_id = '${A}'`);
+  ok("FO-7w1 R6 pass (break m4): a USD-default firm's draft from a retainer with no currency sent is CAD; a plain draft still takes USD", dCur.status === 201 && dCur.body.currency === "CAD" && dPlain.status === 201 && dPlain.body.currency === "USD", [dCur.body, dPlain.body]);
   // ---------------------------------------------------------------------- R2: the deposit is never copied by itself
   ok("FO-7w1 R2 fail (AG-6-61, Code s. 32): the ON_SIGNING deposit row is not copied by itself; that draft is not a deposit", d1.status === 201 && !lines(d1.body.id).includes(r1.rows[0]) && d1.body.deposit === false);
   const d2 = await start({ retainerId: r1.id, feeRowIds: [r1.rows[0]] });
@@ -152,8 +164,12 @@ try {
   ok("FO-7w1 R6 pass: the same row on a CAD draft (the row's currency) → 201, the line in CAD", d6c.status === 201 && sql(`select currency from money_invoice_line where invoice_id = '${d6c.body.id}'`) === "CAD", d6c.body);
 
   // ---------------------------------------------------------------------- R7: billed once
-  const again = await start({ retainerId: r1.id });
-  ok("FO-7w1 R7 pass: the same retainer again → a draft with no line (rows already billed are skipped)", again.status === 201 && lines(again.body.id) === "", again.body);
+  const cAgain = drafts(), twice = await start({ retainerId: r1.id });
+  ok("FO-7w1 R7 fail (break m1): the same retainer again (a double click, a reload) → 409 NOTHING_TO_BILL, no empty draft", twice.status === 409 && twice.body.code === "NOTHING_TO_BILL" && drafts() === cAgain, twice.body);
+  const rDep = retainer(A, staffA, PA, "SIGNED", [{ amount: 50000, when: "ON_SIGNING" }, { amount: null, when: "WHEN_DONE" }]), cDep = drafts(), dDep = await start({ retainerId: rDep.id });
+  ok("FO-7w1 R7 fail (break m1): a retainer with only a deposit and an open-amount row → 409 NOTHING_TO_BILL, no draft; naming the deposit bills it", dDep.status === 409 && dDep.body.code === "NOTHING_TO_BILL" && drafts() === cDep
+    && (await start({ retainerId: rDep.id, feeRowIds: [rDep.rows[0]] })).status === 201, dDep.body);
+  const again = await start({});   // a draft typed by hand, for the index and line cases below
   const c7 = drafts(), named = await start({ retainerId: r1.id, feeRowIds: [r1.rows[1]] });
   ok("FO-7w1 R7 fail: a billed row named again → 409 ROW_ON_INVOICE, nothing written", named.status === 409 && named.body.code === "ROW_ON_INVOICE" && drafts() === c7, named.body);
   const r7 = retainer(A, staffA, PA, "SIGNED", [{ amount: 12345, when: "WHEN_DONE" }]);
@@ -163,11 +179,11 @@ try {
   for (let k = 0; k < 5; k++) {
     const r7 = retainer(A, staffA, PA, "SIGNED", [{ amount: 12345, when: "WHEN_DONE" }]);
     const both = await Promise.all([start({ retainerId: r7.id }), start({ retainerId: r7.id }), start({ retainerId: r7.id, feeRowIds: [r7.rows[0]] })]);
-    const withLine = both.filter((x) => x.status === 201 && x.body.lines.length === 1).length, unnamedOk = both.slice(0, 2).every((x) => x.status === 201);
+    const withLine = both.filter((x) => x.status === 201 && x.body.lines.length === 1).length, unnamedOk = both.slice(0, 2).every((x) => (x.status === 201 && x.body.lines.length === 1) || (x.status === 409 && x.body.code === "NOTHING_TO_BILL"));
     const namedOk = both[2].status === 201 || (both[2].status === 409 && both[2].body.code === "ROW_ON_INVOICE");
     if (!(withLine === 1 && unnamedOk && namedOk && Number(sql(`select count(*) from money_invoice_line where source_fee_row_id = '${r7.rows[0]}'`)) === 1)) rounds.push(JSON.stringify(both.map((x) => [x.status, x.body?.code, x.body?.lines?.length])));
   }
-  ok("FO-7w1 R7 pass (two at once, 5 rounds): three drafts started at once from one row → the row is on exactly one line; each unnamed start answers 201 (skipped, never 409); the named one 201 or 409 ROW_ON_INVOICE", rounds.length === 0, rounds);
+  ok("FO-7w1 R7 pass (two at once, 5 rounds): three drafts started at once from one row → the row is on exactly one line; each unnamed start bills it or answers 409 NOTHING_TO_BILL (never a collision); the named one 201 or 409 ROW_ON_INVOICE", rounds.length === 0, rounds);
   ok("FO-7w1 R7 fail: the database refuses a second line of the same row (the unique index)",
     refused(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, unit_amount_minor, amount_minor, currency, source_fee_row_id) values ('${A}', '${again.body.id}', 1, 'FEE', 'x', 1, 1, 'CAD', '${r1.rows[1]}')`, /unique|duplicate/));
 
