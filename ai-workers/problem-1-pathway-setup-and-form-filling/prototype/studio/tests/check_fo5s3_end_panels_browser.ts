@@ -126,11 +126,16 @@ try {
   const ra = await row(a.id);
   const req = sql(`select status || ':' || coalesce(cancel_reason::text, '-') from fo_signature_request where document_id = '${a.id}' order by sent_at desc limit 1`);
   const aEmail = sql(`select email from fo_person where id = (select signer_person_id from fo_retainer where id = '${a.id}')`);
-  const inbox = (await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(aEmail)}`)).json().catch(() => ({}))) as { messages?: { subject: string }[] };
-  const told = (inbox.messages ?? []).filter((m) => /^Agreement withdrawn/.test(m.subject)).length;
+  // The email is delivered by the messages module a moment after the answer: read the client's demo inbox for up to 10 s.
+  let inbox: { messages?: { subject: string }[] } = {}, told = 0;
+  for (let i = 0; i < 20 && !told; i++) {
+    inbox = (await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(aEmail)}`)).json().catch(() => ({}))) as typeof inbox;
+    told = (inbox.messages ?? []).filter((m) => /^Agreement withdrawn/.test(m.subject)).length;
+    if (!told) await r.waitForTimeout(500);
+  }
   ok("R1.55 FO-5s3 S6 pass: Withdraw with a reason, by keyboard: the page reads Withdrawn, the reason is kept, the signing request ended (CANCELLED, WITHDRAWN: QA-770), the client is emailed \"Agreement withdrawn\" once, and focus is back on the page",
     ra.status === "WITHDRAWN" && ra.withdrawnReason === "Client changed plans (Sample)" && (await statusOf(r)) === "Withdrawn" && req === "CANCELLED:WITHDRAWN" && told === 1
-      && await r.evaluate(() => document.activeElement?.tagName === "H1" || !!document.activeElement?.closest("main")), { status: ra.status, req, told });
+      && await r.evaluate(() => document.activeElement?.tagName === "H1" || !!document.activeElement?.closest("main")), { status: ra.status, req, told, aEmail, inbox: (inbox.messages ?? []).map((m) => m.subject) });
   ok("R1.55 FO-5s3 S6 pass: once withdrawn, neither Withdraw nor Signed offline is offered; the page says to prepare a new one",
     (await r.getByRole("button", { name: /^Withdraw/ }).count()) === 0 && (await r.getByRole("button", { name: /signed offline/i }).count()) === 0 && (await r.locator("main").innerText()).includes("Prepare a new one from the prospect"));
   await shot(r, "fo5s3-withdrawn-1440");
