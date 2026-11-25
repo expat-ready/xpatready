@@ -108,3 +108,35 @@ I accept leaving all of them for this PR:
 I ask that r2-m4 be added to that list, or fixed. r2-m1 and r2-m2 are one-line test changes, worth doing with m6.
 
 Reviewer: Approve ace1e1b5f3f7bb5778e737cfa612b4916586bf35
+
+## Round 3 (diff-only re-review, head ed7d9d8441113572fd5ba040b6bf7601a11b4ad3)
+
+Scope: `git diff ace1e1b5f ed7d9d844 -- ':!*.md' ':!*.png'` only: `end-panels.tsx` (+6 / -5) and `check_fo5s3_end_panels_browser.ts` (+16 / -7). The check needs QA-770 (#3648, merged to main), so I ran it on a throwaway local merge of this head with `origin/main` (`12e533462`, no conflicts) in the session scratchpad. Isolated copy `rv3_fo5s3` on :4569 (PLATFORM_IDENTITY=local), never :4400. I stopped it afterwards and removed the throwaway worktree. `xr-panels` is clean (its screenshots were not touched).
+
+**Verdict: Approve** for ed7d9d8441113572fd5ba040b6bf7601a11b4ad3. 0 Blockers, 0 Majors open. 1 new Minor, not blocking. Journey score **9/10, pass** (Round 3 of `journey-test-reviewer-2026-11-25-part3a.md`). The #3648 condition is met now that it is on main. The withdraw line needs main's code, so it passes only on the PR's merge with main (CI's merge ref, or main merged into the branch), never on this head alone.
+
+### Runs
+| Run | Result |
+|---|---|
+| `check_fo5s3_end_panels_browser.ts 4569 xr_studio_rv3_fo5s3` on the local merge, twice | **23/23, exit 0** both times (15 s, 13 s). The withdraw line: `req CANCELLED:WITHDRAWN`, `told 1`, inbox `["Agreement withdrawn: …"]` |
+| Mutation: toast always "Recorded as signed on paper." and the panel's danger Notice removed (`end-panels.tsx:108`, `:124`) | **21/23.** The Signed-offline pass line and the B1 line both FAIL, so each new assertion is real. Code restored afterwards |
+| Hand probes in Chromium (Playwright, headless, 1440×900, requests delayed or held with `page.route`) | K1-K5 below. No page error |
+
+### Does each fix close its finding?
+* **r2-m1 (the 409 words): closed.** `check…browser.ts:205` now asserts `/newer version \(2\) than the one you saw \(1\)/`. The panel's own stale notice cannot satisfy it, and with the Notice removed the line fails.
+* **r2-m2 (the retainer toast): closed.** `:185-187` asserts `${b.p.name} is now a client.` in the page text. The panel's own copy ("makes … a client") does not match, and with the toast mutated the line fails.
+* **r2-m3 (the stale words): closed.** `end-panels.tsx:49` uses "agreement" when the kind is consultation and "retainer" otherwise, and "(it was saved, sent, signed or ended elsewhere)" names no one. Seen in K2.
+* **r2-m4 (Escape during a request): closed.** `:71`, `:117` `!busy && (…)`. K1: while a Withdraw ran for 3 s, Escape, the X and the overlay each left the panel open, with 0 prompts. On success it closed and the DB read `WITHDRAWN`. K2 (a colleague withdrew first, then Escape during the request): the panel stayed open and showed the server's 409 under the stale notice, with the confirm off. K5: Signed offline behaves the same.
+* **Round-1 m6 (assert the end of the signing request): closed.** `:128-138`: `req === "CANCELLED:WITHDRAWN"` and exactly one email whose subject starts "Agreement withdrawn", read from the client's demo inbox for up to 10 s (20 × 500 ms). The address is unique to each run, so `=== 1` also catches a duplicate email.
+
+### Can a panel get stuck open? Does Cancel work while busy?
+No, it cannot get stuck, and yes, Cancel works. The footer Cancel calls `onOpenChange(false)` directly (`:72`, `:118`) and skips `confirmClose`, which Panel runs only on Radix's Escape, X and overlay paths (`controls.tsx:125`). Cancel is a plain enabled button, not `busy`. K3: Cancel during a running request closed the panel at once and put focus on "Withdraw". K4: with a request that never returns (`staffApi` has no timeout), Escape stayed inert and Cancel closed the panel.
+
+### New finding (Minor, not blocking)
+* **r3-m1 Minor (a late answer after Cancel).** `end-panels.tsx:57-68`, `:95-113`. Cancel during a request closes the panel but does not stop the request. `busy` is cleared only in `finally`, and the effects that run on each opening (`:55`, `:93`) do not reset it. K4 showed what follows. Reopened during a hung request, the panel shows its confirm busy and disabled, and Escape and X stay inert (only Cancel works). When the old answer finally arrived, its `onOpenChange(false)` (`:62`) closed the reopened panel without asking and threw away the reason typed there. The retainer was withdrawn with the first reason. K3 (a colleague withdrew first, then Cancel): the late 409 is shown nowhere. The page re-reads to Withdrawn and focus falls to BODY when the "Withdraw" button it returned to disappears (`retainer-page.tsx:252`). There is no data harm, because the server's stale check still holds. **Fix (smallest):** count openings in a ref and let an answer act on the panel only if its opening is still the current one. Otherwise toast the outcome ("Withdrawn." / the server's words). Or list this under "Listed, not fixed" in the PR body.
+* Observation, outside this diff: the server's 409 reads "This agreement is now withdrawn (your page showed sent)" on a retainer (K2). That is FO-5's route wording, not this PR's.
+
+### Open Minors
+r2-m1 to r2-m4 and round-1 m6 are closed. Round-1 m1, m3, m5 and the Lead wording note stay accepted as in round 2. r3-m1 is new: fix it or list it.
+
+Reviewer: Approve ed7d9d8441113572fd5ba040b6bf7601a11b4ad3

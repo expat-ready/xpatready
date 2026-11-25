@@ -74,3 +74,17 @@ Re-walked the journeys round 1 failed or flagged, in headless Chromium at 1440×
 | trust and sources | ½ | the paper file and the reasons are still not on the page (m3, part 3b) |
 | **Total** | **9 / 10: pass** | no criterion at 0 |
 To reach 10: m1 (placement), then m3 (the paper file and the reason on the page). Could not test: a real screen reader, a headed pane, an intended user's unaided walk, the #3648 email.
+
+## Round 3 (head ed7d9d8441113572fd5ba040b6bf7601a11b4ad3, local merge with main for QA-770, copy `rv3_fo5s3` on :4569)
+Re-walked only what the diff touches, in headless Chromium at 1440×900, with requests delayed or held. The builder's check ran twice on the merge: 23/23, exit 0, no page error. A mutation run (no toast, no danger Notice) gave 21/23.
+| # | Journey | Result |
+|---|---|---|
+| K1 | Withdraw, then Escape, X and overlay while the request runs (3 s) | **Held.** The panel stays open with 0 prompts, closes on success, `WITHDRAWN` |
+| K2 | A colleague withdrew first, then Escape during my request | **Held.** The panel stays open: the stale notice ("This retainer changed meanwhile (it was saved, sent, signed or ended elsewhere) …"), the server's 409, the confirm off |
+| K3 | Cancel while the request runs (a colleague withdrew first) | Cancel closes at once, focus on "Withdraw". The late 409 is shown nowhere and focus falls to BODY after the re-read (r3-m1, Minor) |
+| K4 | The request never returns | Not stuck: Cancel closes. On reopening, the confirm is busy and Escape is inert, and the late answer closes the reopened panel and drops its typed reason (r3-m1, Minor) |
+| K5 | Signed offline, Escape during the upload | **Held.** Stays open, 0 prompts, `SIGNED_OFFLINE` |
+| J1 | Withdraw by keyboard (the check) | **Held.** `CANCELLED:WITHDRAWN`, one "Agreement withdrawn" email |
+
+## Round 3 score
+Same as round 2 (**9 / 10: pass**, no criterion at 0). The round-2 note on plain words (r2-m3) is fixed. Feedback and state stay at 1: r3-m1 is an edge case, a hung request or a Cancel mid-request. Still ½: next step obvious (m1) and trust and sources (m3). The #3648 email is now tested. Could not test: a real screen reader, a headed pane, an intended user's unaided walk.
