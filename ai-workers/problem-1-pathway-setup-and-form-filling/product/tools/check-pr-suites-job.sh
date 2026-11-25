@@ -19,9 +19,9 @@ for i in $(seq 1 "$FAKE_UNITS"); do echo "check_u$i.ts"; done
 SH
 plan() { (cd "$T" && PR_SUITES_TOOLS="$T/fake" bash "$T/fake/pr-suites-plan.sh" "$@"); }
 out=$(FAKE_SEL='check_x.ts\tsmoke' FAKE_UNITS=6 plan HEAD~1..HEAD); r=$?
-ok "a small pick: one part, --changed with the PR's range, not --direct" "$([ $r = 0 ] && [ "$out" = "$(printf 'direct=false\nunits=6\nn=1\nshards=[1]')" ] && grep -qx -- '--changed HEAD~1..HEAD --list' "$T/fake/args" && echo 1)" "exit $r: $out / $(cat "$T/fake/args")"
+ok "a small pick: one part, --changed with the PR's range, by module (SPD-2 item 2: --modules)" "$([ $r = 0 ] && [ "$out" = "$(printf 'direct=false\nunits=6\nn=1\nshards=[1]')" ] && grep -qx -- '--changed HEAD~1..HEAD --modules --list' "$T/fake/args" && echo 1)" "exit $r: $out / $(cat "$T/fake/args")"
 out=$(FAKE_SEL='ALL\tci.yml: shared' FAKE_UNITS=7 plan HEAD~1..HEAD)
-ok "a change that would pick every suite runs --direct (the queue runs the whole set, P-651)" "$(grep -qx direct=true <<< "$out" && grep -qx -- '--changed HEAD~1..HEAD --direct --list' "$T/fake/args" && echo 1)" "$out / $(cat "$T/fake/args")"
+ok "a change that would pick every suite still runs by module, never everything (the queue runs the whole set, P-651; SPD-2)" "$(grep -qx direct=true <<< "$out" && grep -qx -- '--changed HEAD~1..HEAD --modules --list' "$T/fake/args" && echo 1)" "$out / $(cat "$T/fake/args")"
 out=$(FAKE_SEL='check_x.ts\tapi' FAKE_UNITS=51 plan HEAD~1..HEAD)
 ok "51 units: ceil(51 / 25) = 3 parts" "$(grep -qx n=3 <<< "$out" && grep -qx 'shards=\[1,2,3\]' <<< "$out" && echo 1)" "$out"
 out=$(FAKE_SEL='check_x.ts\tapi' FAKE_UNITS=600 plan HEAD~1..HEAD)
@@ -56,7 +56,7 @@ out.append("no-draft-no-batch" if "draft" in cond and "mergify/" in cond else "d
 ps = p.get("steps", [])[1:]; ss = s.get("steps", [])[1:]
 out.append("report-only" if ps and ss and all(x.get("continue-on-error") is True for x in ps + ss) else "a-step-can-turn-red")
 run = [x for x in ss if "run-suites.sh" in str(x.get("run", ""))]
-out.append("changed" if run and "--changed" in run[0]["run"] and run[0].get("timeout-minutes") and "setup.outcome == 'success'" in str(run[0].get("if")) else "suites-step")
+out.append("changed" if run and "--changed" in run[0]["run"] and "--modules" in run[0]["run"] and run[0].get("timeout-minutes") and "setup.outcome == 'success'" in str(run[0].get("if")) else "suites-step")
 out.append("limits" if s.get("timeout-minutes", 0) >= sum(x.get("timeout-minutes", 0) for x in ss) + 5 else "job-limit-too-short")
 out.append("plan" if any("pr-suites-plan.sh" in str(x.get("run", "")) and "change-kind.sh" in str(x.get("run", "")) for x in ps) else "no-plan")
 perm = lambda x: x.get("permissions") == {"contents": "read"}

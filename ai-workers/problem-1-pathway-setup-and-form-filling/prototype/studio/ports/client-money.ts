@@ -26,7 +26,12 @@ export const DraftIn = z.strictObject({
   personId: id("The person").optional(),
   companyId: id("The company").optional(),
   currency: MoneyCurrency.optional(),
-}).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
+  /** FO-7w1 (AG-6-65 r1): start the draft from this client's signed retainer, with its fee rows. */
+  retainerId: id("The retainer").optional(),
+  /** FO-7w1: only these rows of the retainer (an "On signing" deposit row is copied only when named here). */
+  feeRowIds: z.array(id("A fee row")).min(1, "Name at least one fee row, or leave the list out.").max(50, "At most 50 fee rows.").optional(),
+}).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] })
+  .refine((d) => !d.feeRowIds || d.retainerId, { message: "Fee rows come from a retainer: name the retainer too.", path: ["feeRowIds"] });
 export type DraftIn = z.infer<typeof DraftIn>;
 
 /** PUT /api/front-office/money/invoices/:id/bill-to (FO-7g part 3, P-797): the province a draft's tax follows, one of the
@@ -53,6 +58,8 @@ export type LineIn = z.infer<typeof LineIn>;
 export const LineView = z.strictObject({
   id: z.string(), position: z.number().int(), kind: LineKind, description: z.string(), quantity: z.number().int(),
   unitMinor: z.number().int(), amountMinor: z.number().int(), ratePpm: z.number().int(), taxMinor: z.number().int(), currency: MoneyCurrency,
+  /** FO-7w1: the retainer fee row this line bills, or null (typed by hand). */
+  sourceFeeRowId: z.string().nullable(),
 });
 export type LineView = z.infer<typeof LineView>;
 
@@ -83,6 +90,8 @@ export const InvoiceView = z.strictObject({
   subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(),
   statusWord: StatusWord, dueDate: z.string().nullable(), paidMinor: z.number().int(), creditedMinor: z.number().int(),
   writtenOffMinor: z.number().int(), dueMinor: z.number().int(), extraMinor: z.number().int(),
+  /** FO-7w1: the invoice bills a retainer's "On signing" row (a deposit, AG-6-61): never a card pay link (P-567 (3)). */
+  deposit: z.boolean(),
 });
 export type InvoiceView = z.infer<typeof InvoiceView>;
 
@@ -105,6 +114,9 @@ export const PaymentIn = z.strictObject({
 export type PaymentIn = z.infer<typeof PaymentIn>;
 /** POST …/invoices/:id/credit-notes: `full` credits all that is left (a cancel, AG-6-48 rule 2), else `amountMinor`: the
  *  gross amount (Lead B (Track B) ruling 3: any tax split is Sample. Unconfirmed: no accountant). */
+/** POST …/invoices/:id/write-off (R1.96 part 1; AG-6-76): only the reason; the amount is what is still due. */
+export const WriteOffIn = z.strictObject({ reason: words("The reason", 200) });
+export type WriteOffIn = z.infer<typeof WriteOffIn>;
 export const CreditNoteIn = z.strictObject({ full: z.boolean().optional(), amountMinor: whole("The amount (in cents)", 1, MINOR_MAX).optional(), reason: words("The reason", 200) })
   .refine((c) => (c.full === true) !== (c.amountMinor !== undefined), { message: "Give an amount, or choose a full credit note: one of the two.", path: ["amountMinor"] });
 
@@ -142,6 +154,8 @@ export const MONEY_EVENT = {
   PAYMENT_SUCCEEDED: "payment.succeeded",
   /** A payment was refunded (AG-6-23 rule 9; FO-7b part 1c: offline refunds only, card refunds are FO-7c). */
   PAYMENT_REFUNDED: "payment.refunded",
+  /** What was still due on an issued invoice was written off (R1.96 part 1; AG-6-76 rule 9). */
+  INVOICE_WRITTEN_OFF: "invoice.written_off",
 } as const;
 const uuid = z.string().regex(UUID);
 /** invoice.*: ids and the stored figures only (no name, no email). The tax and total are the stored lines' sums (R9). */
@@ -157,7 +171,8 @@ export const MoneyParty = z.strictObject({ personId: uuid.optional(), companyId:
 export type MoneyParty = z.infer<typeof MoneyParty>;
 /** What other modules ask client money (contracts §8: nothing else reads or writes money_*). */
 export interface ClientMoneyPort {
-  /** True when any invoice, payment or trust entry exists for the party in the firm (FO-9b asks before a merge). */
+  /** True when any invoice, payment or trust entry exists for the party in the firm, a tax treatment is set for it, or a
+   *  trust entry names it as payee (FO-9b asks before a merge by itself). */
   hasMoney(firmId: string, party: MoneyParty): Promise<boolean>;
 }
 /** The fake: the parties a test says have money, per firm. */

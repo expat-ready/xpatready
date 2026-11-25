@@ -7,7 +7,8 @@
 //                 answers 500 AUDIT_LINE_MISSING and raises one audit_write_failed alert (the guard-level check: no route
 //                 can forget). The change has committed by then: the check is the net that a suite catches, not a rollback;
 //   reads-across  one `cross_tenant.access` line on the platform's own trail (no firm; the platform audit workspace, never
-//                 reset, P-571 (1)), naming the staff member and the scope;
+//                 reset, P-571 (1)), naming the staff member and the scope; and one firm-read line on the trail of each
+//                 firm the service noted its answer names (noteFirmsRead: one breach's firms), in one transaction;
 //   none          nothing (our own staff's sign-in, identity and access, logged on our own table by PF-4s's guard).
 // The firm-less cross_tenant.access line goes through AuditPort as AUD-3c's firm-less kind, its second fixed pair
 // (cross_tenant.access / plat_system_access; round 6, Lead 15's ruling on #3209): the adapter keeps the request's own
@@ -39,7 +40,7 @@ import { auditEvent, AuditRefused } from "../audit-event.ts";
 import { auditContext } from "../context.ts";
 import { AuditActionNames } from "../firm-read/action-names.ts";
 import { FIRM_DATA, type FirmData } from "./declare.ts";
-import { ourStaffFirmsInRequest } from "./tracker.ts";
+import { firmsReadInRequest, ourStaffFirmsInRequest } from "./tracker.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -48,7 +49,7 @@ AuditActionNames.register("platform", { [FIRM_READ]: "ExpatReady staff read the 
 
 // --------------------------------------------------------------------------------------------------- the writers
 type Call = { method: string; route: string };
-const ourStaff = () => {
+export const ourStaff = () => {
   const ctx = auditContext();
   if (ctx?.actorType !== "OUR_STAFF" || !ctx.actor?.startsWith("ourstaff:")) throw new AuditRefused("audit line refused: an access line is written only in a request our staff make, under their own ourstaff:<id> word");
   return ctx as { actor: string; correlationId?: string };
@@ -150,7 +151,7 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
   private async committedLines(): Promise<number> {
     const firms = ourStaffFirmsInRequest(), ctx = auditContext();
     if (!firms.length || !ctx?.actor || !ctx.correlationId) return 0;
-    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id::text = any(${firms}) and action <> 'platform.bypass'`;   // round 5 (Lead B): a bypass use's own line (touchFirm, AUD-3c) is not the change's line
+    const [row] = await this.db.$queryRaw<{ n: number }[]>`select count(*)::int as n from audit_event where correlation_id = ${ctx.correlationId} and actor = ${ctx.actor} and firm_id = any(${firms}::uuid[]) and action <> 'platform.bypass'`;   // part 2 (#3209 round-2 minor 1): uuid against uuid, so audit_event_firm_id_at_idx can serve it   // round 5 (Lead B): a bypass use's own line (touchFirm, AUD-3c) is not the change's line
     return row?.n ?? 0;
   }
 
@@ -164,7 +165,19 @@ export class SystemAccessLines implements NestInterceptor, OnModuleInit {
       await this.db.$transaction(async (tx) => { await recordFirmRead(tx, firm.toLowerCase(), call); });
       return;
     }
-    const f = req.query?.firm, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
-    await this.db.$transaction(async (tx) => { await recordCrossTenant(tx, data.scope, call, filters); });
+    // Part 2 (breaker M1): the firm filter is recorded only for a route that declares it narrows by `?firm=` (its own
+    // strict query reads it); on any other route a caller's `?firm=` is ignored by the handler, so it is never recorded,
+    // and no line can be planted in a firm's access report.
+    const f = data.firmFilter ? req.query?.firm : undefined, filters: Record<string, string> = typeof f === "string" && UUID.test(f) ? { firm: f.toLowerCase() } : {};
+    // AUD-3 breach read (R1.87 P6): a read across firms that names firms in its answer (noteFirmsRead, tracker.ts: one breach's
+    // affected and notified firms) also writes one firm-read line on each of their trails, in the same transaction as
+    // its platform line: all or none, before the answer. Round 1 (breaker M1 on #3660): a firm's line names neither the
+    // route nor the scope (a firm must not learn from it that our breach register names it, whatever we decided to tell
+    // it); both stay on the platform line, under the same correlation id. Up to 200 firms: 60 s (breaker m1, as notify).
+    const firms = firmsReadInRequest().filter((f) => UUID.test(f)), quiet: Call = { method: call.method, route: "/api/system" };
+    await this.db.$transaction(async (tx) => {
+      await recordCrossTenant(tx, data.scope, call, filters);
+      for (const f of firms) await recordFirmRead(tx, f, quiet);
+    }, { timeout: 60_000, maxWait: 10_000 });
   }
 }

@@ -24,7 +24,7 @@ import { parseInput, strict } from "../../platform/http/input.ts";
 import { z } from "zod";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
-import { prepareRetainerSigning } from "../signing/service.ts";
+import { endRetainerSigning, lockRetainerSigning, prepareRetainerSigning } from "../signing/service.ts";
 import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
@@ -67,19 +67,32 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const attempt = () => randomBytes(6).toString("hex");
 /** Text that looks blank, hides itself or turns the line around (B-13, B-14 of part 1): refused in names. */
 const HIDDEN = /[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u3164\ufe00-\ufe0f\ufeff]/;
-/** PF-28 (R1.10): the new-version form's own field (multipart text, or a number from a direct call); its rule is expectedVersionOf's. */
-export const TemplateVersionBody = strict({ expectedVersion: z.union([z.string().max(12), z.number()]).optional() });
 /** PF-28 part 5 (R1.10, retainers): each door's own fields through the one input rule, so an unknown field or a body that
  *  is not an object is 422 named before anything is looked up. The values keep their own rules and words (str, feesOf,
- *  expectedVersionOf, expectedStatusOf, uuidOf); those that need no record run before the look-up too. */
+ *  expectedVersionOf, expectedStatusOf, uuidOf); those that need no record run before the look-up too.
+ *  PF-28 A3: a field whose own rule needs no record is also read here, by that rule and in its words (`rule`), so a value
+ *  of the wrong type is named on its field even when another field is missing or the record is not found; a value the
+ *  rule takes passes on unchanged, and the service reads it exactly as before. */
+const STATUSES = ["DRAFT", "SENT", "VIEWED", "CLIENT_SIGNED", "SIGNED", "SIGNED_OFFLINE", "DECLINED", "WITHDRAWN", "EXPIRED"];
 const any = z.unknown().optional();
-export const TemplateBody = strict({ name: any, kind: any });
+const rule = (takes: (v: unknown) => boolean, words: string) => z.unknown().refine((v) => v === undefined || takes(v), { error: words }).optional();
+const DIGITS = /^[1-9]\d{0,8}$/;   // a version sent as text (multipart): plain digits (FO-5f break m-4)
+const KIND = rule((v) => v === null || v === "RETAINER" || v === "CONSULTATION", "RETAINER or CONSULTATION.");
+const ID_OR_NONE = rule((v) => v === null || v === "" || (typeof v === "string" && UUID.test(v)), "Not an id.");
+const FEES = rule((v) => Array.isArray(v) && v.length <= 50, "At most 50 rows.");
+const VERSION = rule((v) => Number.isInteger(v) && (v as number) >= 1, "Send the version shown on your page.");   // JSON: a whole number
+const VERSION_TEXT = rule((v) => (Number.isInteger(v) && (v as number) >= 1) || (typeof v === "string" && DIGITS.test(v)), "Send the version shown on your page.");   // multipart: its digits
+const STATUS = rule((v) => typeof v === "string" && STATUSES.includes(v), "Send the status shown on your page.");
+/** PF-28 (R1.10): the new-version form's own field (multipart text, or a number from a direct call); its rule is expectedVersionOf's ("" is none). */
+export const TemplateVersionBody = strict({ expectedVersion: rule((v) => v === "" || (Number.isInteger(v) && (v as number) >= 1) || (typeof v === "string" && DIGITS.test(v)), "Send the version shown on your page.") });
+export const TemplateBody = strict({ name: any, kind: KIND });
 export const TemplateChangeBody = strict({ active: any, name: any });
-export const DraftBody = strict({ kind: any, templateId: any, representativeStaffId: any, signerPersonId: any, fees: any });
-export const EditBody = strict({ templateId: any, signerPersonId: any, representativeStaffId: any, fees: any, expectedVersion: any, expectedStatus: any });
-export const SendBody = strict({ expectedVersion: any });
-export const WithdrawBody = strict({ reason: any, expectedVersion: any, expectedStatus: any });
-export const OfflineBody = strict({ reason: any, expectedVersion: any, signedVersion: any });
+export const DraftBody = strict({ kind: KIND, templateId: ID_OR_NONE, representativeStaffId: ID_OR_NONE, signerPersonId: ID_OR_NONE, fees: FEES });
+export const EditBody = strict({ templateId: ID_OR_NONE, signerPersonId: ID_OR_NONE, representativeStaffId: ID_OR_NONE, fees: FEES, expectedVersion: VERSION, expectedStatus: STATUS });
+export const SendBody = strict({ expectedVersion: VERSION });
+export const WithdrawBody = strict({ reason: any, expectedVersion: VERSION, expectedStatus: STATUS });
+/** signedVersion's top (the current version) needs the record: signedVersionOf keeps it; here only its form. */
+export const OfflineBody = strict({ reason: any, expectedVersion: VERSION_TEXT, signedVersion: rule((v) => v === null || v === "" || (Number.isInteger(v) && (v as number) >= 1) || (typeof v === "string" && DIGITS.test(v)), "A version number from 1 to the current one.") });
 export const FileLinkBody = strict({ file: z.enum(["signed-offline"]).optional(), version: z.union([z.number().int(), z.string().max(12)], { error: "A version number." }).optional() });   // review m1: plain words
 /** A path id: a uuid, else the one not-found before the body is read (PF-28 part 5). */
 const idOf = (id: unknown, what = "retainer"): string => (typeof id === "string" && UUID.test(id) ? id : notFound(what));
@@ -100,7 +113,6 @@ function expectedVersionOf(body: Record<string, unknown>, multipart = false): nu
 const stale = (current: number, expected: number): never =>
   conflict(expected < current ? `This agreement has a newer version (${current}) than the one you saw (${expected}). Open it again.`
     : `This agreement is at version ${current}, not version ${expected}. Open it again.`, "CHANGED");   // FO-5f break m-3
-const STATUSES = ["DRAFT", "SENT", "VIEWED", "CLIENT_SIGNED", "SIGNED", "SIGNED_OFFLINE", "DECLINED", "WITHDRAWN", "EXPIRED"];
 /** FO-5f item 2 (B-25): the status the page showed. Send does not raise the version, so the version alone does not name the
  *  state a person acted on: Edit and Withdraw send both, and a mismatch is 409 CHANGED. Missing or unknown → 422. */
 function expectedStatusOf(body: Record<string, unknown>): string {
@@ -175,6 +187,8 @@ export class Retainers {
     try { return await this.db.$transaction(fn); } catch (e) {
       if (e instanceof HttpException) throw e;
       const m = String((e as Error)?.message ?? e) + JSON.stringify((e as { meta?: unknown })?.meta ?? "");
+      // QA-770 review m2: the transaction ran out of time (a slow signing provider inside it): nothing was saved.
+      if ((e as { code?: unknown })?.code === "P2028") problem(503, "Try again", "That took too long, so nothing changed. Try again in a minute.", { code: "TIMED_OUT" });
       for (const [k, f] of Object.entries(unique)) if (m.includes(k)) f();
       // Only what a race produces (review r2-m1): a unique key, a serialization or deadlock, or part 1's state triggers
       // refusing a move another transaction made first. Anything else is a fault: logged and answered 500, never hidden.
@@ -570,6 +584,7 @@ export class Retainers {
     const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, usedPh);
     const file = await this.renderVersion(ctx.firmId, r.id, n, t.fileKey, values);
     await this.tx(async (tx) => {
+      await lockRetainerSigning(tx, ctx.firmId, r.id);   // review m1: the webhook's lock order (the request, then the retainer)
       const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
       if (locked[0]?.status !== r.status || locked[0]?.current_version !== r.currentVersion) conflict("This agreement changed at the same time (for example the client signed). Open it again.", "CHANGED");
       const ends = !!cur.sentAt && !cur.endedAt;
@@ -581,6 +596,9 @@ export class Retainers {
         after: { status: "DRAFT", version: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, fees: feeWords(fees) } });
       // FO-5f item 1: the ended request is told outside FO-5 (FO-6 cancels the signing request on it).
       if (ends) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: cur.n, reason: "UPDATED" });
+      // QA-770 (FO-5d (3)): the ended version's signing request ends with the edit (UPDATED, no email); the provider's
+      // envelope is cancelled before the commit, as Withdraw's.
+      if (ends && r.kind === "RETAINER") await (await endRetainerSigning(tx, ctx, r.id, "UPDATED", { db: this.db, audit: this.audit, now: new Date(this.clock.now()) })).cancelNow();
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, r.id)), warnings: s.warnings, signerOptions: s.options };
   }
@@ -650,15 +668,23 @@ export class Retainers {
     if (expected !== r.currentVersion) stale(r.currentVersion, expected);
     if (expectedStatus !== r.status) restated(r.status, expectedStatus);
     if (!WITHDRAWABLE.includes(r.status)) conflict(r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "A signed agreement cannot be withdrawn." : r.status === "DRAFT" ? "A draft has not been sent: edit it or leave it." : `A ${r.status.toLowerCase()} agreement cannot be withdrawn.`, "NOT_WITHDRAWABLE");
+    // A holder, not a `let`: TypeScript does not see an assignment inside the transaction's closure (types check, TS2339).
+    const ending: { signing?: Awaited<ReturnType<typeof endRetainerSigning>> } = {};
     await this.tx(async (tx) => {
+      await lockRetainerSigning(tx, ctx.firmId, r.id);   // review m1: the webhook's lock order
       const now = new Date(this.clock.now());
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "WITHDRAWN" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "WITHDRAWN", withdrawnAt: now, withdrawnBy: `staff:${ctx.staffId}`, withdrawnReason: reason } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer",
         before: { status: r.status, withdrawnReason: null }, after: { status: "WITHDRAWN", withdrawnAt: now.toISOString(), withdrawnReason: reason } });
+      // QA-770 (FO-5d (2)): the client's signing request ends with the withdraw (its link stops); the provider's envelope is
+      // cancelled before the commit (a failed cancel rolls the withdraw back: 503 "Try again"); the client's email after it.
+      if (r.kind === "RETAINER") ending.signing = await endRetainerSigning(tx, ctx, r.id, "WITHDRAWN", { db: this.db, audit: this.audit, now });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_WITHDRAWN, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
+      await ending.signing?.cancelNow();   // the last step before the commit
     });
+    await ending.signing?.afterCommit();
     return this.read(ctx, id);
   }
 
@@ -715,9 +741,11 @@ export class Retainers {
     const offlineKey = `retainers/${r.id}/signed-offline-${attempt()}.pdf`;
     const stored = await this.files.put(ctx.firmId, offlineKey, file!.bytes, "application/pdf");
     let prospectWon = false;
+    const ending: { signing?: Awaited<ReturnType<typeof endRetainerSigning>> } = {};   // a holder (see withdraw)
     const filed = copy ? r.currentVersion + 1 : r.currentVersion;
     const filedValues = copy ? copy.values : (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k } })).mergeValues as Record<string, unknown>;
     await this.tx(async (tx) => {
+      await lockRetainerSigning(tx, ctx.firmId, r.id);   // review m1: the webhook's lock order (the request, then the party and the retainer)
       if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (review r2, r3): the party's lock first, as Send takes it; the gate and the disclosure again
         const party = await partyOf(tx, ctx.firmId, r.prospectId);
         if (party) await lockParty(tx, ctx.firmId, party);
@@ -747,8 +775,12 @@ export class Retainers {
         before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
         after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
+      // QA-770: a paper signature ends the open e-signing request too (SIGNED_OFFLINE); its envelope is cancelled after the
+      // commit, so a provider outage never holds up a signature already made on paper.
+      if (r.kind === "RETAINER") ending.signing = await endRetainerSigning(tx, ctx, r.id, "SIGNED_OFFLINE", { db: this.db, audit: this.audit, now });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });
+    await ending.signing?.afterCommit();
     return { ...(await this.read(ctx, id)), prospectWon };
   }
 

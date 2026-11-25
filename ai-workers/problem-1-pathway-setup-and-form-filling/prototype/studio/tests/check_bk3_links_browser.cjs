@@ -63,7 +63,13 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
     // Review m1: a Ctrl/Cmd-click opens the case list in a new tab and leaves this tab as the Studio person.
     if (width === 1440) {
       const [tab] = await Promise.all([ctx.waitForEvent("page", { timeout: 15000 }), btn.click({ modifiers: ["ControlOrMeta"] })]);
-      await tab.close(); await p.waitForTimeout(300);
+      // page.close() has no time limit and can hang (CI run 45429673590, a probe on a busy machine: 2 of 6,416 closes of a tab just opened were not back in 20 s).
+      await tab.waitForLoadState("load", { timeout: 15000 }).catch(() => {});
+      if (await Promise.race([tab.close().then(() => "closed"), new Promise((f) => setTimeout(f, 15000, "late"))]) === "late") {
+        const note = "NOTE  check_bk3_links_browser.cjs: the new tab was not closed after 15 s; going on"; console.log(note);
+        if (process.env.GITHUB_STEP_SUMMARY) require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${note}\n`);   // a green run shows no suite log
+      }
+      await p.waitForTimeout(300);
       step(`${W}: a Ctrl/Cmd-click opens a new tab and this tab stays the Studio person's`, new URL(p.url()).pathname === `/c/${released.combination_id}` && await p.evaluate(() => localStorage.getItem("xr-actor")) === "user-A" && !/for the configuration people/.test(await p.locator("main").innerText()), await p.evaluate(() => localStorage.getItem("xr-actor")));
       await as("user-A"); await p.goto(`${BASE}/c/${released.combination_id}`); await header(); await btn.waitFor({ timeout: 15000 });
     }

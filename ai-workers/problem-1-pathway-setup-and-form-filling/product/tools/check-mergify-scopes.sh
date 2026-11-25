@@ -71,13 +71,16 @@ OWN = {"platform": [r"web/src/modules/platform/", r"tests/check_(pf|aud)", r"api
        "case-side": [r"tests/check_(cs|case_)", r"api/src/features/case-[^/]*\.ts$"],
        "forms-engine": [r"tests/check_forms", r"api/src/features/form-[^/]*\.ts$"]}
 def missing(src):
-    return [f"scope {need} is missing from .mergify.yml (break m5)" for need in ("platform", "front-office", "money", "case-side", "forms-engine", "migrations", "pipeline") if need not in src]
+    # SPD-2: the one "migrations" scope became one mig-<area> scope per schema file (migration-slots.py checks each)
+    return [f"scope {need} is missing from .mergify.yml (break m5)" for need in ("platform", "front-office", "money", "case-side", "forms-engine", "pipeline") if need not in src] \
+        + ([] if any(str(k).startswith("mig-") for k in src) else ["no mig-<area> migration scope in .mergify.yml (SPD-2; break m5)"])
 n += 7; bad += missing(src)
 def ambiguous(g):   # glob forms this script and Mergify may read differently
     return bool(re.search(r"[\[\]{}?]", g) or re.search(r"[^/]\*\*|\*\*[^/]", g))
 # FOLDERS: a module folder's scope; None = a known area left out of every scope on purpose (say why on its line).
 FOLDERS = {"platform": "platform", "front-office": "front-office", "client-money": "money", "money": "money",
-           "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine"}
+           "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine",
+           "system": "platform"}   # PF-17 part 4: our console's screens (web/src/modules/system/), the platform's (Lead 30 on #3489)
 # The area names, written apart from FOLDERS: a None in FOLDERS can never erase one (break 2971 round 2 m1).
 AREA_NAMES = frozenset({"platform", "front-office", "client-money", "money", "case-side", "cases", "forms", "forms-engine"})
 def is_area(name): return name in AREA_NAMES or any(name.startswith(a + "-") for a in AREA_NAMES)
@@ -160,11 +163,11 @@ for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "tests/check_Pf9_x.ts"
     n += 1
     if owners_bad(src, files + [ST + t]) == base: bad.append(f"self-test: a new {t} that no scope holds still passes")
 n += 1   # a new area folder only partly in its scope (break round 2 m6, R-G1)
-c = mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx"))
+c = mutated(lambda c: (c["money"].__setitem__("include", [g for g in c["money"]["include"] if not g.endswith("web/src/modules/client-money/**")]), c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx")))
 if not any("not wholly" in x for x in owners_bad(c, files + [ST + "web/src/modules/client-money/index.tsx", ST + "web/src/modules/client-money/b.tsx"])): bad.append("self-test: client-money/ only partly in money still passes")
-n += 1   # an owned test also in a second scope, migrations included (follow-up 1, 2)
-c = mutated(lambda c: c["migrations"]["include"].append(ST + "tests/check_pf*"))
-if not any("also in scope(s) ['migrations']" in x for x in owners_bad(c, files)): bad.append("self-test: check_pf* also in migrations still passes")
+n += 1   # an owned test also in a second scope, a migration slot included (follow-up 1, 2; SPD-2: mig-<area>)
+c = mutated(lambda c: c["mig-platform"]["include"].append(ST + "tests/check_pf*"))
+if not any("also in scope(s) ['mig-platform']" in x for x in owners_bad(c, files)): bad.append("self-test: check_pf* also in mig-platform still passes")
 n += 1
 c = mutated(lambda c: c["case-side"]["include"].append(ST + "tests/check_fo1*"))
 if not any("also in scope(s) ['case-side']" in x for x in owners_bad(c, files)): bad.append("self-test: check_fo1* also in case-side still passes")
@@ -172,7 +175,7 @@ n += 1   # a named feature file in a second scope (follow-up 2)
 c = mutated(lambda c: c["platform"]["include"].append(ST + "api/src/features/clients.ts"))
 if not any("clients.ts belongs to scope case-side" in x for x in owners_bad(c, files)): bad.append("self-test: features/clients.ts also in platform still passes")
 n += 1   # a missing scope, a key given twice, an ambiguous glob (break round 2 m6)
-if not [x for x in ("migrations",) if x in src]: bad.append("self-test: the real file has no migrations scope")
+if not [x for x in src if str(x).startswith("mig-")]: bad.append("self-test: the real file has no mig-<area> migration scope")
 n += 1
 if load_once("a:\n  b: 1\n  b: 2\n")[1] is None: bad.append("self-test: a YAML mapping with a key given twice still loads")
 if load_once("x: &a {k: 1}\ny:\n  <<: *a\n  j: 2\n")[1] is not None: bad.append("self-test: a YAML merge key is refused as a duplicate")
@@ -192,6 +195,9 @@ for name, pats in [(k, (v or {}).get("include") or []) for k, v in src.items()] 
     for g in pats:
         n += 1
         p = rx(g)   # once per pattern, not per file (about 14k files: 22 s became 0.3 s)
+        # SPD-2: a per-area migration glob names folders still to come (<stamp>_<area>__<name>); migration-slots.py
+        # mergify --check (below) proves those lines instead.
+        if re.fullmatch(r".*/prisma/migrations/\*_[a-z0-9-]+__\*/\*\*", g): continue
         if not any(p.match(f) for f in files):
             bad.append(f"{name}: {g} matches no tracked file")
 conds = {q["name"]: [c for c in q.get("queue_conditions") or [] if isinstance(c, str)] for q in cfg.get("queue_rules") or []}
@@ -235,6 +241,11 @@ for why, edit in (("the fast step gone", lambda t: re.sub(r"(every PR and batch,
     if t == citext: bad.append(f"self-test: the edit '{why}' changed nothing in ci.yml, so it proves nothing")
     elif not ci_bad(t): bad.append(f"self-test: ci.yml with {why} still passes this check")
 n += 1; bad += ci_bad(citext)
+# SPD-2 (P-802): the per-area migration slots are exactly what migration-slots.py generates from prisma/schema.
+n += 1
+r = subprocess.run([sys.executable, "-I", os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/migration-slots.py"),
+                    "mergify", "--check", os.path.join(root, ".mergify.yml")], capture_output=True, text=True, env={**os.environ, "ROOT": root})
+if r.returncode: bad += [l[6:] for l in r.stdout.splitlines() if l.startswith("FAIL  ") and "mergify migration slots" not in l] or [f"migration-slots.py mergify --check: exit {r.returncode} {r.stderr.strip()[:200]}"]
 # E6 (P-772): the product queue waits for a green pr-rules (body and size rules), as a plain top-level condition (inside an
 # "or" another branch could satisfy it), next to ci. Undo with the .mergify.yml line, then this check.
 n += 1
@@ -303,7 +314,7 @@ n += 1
 fails, warns = real_list(TP, src, files); bad += fails
 for w in warns: print(f"WARN  {w}")
 n += 1   # review 2971 Major 1: the missing-scope rule, the glob refusal loop and "names no area" each fire
-if not missing({k: v for k, v in src.items() if k != "migrations"}): bad.append("self-test: a .mergify.yml without the migrations scope still passes")
+if not missing({k: v for k, v in src.items() if not str(k).startswith("mig-")}): bad.append("self-test: a .mergify.yml without any mig-<area> scope still passes")
 n += 1
 if not globs_bad(mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money**")), BARRIER): bad.append("self-test: a scope pattern client-money** is not refused")
 n += 1

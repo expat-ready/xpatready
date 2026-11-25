@@ -22,10 +22,10 @@
 //      firm B's Owner's activity log holds its own notice line only, never firm A's.
 //   W8 wrong role: a firm's own Owner gets 403 on our register (list, read, record, notify), and nothing is recorded.
 //   W9 our console's Breaches page at 400, 1024 and 1440 px: rendered, no sideways scroll, axe 0 serious; no page error.
-//   W10: the walk ends at R1.87's first step: our staff's read of a firm's data (this breach, naming firm A) writes one
-//      OUR_STAFF line on firm A's own chain (AUD-3).
+//   (W10, our staff's read of this breach landing on firm A's own chain, moved to R1.87 by Lead 2's ruling on #3538 (#3579's
+//      body: "W10 moves to R1.87, which makes it 27/27"); R1.87's lane owns that step. Removed here by qa 9, 25 Nov.)
 // Fails on main today only where a part is not merged (P-606); each failing step names its part: PF-21c (#3185: the
-// tables, routes, notices), PF-21rs (the console pages), and W10 names R1.87's part AUD-3. Route names under
+// tables, routes, notices), PF-21rs (the console pages). Route names under
 // /api/system/register/breaches and the notice words come from #3185's diff (23 Nov); the console page paths
 // (/system/privacy/breaches, …/:id, as J-85's) and its sign-in card ("Work email", "Sign in") are this journey's
 // assumption until PF-21rs's concept: when it merges, qa aligns the paths and labels only.
@@ -213,7 +213,12 @@ try {
   // ---------------------------------------------------------------------------------------------- W6 (screen) the breach's page
   const page6 = id ? await consolePage(`/system/privacy/breaches/${id}`) : "";
   const sendA = id ? await p.getByRole("button", { name: new RegExp(`(send|notify).*${A.name}`, "i") }).count() : -1;
-  const timeShown = (t: string | null) => !!t && [t.slice(0, 10), new Date(t).toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }), new Date(t).toLocaleDateString("en-CA", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })].some((d) => page6.includes(d));
+  // The notice's time is read from the page's <time datetime> cells (aligned by qa 8, 24 Nov, PF-21rs concept r2 §8 M3,
+  // #3492): the console prints "24 Nov 2026" inside <time datetime>, so the machine-readable attribute decides, the same
+  // instant or the same day; the printed day is the fallback. Never a class or a position.
+  const times6 = id ? await p.locator("time[datetime]").evaluateAll((els) => els.map((e) => e.getAttribute("datetime") ?? "")) : [];
+  const timeShown = (t: string | null) => !!t && (times6.some((d) => d === t.slice(0, 10) || (!Number.isNaN(Date.parse(d)) && d.length > 10 && Math.abs(Date.parse(d) - Date.parse(t)) < 60_000))
+    || [t.slice(0, 10), new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })].some((d) => page6.includes(d)));
   ok("J-86 W6 (parts missing: PF-21rs; the words need QA-757): the breach's page in our console shows the assessment and lists firm A's and firm B's notices, each with its time and the notice's subject; firm C is not listed",
     !!id && page6.includes(rec.description) && page6.includes(decision.decisionReason) && page6.includes(A.name) && page6.includes(B.name) && !page6.includes(C.name) && timeShown(timeA.sentAt) && !!eA && page6.includes(eA.subject),
     page6.slice(0, 240) || "no breach to open (PF-21c)");
@@ -257,12 +262,6 @@ try {
   }
   ok("J-86: no page error during the walk", errors.length === 0, errors.slice(0, 5));
 
-  // ---------------------------------------------------------------------------------------------- W10 R1.87's first step
-  const ours0 = sql(`select count(*) from audit_event where firm_id = '${A.id}' and actor_type::text = 'OUR_STAFF'`);
-  const read10 = id ? await j("GET", `${ROUTE}/${id}`, undefined, ourTok) : { status: 0, body: null };
-  const ours1 = sql(`select count(*) from audit_event where firm_id = '${A.id}' and actor_type::text = 'OUR_STAFF'`);
-  ok("J-86 W10 (parts missing: AUD-3, R1.87's first step; and PF-21c): the walk ends at R1.87's first step: our staff's read of this breach, which names firm A, writes one OUR_STAFF line on firm A's own chain",
-    read10.status === 200 && Number(ours1) === Number(ours0) + 1, { read: read10.status, before: ours0, after: ours1 });
 } catch (e) {
   ok("J-86: the walk ran to its end", false, String(e).slice(0, 500));
 } finally {

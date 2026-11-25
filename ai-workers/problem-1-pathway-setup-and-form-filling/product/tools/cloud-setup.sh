@@ -26,7 +26,7 @@ fi
 echo "node $(node -v) / npm $(npm -v)"
 
 echo "== packages (npm ci)"
-[ -d "$STUDIO/node_modules/.bin" ] && echo "already installed" || (cd "$STUDIO" && npm ci --no-fund --no-audit)
+bash "$STUDIO/tools/deps-fresh.sh" "$STUDIO" && echo "studio packages match package-lock.json"   # npm ci when missing or the lockfile changed; writes the stamp start.sh reads
 
 echo "== prototype packages (contracts and AI runner, AIW-D259; prototype/node_modules links here)"
 PN="$ROOT/.tools/solution-1-prototype/node"; PSRC="$P/prototype/env/node"

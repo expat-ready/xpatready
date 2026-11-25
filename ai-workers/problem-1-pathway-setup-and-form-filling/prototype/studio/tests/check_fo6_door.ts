@@ -20,12 +20,14 @@
 // Stand-ins, said: the prospects, the conflict check and the ended requests (B) are written by SQL; the firm setting in D
 // is written by SQL into platform_firm_setting (the Owner's switch has no route yet: note question 6). Sample values only;
 // US$0, no model call, no live mail, no vendor call. Legal points (e-signature identity): Unconfirmed: no counsel.
-// The third argument names the parts built so far (here "4a"): a line whose label names a part not yet built prints
+// The third argument names the parts built so far (4c's PR drops it: every part is built, every line counts): a line whose label names a part not yet built prints
 // PENDING and is not counted, but a pending line that passes fails (its part is built: add it to the argument), so the
 // suite holds what is merged while the later parts are built (P-606); with no third
-// argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1). 4c's PR drops the argument.
+// argument every line counts (that is how it ran red on main a26e80b6a, 2 of 31, exit 1, and on 4b's head with "4a,4b,4c",
+// 36 of 42). E needs the copy started local with no STUDIO_PUBLIC_URL exported (the stand-in page's links are then the
+// copy's own localhost origin; plan-4c challenge m10).
 // Run from prototype/:
-//   zsh studio/tools/isolated.sh fo6door 4434 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6_door.ts 4434 xr_studio_fo6door 4a
+//   zsh studio/tools/isolated.sh fo6door 4434 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo6_door.ts 4434 xr_studio_fo6door
 // (stop it after with: zsh studio/tools/isolated.sh fo6door 4434 stop)
 import "reflect-metadata";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -64,7 +66,7 @@ const NOT_WORK = "This link does not work.";
 const SIGN_LINK = /https?:\/\/[^\s)>"]+\/sign\/([0-9a-f]{32}\.[A-Za-z0-9_-]{43})/;
 const TOKEN_SHAPE = /^[0-9a-f]{32}\.[A-Za-z0-9_-]{43}$/;
 
-type Ans = { status: number; body: any; text: string; cookies: string[] };   // eslint-disable-line @typescript-eslint/no-explicit-any -- answers read loosely, as the journeys do
+type Ans = { status: number; body: any; text: string; cookies: string[]; cache: string | null; referrer: string | null };   // eslint-disable-line @typescript-eslint/no-explicit-any -- answers read loosely, as the journeys do
 /** One browser for the API: its own cookie jar (the door's signing session is an http-only cookie). */
 const jar = () => {
   const c = new Map<string, { value: string; path: string }>();   // a real browser's rule: a cookie goes only to its Path and below
@@ -75,7 +77,7 @@ const jar = () => {
     const cookies = r.headers.getSetCookie();
     for (const s of cookies) { const [kv, ...attrs] = s.split(";"); const i = kv.indexOf("="); const p = attrs.map((a) => a.trim()).find((a) => /^path=/i.test(a))?.slice(5) || "/"; if (i > 0) c.set(kv.slice(0, i).trim(), { value: kv.slice(i + 1).trim(), path: p }); }
     const text = await r.text(); let b: unknown = null; try { b = JSON.parse(text); } catch { /* not JSON */ }
-    return { status: r.status, body: b, text, cookies };
+    return { status: r.status, body: b, text, cookies, cache: r.headers.get("cache-control"), referrer: r.headers.get("referrer-policy") };
   };
   return Object.assign(call, { cookieCount: () => c.size });
 };
@@ -133,14 +135,14 @@ const linkFor = async (email: string): Promise<string> => {
   return t;
 };
 /** A signing request written by SQL (stand-in for B's ended states): firm A, one client and the firm signer; its tokens. */
-const seeded = (end: "LIVE" | "UPDATED" | "WITHDRAWN" | "DECLINED" | "EXPIRED" | "PAST_EXPIRY") => {
+const seeded = (end: "LIVE" | "UPDATED" | "WITHDRAWN" | "SIGNED_OFFLINE" | "DECLINED" | "EXPIRED" | "PAST_EXPIRY") => {
   const p = person(`S${end}`), client = `${firmA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`, firm = `${firmA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`;
   const past = end === "EXPIRED" || end === "PAST_EXPIRY";
   const rq = sql(`insert into fo_signature_request (id, firm_id, document_kind, document_id, document_version_id, document_version, provider, provider_document_id, sent_by, sent_at, expires_at, updated_at)
     values (gen_random_uuid(), '${firmA}', 'RETAINER', '${randomUUID()}', '${randomUUID()}', 1, 'FAKE', 'fake-door-${end.toLowerCase()}-${randomUUID()}', '${ownerId}', now() - interval '${past ? 15 : 1} days', now() ${past ? "- interval '1 day'" : "+ interval '13 days'"}, now()) returning id`);
   sql(`insert into fo_signer (id, firm_id, request_id, role, sign_order, person_id, link_token_sha256) values (gen_random_uuid(), '${firmA}', '${rq}', 'CLIENT', 1, '${p.pid}', '${sha(client)}');
     insert into fo_signer (id, firm_id, request_id, role, sign_order, staff_id, link_token_sha256) values (gen_random_uuid(), '${firmA}', '${rq}', 'FIRM', 2, '${ownerId}', '${sha(firm)}'); select 1`);
-  if (end === "UPDATED" || end === "WITHDRAWN") sql(`update fo_signature_request set status = 'CANCELLED', cancel_reason = '${end}' where id = '${rq}' returning id`);
+  if (end === "UPDATED" || end === "WITHDRAWN" || end === "SIGNED_OFFLINE") sql(`update fo_signature_request set status = 'CANCELLED', cancel_reason = '${end}' where id = '${rq}' returning id`);
   if (end === "DECLINED") sql(`update fo_signer set declined_at = now() where request_id = '${rq}' and role = 'CLIENT' returning id; update fo_signature_request set status = 'DECLINED' where id = '${rq}' returning id`);
   if (end === "EXPIRED") sql(`update fo_signature_request set status = 'EXPIRED' where id = '${rq}' returning id`);
   return { rq, client, firm, p };
@@ -161,13 +163,15 @@ try {
   ok("FO-6 door B (part 4b): GET on a live link answers 200: waiting for a signature, the firm's name, whether a code is needed, the consent text and its version",
     live.status === 200 && live.text.includes(firmName) && live.body?.codeRequired === true && typeof live.body?.consentTextVersion === "string", brief(live));
   ok("FO-6 door B (part 4b): the live state carries no personal data (no name, no email) before the code", live.status === 200 && !personal(live, PA), brief(live));
+  ok("FO-6 door B (part 4b): every door answer says Cache-Control: no-store and Referrer-Policy: no-referrer (a refusal too)", live.cache === "no-store" && live.referrer === "no-referrer" && (await jar()("GET", door("not-a-token"))).cache === "no-store", { cache: live.cache, referrer: live.referrer });
   const S = seeded("LIVE"), otherFirm = `${firmB.replace(/-/g, "")}.${S.client.split(".")[1]}`;
   const unknown = await jar()("GET", door(`${firmA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`)), malformed = await jar()("GET", door("not-a-token")), other = await jar()("GET", door(otherFirm)), firmTok = await jar()("GET", door(S.firm));
   const same = [unknown, malformed, other, firmTok].every((x) => x.status === 404 && x.text === unknown.text && x.text.includes(NOT_WORK));
   ok("FO-6 door B (part 4b): an unknown, a malformed, another firm's token and the firm signer's own token give one identical 404 \"This link does not work.\"", same, [unknown, malformed, other, firmTok].map(brief));
-  for (const end of ["UPDATED", "WITHDRAWN", "DECLINED", "EXPIRED", "PAST_EXPIRY"] as const) {
+  for (const end of ["UPDATED", "WITHDRAWN", "SIGNED_OFFLINE", "DECLINED", "EXPIRED", "PAST_EXPIRY"] as const) {
     const e = trySql("select 1") ? seeded(end) : null, j = jar(), st = e ? await j("GET", door(e.client)) : null, code = e ? await j("POST", door(e.client, "/code"), {}) : null;
-    const want = { UPDATED: /updated/i, WITHDRAWN: /withdrawn/i, DECLINED: /declined/i, EXPIRED: /expired/i, PAST_EXPIRY: /expired/i }[end];
+    // SIGNED_OFFLINE (signed on paper) answers as signed, in j_61's refusal words (tests/journeys/j_61.ts:65; 4b review M1).
+    const want = { UPDATED: /updated/i, WITHDRAWN: /withdrawn/i, SIGNED_OFFLINE: /(already signed|has been signed|was signed)/i, DECLINED: /declined/i, EXPIRED: /expired/i, PAST_EXPIRY: /expired/i }[end];
     ok(`FO-6 door B (part 4b): an ended request (${end}) answers its state and the firm's name, no personal data, and sends no code`,
       !!st && st.status === 200 && want.test(st.text) && st.text.includes(firmName) && !personal(st, e!.p) && !!code && code.status >= 400 && code.status < 500, st ? { state: brief(st), code: code!.status } : "not seeded");
   }
@@ -185,6 +189,9 @@ try {
   const pathIs = (setCookie: string, want: string) => setCookie.split(";").map((x) => x.trim()).some((x) => x.slice(0, 5).toLowerCase() === "path=" && x.slice(5) === want);
   ok("FO-6 door C (part 4b): the right code starts a signing session: an http-only, SameSite=Strict cookie on exactly the door's path, Sample 30 minutes",
     verify.status < 300 && !!cookie && pathIs(cookie, `/api/public/sign/${TA}`) && /samesite=strict/i.test(cookie) && /max-age=1800|expires=/i.test(cookie), { verify: brief(verify), cookie });
+  const early = await c1("GET", door(TA || "none", "/session"));
+  ok("FO-6 door C (part 4b): with a live session but no consent yet, the session is refused (409 CONSENT_NEEDED)", early.status === 409 && early.body?.code === "CONSENT_NEEDED", brief(early));
+  ok("FO-6 door C (part 4b): the state reads (GET) wrote nothing: the client is not marked viewed before the session opens", sql(`select (viewed_at is null)::text from fo_signer where request_id = '${A.req || randomUUID()}' and role = 'CLIENT'`) === "true");
   const consent = await c1("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
   ok("FO-6 door C (part 4b): consent is recorded once with its text version (AG-5-20)", consent.status < 300 && sql(`select count(*) from fo_signer where request_id = '${A.req}' and role = 'CLIENT' and consent_text_version = '${String(live.body?.consentTextVersion ?? "none")}'`) === "1", brief(consent));
   const twice = await c1("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
@@ -194,6 +201,8 @@ try {
     doorLines >= 3 && sql(`select count(*) from audit_event where firm_id = '${firmA}' and (detail::text like '%${code || "none"}%' or detail::text like '%${TA ? TA.split(".")[1] : "none"}%')`) === "0", { doorLines });
   const session = await c1("GET", door(TA || "none", "/session"));
   ok("FO-6 door C (part 4b): GET …/session answers the adapter's embedded link", session.status === 200 && typeof session.body?.url === "string" && session.body.url.length > 0, brief(session));
+  ok("FO-6 door C (part 4b): opening the session marks the client viewed once and moves the request and the retainer SENT → VIEWED",
+    sql(`select (s.viewed_at is not null)::text || '|' || r.status || '|' || (select status from fo_retainer where id = r.document_id) from fo_signer s join fo_signature_request r on r.id = s.request_id where s.request_id = '${A.req || randomUUID()}' and s.role = 'CLIENT'`) === "true|VIEWED|VIEWED");
   const fwd = jar(), fwdSession = await fwd("GET", door(TA || "none", "/session")), fwdConsent = await fwd("POST", door(TA || "none", "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
   ok("FO-6 door C (part 4b): the link forwarded to a fresh browser (no cookie) needs the code: session and consent refused (401 or 403)", !!TA && [401, 403].includes(fwdSession.status) && [401, 403].includes(fwdConsent.status), [brief(fwdSession), brief(fwdConsent)]);
   const again = await c1("GET", door(TA || "none")), again2 = await c1("GET", door(TA || "none", "/session"));
@@ -206,6 +215,28 @@ try {
   ok("FO-6 door C (part 4b): the sixth wrong code locks the link for 15 minutes (423, Sample); even the right code is then refused",
     !!right && wrong.slice(0, 5).every((s) => s === 422) && wrong[5] === 423 && afterLock.status === 423 && afterLock.cookies.length === 0 && /15 minutes/.test(afterLock.text) && sql(`select count(*) from fo_signer where request_id = '${L.rq}' and role = 'CLIENT' and locked_until > now() + interval '14 minutes'`) === "1", { wrong, after: brief(afterLock) });
 
+  // Session replacement with the code on, and its expiry on the server (stand-ins by SQL: the minute's resend gap and the
+  // 30 minutes are moved back, as no clock moves on a running copy).
+  const RP = seeded("LIVE"), x = jar(), y = jar();
+  const xb = (await inbox(RP.p.email)).length; await x("POST", door(RP.client, "/code"), {});
+  await x("POST", door(RP.client, "/code/verify"), { code: await codeIn(RP.p.email, xb) });
+  sql(`update fo_signer set code_expires_at = code_expires_at - interval '2 minutes' where request_id = '${RP.rq}' and role = 'CLIENT' returning id`);
+  const yb = (await inbox(RP.p.email)).length; await y("POST", door(RP.client, "/code"), {});
+  const yv = await y("POST", door(RP.client, "/code/verify"), { code: await codeIn(RP.p.email, yb) });
+  const xc = await x("POST", door(RP.client, "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion }), yc = await y("POST", door(RP.client, "/consent"), { agree: true, consentTextVersion: live.body?.consentTextVersion });
+  ok("FO-6 door C (part 4b): a newer verify in another browser replaces the first browser's session (code on): the first is refused, the second consents",
+    yv.status === 200 && xc.status === 401 && yc.status === 200, [xc.status, yc.status]);
+  sql(`update fo_signer set session_expires_at = now() - interval '1 second' where request_id = '${RP.rq}' and role = 'CLIENT' returning id`);
+  const yExp = await y("GET", door(RP.client, "/session"));
+  ok("FO-6 door C (part 4b): a session past its 30 minutes is refused on the server (401), whatever the browser still holds", yExp.status === 401 && yExp.body?.code === "SESSION_NEEDED", brief(yExp));
+  const NA = seeded("LIVE"), na = jar(), noAsk: number[] = [];
+  for (let i = 0; i < 7; i++) noAsk.push((await na("POST", door(NA.client, "/code/verify"), { code: "123456" })).status);
+  ok("FO-6 door C (part 4b): verifies with no code asked never lock the link (422 each, not counted): a forwarded-link holder cannot lock the client out",
+    noAsk.every((st) => st === 422) && sql(`select code_failures || '|' || coalesce(locked_until::text, 'none') from fo_signer where request_id = '${NA.rq}' and role = 'CLIENT'`) === "0|none", noAsk);
+  const JS = seeded("LIVE"), jsBefore = (await inbox(JS.p.email)).length;
+  const plain = await fetch(`${BASE}${door(JS.client, "/code")}`, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" });
+  ok("FO-6 door C (part 4b): a POST that is not JSON is refused (415) and mails no code: a cross-site form cannot trigger the door", plain.status === 415 && (await inbox(JS.p.email)).length === jsBefore, plain.status);
+
   // ---------------------------------------------------------------------------------------------- D the code switched off
   const off = trySql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${firmA}', 'front_office.signing_email_code', 'false', 'system:test') on conflict (firm_id, key) do update set value = 'false' returning key`);
   const PD = person("D"), D = await sendFor(PD), TD = await linkFor(PD.email), dj = jar(), dBefore = (await inbox(PD.email)).length;
@@ -216,6 +247,8 @@ try {
   ok("FO-6 door D (part 4b; note question 2, as recommended): with the code off a second browser's consent starts its own session without writing consent again (a bearer link until signed), and replaces the first browser's session",
     d2Consent.status < 300 && d2Session.status === 200 && sql(`select count(*) from fo_signer where request_id = '${D.req || randomUUID()}' and role = 'CLIENT' and consented_at is not null`) === "1" && [401, 403].includes((await dj("GET", door(TD || "none", "/session"))).status), { consent: brief(d2Consent), session: brief(d2Session) });
   trySql(`delete from platform_firm_setting where firm_id = '${firmA}' and key = 'front_office.signing_email_code' returning key`);
+  const d2After = await d2("GET", door(TD || "none", "/session"));
+  ok("FO-6 door D (part 4b): switching the code back on ends a session that a consent started while it was off (401: the code is asked)", d2After.status === 401 && d2After.body?.code === "SESSION_NEEDED", brief(d2After));
 
   // ---------------------------------------------------------------------------------------------- E the stand-in signing page and the firm signer
   const url = String(session.body?.url ?? ""), onCopy = !!url && new URL(url, BASE).origin === new URL(BASE).origin;
@@ -254,6 +287,11 @@ try {
   const elsewhere = await jar()("GET", door(TD || "none"));
   ok("FO-6 door F (part 4b): the door is rate limited per address and token (Sample 30 a minute): a burst of 60 on one token meets 429, while another link from the same address still answers",
     statuses.includes(429) && statuses.every((s) => s === 404 || s === 429) && elsewhere.status !== 429, { first429: statuses.indexOf(429), elsewhere: elsewhere.status });
+  const misses: number[] = [];
+  for (let i = 0; i < 300; i++) misses.push((await rj("GET", door(`${firmA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`))).status);
+  const liveAfter = await jar()("GET", door(TD || "none"));
+  ok("FO-6 door F (part 4b): an address past 300 misses a minute gets 429 for further misses, yet a live link from that address still answers (4b breaker M1: one caller cannot block other clients' links)",
+    misses.includes(429) && liveAfter.status === 200, { first429: misses.indexOf(429), live: liveAfter.status });
 } catch (e) {
   ok("FO-6 door: the walk finished without an error", false, String((e as Error)?.stack ?? e).slice(0, 400));
 }
