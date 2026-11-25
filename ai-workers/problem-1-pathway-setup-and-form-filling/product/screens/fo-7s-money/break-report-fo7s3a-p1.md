@@ -31,45 +31,19 @@ PR #3658 at `2e1085ca2dc03c8975b23ace39f8e87f588c64ec`. Isolated copy `br7s3a` o
 - **m7. Browser Back with typed data in the panel leaves the page without asking.** Escape and X ask first (held).
 
 ## What held
-- **Idempotency:**
-  - Double-clicking Record, plus Enter, made one payment.
-  - Double-clicking "Record anyway" made one payment.
-  - A new opening made a new payment.
-  - Two tabs on INV-0001, both submitting CAD 2,655.50 at once: two payments. The second one reads "CAD 2,655.50 extra · Paid twice?" with Keep as credit, and a double-click on Keep made one credit entry of CAD 2,655.50.
-- **Duplicate reference:**
-  - `ab-4471` and `  Ab-4471  ` both ask in the API's words.
-  - Close at the question recorded nothing.
-  - "Record anyway" records.
-- **Money over the balance is never refused:**
-  - CAD 21,474,836.47 on CAD 2,655.50 due was recorded in full, showing "CAD 21,472,180.97 extra" and Keep as credit.
-  - An invoice paid in another session while the panel was open: CAD 100.00 recorded, "extra · Paid twice?", Keep as credit worked.
-  - A USD invoice: the amounts read USD 3,000.00 and "USD 344.50 extra".
-- **Refusals in the API's words on the panel:**
-  - Cancelled invoice: "INV-0009 is cancelled: … Record the money on the client instead. Nothing was saved." Nothing was recorded, and the panel stayed open after the button left the page.
-  - A future date, 1999, an empty date, a 201-character reference, and U+202E were each refused in words.
-  - Odd amounts were refused before sending: `0`, `-5`, `1,00`, `100.`, `.50`, `1.005`, `1e3`, Arabic-Indic and full-width digits, `1 000`.
+- **Idempotency:** Double-clicking Record, plus Enter, made one payment. · Double-clicking "Record anyway" made one payment. · A new opening made a new payment. · Two tabs on INV-0001, both submitting CAD 2,655.50 at once: two payments. The second one reads "CAD 2,655.50 extra · Paid twice?" with Keep as credit, and a double-click on Keep made one credit entry of CAD 2,655.50.
+- **Duplicate reference:** `ab-4471` and `  Ab-4471  ` both ask in the API's words. · Close at the question recorded nothing. · "Record anyway" records.
+- **Money over the balance is never refused:** CAD 21,474,836.47 on CAD 2,655.50 due was recorded in full, showing "CAD 21,472,180.97 extra" and Keep as credit. · An invoice paid in another session while the panel was open: CAD 100.00 recorded, "extra · Paid twice?", Keep as credit worked. · A USD invoice: the amounts read USD 3,000.00 and "USD 344.50 extra".
+- **Refusals in the API's words on the panel:** Cancelled invoice: "INV-0009 is cancelled: … Record the money on the client instead. Nothing was saved." Nothing was recorded, and the panel stayed open after the button left the page. · A future date, 1999, an empty date, a 201-character reference, and U+202E were each refused in words. · Odd amounts were refused before sending: `0`, `-5`, `1,00`, `100.`, `.50`, `1.005`, `1e3`, Arabic-Indic and full-width digits, `1 000`.
 - **Session ends mid-panel:** a second sign-in elsewhere made Record answer 401. The page showed "Signed in elsewhere", and nothing was recorded. After signing in again the panel was closed and no record was made.
 - **Settling from the panel:** the panel stays with its answer, and the header reads CAD 0.00 with no Record button. Done or Escape moves focus to the heading. After success, focus goes to the answer.
 - **No trust words while trust is not Yes:** with trust Unanswered and with No, there is no trust word and no "Received into" in the panel, its answer, the list or the detail. The list has no "Received into" column.
-- **Methods and currencies:**
-  - The panel lists the seven methods and no "Card". The list filter's "Card" is for reading webhook payments only.
-  - Each amount shows its own currency (CAD and USD both in the list), and there is no total row.
-- **C5 (who may see a payment):** with "everyone sees all" off:
-  - The Case Officer sees no row for Client J's payment, and its address is the plain "Payment not found" with no amount.
-  - An all-zero UUID, `not-a-uuid`, a traversal string and `%00` each show the same plain "not found".
-  - Another firm's staff, and the Billing person once Client H left their view, get the same.
-- **Wrong role:**
-  - The Case Officer has no Record payment button.
-  - The Case Officer's POST to `…/payments` and to `…/payments/:id/extra` both answer 403.
-- **Payment detail:**
-  - "Keep CAD 88.76 extra as credit" works, a double-click made one entry, and the button then leaves.
-  - A 200-character reference wraps with no sideways scroll.
-- **Payments list:**
-  - Show more by keyboard (50 → 58 rows) moves focus to the first new row.
-  - The filters are kept in the address. From after To shows a message in words; a bad `from` gets the API's words.
-- **Layout and keyboard:**
-  - 1024 px, 200 % zoom (720 CSS px) and 375 px: no sideways scroll, Record stays in view, and axe finds 0 serious issues on the panel, list and detail.
-  - Keyboard only: open, method by type-ahead, amount, reference, then Enter to record.
+- **Methods and currencies:** The panel lists the seven methods and no "Card". The list filter's "Card" is for reading webhook payments only. · Each amount shows its own currency (CAD and USD both in the list), and there is no total row.
+- **C5 (who may see a payment):** with "everyone sees all" off: The Case Officer sees no row for Client J's payment, and its address is the plain "Payment not found" with no amount. · An all-zero UUID, `not-a-uuid`, a traversal string and `%00` each show the same plain "not found". · Another firm's staff, and the Billing person once Client H left their view, get the same.
+- **Wrong role:** The Case Officer has no Record payment button. · The Case Officer's POST to `…/payments` and to `…/payments/:id/extra` both answer 403.
+- **Payment detail:** "Keep CAD 88.76 extra as credit" works, a double-click made one entry, and the button then leaves. · A 200-character reference wraps with no sideways scroll.
+- **Payments list:** Show more by keyboard (50 → 58 rows) moves focus to the first new row. · The filters are kept in the address. From after To shows a message in words; a bad `from` gets the API's words.
+- **Layout and keyboard:** 1024 px, 200 % zoom (720 CSS px) and 375 px: no sideways scroll, Record stays in view, and axe finds 0 serious issues on the panel, list and detail. · Keyboard only: open, method by type-ahead, amount, reference, then Enter to record.
 
 ## Round 2 at `4a4a6509dc9e81ba147286dc453eec7faa125df6` (diff `2e1085ca2..4a4a6509d`)
 
@@ -97,3 +71,27 @@ Fresh `br7s3a` on :4762 with the same set-up; stopped afterwards. Round 2 verdic
 - **m4.** After the duplicate question, focus is on "Record anyway" (checked by `data-pay-anyway`).
 
 **New Minor: NFKC folding changes visible text without telling the person.** Reference `No² ①ﬁ` is stored as `No2 1fi` (`payments/contract.ts:53`), and the panel does not say so.
+
+## Round 3 at `c02da9d558987177d3c846d3dfd18d50d209222f` (diff `4a4a6509d..c02da9d55`)
+
+Fresh `br7s3a` on :4762 with the same set-up; stopped afterwards. Round 3 verdict: **pass**. M1, M3 and the m1 gap are fixed, and so is the visible folding of `No² ①ﬁ`. Two new Minors remain.
+
+**Fixed in round 3:**
+- **M1 (5xx after the save).** `record-payment.tsx:61` now treats a 5xx as "no answer". Each case was run with the API answer replaced by the status shown:
+
+  | Answer | Panel | Fields | Record again | Database |
+  |---|---|---|---|---|
+  | 504 after the save (`route.fetch()`, then `fulfill({ status: 504 })`) | "No answer yet … may already be recorded" | held: method disabled, amount read-only (typing left 60.00) | "R-0001 recorded · This payment was already recorded from this panel: it was not recorded twice." | 1 payment, CAD 60.00 |
+  | 500 after the save | same | same | R-0002, a replay | 1 payment |
+  | 503 before the save (nothing sent to the API) | "No answer yet" | held | records it once (R-0003) | 1 payment |
+
+  No KEY_USED dead end is reachable.
+- **M3 (invisible marks).** Each of U+061C, U+034F, U+FE0F, U+E0041 and U+3164 after `Ab-4471` now gets "Record anyway?". So do U+200F, U+00AD, `Ａｂ-４４７１`, U+115F and U+FFA0.
+- **m1 gap (closing while busy).** `mayClose`, `record-payment.tsx:44`: While Record is busy (POST delayed 2.5 s), Escape, X and an overlay click do nothing and ask nothing, and the footer Close is disabled. The payment is recorded once and its answer is shown. · After "No answer yet", both Close and Escape ask "This payment may already be recorded. Close anyway? The invoice shows it if it was." Saying no keeps the panel open, and the header balance had already reloaded (CAD 2,642.50).
+- **Visible folding.** `No² ①ﬁ` is stored exactly as typed.
+
+**New Minor findings:**
+- **r3-m1. Blank-glyph characters that the API counts as invisible still skip the duplicate question.** These were recorded next to `Ab-4471` with no question, and look the same in the list: `Ab-4471` + U+2800 (Braille pattern blank), hex `…34343731e2a080` · `Ab-4471` + U+1D159 · `Ab-4471` + U+13441
+
+  They are neither default-ignorable nor bidi controls, so `cleanReference` (`payments/contract.ts:55`) keeps them. Yet `money_text_ok` lists all three as invisible (`⠀`, `\U0001d159`, `\U00013441-\U00013442`). Minor: exotic characters that are only pasted on purpose, unlike the direction marks M3 was about. U+3000 inside the reference (`Ab-␣4471`) shows a visible gap, so it is not a finding.
+- **r3-m2. Removing every default-ignorable code point changes visible text, despite the comment** "Nothing visible is changed" (`payments/contract.ts:55`): Persian `کتاب‌ها-12`, which has a zero-width non-joiner (U+200C), is stored as `کتابها-12`. The letters now join, so the word looks different. · `❤️-12` loses its U+FE0F and is stored as `❤-12`, the plain-text heart.
