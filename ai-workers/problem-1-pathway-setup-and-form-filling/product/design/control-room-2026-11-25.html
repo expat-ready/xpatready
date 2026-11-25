@@ -1,3 +1,4 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Release 1 Control Room</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,10 +65,57 @@ svg .lbl{fill:var(--fg);font-size:12px}
 <div class="wrap">
 
 <header style="display:flex;flex-direction:column;gap:8px">
-  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 5 · 25 Nov 2026, 13:12 IST (v6)</div>
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 10 · 26 Nov 2026, 00:05 IST (v7; v6 and earlier below)</div>
   <h1>Where we are, how the machine works, and what we fix today</h1>
   <p class="lede">Every number below comes from GitHub, <span class="mono">origin/main</span> or a measured report (<span class="mono">design/why-targets-missed-2026-11-24.md</span>, 72-hour window to 24 Nov 22:23 IST). Where a figure is an estimate it says so.</p>
 </header>
+
+<section id="tonight">
+  <div class="eyebrow">v7 · Lead 10 · 26 Nov 00:05 IST · the engineering pipeline tonight, measured</div>
+  <h2>Where the pipeline is tonight, and how far we have got</h2>
+  <p class="lede">From lead-watch at 00:03 IST (GitHub runs, Mergify, <span class="mono">qa/CAPABILITIES.md</span> on <span class="mono">origin/main</span>). Release 1 is now <b>110 rows</b> (P-842 added nine from the team-code scope check).</p>
+  <div class="kpis">
+    <div class="kpi"><span class="eyebrow">Works (qa-proven)</span><span class="n">64<span style="font-size:16px;color:var(--muted)"> / 110</span></span><span class="s">55 at 00:00 on 25 Nov: +9 in the day</span></div>
+    <div class="kpi"><span class="eyebrow">Partial</span><span class="n">17</span><span class="s">some parts built</span></div>
+    <div class="kpi"><span class="eyebrow">Not built</span><span class="n">29</span><span class="s">incl. the 9 new P-842 rows</span></div>
+    <div class="kpi"><span class="eyebrow">Merges</span><span class="n">3.7<span style="font-size:16px;color:var(--muted)">/h</span></span><span class="s">last 3 h (11 merges); 1.3/h at 22:13</span></div>
+    <div class="kpi"><span class="eyebrow">Red batches</span><span class="n">7/22</span><span class="s">last 6 h; 15/25 at 22:13</span></div>
+    <div class="kpi"><span class="eyebrow">Weekly plan</span><span class="n">94%</span><span class="s">switch at 95–96%, about 01:00–02:00</span></div>
+  </div>
+
+  <h3>The stations tonight</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Station</th><th>Items</th><th>Wait</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>Build (cloud builders)</td><td class="num">17 items</td><td>—</td><td><span class="pill warn">over the cap of 8: no new starts</span></td></tr>
+      <tr><td>Review (fresh Opus)</td><td>approves in under 1 h</td><td>—</td><td><span class="pill ok">fine</span></td></tr>
+      <tr><td>Lead read (P-423)</td><td class="num">6 tool PRs + 4 over 24 h</td><td>15 min to 57 h</td><td><span class="pill warn">holds the OS go-live</span></td></tr>
+      <tr><td>Merge queue</td><td class="num">3 waiting, 3 in a batch</td><td>label → batch start: product 283 min, pipeline 474 min (medians)</td><td><span class="pill bad">the constraint</span></td></tr>
+      <tr><td>Merge batch</td><td class="num">22 ran in 6 h</td><td>32 min each</td><td><span class="pill warn">7 red, mostly flaky browser suites</span></td></tr>
+      <tr><td>qa proof</td><td class="num">23 merges with no new proof</td><td>R1.45 11 h, R1.29 8 h</td><td><span class="pill bad">qa session started 22:5x</span></td></tr>
+    </tbody></table></div>
+  <p><b>The constraint is still red merge batches</b>, though it is easing: 60% red at 22:13, 32% now. The fix, <b>#3760</b> (sets aside three flaky browser suites), is in a batch now. When it lands, the PRs it bounced (#3623, #3692, #3659) rejoin.</p>
+
+  <h3>Plan against reality (the 48-hour plan below)</h3>
+  <div class="panel scroll"><table>
+    <thead><tr><th>Plan line</th><th>Planned</th><th>Actual, 00:03 IST</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>Works by 26 Nov 07:00</td><td class="num">68</td><td class="num">64</td><td><span class="pill warn">4 behind</span></td></tr>
+      <tr><td>R1.29, R1.45 proved</td><td>25 Nov afternoon</td><td>merged 15:28 and 11:42; cloud qa proving them now</td><td><span class="pill warn">late</span></td></tr>
+      <tr><td>#3623 cloud setup stops on a failed step (go-live 2)</td><td>25 Nov 13:00</td><td>read and answered 23:1x; rejoins after #3760</td><td><span class="pill warn">late</span></td></tr>
+      <tr><td>#3632 pr-suites before the label, P-822 (go-live 3)</td><td>25 Nov 14:30</td><td>approved; waits on my read</td><td><span class="pill bad">late</span></td></tr>
+      <tr><td>#3665, #3728 guards (go-live 7)</td><td>26 Nov 10:00</td><td>read, in the queue (my hand merge was refused)</td><td><span class="pill ok">on plan</span></td></tr>
+      <tr><td>#3506 Lead runs main's tools (go-live 9)</td><td>26 Nov 15:00</td><td>approved; waits on my read</td><td><span class="pill warn">at risk</span></td></tr>
+      <tr><td>OS-15, OS-16 records PR in one script, one-page start (go-live 10)</td><td>26 Nov 22:00</td><td>#3693, #3696 approved; wait on my read</td><td><span class="pill ok">on plan if read today</span></td></tr>
+      <tr><td>Forecast for 110</td><td>—</td><td>at 9 a day: about 1–2 Dec</td><td><span class="pill ok">inside 6–7 Dec aim and 12 Dec</span></td></tr>
+    </tbody></table></div>
+
+  <div class="needs"><b>🔴 Needs you</b>
+    <span>1. Hand check of R1.24 and R1.109 (asked 16:31); R1.2, R1.82, R1.12, R1.37 have been drawn since. 2. The account switch at 95–96% (about 01:00–02:00 IST): STATE and the resume block are pushed.</span></div>
+  <div class="needs y"><b>🟡 Decide when you can</b>
+    <span>Staging test mailbox for FD-10 (front-door email). <b>Recommend:</b> (A) receive through Amazon SES in our own AWS account.</span></div>
+  <p class="note">Next from me: read the six pipeline PRs (#3632 first: it is go-live 3 and the most overdue), then relabel the bounced PRs once #3760 lands. Standbys: Lead 11 and Lead 12.</p>
+</section>
 
 <section id="self-checking">
   <div class="eyebrow">v6 · Lead 5 · 25 Nov 13:12 IST · self-checking builders, handed to me by your side session: my teach-back for you to confirm</div>
@@ -604,3 +652,5 @@ svg .lbl{fill:var(--fg);font-size:12px}
 </section>
 
 </div>
+
+</body></html>
