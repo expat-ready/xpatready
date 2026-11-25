@@ -219,8 +219,12 @@ try {
   const PD = person(A, "d"), dInv = await make(10000, PD); await issue(dInv);
   for (const [days, amount] of [[3, 2000], [2, 1000], [1, 500]] as const)
     await call(tA, "POST", `${M}/${dInv}/payments`, { method: "CASH", amountMinor: amount, receivedOn: dayOf(new Date(Date.now() - days * 86_400_000)), idempotencyKey: `fo7r-pre-${days}` });
-  const dPays = (await walk(allStmt, PD)).items.filter((l: any) => l.kind === "PAYMENT").map((l: any) => l.amountMinor);   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  const dPays = (await walk(allStmt, PD)).items.filter((l: any) => l.kind === "PAYMENT" && l.amountMinor !== -100).map((l: any) => l.amountMinor);   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
   ok("FO-7r S1 pass: payments received before the issue follow the invoice in the order received (−20.00, −10.00, −5.00)", JSON.stringify(dPays) === JSON.stringify([-2000, -1000, -500]), dPays);
+  // break R3-m1: a payment another writer dated 1999 (the route refuses such a date; an import might not) never ends the walk
+  sql(`set session_replication_role = replica; insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${A}', '${dInv}', 'CASH', 100, 'CAD', 'OPERATING', '1999-12-31T23:00:00Z', 'fo7r-1999', 'seed:FO-7r')`);
+  const dOne = await walk(allStmt, PD, { pageSize: "1" }), dAll = await walk(allStmt, PD, { pageSize: "200" });
+  ok("FO-7r S7 pass (break R3-m1): a payment dated 1999 is walked through on pages of 1, the same lines as one page", dOne.items.length === dAll.items.length && dAll.items.length === 5 && JSON.stringify(dOne.items) === JSON.stringify(dAll.items), { one: dOne.items.length, all: dAll.items.length });
   ok("FO-7r S1 fail: the same three in any other order fail the comparison", JSON.stringify([...dPays].reverse()) !== JSON.stringify([-2000, -1000, -500]));
 
   // review R3-2: trust lines run by seq but a period cuts them by time. Entry 2 was written in the last second before
@@ -316,14 +320,18 @@ try {
     insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by) select '${A}', '${PA2}', 'WITHDRAWAL_TO_INVOICE', -20, 'CAD', 10000 + row_number() over (), 0, i.id, 'seed:FO-7r-bulk' from money_invoice i where i.number like 'BIG-%';
     analyze`);
   await inA(() => allStmt.statement(ctxR, "person", PBULK, {}));   // warm
-  let t0 = performance.now(); const bs = await inA(() => allStmt.statement(ctxR, "person", PBULK, {})); const msS = Math.round(performance.now() - t0);
-  t0 = performance.now(); const bsum = await inA(() => allSum.summary(ctxR, "person", PBULK)); const msSum = Math.round(performance.now() - t0);
+  /** The median of three timed calls (one slow call on a shared machine never decides the budget), and the last answer. */
+  const timed = async <T>(fn: () => Promise<T>): Promise<[T, number]> => { const ms: number[] = []; let v: T | undefined;
+    for (let n = 0; n < 3; n++) { const t = performance.now(); v = await fn(); ms.push(Math.round(performance.now() - t)); }
+    return [v as T, ms.sort((x, y) => x - y)[1]!]; };
+  const [bs, msS] = await timed(() => inA(() => allStmt.statement(ctxR, "person", PBULK, {})));
+  const [bsum, msSum] = await timed(() => inA(() => allSum.summary(ctxR, "person", PBULK)));
   await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`);   // warm the route
-  t0 = performance.now(); const viaRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`); const msRoute = Math.round(performance.now() - t0);
-  t0 = performance.now(); const sumRoute = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/summary`); const msSumRoute = Math.round(performance.now() - t0);
+  const [viaRoute, msRoute] = await timed(() => call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement`));
+  const [sumRoute, msSumRoute] = await timed(() => call(tA, "GET", `/front-office/money/parties/person/${PBULK}/summary`));
   const inv0 = bs.accounts.find((x) => x.account === "INVOICES")!, b0 = bsum.totals[0]!, nR3 = Number(sql(`select count(*) from money_credit_entry where created_by = 'seed:FO-7r-bulk-r3' and kind = 'APPLIED'`));
   const applied = 500 + nR3 * 3;   // 100 × 5.00 cents, then each R3 application of 5 less its reversal of 2
-  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 3,433 credit applications (3,333 of them reversed in part), in a firm holding 53,000 other invoices with their payments, credit and trust rows: page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
+  ok(`FO-7r S8 pass: 10,000 invoices, each with a credit note and a trust withdrawal, plus 1,000 payments, 1,000 corrections, 3,433 credit applications (3,333 of them reversed in part), in a firm holding 53,000 other invoices with their payments, credit and trust rows (medians of 3): page 1 in ${msS} ms (route ${msRoute} ms), the summary in ${msSum} ms (route ${msSumRoute} ms), each within 300 ms`,
     msS < 300 && msSum < 300 && msRoute < 300 && msSumRoute < 300 && viaRoute.status === 200 && sumRoute.status === 200 && bs.items.length === 50 && !!bs.next
     && b0.billedMinor === 10_000_000 && b0.paidMinor === 400_000 + 180_000 && b0.creditedMinor === 100_000 && nR3 > 3000 && b0.creditAppliedMinor === applied && inv0.closingMinor === 10_000_000 - 100_000 - 580_000 - applied && inv0.closingMinor === b0.owedMinor,
     { msS, msSum, msRoute, msSumRoute, closing: bs.accounts, totals: bsum.totals });

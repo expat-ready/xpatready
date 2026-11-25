@@ -19,7 +19,7 @@ import { parseInput } from "../../platform/http/input.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf } from "../invoices/facts.ts";
 import { trustShows } from "../reads/common.ts";
-import { failClosed, type ScopeOf } from "../reads/visibility.ts";
+import { failClosed, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { ledgerCtes } from "./statement.ts";
 import { kindOf, partyCol, partyFor, seenSql, sortMemory, type Party } from "./common.ts";
 
@@ -54,21 +54,7 @@ export class MoneySummary {
       const party = await partyFor(tx, f, kind, id, scope), showTrust = await trustShows(tx, f);
       // per invoice from the statement's own lines (ledgerCtes, the INVOICES account: one source for both reads), as
       // FACTS_LATERAL's terms: trust paid is never below zero per invoice (its greatest(…, 0)), and due never below zero
-      const inv = await tx.$queryRaw<Row[]>`${ledgerCtes(f, party, scope, undefined, false)},
-        per as (select inv.id, inv.case_id, inv.currency, inv.due_date, inv.total,
-            coalesce(-sum(l.amount) filter (where l.kind = 'CREDIT_NOTE'), 0) as credited, coalesce(-sum(l.amount) filter (where l.kind = 'WRITE_OFF'), 0) as written,
-            coalesce(-sum(l.amount) filter (where l.kind = 'PAYMENT'), 0) as operating, coalesce(sum(l.amount) filter (where l.kind = 'REFUND'), 0) as refunded,
-            greatest(coalesce(-sum(l.amount) filter (where l.kind in ('PAID_FROM_TRUST', 'PAID_FROM_TRUST_CORRECTED', 'RETURNED_FROM_TRUST')), 0), 0) as trust,
-            coalesce(-sum(l.amount) filter (where l.kind in ('CREDIT_APPLIED', 'CREDIT_APPLIED_REVERSED')), 0) as applied,
-            coalesce(sum(l.amount) filter (where l.kind in ('KEPT_AS_CREDIT', 'KEPT_AS_CREDIT_REVERSED')), 0) as kept
-          from inv left join l on l.inv = inv.id and l.acct = 0 group by inv.id, inv.case_id, inv.currency, inv.due_date, inv.total),
-        -- FACTS_LATERAL's paid (with credit applied) for due and extra, as facts.ts: due = open − paid, extra = paid − open − kept
-        net as (select per.*, per.total - per.credited - per.written - (per.operating - per.refunded + per.trust + per.applied) as open_left from per),
-        due as (select net.*, greatest(0, net.open_left) as owed, greatest(0, -net.open_left - net.kept) as waiting from net)
-        select due.case_id::text as "caseId", due.currency::text as currency, sum(due.total)::text as billed, sum(due.operating - due.refunded + due.trust)::text as paid, sum(due.trust)::text as trust,
-          sum(due.credited)::text as credited, sum(due.written)::text as written, sum(due.refunded)::text as refunded, sum(due.applied)::text as applied, sum(due.waiting)::text as waiting, sum(due.owed)::text as owed,
-          max(case when due.owed > 0 and due.due_date < ${today}::date then ${today}::date - due.due_date end)::int as overdue
-        from due group by due.case_id, due.currency`;
+      const inv = await tx.$queryRaw<Row[]>(summarySql(f, party, scope, today));
       const held = showTrust ? await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
         from money_trust_entry e where e.firm_id = ${f}::uuid and ${partyCol(party, "e")} = ${party.id}::uuid and ${seenSql(scope, "e")} group by e.case_id, e.currency` : [];
       const credit = await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
@@ -88,4 +74,23 @@ export class MoneySummary {
       return { party, today, trustShows: showTrust, totals, cases };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
+}
+
+/** The per-case, per-currency invoice figures' SQL (exported for the plan check). */
+export function summarySql(f: string, party: Party, scope: MoneyScope, today: string): Prisma.Sql {
+  return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false)},
+        per as (select inv.id, inv.case_id, inv.currency, inv.due_date, inv.total,
+            coalesce(-sum(l.amount) filter (where l.kind = 'CREDIT_NOTE'), 0) as credited, coalesce(-sum(l.amount) filter (where l.kind = 'WRITE_OFF'), 0) as written,
+            coalesce(-sum(l.amount) filter (where l.kind = 'PAYMENT'), 0) as operating, coalesce(sum(l.amount) filter (where l.kind = 'REFUND'), 0) as refunded,
+            greatest(coalesce(-sum(l.amount) filter (where l.kind in ('PAID_FROM_TRUST', 'PAID_FROM_TRUST_CORRECTED', 'RETURNED_FROM_TRUST')), 0), 0) as trust,
+            coalesce(-sum(l.amount) filter (where l.kind in ('CREDIT_APPLIED', 'CREDIT_APPLIED_REVERSED')), 0) as applied,
+            coalesce(sum(l.amount) filter (where l.kind in ('KEPT_AS_CREDIT', 'KEPT_AS_CREDIT_REVERSED')), 0) as kept
+          from inv left join l on l.inv = inv.id and l.acct = 0 group by inv.id, inv.case_id, inv.currency, inv.due_date, inv.total),
+        -- FACTS_LATERAL's paid (with credit applied) for due and extra, as facts.ts: due = open − paid, extra = paid − open − kept
+        net as (select per.*, per.total - per.credited - per.written - (per.operating - per.refunded + per.trust + per.applied) as open_left from per),
+        due as (select net.*, greatest(0, net.open_left) as owed, greatest(0, -net.open_left - net.kept) as waiting from net)
+        select due.case_id::text as "caseId", due.currency::text as currency, sum(due.total)::text as billed, sum(due.operating - due.refunded + due.trust)::text as paid, sum(due.trust)::text as trust,
+          sum(due.credited)::text as credited, sum(due.written)::text as written, sum(due.refunded)::text as refunded, sum(due.applied)::text as applied, sum(due.waiting)::text as waiting, sum(due.owed)::text as owed,
+          max(case when due.owed > 0 and due.due_date < ${today}::date then ${today}::date - due.due_date end)::int as overdue
+        from due group by due.case_id, due.currency`;
 }

@@ -37,7 +37,10 @@ export type AccountTotals = { account: Account; currency: "CAD" | "USD"; opening
 export type Statement = { party: Party; period: { from: string | null; to: string | null }; trustShows: boolean; accounts: AccountTotals[]; items: StatementLine[]; pageSize: number; next: string | null };
 
 const Query = z.strictObject({ from: Day.optional(), to: Day.optional(), caseId: z.string().regex(UUID).optional(), pageSize: z.string().optional(), after: z.string().optional() });
-const Cursor = z.strictObject({ a: z.union([z.literal(0), z.literal(1)]), c: z.enum(["CAD", "USD"]), t: Stamp, o: z.number().int().min(0).max(2_147_483_647), r: Stamp, id: z.string().regex(UUID), v: z.string().regex(UUID) });
+/** A fact's own time in the cursor, as written by to_char: any year the database holds (break R3-m1: a payment another
+ *  writer dated 1999 or 3001 must not end the walk; the page's own key `t` is at or after the invoice's issue). */
+const FactTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$/);
+const Cursor = z.strictObject({ a: z.union([z.literal(0), z.literal(1)]), c: z.enum(["CAD", "USD"]), t: Stamp, o: z.number().int().min(0).max(2_147_483_647), r: FactTime, id: z.string().regex(UUID), v: z.string().regex(UUID) });
 /** Trust lines sort by seq alone: one fixed key time (never created_at, the transaction's start: trust/reads.ts's break Major 1). */
 const TRUST_KEY = "2000-01-01 00:00:00+00";
 

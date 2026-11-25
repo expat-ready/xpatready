@@ -96,3 +96,38 @@ Diff-only re-break of `432fba2..3f88a5d`, unpacked with `git archive` and run wi
 * **Budget:** 2,000 credit entries on other clients: route 328 ms (round 1: 9 s and a 500). **Summary query:** `?foo=1` and `?from=` give 422 naming the field.
 
 **Still held:** trust 35000 = owed = list due, and 90000 = the trust reads; company, currencies, walls, C5 and paging; day edges with an invoice issued 1 Mar (7 windows); 45 input probes, never a 500. Round 1's Minor 2 is accepted as a stated limit of keyset paging.
+
+## Round 3 (ea647490a0ff15528fb03bfb1933b50c2850affa)
+
+Diff-only re-break of `3f88a5d..ea64749` (statement.ts, summary.ts, the check), unpacked with `git archive` and run with the same harness. The PR's check passes 41/41 here.
+
+**Verdict: Block** — R2-Major 1 and R2-Minor 1 are fixed, but a new quadratic makes a client with dense credit answer 500.
+
+**R3-Blocker 1. A client whose invoices carry applied credit: time grows with the square of their credit entries; at 10,000 the statement and summary answer 500**
+* **Where:** statement.ts:88-89 (CREDIT_APPLIED_REVERSED) and :92-93 (KEPT_AS_CREDIT_REVERSED), `money_credit_entry r join ca e … and r.reverses_entry_id = any((select ca_ids.a from ca_ids)::uuid[])`.
+* **Why:** EXPLAIN ANALYZE shows a nested loop over the 10,000 `ca` rows, each running an index scan whose condition is `reverses_entry_id = ANY(<10,000 ids>)`: 2.3 ms × 10,000 = 23 s. This happens with no reversals at all. summary.ts reads the same ledgerCtes, so it fails too.
+* **Steps:** client BULK, 10,000 issued invoices, each with a payment, a credit note and a trust withdrawal, plus 1,000 corrections, and APPLIED credit on every Nth invoice. Route, median of 7:
+
+  | Credit entries of the client | Statement | Summary |
+  |---|---|---|
+  | 1,000 | 397 ms | 382 ms |
+  | 3,333 | 2,473 ms | 2,508 ms |
+  | 10,000 | 22,786 ms, **500** | 22,696 ms, **500** |
+
+* **Also:** round 1's B8 mix (credit on every invoice) now fails with "expired transaction" after 23 s. In round 2 these were 327 ms and 481 ms.
+* **Why the check missed it:** S8 seeds only 100 credit applications on the client.
+* **Expected:** within 300 ms; never a 500.
+
+**R3-Minor 1. A payment the database accepts with a date outside 2000-2999 stops paging at it**
+* **Steps:** with SQL (triggers on), add payments received 1999-12-31 and 3001-01-01. Walk with `pageSize=1`.
+* **Observed:** when such a line ends a page, the `next` cursor the list gave back (its new `r` field) fails `Stamp`, so the next page is 422 "after is not a cursor this list gave."
+* **Note:** the payment route refuses dates before 2000 or in the future (invoices/money.ts:91), so only another writer or an import reaches this.
+
+**Fixed and checked:**
+* **Firm scale (R2-Major 1).** With little or no credit on the client, route medians:
+  * the base mix: statement 186 ms, summary 189 ms;
+  * plus 50,000 other invoices, 50,000 credit entries and 66,000 trust entries in the firm: statement 264 ms, summary 243 ms.
+* **Pre-issue order (R2-Minor 1).** Five payments received 31 Mar, 1 Apr 00:00 (two), 1 Apr 23:59 and 2 Apr on an invoice issued today all sit at the issue time, now in received order: 1100, 1300, 1200, 1400, 1500, matching `order by received_at, id`.
+* **Paging across pages:** 20 lines across INVOICES and TRUST in CAD and USD, with pre-issue payments, kept and applied credit. Pages of 1, 2, 3 and 7 are each identical to one page of 200, balances included. Each line's balance chains, the last line equals closing, and today's period in pages of 2 equals one page.
+* **Kept credit:** unchanged from round 2 (5000, 0, 0, 10000, −5000, 12000, 0, all equal to owed − waiting).
+* **Still held:** trust, company, C5, day edges (7 windows) and the input probes, as before.
