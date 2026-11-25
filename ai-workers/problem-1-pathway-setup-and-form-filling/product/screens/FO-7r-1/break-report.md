@@ -131,3 +131,41 @@ Diff-only re-break of `3f88a5d..ea64749` (statement.ts, summary.ts, the check), 
 * **Paging across pages:** 20 lines across INVOICES and TRUST in CAD and USD, with pre-issue payments, kept and applied credit. Pages of 1, 2, 3 and 7 are each identical to one page of 200, balances included. Each line's balance chains, the last line equals closing, and today's period in pages of 2 equals one page.
 * **Kept credit:** unchanged from round 2 (5000, 0, 0, 10000, −5000, 12000, 0, all equal to owed − waiting).
 * **Still held:** trust, company, C5, day edges (7 windows) and the input probes, as before.
+
+## Round 4 (0561097c276f7747bc0f7af580972ab10db64c18)
+
+Diff-only re-break of `ea64749..0561097` (statement.ts, summary.ts, the check), unpacked with `git archive` and run with the same harness. The PR's check passes 45/45 here. All timings below ran while `run-suites.sh` was running (load 2.1-3.1 on 4 cores).
+
+**Verdict: Approve** — no break. R3-Blocker 1 and R3-Minor 1 are fixed. The one figure over 300 ms is the client with the densest credit, and I put it down to load (see below).
+
+**Dense credit (R3-Blocker 1).** The quadratic is gone. Client with 10,000 invoices (each with a payment, a credit note and a trust withdrawal; 1,000 corrections), APPLIED credit on every Nth invoice and half of those entries reversed in part. Route medians of 7:
+
+| Client's credit entries (reversed) | Statement | Summary | Period page of 200 |
+|---|---|---|---|
+| 1,000 (500) | 244 ms | 227 ms | 265 ms |
+| 3,333 (1,666) | 254 ms | 231 ms | 304 ms |
+| 10,000 (5,000) | 367 ms, then **306 ms** on re-run | 378 ms, then **272 ms** | 336 ms, then 325 ms |
+
+In round 3 the 10,000 case took 22.8 s and answered 500.
+
+**Firm scale.**
+* **Firm with 50,000 other invoices, 50,000 credit entries and 66,000 trust entries:** statement 297 ms, summary 252 ms, period page 300 ms.
+* **The same firm, plus the client's 10,000 credit entries:** 356 ms, 319 ms and 359 ms.
+* **Read as load:** the base mix with no credit measured 256 ms in this window against 186 ms idle in round 3, so the load adds roughly 1.2-1.4×. On that basis I read the 300-380 ms figures as load; scaled down they come to about 230-280 ms.
+* **Not confirmed idle:** the 10,000-entry case is above the PR's S8 sizes (3,333) and should get one idle re-time before the demo. S8 itself measured 105 ms (3,333 with reversals) and 270 ms (firm scale) through the route in this window.
+
+**Cursor through odd dates (R3-Minor 1).** With payments received 1999-12-31 and 3001-01-01 (SQL), a walk with `pageSize=1` passes both: INVOICE, −100, −200, −100 @3001. The route's page 2 is 200.
+
+**Cross-page balances:**
+* **Pages against one page:** 20 lines across INVOICES and TRUST in CAD and USD, with pre-issue payments and kept and applied credit. Pages of 1, 2, 3 and 7 are each identical to one page of 200. The balances chain, the last line equals closing, and today's period in pages of 2 equals one page.
+* **Pre-issue order** is still received order (1100, 1300, 1200, 1400, 1500).
+* **Trust across a period edge** (the reviewer's R3-2): trust lines whose time order differs from their seq were seeded with SQL. Period 2-4 Jan holds the seq 2, 3 and 5 lines; seq 4 is outside the period but sorts between them. Each period line's balance equals its running balance over all lines (49000, 47000, 35000, the last including the out-of-period −4000). Pages of 1, 2 and 3 equal one page, both with and without the period.
+* **Known limit, not new:** the period's TRUST opening and closing are cut by time while the balances run by seq. Where the two orders differ, opening + the first line ≠ that line's balance. This is round 1's reviewer Minor 3, which only concurrent writers near midnight reach.
+
+**Still held:**
+* kept credit: 5000, 0, 0, 10000, −5000, 12000, 0, 3000 after the draft is issued; all equal owed − waiting;
+* trust: 35000 = owed = list due, and the trust closing 90000 = the trust reads;
+* company client; C5; day edges (7 windows);
+* the input probes: 422 or 404, never a 500.
+
+All my scratch databases are dropped.
