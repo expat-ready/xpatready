@@ -224,7 +224,16 @@ Rows whose "Enforced by" names a whole machine enforcer (23 of 156: e.g. P-501, 
 
 **Blocked:** OS-05 (P-731 ruling, then OS-3), OS-14 (fixed by OS-11, #3506), OS-71 (PF-8c), OS-25 (Lead ruling on `--decide`, asked on #3683).
 
-**Next, in order:** OS-18b (after #3703 merges), OS-19 (a CI run cancelled by a person is an ACT), OS-20 (three merges of main: "lands next"), OS-21 (two open PRs on a hot file), OS-22, OS-23, then the rest of Tier 2 (OS-24 with OS-53; check what flow-constraint.py already prints first).
+**Added by Lead 5 (13:1x IST, founder ruling 25 Nov 13:04 IST "Yes, start now"; rows on records PR #3711): OS-72, OS-73, OS-77b are Tier 1, after the Tier 1 items in hand.** Design: design/self-checking-builders-2026-11-25.md (on #3711 until it merges). Each is one PR, under 800 lines, warning only, pipeline queue; none changes a merge queue, gate or required check.
+* **OS-72, #3715** (`claude/trusting-hopper-7jun9g-os72`): the root `.claude/skills/verify` skill, gated by `lanes.txt` (empty = off), plus `prototype/studio/tools/verify-plan.sh`. The plan takes the nearest 4 capabilities, on CI's scoring data, on the lane's own port. Approved on f0fe070ad after two rounds and ready; the Lead reads, labels, and names the trial lane in lanes.txt. **OS-72b** follow-ups from round 2:
+  * put the data regex in a variable (bash 3.2);
+  * reserve ports 4438/4448/4458/4468 for verify in WAY-OF-WORKING;
+  * qa's held checkpoint packs off CI;
+  * the `next` skill line (the question for the Lead on #3715).
+* **OS-73 (next):** LCP 2.5 s / CLS 0.1 read in the Playwright packs (acceptance/lib/browser.ts, the walker: `PerformanceObserver` for largest-contentful-paint and layout-shift), printed as one line per page, warning only; verify's check row 3 then reads it; the Lead writes STANDARDS §9.
+* **OS-77b (after it):** every API route signed out and with the wrong role refuses 401/403; list the routes from the Nest controllers, call each on an isolated copy, print the table; a planted open route fails the fixture test; warning only in CI.
+
+**Next, in order:** OS-73, OS-77b, then OS-18b (after #3703 merges), OS-19 (a CI run cancelled by a person is an ACT), OS-20 (three merges of main: "lands next"), OS-21 (two open PRs on a hot file), OS-22, OS-23, then the rest of Tier 2 (OS-24 with OS-53; check what flow-constraint.py already prints first).
 
 **Lessons (add to OS-PM 1's):**
 * **Read main first:** OS-25 was mostly built (founder-report.py) and OS-17 fitted known-failures.tsv with no new lead-watch step; a known-failures line is the cheapest ACT.
