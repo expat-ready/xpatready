@@ -35,7 +35,8 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 # Not an ask (review 2 of #3665): the Lead offering to do it, or telling the founder not to.
-NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s)|\b(should|must|need|do|does)( not|n.t)\b|\bno need\b|\bnever\b)(\s+[\w#-]+){0,4}", I)
+NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))(\s+[\w#][\w#-]*){0,4}"  # an offer: the verb after it is one the Lead does
+  r"|(\b(should|must|need|do|does)( not|n.t)\b|\bno need\b|\bnever\b|\bnothing (left )?for you( to do)?\b)(\s+[\w#][\w#-]*)?(\s+(?!(please|pls|could|can|would|will|just|then|now|close|archive|merge|reopen|dispatch|trigger|press|click|label|run|add|open|convert|mark|edit)\b)[\w#][\w#-]*){0,3}", I)  # a "not": the thing not to do, then up to 3 more words, never "please" or an ask verb
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
@@ -52,7 +53,8 @@ def asks(chunk, need_you):
         # Review 3 of #3665: an offer or a "not" span (with the next four words) is cut out, never the whole sentence, so
         # "No need to wait: please merge #12" still asks and "Would you like me to merge it?" does not.
         k = NOT_ASK.sub(" OFFERED ", s) if need_you else s
-        if k and ASK.search(k) and (not need_you or YOU.search(k) or IMP.search(k)) and not ONLY.search(s):
+        imp = any(IMP.search(p) for p in re.split(r"OFFERED[\s,:;-]*", k))   # an imperative right after a cut span counts too
+        if k and ASK.search(k) and (not need_you or YOU.search(k) or imp) and not ONLY.search(s):
             out.append(re.sub(r"\s+", " ", s)[:140])
     return out
 if mode == "text":

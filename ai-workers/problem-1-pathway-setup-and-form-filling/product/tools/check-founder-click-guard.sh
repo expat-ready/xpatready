@@ -70,6 +70,12 @@ for m in 'No need to wait: please merge #12 now.' 'I can'"'"'t, so could you arc
          'Never mind the earlier note, please close #3601.' 'Please merge #12, there is no need to wait for me.' 'Could you merge it before the demo, I should not touch it?' \
          'Please close all of the old branches.'; do
   r=$(stop lead "$m"); ok "refused (#3665 review 3, an offer or no-need clause beside an ask): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'No need to wait, merge #12.' 'Never mind me please merge #12.' "You don't need to wait please merge #12." 'Do not forget to merge #12 please.' \
+         'No need to wait - merge #12 please.' 'Do not wait for me, just merge #12.'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 4, the cut stops before the ask): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")
+ok "the Python program inside the bash single quotes has no ' (one would end it, and every check would pass silently)" "$([ "$q" = 0 ] && echo 1)" "$q line(s) with '"
+r=$(stop lead 'Nothing for you to do: I will close #3601 myself.'); ok "passes (#3665 review 4): nothing for you to do" "$([ "$r" = pass ] && echo 1)" "got $r"
 for m in 'I can merge it now if you want.' 'Shall I close the stale issue?' 'Archive of the old lanes is done.' 'Next I merge #12 and archive the forms-2 session.'; do
   r=$(stop lead "$m"); ok "passes (#3665 review 3): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 for m in 'Can you archive the two old forms sessions?' 'Please archive both stale forms-2 and runtime-1 sessions.' 'Please dispatch lead-watch by hand.' \
