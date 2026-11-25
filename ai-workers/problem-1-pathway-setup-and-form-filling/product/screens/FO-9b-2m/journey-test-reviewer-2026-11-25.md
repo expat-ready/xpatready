@@ -35,3 +35,6 @@ After each refused write: `money_invoice`, lines, `money_payment`, trust entries
 
 ## Not tested
 A real screen reader and an intended user's own walk: there is no UI (D17 and D20 stay with the founder). The race against the real merge route (review m3).
+
+## Round 2 (head 538a906e9e459e5fd15601945d524042caaa3cbc)
+Journey 8 now holds. The route line: user-O, seeing no client, depositing on the merged-away person, gets 404; a trust request also gets 404. Nothing is written. Journey 10 is now covered by `liveParty`'s 404 for an unseen merged-away party. "Correct data" rises to 1: **8 of 8 applicable (10/10 scaled): pass.**

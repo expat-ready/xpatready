@@ -55,3 +55,42 @@ I did not run a real two-process race against the merge route. I did not walk an
 
 Verdict: Changes a22b7445c826ed6e65f7e672b83574c0fdb782b1
 Reviewer: Changes a22b7445c826ed6e65f7e672b83574c0fdb782b1
+
+## Round 2 (diff only: `git diff a22b7445c..538a906e9`)
+
+I read the diff at 538a906e9. I ran the suites at that head. I ran six mutations on a scratch copy of it (`git archive`), each restored after its run. Nothing in the checkout was changed besides this section.
+
+**Each fix, and whether it goes red when removed**
+* **M1 (deposit before C5): fixed.** `trust/service.ts:191` now runs after `partySeen` (`:190`). It is still under the trust lock and before the first write. A replay before it writes nothing.
+  * Mutation B moved the call back and also removed the new 404 in `liveParty`. The new route line (user-O deposit and trust request, 404) fails, as does the m1 line.
+  * Moving the call back alone stays green, because `liveParty`'s own 404 covers it. Two layers guard the same rule, which is acceptable.
+* **m1 (unseen payee or payer): fixed in `liveParty`.** `live-party.ts:40` answers 404 for a merged-away party the caller's `seen.parties` does not hold. It runs only after `if (!r.merged) return`, so a live party, and any caller with ALL, behaves exactly as before; nothing regresses for live clients. Mutation A (line removed) makes the m1 line fail.
+* **m2 (race lines wait on pg_locks): fixed.** The race lines now poll `pg_locks` for an ungranted request that the merge session holds before committing (`test:200-206`), so a false green from a late request is gone. Mutation F (no FOR KEY SHARE) makes all four race lines fail with `waited:false`, 201.
+* **m3 (real merge Busy line): fixed.** The new line runs the real `mergeRecords` on a second connection while a money transaction holds FOR KEY SHARE. It expects `MergeBusy` and nothing merged. Under mutation F it fails: the merge went through. The re-read that gives HAS_MONEY after Busy is still shown by code reading (`review.ts:372`), not by a test. That is acceptable: Busy is the part the lock adds.
+* **n1 (comment): done.** `live-party.ts:10-15` names the writers it does not guard and why.
+* **Breaker m2 (chain): fixed.** The survivor is the live end of the chain, at most 20 hops, same table, with plain reads; the end is the record the 409 names. Mutation E (chain not followed) makes the chain line fail.
+* **Breaker m3 (draft lines and Bill-to): fixed.** `drafts.ts:106` and `:152` run after the invoice's FOR UPDATE and C5's `seen()`. Mutations C and D each make their line fail; later lines also fail through the shared baseline (n2, a Nit, left as is).
+  * Lock order: invoice row, then FOR KEY SHARE on the person. Elsewhere it is trust lock, then person, then invoice. These orders cannot deadlock: FOR KEY SHARE never conflicts with another money writer, and the merge, the only conflicting locker, never waits (NOWAIT).
+
+**Regressions: none. All green at 538a906e9:**
+
+| Suite | Result |
+|---|---|
+| `check_fo9b_2m_money_merged` | 29/29, run twice |
+| `check_fo7b_invoices` | 108/108 |
+| `check_fo7b_c5_scope` | 37/37 |
+| `check_fo7t_trust` | 62/62 |
+| `check_fo7g3_bill_to` | 30/30 (the Bill-to route changed) |
+| `check_fo7t_money_out` | 51/51 |
+| `check_fo7lk_lock_order` | 16/16 |
+
+**New Nit (n5):** in `addLine`, `liveParty` (`drafts.ts:106`) runs before the 403 edit-key check (`:107`). A caller who sees the invoice but did not start the draft gets 409 instead of 403 on a merged-away client's draft. The caller already sees the invoice, so nothing leaks.
+
+**Open:** n2, n3 and n4 are Nits, not required. No Blocker, Major or Minor remains open.
+
+Journey score updated: "Correct data" is now 1 (journey 8 gives 404), so 8 of 8 applicable criteria (10/10 scaled): pass.
+
+**Head moved to acfe695784539c155249afd7538845e34c723898:** `git diff --stat 538a906e9..acfe69578` shows only `product/screens/FO-9b-2m/break-report.md`, 13 added lines (the breaker's Round 2 records). No code or test changed, so the review of 538a906e9 applies to this head.
+
+Verdict: Approve acfe695784539c155249afd7538845e34c723898
+Reviewer: Approve acfe695784539c155249afd7538845e34c723898
