@@ -27,6 +27,7 @@ import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { asBypass, touchFirms, withFirm } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { onSigningCompleted, SIGNING_ACTOR } from "../retainers/on-signing-completed.ts";
+import { retainerSigned } from "../retainers/signed-hooks.ts";
 import { signingHandlerFor, signingMail, signingPort } from "./handlers.ts";
 import { sendPleaseSign } from "./link-mail.ts";
 import { SIGNING_WEBHOOK } from "./webhook.bypass.ts";
@@ -241,7 +242,7 @@ export class Signing {
       await tx.foSignatureRequest.update({ where: { id: q.id }, data: { status: "SIGNED", endedAt: now } });
       const r = await moveRetainer(["CLIENT_SIGNED"], "SIGNED");
       if (r.count !== 1) conflict("The agreement changed at the same time (withdrawn or signed on paper).", "CHANGED");
-      const ret = await tx.foRetainer.findFirstOrThrow({ where: { firmId, id: q.document_id }, select: { id: true, prospectId: true, representativeStaffId: true } });
+      const ret = await tx.foRetainer.findFirstOrThrow({ where: { firmId, id: q.document_id }, select: { id: true, prospectId: true, representativeStaffId: true, kind: true, signerPersonId: true, companyId: true, subject: true } });
       const fees = await tx.foRetainerFeeRow.findMany({ where: { firmId, versionId: q.document_version_id }, orderBy: { position: "asc" } });
       const firm = await tx.platformFirm.findFirstOrThrow({ where: { id: firmId }, select: { id: true, key: true } });
       const payload = SigningCompletedPayload.parse({
@@ -266,6 +267,10 @@ export class Signing {
         await this.audit.record(tx, { firmId, actor: SIGNING_ACTOR, action: "signing.win_held", entity: "fo_signature_request", entityKey: q.id, summary: "Signed, but the prospect is not won yet: the win was refused (record the conflict check again, then Convert)",
           detail: { requestId: q.id, retainerId: ret.id, prospectId: ret.prospectId, refusal: code }, before: null, after: { prospectWon: false, refusal: code } });
       }
+      // R1.60 a1: the listeners of a signed retainer version (client money's deposit request), each in its own savepoint.
+      await retainerSigned(tx, this.audit, firmId, { retainerId: ret.id, retainerVersionId: q.document_version_id, version: q.document_version, kind: ret.kind, via: "E_SIGNED",
+        representativeStaffId: ret.representativeStaffId, personId: ret.subject === "COMPANY" ? null : ret.signerPersonId, companyId: ret.subject === "COMPANY" ? ret.companyId : null,
+        prospectId: ret.prospectId, actor: SIGNING_ACTOR, fees: payload.documentKind === "RETAINER" ? payload.fees.map(({ dueOn: _d, ...f }) => f) : [] });
       await tx.moduleEvent.create({ data: { firmId, type: SIGNING_EVENT.SIGNING_COMPLETED, subjectId: q.id, occurredAt: now, payload: payload as Prisma.InputJsonValue } });
       return { received: true as const, applied: true, prospectWon: won, clients: signers.flatMap((x) => (x.personId ? [x.personId] : [])) };
     });

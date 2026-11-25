@@ -4,7 +4,7 @@
 // CS-MV1's MoneyVisibilityPort adapter (PgMoneyVisibility), as FO-7q's reads use it.
 // FO-7t part 3: the To move routes (TrustToMoveController) and the 25-day item on PF-14's job runner, armed when the app
 // starts only once a NotificationPort is bound (PF-18n's NOTIFICATION_PORT); without one it says so once in its log.
-import { Inject, Injectable, Optional, type OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { TrustReads } from "../client-money/trust/reads.ts";
@@ -20,6 +20,8 @@ import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
 import { NOTIFICATION_PORT } from "../platform/notifications/store.ts";
 import { logPort } from "../platform/observability/log.ts";
 import { PgMoneyVisibility } from "../client-money/visibility-adapter.ts";
+import { DEPOSIT_LISTENER, prepareDepositOnSigning } from "../client-money/trust/on-signed.ts";
+import { onRetainerSigned } from "../front-office/retainers/signed-hooks.ts";
 import type { MailPort } from "../../../ports/mail.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
 import { PlatformClock } from "../platform/identity/port.ts";
@@ -43,8 +45,21 @@ export class TrustToMoveJobs implements OnModuleInit {
   }
 }
 
+/** R1.60 a1: the deposit request prepared on signing, as the front office's signed-version listener (in the signing's
+ *  transaction; Needs you through PF-18n's NotificationPort when one is bound, else the request is still prepared). */
+@Injectable()
+export class DepositOnSigning implements OnModuleInit, OnModuleDestroy {
+  private undo: (() => void) | null = null;
+  constructor(@Optional() @Inject(NOTIFICATION_PORT) private readonly notifications?: NotificationPort) {}
+  onModuleInit() {
+    const deps = { audit: auditEvent, notifications: (this.notifications ?? null) as never };
+    this.undo = onRetainerSigned(DEPOSIT_LISTENER, async (tx, firmId, signed) => { await prepareDepositOnSigning(tx, deps, firmId, signed); });
+  }
+  onModuleDestroy() { this.undo?.(); this.undo = null; }
+}
+
 export default { controllers: [TrustController, TrustToMoveController], providers: [
   { provide: TrustMoney, useFactory: (db: Db, c: PlatformClock, mail?: MailPort) => new TrustMoney(db, auditEvent, { now: () => new Date(c.now()) }, mail ?? null, scopeOf(db)), inject: [Db, PlatformClock, { token: MAIL_PORT, optional: true }] },
   { provide: TrustReads, useFactory: (db: Db) => new TrustReads(db, scopeOf(db)), inject: [Db] },
   { provide: TrustToMove, useFactory: (db: Db, c: PlatformClock) => new TrustToMove(db, auditEvent, { now: () => new Date(c.now()) }, scopeOf(db)), inject: [Db, PlatformClock] },
-  TrustToMoveJobs] } satisfies Feature;
+  TrustToMoveJobs, DepositOnSigning] } satisfies Feature;
