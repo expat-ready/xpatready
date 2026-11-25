@@ -133,3 +133,33 @@ Commits `0a11cc94e` (breaker fixes), `272cf71c7` (M4, m1) and `4a4a6509d` (scree
 **Not checked in round 2:** CI on 4a4a6509d; a real screen reader.
 
 Reviewer: Approve 4a4a6509dc9e81ba147286dc453eec7faa125df6
+
+## Round 3 (25 Nov): `git diff 4a4a6509d..c02da9d558987177d3c846d3dfd18d50d209222f`, diff only (the Lead's comment 7155220615)
+Fresh copy `rv7s3a` on :4761, web bundle rebuilt from the clean head. The local database cluster was down, so I started it with `pg_ctl` (only the database, not :4400).
+
+**Verdict: Ship (Approve).** No Blocker or Major is open.
+
+**Suites:**
+* `check_fo7s3a` gave **45/45 twice** on the same database.
+* `check_fo7s1` on that database afterwards: **36/36**.
+* The rewritten screenshots are restored and the copy is stopped.
+
+**The changes:**
+* **A 5xx after the save is "No answer yet": held.** Only a refusal below 500 is shown as "Not recorded" (`record-payment.tsx:61`). The suite's B-M1 round-2 lines (a 504 after the save) pass.
+  * My probe: a slow 503 after the save showed "No answer came back…". Record again replayed it ("…it was not recorded twice."), and the database held exactly one WIRE 2.00 payment.
+* **`cleanReference`: held.** It drops `\p{Default_Ignorable_Code_Point}` and `\p{Bidi_Control}`, and folds only U+FF01-FF5E (`contract.ts:55`).
+  * In Node, it now cleans U+061C, U+034F, U+115F, U+1160, U+3164, U+FFA0, U+180E, U+2066, U+200D, U+FE0F, U+E0041, U+17B4 and U+1D173. This closes r2-m1 for these.
+  * Visible text is kept ("No² ①ﬁ", per the suite).
+* **Close, Escape and X while busy: held.** `confirmClose` and the footer Close share `mayClose` (`record-payment.tsx:44`). In my probe, Escape during a 1.5 s Record left the panel open and asked nothing.
+* **Words after "No answer yet": held.** Both Escape and Close asked "This payment may already be recorded. Close anyway? The invoice shows it if it was." Dismissing kept the panel open. This closes r2-m2.
+* **Focus:** in the "No answer yet" state, focus stays on a button in the panel, not on the page body.
+* **Tests:** B-M1 has 2 new lines, B-M3 is widened, and the B-m1 Close line replaces the Escape step. Each has a pass and a fail.
+
+**New, Minor (Should), not blocking:**
+* **r3-m1:** U+2800 (Braille pattern blank) is neither default-ignorable nor a bidi control, so `cleanReference` keeps it. FO-7b's `money_text_ok` strips it as invisible. "4471"+U+2800, recorded after an existing "4471", **was recorded without the duplicate question** (browser probe).
+  * **Fix:** strip U+2800 too, or better, use FO-7b's own invisible class.
+  * The lasting fix is still FO-7b's duplicate check comparing a cleaned form (the PR's question 2 for the tech lead).
+
+**Not checked in round 3:** CI on c02da9d55; a real screen reader.
+
+Reviewer: Approve c02da9d558987177d3c846d3dfd18d50d209222f
