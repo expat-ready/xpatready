@@ -565,7 +565,7 @@ fp() {  # fp <n> <path> <status> <patch> ... → files-<n>.json with status and 
   while [ $# -ge 3 ]; do a=$(jq -c --arg f "$1" --arg s "$2" --arg p "$3" '. + [{filename: $f, status: $s, patch: $p, changes: 1}]' <<< "$a"); shift 3; done
   echo "$a" > "$T/fx/files-$n.json"; }
 MG="$S/prisma/migrations/20261125090000_cases__add_case_notes/migration.sql"
-ADD=$'@@ -0,0 +1,5 @@\n+-- Adds case notes; we never drop or delete one (comment lines are not read)\n+CREATE TABLE "case_note" ("id" TEXT NOT NULL, "case_id" TEXT NOT NULL);\n+ALTER TABLE "case_note" ADD CONSTRAINT "case_note_case_fkey" FOREIGN KEY ("case_id") REFERENCES "case"("id") ON DELETE CASCADE;\n+CREATE INDEX "case_note_case_idx" ON "case_note"("case_id");'
+ADD=$'@@ -0,0 +1,5 @@\n+-- Adds case notes; we never drop or delete one (comment lines are not read)\n+CREATE TABLE "case_note" ("id" TEXT NOT NULL, "case_id" TEXT NOT NULL);\n+CREATE INDEX "case_note_case_idx" ON "case_note"("case_id");\n+ALTER TABLE "case" ADD COLUMN "notes" TEXT;'
 prj 9 $HEAD1; cmt 9 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
 fp 9 "$MG" added "$ADD"; run label 9
 ok "P-823 plant: an additive migration (ON DELETE CASCADE onto its own new table and a comment saying drop are not destructive), drawn: labelled, \"Lead after-read owed: migration\" and after-read: other" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q "^COMMENT 9 \*\*Queue gate (P-823):\*\* Lead after-read owed: migration #9 $HEAD1 (1 in 3" <<< "$log" && grep -qx 'LABELNAME 9 after-read: other' <<< "$log" && echo 1)" "$out / $log"
@@ -630,6 +630,16 @@ a sequence owned by an existing column|CREATE SEQUENCE "s" OWNED BY "User"."id";
 an insert before the CREATE TABLE of its name|INSERT INTO "User" ("id") VALUES (99); CREATE TABLE "User" ("id" INT);
 a cascade before the CREATE TABLE of its name|ALTER TABLE "User" ADD CONSTRAINT "f" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE CASCADE; CREATE TABLE "User" ("id" INT);
 a comment overwritten|COMMENT ON TABLE "User" IS 'pwned';
+Lead 12:50 narrowing: an enum|CREATE TYPE "Kind" AS ENUM ('a', 'b');
+Lead 12:50 narrowing: ADD VALUE|ALTER TYPE "Kind" ADD VALUE 'c';
+Lead 12:50 narrowing: ADD COLUMN with a default|ALTER TABLE "case" ADD COLUMN "n" TEXT DEFAULT 'x';
+Lead 12:50 narrowing: ADD COLUMN of an enum type|ALTER TABLE "case" ADD COLUMN "k" "Kind";
+Lead 12:50 narrowing: an index on an existing table|CREATE INDEX "i" ON "case"("x");
+Lead 12:50 narrowing: an FK added by ALTER|CREATE TABLE "n" ("id" TEXT); ALTER TABLE "n" ADD CONSTRAINT "f" FOREIGN KEY ("id") REFERENCES "p"("id");
+Lead 12:50 narrowing: an insert into a new table|CREATE TABLE "n" ("id" TEXT); INSERT INTO "n" ("id") VALUES ('a');
+a function call in a new table's DEFAULT|CREATE TABLE "n" ("id" TEXT DEFAULT gen_random_uuid());
+a quoted call in a new table's DEFAULT|CREATE TABLE "n" ("id" BIGINT DEFAULT "setval"('x', 1));
+attribute notation in a new table's CHECK|CREATE TABLE "n" ("id" INT CHECK ("User".audit));
 a user operator in VALUES|CREATE TABLE "t" ("a" INT); INSERT INTO "t" ("a") VALUES (1 ### 2);
 a user operator in a CHECK|ALTER TABLE "User" ADD CONSTRAINT "c" CHECK ("n" ### 1 = 1);
 a user operator in a DEFAULT|CREATE TABLE "t" ("a" INT DEFAULT 1 ### 2);
@@ -641,19 +651,17 @@ while IFS='|' read -r what sql; do [ -n "$what" ] || continue
   ok "P-823 plant (#3661 review 2-3): $what: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
 done <<< "$R2"
 ALLF=$(cat <<'SQL'
-@@ -0,0 +1,8 @@
-+CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "p" TEXT REFERENCES "p"("id") ON DELETE CASCADE, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
-+ALTER TYPE "Kind" ADD VALUE IF NOT EXISTS 'd';
-+CREATE TYPE "Kind" AS ENUM ('a', 'b');
-+ALTER TABLE "case" ADD COLUMN "kind" "Kind", ADD CONSTRAINT "k" FOREIGN KEY ("p") REFERENCES "p"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-+CREATE UNIQUE INDEX "i" ON "case"("kind");
-+ALTER TYPE "Kind" ADD VALUE 'c';
-+CREATE INDEX "n_at" ON "n" ("at");
-+INSERT INTO "n" ("id") VALUES (E'a\'b');
+@@ -0,0 +1,6 @@
++CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "amt" DECIMAL(65,30), "p" TEXT REFERENCES "p"("id") ON DELETE CASCADE, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
++CREATE UNIQUE INDEX "n_p_key" ON "n"("p");
++ALTER TABLE "case" ADD COLUMN "kind" TEXT;
++ALTER TABLE "case" ADD COLUMN "score" DOUBLE PRECISION NOT NULL;
++ALTER TABLE "case" ADD COLUMN "seen_at" TIMESTAMP(3);
++ALTER TABLE "case" ADD COLUMN "tags" TEXT[];
 SQL
 )
 fp 9 "$MG" added "$ALLF"; run label 9
-ok "P-823: an additive migration of every allowed form (a new table with an FK, enum, ADD VALUE IF NOT EXISTS, ADD COLUMN and a RESTRICT FK, index, an insert into the new table): labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
+ok "P-823: an additive migration of the three allowed forms (the tech lead, 12:50 IST): a new table, an index on it, ADD COLUMN of a built-in type with no default: labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$MG" modified "$ADD"; run label 9
 ok "P-823 plant: an edit to a migration (status modified), additive lines or not: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'an edit, rename or removal of a migration' <<< "$out" && echo 1)" "$out / $log"
 fp 9 "$MG" removed ""; run label 9

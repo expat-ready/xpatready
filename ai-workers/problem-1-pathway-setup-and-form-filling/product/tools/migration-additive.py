@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """P-823: is a migration's added SQL additive? Used by queue-gate.sh destructive() (read first unless this says yes).
 
-An allowlist, not a word list (reviews of #3661): the added lines of a new migration.sql (GitHub's patch, on stdin) are
-additive only when every statement, read by a small SQL scanner, is one of
+An allowlist, not a word list (reviews of #3661), narrowed by the tech lead (Lead 5, 25 Nov 12:50 IST: "CREATE TABLE/INDEX
+on new tables and ADD COLUMN with a built-in type and no default; everything else is read first"). The added lines of a
+new migration.sql (GitHub's patch, on stdin) are additive only when every statement, read by a small SQL scanner, is one
+of the three below; the rest of this list is the history of what each review refused and stays refused:
   CREATE TABLE <name> (...)          not AS, OF, PARTITION OF or INHERITS
   CREATE [UNIQUE] INDEX ... ON <t>   (any table: a short write lock on an existing one, review m5 noted)
   CREATE SEQUENCE · CREATE TYPE <name> AS ENUM (...) · ALTER TYPE <name> ADD VALUE '...'   (never COMMENT ON)
@@ -131,22 +133,16 @@ def judge(patch):
         u, ok = s.upper(), False
         if NEVER.search(s) or calls(s) or dots(s) or ops(s):
             return "no: " + s[:80]
-        if re.match(r"^CREATE TABLE (IF NOT EXISTS )?" + NAME + r" \(", s, I):
+        # The tech lead's narrowing (Lead 5 on #3661, 25 Nov 12:50 IST, P-610): "CREATE TABLE/INDEX on new tables and ADD
+        # COLUMN with a built-in type and no default; everything else is read first". It grows only with evidence.
+        if re.match(r"^CREATE TABLE " + NAME + r" \(", s, I):
             ok = not TABLE_BAD.search(s[s.index("("):])
-        elif re.match(r"^CREATE (UNIQUE )?INDEX\b", s, I) or (re.match(r"^CREATE SEQUENCE\b", s, I) and not re.search(r"\bOWNED BY\b", s, I)) \
-                or re.match(r"^CREATE TYPE " + NAME + r" AS ENUM \(", s, I) or re.match(r"^ALTER TYPE " + NAME + r" ADD VALUE (IF NOT EXISTS )?'x' ?$", s + " ", I) \
-                :   # COMMENT ON is never additive: it replaces or empties a comment (review 4 m1, review 5 m1-m2); Prisma writes none
-            ok = True
-        elif re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + r" ADD\b", s, I):
-            t = re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME, s, I)
-            new = key(t.group(3) + (t.group(4) or "")) in created   # a table this migration creates has no rows to cascade
-            rest = re.sub(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + " ", "", s, flags=I)
-            ok = (new or not re.search(r"\bON (DELETE|UPDATE) (CASCADE|SET)\b", rest, I)) and not re.search(r"\bNOT VALID\b", rest, I) and \
-                not ALTER_BAD.search(re.sub(r"\bON (UPDATE|DELETE) (SET (NULL|DEFAULT)|NO ACTION)\b", "", rest, flags=I))   # an FK onto existing rows never cascades a delete (review 3 M5)
-        else:   # CREATE TRIGGER is never additive: its function may be any existing one (review 3 B3)
-            m = re.match(r"^INSERT INTO " + NAME + r"( \([^()]*\))? VALUES ", s, I)
-            if m:
-                ok = key(m.group(1) + (m.group(2) or "")) in created and "ON CONFLICT" not in u
+        elif re.match(r"^CREATE (UNIQUE )?INDEX (" + NAME + r" )?ON (ONLY )?" + NAME + r"( USING btree)? ?\(", s, I):
+            t = re.match(r"^CREATE (UNIQUE )?INDEX (" + NAME + r" )?ON (ONLY )?" + NAME, s, I)
+            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index on a table this migration creates
+        elif re.match(r"^ALTER TABLE (IF EXISTS )?(ONLY )?" + NAME + r" ADD COLUMN (IF NOT EXISTS )?" + NAME + " (" + "|".join(sorted(BUILTIN | {"double"})) +
+                      r")( precision)?( ?\(\d+( ?, ?\d+)?\))?(\[\])?( NOT NULL| NULL)?$", s, I):
+            ok = True   # one column of a built-in type, no default, no constraint
         if not ok:
             return "no: " + s[:80]
     return "yes"

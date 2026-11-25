@@ -696,15 +696,12 @@ P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
-P823 allow|product/tools/migration-additive.py|s/^        if NEVER.search(s) or/        if False and/|check-queue-gate.sh
-P823 block comment|product/tools/migration-additive.py|s/if two == "\/\*":/if False:/|check-queue-gate.sh
-P823 dollar|product/tools/migration-additive.py|s/^        if c == "\$":/        if False:/|check-queue-gate.sh
-P823 calls|product/tools/migration-additive.py|s/^        if NEVER.search(s) or calls(s):/        if NEVER.search(s):/|check-queue-gate.sh
-P823 created|product/tools/migration-additive.py|s/ in created and "ON CONFLICT" not in u/ or True/|check-queue-gate.sh
+P823 calls|product/tools/migration-additive.py|s/ or calls(s) or dots(s) or ops(s):/ or dots(s) or ops(s):/|check-queue-gate.sh
 P823 quoted call|product/tools/migration-additive.py|s/^        if not re.search(r'(\\bREFERENCES/        if False and re.search(r'(\\bREFERENCES/|check-queue-gate.sh
-P823 cascade|product/tools/migration-additive.py|s/ok = (new or not re.search/ok = (True or not re.search/|check-queue-gate.sh
-P823 dots|product/tools/migration-additive.py|s/ or calls(s) or dots(s):/ or calls(s):/|check-queue-gate.sh
+P823 dots|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or ops(s):/|check-queue-gate.sh
 P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-queue-gate.sh
+P823 narrow index|product/tools/migration-additive.py|s/^            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index/            ok = True   # an index/|check-queue-gate.sh
+P823 narrow alter|product/tools/migration-additive.py|s/^            ok = True   # one column of a built-in type, no default, no constraint/            ok = True\n        elif s.upper().startswith("ALTER"):\n            ok = True/|check-queue-gate.sh
 P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
 P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
 P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh
