@@ -401,8 +401,9 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
 31 E-c words|product/tools/founder-click-guard.sh|s/(close.archive.merge.reopen).s+/(Xclose)\\s+/|check-founder-click-guard.sh
-31 E-c run|product/tools/founder-click-guard.sh|s/.bdispatch.s+/\\bXdispatch\\s+/|check-founder-click-guard.sh
-31 E-c imp|product/tools/founder-click-guard.sh|s/.edit.close.archive.merge.dispatch.label"/|edit"/|check-founder-click-guard.sh
+31 E-c run|product/tools/founder-click-guard.sh|s/.b(dispatch.trigger).s+((the/\\bXdispatch\\s+((the/|check-founder-click-guard.sh
+31 E-c imp|product/tools/founder-click-guard.sh|s/\(.edit\).close.archive.merge.dispatch.trigger.label"/\1"/|check-founder-click-guard.sh
+31 E-c offer|product/tools/founder-click-guard.sh|s/ and not (need_you and NOT_ASK.search(s)):/:/|check-founder-click-guard.sh
 31 E-c ask|product/tools/founder-click-guard.sh|s/needs you.(^.\[\\s\*(-\])ask:/needs you/|check-founder-click-guard.sh
 HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
 HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh

@@ -28,15 +28,18 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   # ENF-778a E-c (P-778): "also matches close, archive, reopen, label, dispatch, Run workflow, merge and press"
   # The verb and its own object (review of #3665: a bare "press" or "dispatch" blocked "Press coverage is fine", "the
   # nightly dispatch result"; "merge conflicts on the branch" is no ask): the, this, its, up to two words, then the thing.
-  r"|\b(close|archive|merge|reopen)\s+((the|this|that|its)\s+)?([\w#-]+\s+){0,2}(#\d+|prs?|pull requests?|issues?|sessions?|lanes?|branch(es)?|it|them)\b"
-  r"|\bdispatch\s+((the|this|that|its)\s+)?([\w-]+\s+){0,2}(workflows?|runs?|nightly|jobs?|#\d+|it)\b|\brun (the |this )?workflow\b"
+  r"|\b(close|archive|merge|reopen)\s+((the|this|that|its|both|all)\s+)?((?!(of|on|in|at|for|to|from|with|by|after|before)\b)[\w#-]+\s+){0,4}(#\d+|prs?|pull requests?|issues?|sessions?|lanes?|branch(es)?|it|them)\b"
+  r"|\b(dispatch|trigger)\s+((the|this|that|its)\s+)?((?!(of|on|in|at|for|to|with|after|before)\b)[\w#-]+\s+){0,3}(workflows?|runs?|nightly|jobs?|#\d+|it|by hand|from the actions)\b"
+  r"|\b(dispatch|trigger)\s+[\w-]+(\.ya?ml)?\s+by hand\b|\brun (the |this )?workflow\b"
   r"|\bpress\s+((the|this|that|its)\s+)?([\w-]+\s+){0,2}(button|run workflow|merge|approve|edit|return|enter|ready|re-?run|#\d+)\b"
   + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
+# Not an ask (review 2 of #3665): the Lead offering to do it, or telling the founder not to.
+NOT_ASK = re.compile(r"\b(would you like me to|do you want me to|want me to|shall i|should i|i can)\b|\b(should|must|need|do|does)( not|n.t)\b|\bno need\b|\bnever\b", I)
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
-  r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|label"
+  r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
   r"|run (the )?workflow(?! (was|is|ran|has)\b))\b", I)   # E-c verbs as a plain command too (review of #3665)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
@@ -46,7 +49,7 @@ def asks(chunk, need_you):
     out = []
     for s in re.split(r"(?<=[.!?])\s+|\n+|;\s+|\s\(\w\)\s", chunk):
         s = s.strip(" *-|>")
-        if s and ASK.search(s) and (not need_you or YOU.search(s) or IMP.search(s)) and not ONLY.search(s):
+        if s and ASK.search(s) and (not need_you or YOU.search(s) or IMP.search(s)) and not ONLY.search(s) and not (need_you and NOT_ASK.search(s)):
             out.append(re.sub(r"\s+", " ", s)[:140])
     return out
 if mode == "text":

@@ -63,6 +63,12 @@ for m in 'Press coverage is fine for now.' 'Dispatching the qa lane now, so you 
 for m in 'Archive the forms-2 session.' 'Merge #2413.' 'Dispatch the nightly.' 'Run workflow on the nightly.' 'Label #2413 blocked.' \
          'Please archive it.' 'Could you merge it?' 'Please label the issue blocked.' 'Please run the workflow.' 'Could you dispatch it?'; do
   r=$(stop lead "$m"); ok "refused (#3665 review): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'Merge of #2413 landed at 10:02.' 'Dispatch of the nightly finished; run 4551 is green.' 'Would you like me to merge it now?' \
+         'You should not merge it yourself; the queue merges it on green.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 2, a report or an offer): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'Can you archive the two old forms sessions?' 'Please archive both stale forms-2 and runtime-1 sessions.' 'Please dispatch lead-watch by hand.' \
+         'Could you trigger the nightly from the Actions tab?'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 2): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
 printf '%s\n' '**Needs you:** archive the forms-2 session; dispatch the nightly' '- ask: Run workflow on lead-watch by hand' '| A300 | the Lead archives its own lanes | not an ask |' > "$T/STATE2.md"
 out=$(bash "$G" --state "$T/STATE2.md")
 ok "lead-watch (E-c): Needs you and ask lines with archive, dispatch, Run workflow are flagged" "$([ "$(grep -c '^ACT' <<<"$out")" -ge 3 ] && grep -q 'archive the forms-2' <<<"$out" && grep -q 'dispatch the nightly' <<<"$out" && grep -q 'Run workflow on lead-watch' <<<"$out" && ! grep -q A300 <<<"$out" && echo 1)" "$out"
