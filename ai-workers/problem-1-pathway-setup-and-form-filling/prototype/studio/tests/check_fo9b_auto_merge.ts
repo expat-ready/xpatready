@@ -254,6 +254,12 @@ try {
     await jobs.runDue();
     ok("FO-9b 2b follow-ups fail (review m-r3-4, break R3-m2): one email with two different unreadable phones, or a readable and a different unreadable one, is never merged by itself: both stay, the pair on To review",
       live(u1, u2) === 2 && (await listedPair(db, A, pairOf(u1, u2))) === "OPEN" && live(v1, v2) === 2 && (await listedPair(db, A, pairOf(v1, v2))) === "OPEN", { u: live(u1, u2), v: live(v1, v2) });
+    const n1 = await web({ givenNames: "Nia", familyName: "Phone", email: "nia@example.org", phone: "ring the bell" });
+    await jobs.runDue();
+    const n2 = await web({ givenNames: "Nia", familyName: "Phone", email: "nia@example.org", phone: "call evenings" });
+    await jobs.runDue();
+    ok("FO-9b 2b follow-ups fail (review m1 on #3710): two phones with no digits at all, different in their text, are a conflict: both stay, the pair on To review",
+      live(n1, n2) === 2 && (await listedPair(db, A, pairOf(n1, n2))) === "OPEN", live(n1, n2));
     ok("FO-9b 2b follow-ups pass: the same unreadable phone typed another way (the same digits) is no conflict: one record", live(w1, w2) === 1, live(w1, w2));
   }
   // m-r3-1, R3-m3: the burst window is measured from the job's own person, and ties go to the oldest partner first, so
@@ -286,7 +292,7 @@ try {
     const l1 = await web({ givenNames: "Rae", familyName: "Run", email: "rae@example.org" });
     replica(`update fo_dup_review set first_seen_at = clock_timestamp() + interval '1 hour' where id = '${pairOf(s1, x1)}'`);
     await jobs.runDue();
-    ok("FO-9b 2b follow-ups fail (review m-r3-2): a pair first seen after the run started (the database's clock) is never followed: L into S, X stays, its pair with S on To review",
+    ok("FO-9b 2b follow-ups fail (review m-r3-2): a pair first seen after the run started is never followed: L into S, X stays, its pair with S on To review",
       sql(`select merged_into_id from fo_person where id = '${l1}'`) === s1 && live(s1, x1) === 2 && (await listedPair(db, A, pairOf(s1, x1))) === "OPEN", { into: sql(`select string_agg(coalesce(merged_into_id::text, '-'), ',') from fo_person where id in ('${s1}', '${x1}', '${l1}')`) });
   }
 

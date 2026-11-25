@@ -10,7 +10,7 @@
 //   (no person: nothing to do). Then each OPEN pair of the new person, best first, in its own transaction, through
 //   mergeIfSafe's `arrival` rules (the record on file keeps its values and never gains an email or phone; a differing
 //   second key or a copied consent refuses); never two people merged before. After a merge, the rest of the same burst
-//   (people who matched the merged-away record and arrived within BURST of it). A refusal leaves the pair on To review;
+//   (people who matched the merged-away record and arrived within BURST of the job's own person). A refusal leaves the pair on To review;
 //   Busy throws, so the queue tries again (DEFAULT_RETRY), and once its tries are spent the pair stays on To review.
 // * One door path: arrive() calls queueArrivalMerge for a new person (web form, hand-added lead, booking page), with
 //   its own ports' queue, else the one the running app registered (this file's provider, features/front-office-auto-merge.ts).
@@ -95,7 +95,7 @@ export async function mergeArrival(db: PrismaClient, firmId: string, personId: s
     if (!merged) break;
     first ??= merged; merges++;
     // The rest of a burst (break m1): the survivor's OPEN pairs, written before this run, with someone who also matched
-    // the record just merged away and who arrived within BURST of it (never old pairs a person left on To review,
+    // the record just merged away and who arrived within BURST of the job's own person (never old pairs a person left on To review,
     // review m-r3). The record on file never gains a contact key here (NEW_CONTACT), so no new match is made (M-r1).
     const [m] = await db.$queryRaw<{ s: string; l: string }[]>`select "survivor_id"::text as s, "loser_id"::text as l from "fo_dup_merge" where "firm_id" = ${firmId}::uuid and "id" = ${merged}::uuid`;
     if (!m) break;

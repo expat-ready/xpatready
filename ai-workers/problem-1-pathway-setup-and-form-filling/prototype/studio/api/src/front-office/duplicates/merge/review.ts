@@ -212,7 +212,8 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   const [S, L] = people;
   // Two phones differ by E.164 when both are readable, else by their typed digits (part 2b follow-ups, review m-r3-4,
   // break R3-m2: an unreadable phone never escapes the check).
-  const digits = (v: string | null) => (v ?? "").replace(/\D/g, "");
+  // A phone with no digits at all ("ring the bell") is compared by its text (review m1 on #3710).
+  const digits = (v: string | null) => (v ?? "").replace(/\D/g, "") || (v ?? "").trim().toLowerCase();
   const phonesDiffer = S.phoneE164 && L.phoneE164 ? S.phoneE164 !== L.phoneE164 : !!(S.phone && L.phone) && digits(S.phone) !== digits(L.phone);
   if (opts.arrival && ((S.email && L.email && S.email.toLowerCase() !== L.email.toLowerCase()) || phonesDiffer)) return { refused: ["CONTACT_CONFLICT"] };
   // Round 2 (break R2-B1, review B1-r on #3527): an unchecked arrival never adds an email or phone to the record on file
