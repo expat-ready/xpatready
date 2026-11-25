@@ -64,13 +64,13 @@ svg .lbl{fill:var(--fg);font-size:12px}
 <div class="wrap">
 
 <header style="display:flex;flex-direction:column;gap:8px">
-  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 5 · 25 Nov 2026, 11:50 IST (v4)</div>
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 5 · 25 Nov 2026, 11:27 IST (v4)</div>
   <h1>Where we are, how the machine works, and what we fix today</h1>
   <p class="lede">Every number below comes from GitHub, <span class="mono">origin/main</span> or a measured report (<span class="mono">design/why-targets-missed-2026-11-24.md</span>, 72-hour window to 24 Nov 22:23 IST). Where a figure is an estimate it says so.</p>
 </header>
 
 <section>
-  <div class="eyebrow">v4 · Lead 5 · 25 Nov 11:50 IST · founder ask A385: the whole plan, on plan or not, hourly plan, monitoring, operating system first</div>
+  <div class="eyebrow">v4 · Lead 5 · 25 Nov 11:27 IST · founder ask A385: the whole plan, on plan or not, hourly plan, monitoring, operating system first</div>
   <h2>The 48-hour plan, 25 Nov 12:00 to 27 Nov 12:00 IST</h2>
   <div class="kpis">
     <div class="kpi"><span class="n">62/101</span><span class="s">Works now (R1.86 queued in #3630)</span></div>
@@ -84,10 +84,10 @@ svg .lbl{fill:var(--fg);font-size:12px}
     <thead><tr><th>Line of the plan</th><th>Where it is</th><th>Verdict</th></tr></thead>
     <tbody>
       <tr><td>Product: the Partials for 70–75 by 26 Nov (R1.13, R1.86, R1.87, R1.85, R1.10, R1.29, R1.58, R1.56, R1.55, R1.76)</td><td>Every row has a lane and an open PR. R1.29 (#3527), R1.34 (#3637) and R1.45 (#3645) are in the merge queue. R1.13 and R1.86 have not reached Works by their 12:00 and 13:00 times yet.</td><td><span class="pill warn">70 likely, 75 at risk</span></td></tr>
-      <tr><td>Operating system first (P-827): pipeline queue ahead of product</td><td>#3643 read and labelled 11:4x; it lands in the pipeline queue next</td><td><span class="pill ok">on plan</span></td></tr>
+      <tr><td>Operating system first (P-827): pipeline queue ahead of product</td><td>#3643 read and labelled 11:2x; it lands in the pipeline queue next</td><td><span class="pill ok">on plan</span></td></tr>
       <tr><td>P-822, pr-suites before the label (by 14:00)</td><td>#3632 approved, but its own ci and fast checks are red</td><td><span class="pill warn">late risk</span></td></tr>
       <tr><td>P-823, auto-label after a fresh Approve (by 15:00)</td><td>#3661 still draft, behind #3632</td><td><span class="pill warn">late risk</span></td></tr>
-      <tr><td>One OS list worked in order (P-828)</td><td>#3651 (os-backlog.md, 67 items in 4 tiers) approved and labelled 11:3x; OS-PM told to work Tier 1 in order</td><td><span class="pill ok">on plan</span></td></tr>
+      <tr><td>One OS list worked in order (P-828)</td><td>#3651 (os-backlog.md, 67 items in 4 tiers) approved and labelled 11:1x; OS-PM told to work Tier 1 in order</td><td><span class="pill ok">on plan</span></td></tr>
       <tr><td>Accounts (P-821)</td><td>Closed 11:04: Stripe, AWS, BoldSign, Google, Zoom, WhatsApp open; key check passed; GitHub Stripe secret set. Staging must redeploy before the app sees the new keys.</td><td><span class="pill ok">done, 1 step owed</span></td></tr>
       <tr><td>Budget (P-826: never a limit; prepare the switch)</td><td>4.6%/h average since 07:33; 8%/h in the last half hour. 90% falls between about 15:30 and 21:00 IST.</td><td><span class="pill warn">switch today</span></td></tr>
     </tbody></table></div>
@@ -97,7 +97,7 @@ svg .lbl{fill:var(--fg);font-size:12px}
   <div class="panel scroll"><table>
     <thead><tr><th>Gap (evidence)</th><th>Fix now</th><th>Enforcer, so it never recurs</th><th>List item</th></tr></thead>
     <tbody>
-      <tr><td><b>G1 The Lead is the bottleneck.</b> At 11:2x, 7 lanes waited on a Lead answer: R1.79 round 3, R1.52, R1.107 and R1.60 shapes, R1.112 blocked from posting, OS-PM rulings, the #3643 read.</td><td>All 7 answered by 11:45 (PR comments, plus typing into the sessions)</td><td>ENF-778a E-a (#3667): a Lead turn cannot end while a question waits over 20 min. OS-27: lane questions become queue items with an ACT line.</td><td>OS-09, OS-27 (Tier 1 and 2)</td></tr>
+      <tr><td><b>G1 The Lead is the bottleneck.</b> At 11:2x, 7 lanes waited on a Lead answer: R1.79 round 3, R1.52, R1.107 and R1.60 shapes, R1.112 blocked from posting, OS-PM rulings, the #3643 read.</td><td>All 7 answered by 11:25 (PR comments, plus typing into the sessions)</td><td>ENF-778a E-a (#3667): a Lead turn cannot end while a question waits over 20 min. OS-27: lane questions become queue items with an ACT line.</td><td>OS-09, OS-27 (Tier 1 and 2)</td></tr>
       <tr><td><b>G2 Idle lanes are invisible in GitHub.</b> 24 idle in the claude.ai sidebar; the Mac session list shows none of them.</td><td>Each check reads every lane's last message in the built-in browser (one script, about 90 s)</td><td>OS-49: a merge posts the next step to the waiting lane. New OS-68: the sidebar sweep becomes a lead-watch step that prints one ACT per lane idle over 30 min.</td><td>OS-49, OS-68 (new)</td></tr>
       <tr><td><b>G3 Finished lanes are not archived</b> (R1.104, R1.93, R1.86, R1.69, old R1.58, qa 10, qa 11): they hide the ones that are waiting</td><td>Archive each one after checking its work is pushed, at the 12:03 check</td><td>New OS-69: lead-watch ACT for a lane whose PR merged over 1 h ago and is not archived</td><td>OS-69 (new)</td></tr>
       <tr><td><b>G4 Cloud lanes refused on gh comments</b> (R1.112 stalled; R1.60 worked around it with the GitHub connector)</td><td>Told R1.112 to use the connector</td><td>New OS-70: the brief template and brief-check.sh carry "post through the GitHub connector when gh is refused"</td><td>OS-70 (new)</td></tr>
