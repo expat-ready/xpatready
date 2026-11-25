@@ -60,7 +60,8 @@ jobs:
           if [ "$kind" != code ]; then echo "**pr-suites:** change kind \"$kind\": no suite to run." >> "$GITHUB_STEP_SUMMARY"; echo verdict=none >> "$GITHUB_OUTPUT"; exit 0; fi
           st=0; plan=$(bash "$P/tools/pr-suites-plan.sh" "$range") || st=$?
           if [ "$st" != 0 ]; then echo "::warning title=pr-suites::pr-suites-plan.sh exit $st: no suite ran ($plan)"; echo verdict=fail >> "$GITHUB_OUTPUT"; exit 0; fi
-          v=run; grep -qx 'shards=\[\]' <<< "$plan" && v=none   # no unit: nothing to run, green (P-822)
+          v=run
+          if grep -qx 'shards=\[\]' <<< "$plan"; then v=none; fi   # no unit: nothing to run, green (P-822)
           printf '%s\nmain=%s\nverdict=%s\n' "$plan" "$main" "$v" | tee -a "$GITHUB_OUTPUT"
   parts:
     needs: plan
@@ -127,7 +128,7 @@ jobs:
         if: always()
         env: { SETUP: "${{ steps.setup.outcome }}", OUTCOME: "${{ steps.s.outcome }}" }
         run: |
-          [ "$SETUP" = success ] && [ "$OUTCOME" = success ] && exit 0
+          if [ "$SETUP" = success ] && [ "$OUTCOME" = success ]; then exit 0; fi
           echo "::error title=pr-suites::part ${{ matrix.shard }} of $N: set-up $SETUP, suites ${OUTCOME:-not run}"; exit 1
   pr-suites:
     # The one check the queue gate reads (P-822). !cancelled(): it runs, and is green, when the plan picked no suite, so a
