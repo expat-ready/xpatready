@@ -6,7 +6,8 @@ product/design/engineering-approved-setup.json, read from the same place, item b
   settings  the agents' deny lines in .claude/settings.json (a set: extra lines allowed, a missing one fails); hooks not
             switched off (disableAllHooks); each required hook entry: event + matcher + type command + command, and its
             "if" exactly as the manifest has it (absent means absent: an added "if" can stop a hook from firing);
-  mergify   .mergify.yml: max_parallel_checks, the queue names in order, each queue's batch_size, merge_method and
+  mergify   .mergify.yml: max_parallel_checks, mode, capacities (a key ending in * pins every scope of that family),
+            barrier files, the queue names in order, each queue's batch_size, merge_method and
             required queue and merge conditions (sets), auto_merge_conditions, and no way round the queues (no
             pull_request_rules entry with a merge or queue action, no extends:);
   ci        ci.yml: workflow name, the required jobs, the gate: its check name (a job's name:, else its key: what
@@ -179,7 +180,17 @@ def check_mergify(src, m, rules=None):
     sc = d.get("scopes") if isinstance(d.get("scopes"), dict) else {}
     if "capacities_required" in cfg:
         caps = sc.get("capacities") or {}
-        bad = [f"{k} {caps.get(k)} (want {v})" for k, v in cfg["capacities_required"].items() if caps.get(k) != v]
+        # A key ending in * pins a family (SPD-2, manifest 1.6.0: "mig-*": 1): at least one scope of it, and every one,
+        # in the scope list or the capacities, at exactly that capacity.
+        names = set(caps) | set((((sc.get("source") or {}).get("files")) or {}))
+        bad = []
+        for k, v in cfg["capacities_required"].items():
+            if not k.endswith("*"):
+                if caps.get(k) != v: bad.append(f"{k} {caps.get(k)} (want {v})")
+                continue
+            fam = sorted(n for n in names if str(n).startswith(k[:-1]))
+            if not fam: bad.append(f"no {k} scope (want each at {v})")
+            bad += [f"{n} {caps.get(n)} (want {v})" for n in fam if caps.get(n) != v]
         out.append(item("mergify", "mergify.capacities", "fail" if bad else "pass",
                         ", ".join(f"{k} {v}" for k, v in cfg["capacities_required"].items()), "; ".join(bad) or "as approved"))
     if "barrier_files_required" in cfg:

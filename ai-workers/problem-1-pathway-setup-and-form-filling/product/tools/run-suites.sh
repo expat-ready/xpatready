@@ -9,6 +9,8 @@
 #        batches split across n GitHub machines, each its own fresh copy). Combines with --changed and --demo.
 #   --skip-quarantined   every suite except the QUARANTINE list below (I1: the merge queue's one full run; --changed
 #        always skips them). --direct (with --changed): select-suites.mjs --direct, never everything (CI's PR_SUITES=direct).
+#   --modules (with --changed; SPD-2 item 2, P-802): module-suites.py instead: a file in a module card's paths runs that
+#        card's suites (its Tests. line and row files), any other file select-suites.mjs --direct, plus the always-run set.
 #   --retry   (B122, P-376 (8); PR and merge-queue checks only, never the nightly full set) a failed suite runs once more,
 #        from a fresh start: a new isolated copy (270 suites), the demo restarted (check_studio_browser.cjs, which resets
 #        it), or a suite that starts its own copy or touches no database. Its row says "passed on retry" (not a
@@ -42,11 +44,12 @@ export PATH="$ROOT/.tools/node-v24.21.0/bin:/opt/homebrew/opt/postgresql@18/bin:
 # GNU timeout: `timeout` on Linux (CI), `gtimeout` from Homebrew coreutils on the Mac. Missing → stop loudly, never run unguarded.
 TIMEOUT="$(command -v timeout || command -v gtimeout || true)"
 [ -n "$TIMEOUT" ] || { echo "GNU timeout is missing (Mac: brew install coreutils, which provides gtimeout); no suite was run"; exit 2; }
-DEMO=0; NAMES=0; LIST=0; ONLY=""; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0
+DEMO=0; NAMES=0; LIST=0; ONLY=""; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0; MODULES=0
 while [ $# -gt 0 ]; do case "$1" in
   --demo) DEMO=1;;
   --skip-quarantined) SKIPQ=1;;
   --direct) DIRECT=--direct;;
+  --modules) MODULES=1;;   # SPD-2: with --changed, module-suites.py (the module cards' suites + the always-run set)
   --retry) RETRY=1;;
   --names) NAMES=1;;   # print the names and ports this copy would use, run nothing
   --list) LIST=1;;
@@ -185,7 +188,11 @@ if [ -n "$CHANGED" ]; then
   [[ "$CHANGED" == *..* ]] || { echo "--changed wants <base>..<head>; no suite was run"; exit 2; }
   base="${CHANGED%%..*}"; head="${CHANGED##*..}"
   files=$(git -c core.quotePath=false diff --no-renames --name-only "$base...$head") || { echo "git diff $base...$head failed; no suite was run"; exit 2; }
-  sel=$(printf '%s\n' "$files" | node "$P/product/tools/select-suites.mjs" $DIRECT) || { echo "select-suites.mjs failed; no suite was run"; exit 2; }
+  if [ "$MODULES" = 1 ]; then   # SPD-2 item 2 (P-802): a PR's suites by module; the merge batch and the nightly run every suite
+    sel=$(printf '%s\n' "$files" | python3 -I "$P/product/tools/module-suites.py") || { echo "module-suites.py failed; no suite was run"; exit 2; }
+  else
+    sel=$(printf '%s\n' "$files" | node "$P/product/tools/select-suites.mjs" $DIRECT) || { echo "select-suites.mjs failed; no suite was run"; exit 2; }
+  fi
   printf '%s\n' "$sel" > "$OUT/selection.tsv"
   TAB=$(printf '\t')
   if [ "${sel%%"$TAB"*}" = ALL ]; then

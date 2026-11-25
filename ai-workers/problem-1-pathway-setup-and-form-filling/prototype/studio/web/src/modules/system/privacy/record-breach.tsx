@@ -10,13 +10,16 @@ import { z } from "zod";
 import { Button, Dialog, Field, Input, Notice, Textarea } from "@/components/ui/controls";
 import { FirmsPage } from "../contract";
 import { systemApi, SystemApiError, useSystemToken } from "../session";
-import { CATEGORIES, COPY, fieldErrors, firmWords, localBox, recordBody, type RecordDraft } from "./contract";
+import { CATEGORIES, changeBody, COPY, fieldErrors, firmWords, localBox, recordBody, type BreachOne, type RecordDraft } from "./contract";
 
 type Firm = { id: string; name: string | null };
 const blank = (): RecordDraft => ({ discoveredAt: localBox(new Date()), description: "", firms: [], categories: [], rootCause: "", containment: "", otherNotifications: "", reason: "" });
 const Recorded = z.object({ id: z.string() });
+/** PF-21rs A2: the same fields edit a breach or confirm a draft (concept §6, challenge M5): its current words to start from. */
+const draftOf = (b: BreachOne): RecordDraft => ({ discoveredAt: "", description: b.status === "DRAFT" ? "" : b.description, firms: b.firms, categories: b.dataCategories, rootCause: b.rootCause ?? "",
+  containment: b.containment ?? "", otherNotifications: b.otherNotifications ?? "", reason: "" });
 
-function FirmPicker({ chosen, onChange, error }: { chosen: Firm[]; onChange: (f: Firm[]) => void; error?: string }) {
+function FirmPicker({ chosen, onChange, error, kept = [] }: { chosen: Firm[]; onChange: (f: Firm[]) => void; error?: string; kept?: string[] }) {
   const token = useSystemToken();
   const [q, setQ] = React.useState(""), [term, setTerm] = React.useState("");
   const box = React.useRef<HTMLInputElement>(null);
@@ -36,7 +39,8 @@ function FirmPicker({ chosen, onChange, error }: { chosen: Firm[]; onChange: (f:
       {chosen.length ? <ul aria-label="Chosen firms" className="flex flex-wrap gap-2">
         {chosen.map((f) => <li key={f.id} className="flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-0.5 text-sm" data-chosen-firm={f.id}>
           <span className="[overflow-wrap:anywhere]">{firmWords(f)}</span>
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2" aria-label={`Remove ${firmWords(f)}`} onClick={() => change(chosen.filter((c) => c.id !== f.id))}>Remove</Button></li>)}
+          {kept.includes(f.id) ? <span className="px-2 text-xs text-text-muted">notified</span>   /* a notified firm stays named (NOTIFIED_FIRM_KEPT) */
+            : <Button type="button" variant="ghost" size="sm" className="h-7 px-2" aria-label={`Remove ${firmWords(f)}`} onClick={() => change(chosen.filter((c) => c.id !== f.id))}>Remove</Button>}</li>)}
       </ul> : null}
       <label className="flex flex-col gap-1"><span className="sr-only">Find a firm by name</span>
         <Input ref={box} type="search" placeholder="Find a firm by name" value={q} onChange={(e) => setQ(e.target.value)} aria-describedby="breach-firms-hint"
@@ -50,12 +54,16 @@ function FirmPicker({ chosen, onChange, error }: { chosen: Firm[]; onChange: (f:
   );
 }
 
-export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void }) {
+export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMaybeRecorded, breach, before, onStale }: { open: boolean; onOpenChange: (o: boolean) => void; onRecorded: (id: string) => void; returnFocus: () => HTMLElement | null; onMaybeRecorded: () => void;
+  /** A2: edit this breach (or confirm it, when a draft) instead of recording a new one. */ breach?: BreachOne;
+  /** A2 (break M1): run before a change is sent; throws when the breach changed since the page read it. */ before?: () => Promise<void>;
+  /** A2 (round 2 M1): the breach changed elsewhere: the form closes, so its old values can never be saved over the new ones. */ onStale?: () => void }) {
+  const confirm = breach?.status === "DRAFT";
   const [d, setD] = React.useState<RecordDraft>(blank), [key, setKey] = React.useState("");
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
   const form = React.useRef<HTMLFormElement>(null), [refused, setRefused] = React.useState(0);
   // A fresh form and a fresh key each time it opens: a new breach is never a repeat of the last one.
-  React.useEffect(() => { if (open) { setD(blank()); setKey(crypto.randomUUID()); setErrors({}); } }, [open]);
+  React.useEffect(() => { if (open) { setD(breach ? draftOf(breach) : blank()); setKey(crypto.randomUUID()); setErrors({}); } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form per opening
   // After a refusal the first field to change takes the focus (its words are read out with it).
   React.useEffect(() => { if (refused) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); }, [refused]);
   // A changed field's refusal goes with the change (it no longer describes what is there).
@@ -65,8 +73,14 @@ export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMa
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    // Break M2: a draft is confirmed only with words firms may read, never the alert's own.
+    if (confirm && (!d.description.trim() || d.description.trim() === breach!.description.trim())) { setErrors({ description: COPY.draftSame }); setRefused((n) => n + 1); return; }
     setBusy(true); setErrors({});
-    try { onRecorded(Recorded.parse(await systemApi("/register/breaches", { method: "POST", json: recordBody(d), headers: { "idempotency-key": key } })).id); }
+    try {
+      if (breach && before) { try { await before(); } catch (x) { if (x instanceof SystemApiError && x.problem.code === "STALE") { onOpenChange(false); onStale?.(); return; } throw x; } }
+      if (breach) onRecorded(Recorded.parse(await systemApi(`/register/breaches/${breach.id}`, { method: "PATCH", json: changeBody(breach, d, confirm) })).id);
+      else onRecorded(Recorded.parse(await systemApi("/register/breaches", { method: "POST", json: recordBody(d), headers: { "idempotency-key": key } })).id);
+    }
     catch (x) {
       // An earlier try's answer was lost, then the form changed: the key is spent, so the breach may be on the list already (review m1).
       if (x instanceof SystemApiError && x.problem.code === "IDEMPOTENCY_KEY_REUSED") { onMaybeRecorded(); setErrors({ other: COPY.maybeRecorded }); setRefused((n) => n + 1); return; }
@@ -76,14 +90,15 @@ export function RecordBreach({ open, onOpenChange, onRecorded, returnFocus, onMa
   const text = (k: "description" | "rootCause" | "containment" | "otherNotifications", label: string, hint?: string, rows = 2) =>
     <Field label={label} hint={hint} error={errors[k]}><Textarea rows={rows} value={d[k]} onChange={(e) => put(k, e.target.value)} data-field={k} /></Field>;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={COPY.recordTitle} description={COPY.recordLead} wide guard returnFocus={returnFocus}
+    <Dialog open={open} onOpenChange={onOpenChange} title={!breach ? COPY.recordTitle : confirm ? COPY.confirmTitle : COPY.editTitle} description={!breach ? COPY.recordLead : confirm ? COPY.confirmLead : COPY.editLead} wide guard returnFocus={returnFocus}
       footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button type="submit" form="record-breach" busy={busy} data-record-send>Record the breach</Button></>}>
+        <Button type="submit" form="record-breach" busy={busy} data-record-send>{!breach ? "Record the breach" : confirm ? "Confirm the record" : "Save the changes"}</Button></>}>
       <form id="record-breach" ref={form} onSubmit={send} noValidate className="flex flex-col gap-4">
-        <Field label="Discovered at" hint={COPY.discoveredHint} error={errors.discoveredAt}>
-          <Input type="datetime-local" value={d.discoveredAt} max={localBox(new Date())} onChange={(e) => put("discoveredAt", e.target.value)} data-field="discoveredAt" /></Field>
+        {!breach ? <Field label="Discovered at" hint={COPY.discoveredHint} error={errors.discoveredAt}>
+          <Input type="datetime-local" value={d.discoveredAt} max={localBox(new Date())} onChange={(e) => put("discoveredAt", e.target.value)} data-field="discoveredAt" /></Field> : null}
+        {confirm ? <div className="rounded-lg bg-surface p-3 text-sm"><p className="text-xs font-medium text-text-muted">{COPY.draftWords}</p><p className="mt-1 [overflow-wrap:anywhere]" data-draft-words>{breach!.description}</p></div> : null}
         {text("description", "What happened", COPY.descriptionHint, 3)}
-        <FirmPicker chosen={d.firms} onChange={(f) => put("firms", f)} error={errors.affectedFirms} />
+        <FirmPicker chosen={d.firms} onChange={(f) => put("firms", f)} error={errors.affectedFirms} kept={breach?.notices.map((n) => n.firmId)} />
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-xs font-medium text-text">Data categories</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
