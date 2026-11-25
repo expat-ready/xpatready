@@ -4,3 +4,6 @@
 
 A390, moved word for word by Lead 8:
 | A390 | 25 Nov ~16:2x IST (typed to Lead 8) | why my checks lack the full report's details; is enforcement missing; how enforcement goes; run the full cycle: will we make it | answered in chat ~16:4x: Lead 8 sent short checks (P-783 says full at :03/:33), the Lead branch's tools are stale (#3506 open) so its lead-watch timed out, founder-report.py's plan is from 21 Nov and its stage table was never wired; main's tools run from a scratch copy from now on |
+
+A391, moved word for word by Lead 8:
+| A391 | 25 Nov ~16:4x IST (typed to Lead 8) | (1) are the scripts, statuses and data we use correct and reviewed, nothing stale or misleading; (2) the product end to end: many personas, one journey; a way to walk it (one page, click a persona, sign in, do their part) without copying IDs and passwords; :4400 looks simulated and mixed, not a real product; a map of who does what; when do real screens come, inside or after the 101 | chose 'Concept now, build alongside' (~16:3x): cloud session_018BSQJrdTD7P4WNWpQdv5ti (PR, ~2 h); A392 (~16:4x: demo vs production, real sign-in and MFA, how tested, order) added to its brief; DECISIONS row P-839 owed; Mac disk 5.6 GB, local start refused |

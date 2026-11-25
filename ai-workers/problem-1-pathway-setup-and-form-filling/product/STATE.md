@@ -17,7 +17,8 @@ updated: 2026-11-25 15:18 IST (clock): **Lead 8 in charge since 15:12 (check 32e
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A391 | 25 Nov ~16:4x IST (typed to Lead 8) | (1) are the scripts, statuses and data we use correct and reviewed, nothing stale or misleading; (2) the product end to end: many personas, one journey; a way to walk it (one page, click a persona, sign in, do their part) without copying IDs and passwords; :4400 looks simulated and mixed, not a real product; a map of who does what; when do real screens come, inside or after the 101 | chose 'Concept now, build alongside' (~16:3x): cloud session_018BSQJrdTD7P4WNWpQdv5ti (PR, ~2 h); A392 (~16:4x: demo vs production, real sign-in and MFA, how tested, order) added to its brief; DECISIONS row P-839 owed; Mac disk 5.6 GB, local start refused |
+| A391-A392 | 25 Nov ~16:3x-16:4x | front door and production path (P-839, P-840; concept #3758), word for word: `history/STATE-2026-11-25-lead8-founder-ask-row-A389.md` |
+| A394 | 25 Nov ~17:2x IST (typed answers) | concept #3758 rulings: walk demo only; Studio real sign-in now | owed: P-841 + FD/IJ rows to BACKLOG after the lane folds them in |
 | A393 | 25 Nov ~16:5x IST (typed) | note A391/A392 in the plan and capability plan, enforce, scope rows and roles; no date slip but fix up front; are UI/UX and case management live | done 16:5x: #3755 (P-839, P-840, PF-31..33, RULES P-840) labelled; OS-PM 3 asked for two enforcers (lane-less ACT, release gate) |
 | A390 | 25 Nov ~16:2x | why checks lacked the full report (answered; #3506 labelled): `history/STATE-2026-11-25-lead8-founder-ask-row-A389.md` |
 | A389 | 25 Nov ~14:5x IST | CI not the constraint; Partial %; split product vs OS (in force; P-837), word for word: `history/STATE-2026-11-25-lead8-founder-ask-row-A389.md` |
