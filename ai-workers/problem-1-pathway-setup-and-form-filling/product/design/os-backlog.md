@@ -107,6 +107,19 @@ Measured: 32 Lead sessions in 35 h; start read 170-205k tokens; each hand-over d
 | OS-48 | The rows marked J in the appendix are judgement or product rulings with no machine check that can be written; they stay prose under P-611a ("where one can be written") | P-611a | retire (as enforceable) | Lead | Done (Lead 5, 25 Nov 11:3x IST: the J list stays judgement, one yes) | one Lead yes for the J list, or a row moved to an OS item |
 | OS-66 | Guard review: each of the 28 guards with the incident it prevents, its catches and false blocks; keep, tune or merge with evidence, never drop blindly (full-power #237, founder 20 Nov) | P-611a | retire / tune | OS-PM prepares, Lead decides | Open | one table in design/ with each guard's catches and false blocks over 7 days; each verdict the Lead's |
 
+## Tier 5: self-checking builders (founder-approved 25 Nov 12:56 IST; design: `design/self-checking-builders-2026-11-25.md`)
+
+Phase 1 starts only after 27 Nov 12:00 IST; every new check stays a warning (P-717 (b)) until clean for 24 h or 10 PR runs; nothing touches the merge queue, gates A and B or required checks before then. Ids: OS-V1..OS-V6 became OS-72..OS-77 (Lead 5).
+
+| ID | What | Rule | Kind | Owner | Status | Done when |
+| --- | --- | --- | --- | --- | --- | --- |
+| OS-72 | Project `verify` skill in the studio package (`prototype/studio/.claude/skills/verify/SKILL.md`), run by Claude Code before each app-code commit: own isolated copy, touched journeys only, five checks, evidence on the PR, 5-minute cap, 3 retries | this design, P-717 (b) | hook (skill) | OS-PM; one builder lane trials | Open (phase 1, from 27 Nov 12:00 IST) | trial lane's commits run it 2 days; minutes per commit and red runs reported; then on for all lanes |
+| OS-73 | LCP 2.5 s and CLS 0.1 budgets measured in the Playwright packs and in verify; `STANDARDS.md` §9 amended by the Lead | §9 | CI (warning first) | OS-PM; Lead writes §9 | Open (phase 1) | budgets read on every pack run; clean 24 h or 10 PR runs, then required |
+| OS-74 | Visual compare: reference screenshots per screen state at 1024 and 1440 px, masks for dates and ids; a changed reference needs the Lead's approval label | EXPERIENCE visual system | CI (warning first) | qa lane (references), OS-PM (check) | Open (phase 2) | every Works screen has references; a deliberate change shows as a diff with an approval |
+| OS-75 | Design-system check from computed styles: tokens, fonts, type scale, one primary button per panel, red only for errors, 4.5:1, 44 px at 375 px, no sideways scroll | EXPERIENCE [M] lines, BIC-19, BIC-20, UXL-09, UXL-10 | CI (warning first) | qa lane (rules list), OS-PM (script) | Open (phase 3) | first five rules checked on every screen state; each breach names the element |
+| OS-76 | Mutation testing (Stryker, version pinned, §1 gate) on `engine/` and the rule validators, nightly; score floor may only rise | STANDARDS §7 "a rule's test fails when the rule is removed" | CI (nightly report) | OS-PM | Blocked: §1 gate entry first (phase 3) | nightly score per area published; floor set from the first run |
+| OS-77 | (a) first-time-user agent before each milestone walk: goal and screen only, wrong turns recorded; (b) all-routes sign-in sweep: every API route signed out and with the wrong role refuses 401/403 | QUALITY D17; roles on the server | CI (b, warning first); agent (a) | OS-PM | Open (b phase 2, a phase 3) | (b) every route listed and refusing; Floorplan's 40 warnings proven or turned into bugs; (a) report per milestone |
+
 ## Left out, and why
 
 * **why-targets action 1** (outside accounts in one sitting) and **action 2's builder start** (a builder on every unproven row, the cap from 8 to about 25): founder and Lead capacity decisions (P-821, P-825), not pipeline or enforcement. Action 2's "a merge wakes the next lane by automation" is OS-49.
