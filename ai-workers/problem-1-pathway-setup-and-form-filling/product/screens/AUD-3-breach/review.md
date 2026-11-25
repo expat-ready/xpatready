@@ -71,3 +71,59 @@ The browser, keyboard, 1024 px and 200 % zoom (no screen); a screen reader; an i
 **Verdict: Block** (one open Major). To fix: Major 1 (one fail case in `check_pf21c_breaches.ts`). Minors 2-4 are PR-body statements.
 
 Reviewer: Changes dd8df1ca7f0588a50954033873eecc88f1eeedfb
+
+## Round 2: diff-only re-review, head `ab18c66c630fbf2eea49df0879ceced2565ba696` (reviewer, 25 Nov 2026)
+I read only `dd8df1ca7..ab18c66c6` (3 code files). The PR's newer head `2ef413dfc` adds only the three round-1 records `.md` files (GitHub compare): the code reviewed is the same.
+* **Ran:** `check_pf21c_breaches.ts` **53/0** (the new "fail-closed, round 2" case passes); `check_aud3_access.ts` **49/0**.
+* **Mutations** (scratch worktree at `ab18c66c6`, `lines.ts:178-181`, one change each; all go red):
+
+| Change | Result |
+|---|---|
+| each firm line in its own transaction, error swallowed | 52/1: the read answers **200 with the breach** |
+| platform line and firm lines in two transactions, not swallowed | 52/1: 500, but a line is kept |
+| `try/catch` around each firm line inside the one transaction | 52/1: **200 with the breach** (Postgres aborts the transaction and Prisma answers anyway) |
+| firm lines dropped | 51/2 |
+| the firm line given the real route again (`call`, not `quiet`) | 52/1: DW6 pass |
+
+**Round-1 findings.**
+* **Major 1: fixed.** `check_pf21c_breaches.ts:341-348` refuses firm B's line with a trigger and expects 500, no breach in the body, and no firm-read or platform line under the correlation id. The case fails under every mutation of "all or none".
+* **Minor 2 / breaker M1: fixed.** The firm line now holds `{method, route: "/api/system"}` (`lines.ts:177`), and `recordFirmRead` has its old 3-parameter signature again (`lines.ts:59`), so `@ReadsFirm` lines are unchanged. Route and scope stay on the platform line (`check_pf21c_breaches.ts:335`).
+* **Breaker m1: fixed.** 60 s timeout with 10 s maxWait (`lines.ts:181`). If the pool is drained, the read fails closed (500, no line).
+* **Minor 3:** kept, and stated in the PR comment (25 Nov 05:47Z). **Minor 4:** stated (`service.ts:226-227`).
+
+**New, Minor (Should), none blocking.**
+1. **The neutral line is still told apart by its shape.** These are notes for the tech lead's open question, not a ruling.
+   * `"/api/system"` appears only on lines from `noteFirmsRead`, whose one caller is the breach read (`service.ts:228`). Every other firm-read line carries its real route (`lines.ts:165`).
+   * Each named firm's line carries the same correlation id, and the firm sees it under Advanced (`firm-read/render.ts:56`).
+   * The scenario: a firm that has noticed the pattern, or anyone who can read two firms' logs, can still tell that one read across firms named it. That would apply to a DRAFT, UNDECIDED or NO_NOTICE breach too.
+   * **Fix:** add these two facts to the open question on the PR. No code change unless the tech lead rules.
+2. **Our own per-firm access report lost the "which read".**
+   * The breach read's line in firm A's report now reads "GET /api/system" with no scope.
+   * The platform line that names the route and scope has no `detail.firm`, so it is not in A's report (`report.ts:115`). Only the correlation id links the two, and the report does not follow that link.
+   * The scenario: our staff answer a firm's question "what did you read on 25 Nov?" from SA-11-31's report and cannot say.
+   * **Fix:** state this in `report.ts:26-28`, or let the tech lead rule. Not new scope.
+3. **The PR body is stale** (WAY-OF-WORKING "Body").
+   * It still says the firm line carries "the route, the scope" and "52 passed", and it says "Questions: none" while the question to the tech lead is open.
+   * **Fix:** update the body.
+
+**Nits.**
+* The DW6 pass title (`check_pf21c_breaches.ts:333`) still says the firm lines name "the route and the scope" before "(the firm's line names neither)".
+* The fail-closed case does not assert the one `audit_write_failed` alert. The shared AuditPort raises it (`audit-event.ts:13`), and it is pinned only for the platform kind (`check_aud3_access.ts:398`).
+
+**D1-D20 changes:**
+* D5 Stability and recovery 5, D16 Testability 5: all or none is now pinned and mutation-checked.
+* D6 Freshness and governance 4: new minor 3, and the `report.ts` header (new minor 2).
+* D18 Information provenance 4: new minor 2.
+* All others as in round 1.
+
+BIC: N/A (API only). Graph: unchanged by this diff.
+
+**Journey (reviewer), round 2: 9.4/10, pass.** Error recovery ½ → 1: J8 is now a suite case, and red under every mutation. The other criteria are as in round 1, so 7.5 of 8 applicable criteria, scaled to 10.
+* At this head, J1 (DW6 pass), J4 (404), the list and J8 ran through the product's routes in the suite.
+* J2, J3, J5-J7, J9 and the probe were not re-walked on a copy. The diff changes only the line's detail and the transaction options, and P6 counts lines.
+
+**Could not check:** the CI run at this head; anything outside the diff.
+
+**Verdict: Approve** for `ab18c66c630fbf2eea49df0879ceced2565ba696`: no open Blocker or Major. New minors 1-3 are statements (PR body or tech lead), not code.
+
+Reviewer: Approve ab18c66c630fbf2eea49df0879ceced2565ba696

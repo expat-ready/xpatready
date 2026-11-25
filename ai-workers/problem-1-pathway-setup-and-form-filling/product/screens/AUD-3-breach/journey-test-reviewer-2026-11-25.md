@@ -52,3 +52,14 @@
 **Score: 8.75/10** (7 of the 8 criteria that apply, scaled to 10). **Verdict: Pass** (8 or more, no 0). The fix that would raise it most: one fail case in `check_pf21c_breaches.ts` for "a named firm's line cannot be written → 500, nothing committed".
 
 **Could not test:** a screen reader, widths and keyboard (no screen); an intended user's unaided walk (D17 and D20 stay with the founder); support-session reads (AUD-3b, not built).
+
+## Round 2 (head `ab18c66c6`, diff-only)
+
+**Error recovery is now 1:** J8 is a suite case, `check_pf21c_breaches.ts:341-348`, and it is red under every way of breaking "all or none" (see `review.md`, Round 2).
+
+**Evidence at this head:**
+* J1, J4, the list and J8 ran through the product's routes in `check_pf21c_breaches.ts` (53/0).
+* `check_aud3_access.ts` passed 49/0.
+* Not re-walked on a copy: the other journeys and the probe. This diff does not change what they check.
+
+**Score: 9.4/10** (7.5 of the 8 criteria that apply, scaled to 10). **Verdict: Pass.**
