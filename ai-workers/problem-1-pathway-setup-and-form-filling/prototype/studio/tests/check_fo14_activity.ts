@@ -6,7 +6,7 @@
 //   DW4 another firm's person refused; DW5 a bad kind or source refused
 //   DW6 GET /api/front-office/people/:id/engagement: the firm's staff reads it; another firm's person and a malformed id
 //       are the same 404; no token 401
-//   DW7 the signing door's first opening adds exactly one VIEW event
+//   PENDING DW7 the signing door records VIEW (first opening) and SIGNED: after the signing files' open PRs (baton)
 //   DW8 both adapters pass PortalActivityPort's contract
 //   PENDING payments (FO-7c's pay door) record PAID when it merges.
 // One process: a scratch database (every migration, PF-3's Sample seed) and a small Nest app built from the feature's own
@@ -16,7 +16,7 @@ import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { execFileSync } from "node:child_process";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
@@ -30,7 +30,6 @@ const DB = `xr_studio_fo14_scratch_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const refusedBySql = (q: string, like: RegExp) => { try { sql(q); return false; } catch (e) { return like.test(String((e as { stderr?: unknown }).stderr ?? e)); } };
-const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
@@ -57,8 +56,6 @@ const { PlatformIdentityController } = await import("../api/src/platform/identit
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { PgPortalActivity } = await import("../api/src/front-office/activity/adapter.ts");
-const { SigningDoor } = await import("../api/src/front-office/signing/door.ts");
-const { useSigningPort } = await import("../api/src/front-office/signing/handlers.ts");
 const feature = (await import("../api/src/features/front-office-activity.ts")).default;
 
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
@@ -133,22 +130,7 @@ try {
   ok("FO-14 DW6 pass: a person with no event reads lastSeen null and no activity", fresh.status === 200 && fresh.body.lastSeen === null && fresh.body.activity.length === 0, fresh.body);
   ok("FO-14 DW6 fail: no token is 401", (await call(base, `/api/front-office/people/${PA}/engagement`)).status === 401);
 
-  // DW7: the signing door's first opening (FO-6 part 4b's `session`), on fixture rows and a stand-in embedded link
-  const REQ = randomUUID(), SIG = randomUUID(), link = `${FA.replace(/-/g, "")}.${randomBytes(32).toString("base64url")}`, cookie = randomBytes(32).toString("base64url");
-  const staff = sql(`select id from platform_staff where firm_id = '${FA}' limit 1`);
-  sql(`set session_replication_role = replica;
-    insert into fo_signature_request (id, firm_id, document_kind, document_id, document_version_id, document_version, provider, provider_document_id, status, sent_by, expires_at, updated_at)
-      values ('${REQ}', '${FA}', 'CONSULTATION', '${randomUUID()}', '${randomUUID()}', 1, 'FAKE', 'fo14-${REQ}', 'SENT', '${staff}', now() + interval '14 days', now());
-    insert into fo_signer (id, firm_id, request_id, role, sign_order, person_id, link_token_sha256, consent_text_version, consented_at, code_verified_at, session_sha256, session_expires_at)
-      values ('${SIG}', '${FA}', '${REQ}', 'CLIENT', 1, '${PA}', '${sha(link)}', 'sign-electronically-v1', now(), now() - interval '5 minutes', '${sha(cookie)}', now() + interval '25 minutes');`);
-  const was = useSigningPort({ embeddedLink: async () => ({ url: "https://signing.fake.invalid/x", expiresAt: new Date(Date.now() + 600_000) }) } as never);
-  const door = new SigningDoor(db, { audit: { record: async () => {} } as never });
-  const views = () => count(`person_id = '${PA}' and kind = 'VIEW' and source = 'signing' and source_ref = '${SIG}'`);
-  const first = await door.session(link, [cookie]).then(() => views(), (e) => String(e));
-  ok("FO-14 DW7 pass: the client's first opening of the signing door adds one VIEW event (source signing, the signer's id)", first === 1, first);
-  const again = await door.session(link, [cookie]).then(() => views(), (e) => String(e));
-  ok("FO-14 DW7 fail: opening it again adds none", again === 1, again);
-  useSigningPort(was);
+  console.log("PENDING  FO-14 DW7: the signing door records VIEW and SIGNED once the signing files' open PRs (#3648, #3670, #3681, #3695) hand over the baton (not counted)");
 
   // DW8
   let n = 0;

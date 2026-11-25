@@ -18,7 +18,6 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
-import { recordPortalActivity } from "../activity/adapter.ts";
 import { withFirm } from "../../platform/firm-scope.ts";
 import { problem } from "../../platform/identity/keys.ts";
 import { askCode, checkCode, codeOf, CODE_REFUSALS, type CodeLine } from "./door-code.ts";
@@ -189,8 +188,6 @@ export class SigningDoor {
         const cur = await this.locked(tx, f);
         if (cur.viewedAt) return;
         await tx.foSigner.update({ where: { id: f.signer.id }, data: { viewedAt: this.now() } });
-        // FO-14 part A: the client's progress stream (one VIEW, the first opening; the firm signer never opens this door).
-        if (f.signer.personId) await recordPortalActivity(tx, { firmId: f.firmId, personId: f.signer.personId, kind: "VIEW", source: "signing", sourceRef: f.signer.id });
         const moved = await tx.foSignatureRequest.updateMany({ where: { firmId: f.firmId, id: f.request.id, status: "SENT" }, data: { status: "VIEWED" } });
         // The retainer moves only while it still shows this request's version (as the webhook's, service.ts; 4b review m2).
         if (f.request.documentKind === "RETAINER") await tx.foRetainer.updateMany({ where: { firmId: f.firmId, id: f.request.documentId, status: "SENT", currentVersion: f.request.documentVersion }, data: { status: "VIEWED" } });
