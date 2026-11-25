@@ -62,9 +62,9 @@ Never run `npx cdk synth`: the CLI looks up the account through STS when it find
   * Alert-line alarms send none, because their metric stops a minute later while the incident is still open.
   * After the first deploy, the on-call person must click AWS's confirmation link before any email arrives.
 * **The log group is retained and has a fixed name:** deleting the stack keeps the logs, and re-creating the stack needs that group imported or removed first.
+* **The audit chain checker gone quiet (AUD-1c part 6, SA-11-6):** `xr-<stage>-audit-chain-verify-missing` pages when no completed 30-minute check (`audit_chain_verify`, mode incremental) is logged in an hour. Missing data counts as breaching, so the app or the job being down pages too. The chain-integrity alert (`audit.chain_integrity_failure`) has its own alarm.
 * **Held:**
   * **A test alarm reaching the on-call person.** This is the AWS proof (P-782) and needs the founder's account.
-  * **An alarm when the audit chain checker goes quiet.** AUD-1c's row expects one on the absence of `audit.chain_verify_ok`. AUD-1c's checker PR adds it here, with `alarmFindings`, once the metric exists. The chain-break alert alarm is already here.
   * **The bounce alarm stays silent** until PF-4b's mail adapter calls `mailLine`: it has no caller on main.
 
 ## The service (PF-8b, `lib/service.ts`, checks `lib/service-checks.ts`, tests `test/service.test.ts`)

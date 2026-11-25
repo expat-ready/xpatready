@@ -35,6 +35,9 @@ const LINES = {
   sent: { ...stamp("mail_sent"), MailSent: 1, Service: "studio-api" },
   bounced: { ...stamp("mail_bounced", "warn"), MailBounced: 1, Service: "studio-api" },
   auditFailed: { ...stamp("audit_write_failed", "error"), AuditWriteFailures: 1, Service: "studio-api", attempts: 3 },
+  chainOk: { ...stamp("audit_chain_verify"), Mode: "incremental", "audit.chain_verify_ok": 1, AuditChainBreaks: 0, mode: "incremental", chains: 3, linesRead: 9, breaks: 0 },
+  chainOkWeekly: { ...stamp("audit_chain_verify"), Mode: "full", "audit.chain_verify_ok": 1, AuditChainBreaks: 0, mode: "full", chains: 1, linesRead: 90, breaks: 0 },
+  chainFailed: { ...stamp("audit_chain_check_failed", "error"), rule: "BR-2" },
   ...Object.fromEntries([...ALARMED_ALERT_KINDS, "send_cap_reached"].map((k) => [`alert:${k}`, { ...stamp("alert", "error"), AlertKind: k, Alerts: 1, alert: k, rule: "R" }])),
 } as Record<string, Record<string, unknown>>;
 
@@ -84,7 +87,7 @@ test("PF-23c retention fail: a log group kept for ever or 30 days, the app's kep
 });
 
 test("PF-23c alarms pass: every alarm the row names exists in both stages, pages the on-call email and reads its filter", () => {
-  assert.deepEqual(Object.keys(ALARMS).sort(), ["5xx-rate", "alert-audit-chain-integrity-failure", "alert-audit-write-failed", "alert-breach-clock-near", "alert-job-stuck", "alert-privacy-clock-near", "job-age", "job-failures", "mail-bounce-rate"]);
+  assert.deepEqual(Object.keys(ALARMS).sort(), ["5xx-rate", "alert-audit-chain-integrity-failure", "alert-audit-write-failed", "alert-breach-clock-near", "alert-job-stuck", "alert-privacy-clock-near", "audit-chain-verify-missing", "job-age", "job-failures", "mail-bounce-rate"].sort());
   for (const s of STAGES) assert.deepEqual(alarmFindings(tpl[s], s), []);
   assert.equal(Object.values(tpl.production.Resources).filter((r) => r.Type === "AWS::CloudWatch::Alarm").length, Object.keys(ALARMS).length);
 });
@@ -133,7 +136,7 @@ test("PF-23c the on-call address is a deploy parameter with no default that take
 test("PF-23c filters pass and fail: each pattern matches PF-23's line for its event and not its near misses", () => {
   const hits: Record<string, string[]> = {
     Requests: ["ok", "notFound", "error"], ServerErrors: ["error"], JobFailures: ["jobFailed"], JobAge: ["jobDone", "jobFailed"],
-    MailSent: ["sent"], MailBounced: ["bounced"],
+    MailSent: ["sent"], MailBounced: ["bounced"], ChainVerifyOk: ["chainOk"],
     ...Object.fromEntries(ALARMED_ALERT_KINDS.map((k) => [alertMetric(k), [`alert:${k}`]])),
   };
   assert.deepEqual(Object.keys(hits).sort(), Object.keys(FILTERS).sort());
@@ -165,7 +168,8 @@ test("PF-23c thresholds: the 5xx and bounce rates need a minimum volume; job age
     assert.equal(a.Properties!.ComparisonOperator, "GreaterThanOrEqualToThreshold");
   }
   for (const [, a] of Object.entries(t.Resources).filter(([, r]) => r.Type === "AWS::CloudWatch::Alarm")) {
-    assert.equal(a.Properties!.TreatMissingData, "notBreaching");
+    // Every alarm but the heartbeat's: no traffic is not an incident; a heartbeat's absence is (AUD-1c part 6).
+    assert.equal(a.Properties!.TreatMissingData, a.Properties!.AlarmName === "xr-production-audit-chain-verify-missing" ? "breaching" : "notBreaching");
     assert.match(a.Properties!.AlarmDescription, /Logs: \/xr\/production\/app/); // each alarm says where to look (review m2)
   }
 });
@@ -178,4 +182,19 @@ test("PF-23c contract with the app: metrics.ts, log.ts and the alert port still 
   assert.match(src("api/src/platform/observability/log.ts"), /return \{ time: new Date\(\)\.toISOString\(\), level, event: /);
   const kinds = /ALERT_KINDS = \[([^\]]+)\]/.exec(src("ports/alert.ts"))![1];
   for (const k of ALARMED_ALERT_KINDS) assert.ok(kinds.includes(`"${k}"`), `ports/alert.ts has no kind ${k}`);
+});
+
+test("AUD-1c part 6 pass/fail: the audit chain checker gone quiet pages: no completed 30-minute pass in an hour, missing data breaching", () => {
+  for (const s of STAGES) {
+    const [, a] = alarmNamed(tpl[s], `xr-${s}-audit-chain-verify-missing`), p = a.Properties!;
+    assert.equal(p.ComparisonOperator, "LessThanThreshold"); assert.equal(p.Threshold, 1); assert.equal(p.TreatMissingData, "breaching");
+    assert.equal(p.Period, SAMPLE.chainQuietMinutes * 60); assert.equal(p.EvaluationPeriods, 1); assert.ok((p.OKActions ?? []).length === 1, "it says when the checker is back");
+  }
+  // Fail: the same alarm with missing data not breaching would stay silent when the app or the job is down.
+  const quiet = clone(tpl.production), [, q] = alarmNamed(quiet, "xr-production-audit-chain-verify-missing"); q.Properties!.TreatMissingData = "notBreaching";
+  assert.notEqual(q.Properties!.TreatMissingData, alarmNamed(tpl.production, "xr-production-audit-chain-verify-missing")[1].Properties!.TreatMissingData);
+  // The contract with the app: the checker writes this event with mode incremental, only after a completed pass.
+  const verify = src("api/src/platform/audit/chain/verify.ts");
+  assert.match(verify, /trusted\("info", "audit_chain_verify"/); assert.match(verify, /\{ mode, chains: out\.chains/);
+  assert.ok(verify.indexOf('throw new Error(`audit chain check:') < verify.indexOf('"audit_chain_verify"'), "a failed pass throws before the heartbeat line");
 });

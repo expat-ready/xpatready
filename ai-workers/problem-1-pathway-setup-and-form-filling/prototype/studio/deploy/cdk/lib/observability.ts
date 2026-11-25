@@ -8,8 +8,10 @@
 //    same JSON line whatever ships it, so every alarm here works on the plain driver. The filters read PF-23's own
 //    fields (log.ts and metrics.ts: event, status, outcome, ageMs, MailSent, MailBounced, alert); the tests match each
 //    pattern against lines of that shape and check metrics.ts still writes those names.
-//  * Alarms: 5xx rate, job failures, job age, mail bounce rate, and one per alert kind the row names (audit-write
-//    failure, chain break, stuck job, privacy and breach clocks). Each pages an SNS topic whose one subscription is the
+//  * Alarms: 5xx rate, job failures, job age, mail bounce rate, one per alert kind the row names (audit-write
+//    failure, chain integrity failure, stuck job, privacy and breach clocks), and AUD-1c part 6's (Lead 5 on #2129;
+//    SA-11-6): the audit chain checker gone quiet, no completed 30-minute pass (`audit_chain_verify`, mode
+//    incremental: the heartbeat `audit.chain_verify_ok`) for an hour, missing data counted as breaching. Each pages an SNS topic whose one subscription is the
 //    on-call email, a deploy parameter with no default (the founder names it; a deploy without it fails, so no alarm is
 //    ever deployed unrouted). Alarm payloads carry alarm names and numbers only, never a log line.
 // Levels: the 5xx page is derived from NFR5-15's SLO "5xx<0.1%" (ADR line 201) times a fast-burn factor; NFR5-14 asks
@@ -29,7 +31,7 @@ export const SLO_5XX_PCT = 0.1;
  *  error budget gone in about two days); the page level is SLO × factor = 1.44 % of requests over two 5-minute periods. */
 export const FAST_BURN = 14.4;
 /** Sample thresholds (no load measured, no expert value: P-170). stuckJobMs equals the app's STUCK_JOB_MS (alerts.ts). */
-export const SAMPLE = { errorRatePct: Math.round(SLO_5XX_PCT * FAST_BURN * 100) / 100, minRequests: 20, jobFailures: 3, stuckJobMs: 30 * 60_000, bounceRatePct: 5, minMailSent: 20 } as const;
+export const SAMPLE = { errorRatePct: Math.round(SLO_5XX_PCT * FAST_BURN * 100) / 100, minRequests: 20, jobFailures: 3, stuckJobMs: 30 * 60_000, bounceRatePct: 5, minMailSent: 20, chainQuietMinutes: 60 } as const;
 
 /** Each metric filter: its metric name, the JSON pattern over PF-23's line, and the value it counts. */
 export const FILTERS: Record<string, { pattern: string; value: string }> = {
@@ -39,6 +41,8 @@ export const FILTERS: Record<string, { pattern: string; value: string }> = {
   JobAge: { pattern: '{ $.event = "job" && $.ageMs >= 0 }', value: "$.ageMs" },
   MailSent: { pattern: '{ $.event = "mail_sent" }', value: "$.MailSent" },
   MailBounced: { pattern: '{ $.event = "mail_bounced" }', value: "$.MailBounced" },
+  /** AUD-1c part 6: one completed 30-minute chain check (audit/chain/verify.ts writes it only after a whole pass). */
+  ChainVerifyOk: { pattern: '{ $.event = "audit_chain_verify" && $.mode = "incremental" }', value: "1" },
   ...Object.fromEntries(ALARMED_ALERT_KINDS.map((k) => [alertMetric(k), { pattern: `{ $.event = "alert" && $.alert = "${k}" }`, value: "1" }])),
 };
 const ALERT_RULES: Record<(typeof ALARMED_ALERT_KINDS)[number], string> = { audit_write_failed: "SA-11 BR-5", "audit.chain_integrity_failure": "SA-11 BR-2", job_stuck: "SA8-D40", privacy_clock_near: "NFR5-14", breach_clock_near: "NFR5-14" };
@@ -50,6 +54,7 @@ export const ALARMS: Record<string, string[]> = {
   "job-failures": ["JobFailures"],
   "job-age": ["JobAge"],
   "mail-bounce-rate": ["MailSent", "MailBounced"],
+  "audit-chain-verify-missing": ["ChainVerifyOk"],
   ...Object.fromEntries(ALARMED_ALERT_KINDS.map((k) => [`alert-${k.replace(/[_.]/g, "-")}`, [alertMetric(k)]])),
 };
 
@@ -96,12 +101,12 @@ export class Observability extends Construct {
       usingMetrics: { num: metric[num].with({ period }), den: metric[den].with({ period }) },
       period,
     });
-    const alarm = (key: string, description: string, m: cw.IMetric, threshold: number, evaluationPeriods: number, op = cw.ComparisonOperator.GREATER_THAN_THRESHOLD, ok = true) => {
+    const alarm = (key: string, description: string, m: cw.IMetric, threshold: number, evaluationPeriods: number, op = cw.ComparisonOperator.GREATER_THAN_THRESHOLD, ok = true, missing = cw.TreatMissingData.NOT_BREACHING) => {
       const a = new cw.Alarm(this, `Alarm-${key}`, {
         alarmName: `xr-${props.stage}-${key}`,
         alarmDescription: `${description} Logs: /xr/${props.stage}/app (ids and rule names only, no personal data).`,
         metric: m, threshold, evaluationPeriods, datapointsToAlarm: evaluationPeriods, comparisonOperator: op,
-        treatMissingData: cw.TreatMissingData.NOT_BREACHING, // no traffic is not an incident
+        treatMissingData: missing, // no traffic is not an incident (but a heartbeat's absence is: part 6)
       });
       a.addAlarmAction(new actions.SnsAction(this.onCall));
       // The page that says it recovered; not for an alert line, whose metric drops to nothing a minute later while the
@@ -114,6 +119,10 @@ export class Observability extends Construct {
     alarm("job-failures", `${SAMPLE.jobFailures} or more background jobs failed in 15 minutes (Sample). Filter event = "job", outcome = "failed".`, metric.JobFailures.with({ period: Duration.minutes(15) }), SAMPLE.jobFailures, 1, cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD);
     alarm("job-age", "A job waited longer than the app's stuck limit (SA8-D40, STUCK_JOB_MS). Filter event = \"job\", by queue.", metric.JobAge.with({ statistic: "Maximum" }), SAMPLE.stuckJobMs, 1);
     alarm("mail-bounce-rate", `Mail bounces over ${SAMPLE.bounceRatePct} % of mail sent in an hour (Sample).`, rate("MailBounced", "MailSent", SAMPLE.minMailSent, Duration.hours(1)), SAMPLE.bounceRatePct, 1);
+    // AUD-1c part 6 (SA-11-6: "a missing audit.chain_verify_ok heartbeat raises the absence alarm"): the checker runs every
+    // 30 minutes, so an hour with no completed pass, or no line at all (the app down, the job not running), pages.
+    alarm("audit-chain-verify-missing", `No completed audit chain check (audit.chain_verify_ok) in ${SAMPLE.chainQuietMinutes} minutes (SA-11-6; Sample window). Filter event = "audit_chain_verify", mode = "incremental".`,
+      metric.ChainVerifyOk.with({ period: Duration.minutes(SAMPLE.chainQuietMinutes) }), 1, 1, cw.ComparisonOperator.LESS_THAN_THRESHOLD, true, cw.TreatMissingData.BREACHING);
     for (const k of ALARMED_ALERT_KINDS) { // the app already sends one alert line per incident (ALERT_REPEAT_MS): page on the first
       alarm(`alert-${k.replace(/[_.]/g, "-")}`, `The app raised alert ${k} (${ALERT_RULES[k]}); it stays open until handled, whatever this alarm's state. Filter event = "alert", alert = "${k}".`, metric[alertMetric(k)].with({ period: Duration.minutes(1) }), 1, 1, cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD, false);
     }
