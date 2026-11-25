@@ -151,3 +151,66 @@ Reviewer: Approve ac93518c49fa49e5e622b61e04f6c81a21d75a3c
 Verdict: Approve
 
 Reviewer: Approve c5e9aede52d6648a2b116f89e584575f576cb501
+
+## Round 3 — 6dc148b1e (diff only)
+**Scope:** only `git diff b49050b60 6dc148b1e`, as the tech lead allowed ("Lead allows round 3: diff-only on 6dc148b1e (the port contract fix)"). That is 3 files, +94/-2:
+* the new `ports/contracts/retainer-fees-port.contract.ts` (5 cases);
+* R11 in `tests/check_fo7w1_retainer_invoice.ts`;
+* the firm-id guard in `api/src/front-office/retainers/retainer-fees-port.ts`.
+
+Rounds 1 and 2 cover everything before this diff. I am the same reviewer, and I did not build it.
+
+**Verdict: Approve.** There is no Blocker or Major. One Minor and one Nit are below. **Journey 8/10, pass**, unchanged: nothing a user does changes (appended to `journey-test-reviewer-2026-11-25.md`).
+
+**What I ran** (from `prototype/`; never :4400, and no app copy was needed):
+* `npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo7w1_retainer_invoice.ts`: **39/39**. That is round 2's 31 plus 8 new lines: 5 cases, the adapter's summary line, R11 pass and R11 fail. The diff removes no `ok(...)` line.
+* `node studio/tools/check-port-contracts.mjs`: **0 problems**, 34 ports. `--list` shows `RetainerFeesPort`, with the real adapter `retainerFeesPort` run in `tests/check_fo7w1_retainer_invoice.ts`. `--self-test`: 9/9.
+* CI on 6dc148b1e (REST check-runs): `fast` success (the failure this diff fixes), `types` success, `ci` success, CodeQL success. The `parts` jobs were still running when I checked.
+* 8 adapter or harness mutants, run through the same contract in a scratch copy of the check (results below). The scratch database was dropped and the repo tree is clean.
+
+**The cases against the port file's sentences** (`ports/retainer-fees.ts`):
+
+| Case | Port file sentence | Can it fail? (mutant → failed cases) |
+|---|---|---|
+| 1. The firm's retainer, in the port's shape, with the current version's rows in order | "The retainer of this firm by id"; `RetainerFees`; "The current version's rows, in their order"; "exactly one is set" | Reads version 1 instead of the current one → 1, 2, 5. No `orderBy` (the seed inserts position 2 before position 1) → 1, 2, 5. Rows reversed (the check's own broken adapter) → red |
+| 2. The id in any letter case | Not in the port file (see r6) | A case-sensitive id → 2 only |
+| 3. Another firm's id, an unknown id, or "x" reads null | "or null (unknown, another firm's, or not an id)" | Ignores the firm asked for → 3, 4 |
+| 4. A firm id that is not one reads null and never throws | Not in the port file (see r6). The consult-record contract has the same case | The pre-diff adapter (no guard) → 4 only, because `firmScope` throws `FirmScopeError` |
+| 5. The read sees the caller's transaction | "One read, in the caller's transaction (the draft's)" (header) | Ignores the `tx` it is given → 5 only. A harness that commits instead of rolling back → 5 only (the "after" check) |
+
+The control (the real adapter) passes 5/5. Every case fails alone under at least one mutant, so none of them is vacuous.
+
+**The transaction case is real.**
+* `change(tx)` updates `status` to DECLINED on the transaction's own connection: `set local session_replication_role = replica` and then the update, both on `tx`.
+* The port reads `tx` and must see DECLINED. That change is not committed, so an adapter that reads anywhere else sees SIGNED and fails (M2).
+* `inTransaction` throws a `Rollback` carrying the value out of `$transaction`, so Prisma rolls the change back. The `set local` is rolled back with it.
+* The read outside then has to equal the hand-written `expected`, which is SIGNED with version 2's rows. M6, the same harness committing, fails exactly there. So the rollback leaves nothing, and the case proves it.
+* This is stronger than the consult-record contract's transaction case, which only reads inside a transaction. `expected` is also written by hand, not read back from the adapter, and its retainer sits on version 2 with a version-1 row the read must not return.
+
+**The guard does not change the API.**
+* The port's only caller is `drafts.ts:209`: `this.retainers.read(tx, firmScope(firmId).firmId, d.retainerId!)`.
+* `firmScope` (`platform/firm-scope.ts:17`) throws on a missing or non-uuid firm id before the port is called, and the id comes from the session's `ctx.firmId` (`drafts.ts:84`). So the port is only ever given a lower-case uuid, and the new firm-id branch cannot be reached from the API.
+* The added `typeof retainerId` test only narrows what `UUID.test` already refused.
+* R1–R10 are unchanged and pass (39/39).
+
+**No regression:**
+* The adapter's query and its return value are unchanged; only the early return moved.
+* R11 runs after R9 and before R10. It reads and changes only its own retainer, `cR`, and the rollback restores it. M6's committed change was put back in my scratch copy only. R10 still passes after R11.
+* The contract file imports only `./contract.ts` and `../retainer-fees.ts` (the ports/ rule).
+
+**Minor (Should):**
+* **r6. Two cases hold rules that the port file does not state.**
+  * `contract.ts` says a contract's cases are "taken from the port file's own comments and its callers' tests (no new rule)". The new contract's header lists "a firm id that is not one reads null, never throws" among "The port file's sentences", but `read`'s comment in `ports/retainer-fees.ts:36` says only "or null (unknown, another firm's, or not an id)".
+  * Neither the letter-case rule nor the firm-id rule is in the port file.
+  * Both rules are what the adapter does, and the firm-id case follows the precedent of `consult-record-port.contract.ts`. They are not wrong, but they are not written in the port.
+  * **Fix:** one line in `read`'s comment, for example "the id in any letter case; a firm id that is not one reads null, never throws". The port file then states every case.
+
+**Nit:** in case 1, the second `expect` (rows in position order) cannot fail once the first one passes: `same(r, expected)` already fixes the order. It does no harm as documentation.
+
+**Still open from round 2:** Minors r1–r5 and the two Nits. This diff does not touch them.
+
+**Could not check:** the `parts` CI jobs, which were still running. No screen (there is none).
+
+Verdict: Approve
+
+Reviewer: Approve 6dc148b1ef6671670eed3592ee808d0425dc8426

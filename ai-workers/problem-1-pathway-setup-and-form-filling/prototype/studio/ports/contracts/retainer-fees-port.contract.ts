@@ -26,8 +26,7 @@ export const retainerFeesPortContract = defineContract("RetainerFeesPort", (make
     name: "read answers the firm's retainer by its id, in the port's shape, with the current version's rows in order",
     async run() {
       const h = await make(), r = await h.port.read(undefined, h.firmId, h.expected.id);
-      expect(RetainerFees.safeParse(r).success && same(r, h.expected), "the retainer, as expected", { r, expected: h.expected });
-      expect(r!.rows.every((x, i, a) => i === 0 || a[i - 1].position < x.position), "rows in position order", r!.rows);
+      expect(RetainerFees.safeParse(r).success && same(r, h.expected), "the retainer, as expected (its rows in position order)", { r, expected: h.expected });
     },
   },
   {

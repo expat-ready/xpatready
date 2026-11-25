@@ -85,7 +85,7 @@ export class InvoiceDrafts {
       const billTo = provinceCode(billToProvince({ businessAddress: firm?.address ?? null }, party));
       const rows = d.retainerId ? await this.retainerRows(tx, ctx.firmId, d, party, currency) : null;   // FO-7w1, before anything is written
       // Break m1: nothing left to bill is a refusal, never an empty draft (a double click or a reload made one each time).
-      if (rows && !rows.length) problem(409, "Not possible now", "Nothing to bill from this retainer: every fee with an amount is already on an invoice, and a deposit (\"On signing\") is billed only when named. Nothing was saved.", { code: "NOTHING_TO_BILL" });
+      if (rows && !rows.length) problem(409, "Not possible now", "Nothing to bill from this retainer: it has no fee with an amount left to bill (a fee already on an invoice, or with no amount, is left out, and a deposit (\"On signing\") is billed only when named). Nothing was saved.", { code: "NOTHING_TO_BILL" });
       const deposit = !!rows?.some((r) => r.when === "ON_SIGNING");
       const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, deposit, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
       const lines = rows ? await this.copyRows(tx, ctx.firmId, inv.id, currency, party, billTo, firm?.address ?? null, rows) : [];
@@ -208,7 +208,8 @@ export class InvoiceDrafts {
    *  RETAINER_NOT_SIGNED (AG-6-64 r2). Without `feeRowIds`: every row with an amount except an "On signing" row, a deposit
    *  (Code s. 32; AG-6-61), never copied by itself; with them, exactly the rows named. A row already on an invoice is
    *  skipped, or 409 ROW_ON_INVOICE when named; the retainer's billing is one at a time (a transaction lock on its id), so
-   *  the second of two drafts at once reads the first's lines (the unique index stands behind it). */
+   *  the second of two drafts at once reads the first's lines (the unique index stands behind it). Nothing left to bill is
+   *  409 NOTHING_TO_BILL (create, never an empty draft); rows whose total with tax passes MINOR_MAX are 422 (copyRows). */
   private async retainerRows(tx: Tx, firmId: string, d: DraftIn, party: NonNullable<BillToParty>, currency: string): Promise<RetainerFeeRow[]> {
     const r = this.retainers ? await this.retainers.read(tx, firmScope(firmId).firmId, d.retainerId!) : null;
     const signer = party.kind === "PERSON" ? r?.personId : r?.companyId;
@@ -239,9 +240,11 @@ export class InvoiceDrafts {
     const [facts] = await tx.$queryRaw<{ registered: boolean | null }[]>`select tax_registered as registered from money_payment_settings where firm_id = ${firmScope(firmId).firmId}::uuid`;
     const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: address }, party, billTo), registered: facts?.registered === true });
     const ratePpm = lineRatePpm({ kind: "FEE", taxable: true }, dflt);
-    // Break m2: invisible format and direction marks (which money_text_ok refuses) are dropped from the label, not the bill.
+    // Break m2, re-review r1-r2: only what money_text_ok refuses is changed. Controls (C0, DEL, C1, U+2028/9) become a space;
+    // the direction embeddings, overrides and isolates (U+202A-U+202E, U+2066-U+2069) are dropped. Every other character
+    // is copied as signed (a Persian zero-width non-joiner, an emoji's joiner, a soft hyphen).
     const planned = rows.map((row, i) => ({ row, position: i + 1, amountMinor: row.amountMinor!, taxMinor: this.tax(row.amountMinor!, ratePpm),
-      description: [...row.label.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, "").trim()].slice(0, 500).join("") }));
+      description: [...row.label.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/[\u202a-\u202e\u2066-\u2069]/g, "").trim()].slice(0, 500).join("") }));
     // Break m3: the draft must be one that can be issued (FO-7b part 1b refuses a total above MINOR_MAX at issue).
     if (planned.reduce((t, l) => t + l.amountMinor + l.taxMinor, 0) > MINOR_MAX) badField("feeRowIds", `These fees with their tax come to more than one invoice can hold (${MONEY(MINOR_MAX)}): bill fewer rows at once (name them in feeRowIds). Nothing was saved.`);
     const out: { position: number; sourceFeeRowId: string; amountMinor: number; taxRatePpm: number; taxMinor: number }[] = [];
