@@ -89,6 +89,9 @@ for m in 'Never click Convert to draft yourself; I handle it.' "You don't have t
 for m in 'When you get a moment, merge #12.' 'First, archive the forms-2 session, then tell me.' 'Kindly close all of the stale PRs.' \
          'Go ahead and merge the PR when CI is green.' 'I can prepare it so you can merge #12 tonight.' 'It would help if you reopened #3601.'; do
   r=$(stop lead "$m"); ok "refused (Lead 7, last round): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'You can check that I closed #3601.' 'You can tell the queue merged #12 because CI is green.' 'You can relax: Mergify will merge the PR.' \
+         'Once you are back, you can trust that the queue will merge the PR.' 'If you checked, the queue closed the stale PRs.' 'If you approved, it merged #12 automatically.'; do
+  r=$(stop lead "$m"); ok "passes (Lead 7 round review, a report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 for m in 'I can merge #12 now, then archive the forms lane.' 'You can see #2322 is now ready for review.' 'The queue merged #2413, then closed the issue.'; do
   r=$(stop lead "$m"); ok "passes (Lead 7, last round): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")

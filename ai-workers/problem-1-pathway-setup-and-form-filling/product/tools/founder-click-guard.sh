@@ -37,7 +37,7 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
 # Not an ask (review 2 of #3665): the Lead offering to do it, or telling the founder not to.
 NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))((\s+|,\s+then\s+)(?!(please|pls|could|so|but|otherwise|you|your|or|while|if|when)\b)[\w#][\w#-]*)*"  # an offer: to the end of its clause, whose verbs the Lead does
   r"|(\b(should|must|need|do|does)( not|n.t)\b(?!\s+(forget|hesitate)\b)|\bno need\b|\bnever\b(?!\s+(forget|hesitate)\b)|\bnothing (left )?for you( to do)?\b)(\s+(?!(please|pls|could|so|but|otherwise)\b)[\w#][\w#-]*){0,4}", I)  # a "not": with its own verbs, never past please or could; "do not forget to" stays an ask
-YOU = re.compile(r"\bif you \w+ed\b|\byou can (?!see\b|now see\b|also see\b)\w|\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
+YOU = re.compile(r"\b(it would help|it helps|i would like it) if you \w+ed\b|\byou can (now |also |then )?(close|archive|merge|reopen|label|dispatch|trigger|press|click|run|add|open|convert|mark|edit)\b|\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
   r"(then |and |just |now |otherwise,? |if not,? |first,? |kindly |go ahead and )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
