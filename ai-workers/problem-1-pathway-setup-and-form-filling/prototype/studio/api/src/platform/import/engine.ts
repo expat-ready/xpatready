@@ -34,7 +34,7 @@ export const RULE_WORDS: Record<string, string> = {
   required: "is required", duplicate_in_file: "is the same as an earlier row of this file (that row is imported)", nothing_new: "is already on the record: nothing to add",
   cell_count: "has a different number of cells from the header", not_email: "is not an email address", not_phone: "is not a phone number",
   not_language: "is not a language code (for example en or fr)", not_allowed_value: "is not one of the allowed values", too_long: "is too long",
-  no_contact: "needs an email or a phone", write_failed: "could not be saved (nothing of it was imported)", not_text: "has characters that cannot be saved",
+  no_contact: "needs an email or a phone", write_failed: "could not be saved (nothing of it was imported)", name_needed: "needs a given or family name", needs_email: "needs an email (consent is for email)", not_text: "has characters that cannot be saved",
 };
 export const reasonWords = (t: ImportTarget<unknown> | undefined, r: Reason) => `${t?.fields.find((f) => f.key === r.field)?.label ?? r.field}: ${RULE_WORDS[r.rule] ?? r.rule.replace(/_/g, " ")}`;
 
