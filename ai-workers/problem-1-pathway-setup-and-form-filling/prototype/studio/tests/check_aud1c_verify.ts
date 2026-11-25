@@ -92,6 +92,7 @@ try {
   const a0 = headOf(A);   // the Sample firms' own lines come first
   const D = "00000000-0000-4000-8000-0000000a1c0d";   // a long chain (break Blocker: seq sorted as text broke every chain of 10+ lines)
   add(A, 6); add(B, 4); add(C, 4); add(null, 3); add(null, 2, DEMO); add(D, 25);
+  const F = "00000000-0000-4000-8000-0000000a1c0f"; add(F, 12);   // review Major: a removed tail
   const signIn = async (actorId: string, firmKey: string) => { const r = await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, actorId, secondStep: true }) }); return ((await r.json()) as { token: string }).token; };
   const tR = await signIn("user-R", R.firm.key), tO = await signIn("user-O", O.firm.key), tS = await signIn("user-S", S.firm.key);
   const aHead = headOf(A);   // signing in writes lines too
@@ -134,13 +135,19 @@ try {
   const tail = await v.pass("incremental"), fB = tail.findings.find((f) => f.chainKey === B);
   ok("AUD-1c DW6 pass: the newest verified line removed is found by the 30-minute run (the verified place is missing)", fB?.why === "missing" && fB.fromSeq === String(bHead) && fB.toSeq === String(bHead), tail.findings);
 
+  owner(`delete from audit_event where chain_key = '${F}' and seq > 9`);
+  const t1 = await v.pass("full"), t2 = await v.pass("incremental"), t3 = await v.pass("full"), fF = (await v.all()).find((i) => i.chainKey === F);
+  ok("AUD-1c DW6 pass (review Major): the newest 3 lines removed are found by the weekly pass too, as the range 10-12, and the chain stays BROKEN on the next passes (never INTACT at a lower seq)",
+    t1.findings.find((y) => y.chainKey === F)?.why === "missing" && t1.findings.find((y) => y.chainKey === F)?.fromSeq === "10" && fF?.status === "BROKEN" && fF.failingFromSeq === "10" && fF.failingToSeq === "12" && fF.verifiedSeq === "12"
+      && [t2, t3].every((p) => p.findings.some((y) => y.chainKey === F)), [t1.findings, fF]);
+
   // ------------------------------------------------------------------- DW7: firm walls
   const readA = await call(base, "/api/platform/audit/integrity", tR), readB = await call(base, "/api/platform/audit/integrity", tS);
   ok("AUD-1c DW7 pass: firm A's Owner reads BROKEN with the range from the changed line to the head, after a 30-minute run too",
     readA.body.status === "BROKEN" && readA.body.failingFromSeq === String(a0 + 3) && readA.body.failingToSeq === String(aHead), readA.body);
   const platform = await v.all();
   ok("AUD-1c DW7 fail: firm A's break never marks another chain; the platform chain and every other unbroken chain stay INTACT",
-    platform.filter((i) => i.status === "BROKEN").map((i) => i.chainKey).sort().join() === [A, B, C].sort().join() && platform.find((i) => i.chainKey === "platform")?.status === "INTACT", platform);
+    platform.filter((i) => i.status === "BROKEN").map((i) => i.chainKey).sort().join() === [A, B, C, F].sort().join() && platform.find((i) => i.chainKey === "platform")?.status === "INTACT", platform);
   add(B, 1);   // firm B's own new line after its break: still B's chain only
   await v.pass("incremental"); await v.pass("full");
   const readB2 = await call(base, "/api/platform/audit/integrity", tS);
@@ -150,7 +157,7 @@ try {
   const mine = alerts.raised.slice(raised0);
   const text = JSON.stringify(mine);
   ok("AUD-1c DW9 pass: each alert carries ids and the range only (rule, firm, chain, from, to): no summary, no detail, no actor",
-    mine.length === 3 && mine.every((a) => a.kind === "audit_chain_break" && Object.keys(a.detail).every((k) => ["rule", "firmId", "entity", "entityKey", "fromSeq", "toSeq"].includes(k)))
+    mine.length === 4 && mine.every((a) => a.kind === "audit_chain_break" && Object.keys(a.detail).every((k) => ["rule", "firmId", "entity", "entityKey", "fromSeq", "toSeq"].includes(k)))
       && !/private|Sample line|rewritten|system:aud1cv/.test(text), mine);
   const before = alerts.raised.length; await v.pass("full"); await v.pass("incremental");
   ok("AUD-1c DW9 fail: the same breaks found again by two more passes raise no new alert", alerts.raised.length === before, alerts.raised.slice(before));
