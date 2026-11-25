@@ -144,6 +144,9 @@ W24 html|product/tools/merge-wake.py|s/in re.sub(r"<!--.*flags=re.S)/in (body or
 W24 many|product/tools/merge-wake.py|s/^        if len(w) > MANY: .*/        if False:/|check-merge-wake.sh
 W24 wired|product/tools/lead-watch.sh|s/^mw=/# mw=/|check-merge-wake.sh
 W24 ran|product/tools/lead-watch.sh|/merge-wake.py did not run/d|check-merge-wake.sh
+W24 once|product/tools/merge-wake.py|s/^            if k in mem:/            if False:/|check-merge-wake.sh
+W24 unwritable|product/tools/merge-wake.py|s/o.post = False; print(f"ACT   wake: memory {clean/print(f"ACT   wake: memory {clean/|check-merge-wake.sh
+W24 cap|product/tools/merge-wake.py|s/if posted >= POSTS:/if False:/|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
