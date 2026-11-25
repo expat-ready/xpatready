@@ -63,8 +63,8 @@ export class Automation {
     return withFirm(firmId, () => this.d.db.$transaction(async (tx) => {
       await this.ensure(tx, firmId);
       const rows = await tx.autoRecipe.findMany({ where: firmScope(firmId, {}), orderBy: { key: "asc" }, include: { steps: { orderBy: { position: "asc" } } } });
-      const running = await tx.autoRun.groupBy({ by: ["recipeId"], where: firmScope(firmId, { state: "RUNNING" }), _count: { _all: true } });
-      const count = new Map(running.map((g) => [g.recipeId, g._count._all]));
+      const running = await tx.autoRun.groupBy({ by: ["recipeId"], where: firmScope(firmId, { state: "RUNNING" as const }), _count: { _all: true } });
+      const count = new Map(running.map((g) => [g.recipeId, (g._count as { _all: number })._all] as const));
       return rows.map((r) => {
         const def = this.d.registry.get(r.key);
         return {
@@ -111,7 +111,7 @@ export class Automation {
       VALUES (gen_random_uuid(), ${e.firmId}::uuid, ${r.id}::uuid, ${e.subject.kind}, ${e.subject.id}::uuid, ${e.channel}, ${e.address}, ${e.context?.kind ?? null}, ${e.context?.id ?? null}::uuid, ${e.by}, ${now})
       ON CONFLICT (firm_id, recipe_id, subject_kind, subject_id) WHERE state = 'RUNNING' DO NOTHING RETURNING id`;
     if (!made.length) {
-      const run = await tx.autoRun.findFirst({ where: firmScope(e.firmId, { recipeId: r.id, subjectKind: e.subject.kind, subjectId: e.subject.id, state: "RUNNING" }), select: { id: true } });
+      const run = await tx.autoRun.findFirst({ where: firmScope(e.firmId, { recipeId: r.id, subjectKind: e.subject.kind, subjectId: e.subject.id, state: "RUNNING" as const }), select: { id: true } });
       return { started: false, reason: "already running", runId: run?.id };
     }
     const runId = made[0].id, stepRunIds: string[] = [];
@@ -125,7 +125,7 @@ export class Automation {
   /** After the enrolling transaction commits: one job per step at its due time. */
   async schedule(firmId: string, stepRunIds: string[]): Promise<void> {
     if (!stepRunIds.length) return;
-    const rows = await withFirm(firmId, () => this.d.db.autoStepRun.findMany({ where: firmScope(firmId, { id: { in: stepRunIds }, state: "QUEUED" }), select: { id: true, dueAt: true } }));
+    const rows = await withFirm(firmId, () => this.d.db.autoStepRun.findMany({ where: firmScope(firmId, { id: { in: stepRunIds }, state: "QUEUED" as const }), select: { id: true, dueAt: true } }));
     for (const s of rows) await this.d.jobs.schedule(STEP_QUEUE, s.dueAt, { stepRunId: s.id }, { key: stepJobKey(s.id), firmId });
   }
 
@@ -146,11 +146,11 @@ export class Automation {
 
   async #endRuns(tx: Tx, firmId: string, where: Prisma.AutoRunWhereInput, exit: string, stepReason: string): Promise<{ ended: string[]; cancelled: string[] }> {
     const now = this.#clock.now();
-    const runs = (await tx.autoRun.findMany({ where: firmScope(firmId, { ...where, state: "RUNNING" }), select: { id: true } })).map((r) => r.id);
+    const runs = (await tx.autoRun.findMany({ where: firmScope(firmId, { ...where, state: "RUNNING" as const }), select: { id: true } })).map((r) => r.id);
     if (!runs.length) return { ended: [], cancelled: [] };
-    const cancelled = (await tx.autoStepRun.findMany({ where: firmScope(firmId, { runId: { in: runs }, state: "QUEUED" }), select: { id: true } })).map((s) => s.id);
-    await tx.autoStepRun.updateMany({ where: firmScope(firmId, { id: { in: cancelled }, state: "QUEUED" }), data: { state: "CANCELLED", reason: stepReason, doneAt: now } });
-    await tx.autoRun.updateMany({ where: firmScope(firmId, { id: { in: runs }, state: "RUNNING" }), data: { state: "ENDED", exitReason: exit, endedAt: now } });
+    const cancelled = (await tx.autoStepRun.findMany({ where: firmScope(firmId, { runId: { in: runs }, state: "QUEUED" as const }), select: { id: true } })).map((s) => s.id);
+    await tx.autoStepRun.updateMany({ where: firmScope(firmId, { id: { in: cancelled }, state: "QUEUED" as const }), data: { state: "CANCELLED", reason: stepReason, doneAt: now } });
+    await tx.autoRun.updateMany({ where: firmScope(firmId, { id: { in: runs }, state: "RUNNING" as const }), data: { state: "ENDED", exitReason: exit, endedAt: now } });
     return { ended: runs, cancelled };
   }
 
@@ -167,7 +167,7 @@ export class Automation {
         let cancel: string[] = [];
         const stopped = state === "SKIPPED" && reason !== null && STOPPED.test(reason);
         if (stopped) cancel = (await this.#endRuns(tx, firmId, { id: run.id }, EXIT.UNSUBSCRIBED, STEP_REASON.RUN_ENDED)).cancelled;
-        else if (run.state === "RUNNING" && (await tx.autoStepRun.count({ where: firmScope(firmId, { runId: run.id, state: "QUEUED" }) })) === 0)
+        else if (run.state === "RUNNING" && (await tx.autoStepRun.count({ where: firmScope(firmId, { runId: run.id, state: "QUEUED" as const }) })) === 0)
           await tx.autoRun.update({ where: { id: run.id }, data: { state: "ENDED", exitReason: EXIT.FINISHED, endedAt: now } });
         return { state, outboxId, cancel };
       };
