@@ -3,8 +3,9 @@
 // may open (the server filters); the list, its tabs and Keep separate need agent/prospect:edit, Undo merge needs
 // agent/prospect:merge; without the list key the menu item is not shown and a typed address says who to ask. BR-10: Undo
 // merge on every not-undone merge on the Merged tab (automatic ones too), always offered; a refusal shows the server's
-// reason in its place. BR-11: Keep separate decides the pair (a confirm first: it is not suggested again). Merge… is shown to
-// holders of agent/prospect:merge, off in this part (the guided merge, BR-8 and BR-9, is part 3); a case pair's says BR-7's sentence.
+// reason in its place. BR-11: Keep separate decides the pair (a confirm first: it is not suggested again). Merge… (holders of
+// agent/prospect:merge) opens part 3's guided merge (merge-dialog.tsx); a case pair's is off with BR-7's sentence. After a
+// merge, a notice "Merged into <name>." offers Undo (the toasts carry no button).
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -17,6 +18,7 @@ import { Loading } from "../sales/loading";
 import { assigneesQuery, SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError } from "../sales/session";
 import { reasonWords } from "./contract";
+import { MergeDialog } from "./merge-dialog";
 import { CASE_SIDE_LINE, MERGE_KEY, MergeList, mergedBy, REVIEW_KEY, reviewQuery, type MergeRecord, type ReviewPair } from "./review-contract";
 
 type Tab = "OPEN" | "MERGED" | "KEPT_SEPARATE";
@@ -49,6 +51,8 @@ function PeopleToMergeBody() {
   const staff = useQuery({ ...assigneesQuery, enabled: allowed && tab === "MERGED" });
   const staffNames = React.useMemo(() => new Map((staff.data?.assignees ?? []).map((a) => [a.staffId, a.displayName])), [staff.data]);
   const [confirm, setConfirm] = React.useState<ReviewPair | null>(null);
+  const [merging, setMerging] = React.useState<ReviewPair | null>(null), opener = React.useRef<HTMLElement | null>(null);
+  const [done, setDone] = React.useState<{ name: string; mergeRef: string } | null>(null);   // part 3: "Merged into …" with Undo
   const [refused, setRefused] = React.useState<Record<string, string>>({});   // BR-10: the server's reason in Undo's place
   const refresh = () => void qc.invalidateQueries({ queryKey: ["fo", "duplicates"] });
   const keep = useMutation({
@@ -60,7 +64,7 @@ function PeopleToMergeBody() {
     mutationFn: async (m: MergeRecord) => staffApi(`/front-office/duplicates/merges/${m.id}/undo`, { method: "POST" }),
     // The names on a merge record are the records' current ones (after a merge both may carry the chosen name), so the
     // toast names no one.
-    onSuccess: () => { refresh(); toast.push({ tone: "ok", text: "Merge undone: the two records are separate again, each with its own leads." }); },
+    onSuccess: (_, m) => { if (done?.mergeRef === m.id) setDone(null); refresh(); toast.push({ tone: "ok", text: "Merge undone: the two records are separate again, each with its own leads." }); },
     onError: (e, m) => { if (e instanceof StaffApiError && e.status !== 401) setRefused((r) => ({ ...r, [m.id]: e.message })); else toast.push({ tone: "danger", text: "Could not undo the merge. Nothing changed." }); },
   });
   if (!allowed) return <div className="mx-auto flex max-w-6xl flex-col gap-4"><h1 className="text-2xl font-semibold text-text">People to merge</h1><Notice tone="info" title="You need access to People to merge. Ask an Owner or Admin." /></div>;
@@ -81,7 +85,7 @@ function PeopleToMergeBody() {
               {t === "OPEN" ? <div className="flex flex-col items-start gap-1">
                 <div className="flex flex-wrap gap-1">
                   {/* BR-7: a case pair's Merge… is off with the sentence; the guided merge itself is part 3 (brief FO-9s-2). */}
-                  {can(me, MERGE_KEY) ? <Button variant="outline" size="sm" disabled data-dup-merge-open aria-describedby={p.needsCaseSide ? `dup-case-${p.id}` : undefined}>Merge…</Button> : null}
+                  {can(me, MERGE_KEY) ? <Button variant="outline" size="sm" disabled={p.needsCaseSide} data-dup-merge-open aria-describedby={p.needsCaseSide ? `dup-case-${p.id}` : undefined} onClick={(e) => { opener.current = e.currentTarget; setDone(null); setMerging(p); }}>Merge…</Button> : null}
                   <Button variant="ghost" size="sm" onClick={() => setConfirm(p)}>Keep separate</Button>
                 </div>
                 {p.needsCaseSide ? <p id={`dup-case-${p.id}`} className="text-xs text-text-muted" data-needs-case-side>{CASE_SIDE_LINE}</p> : null}
@@ -114,6 +118,12 @@ function PeopleToMergeBody() {
           <h1 className="text-2xl font-semibold text-text">People to merge</h1>
           <p className="mt-1 text-sm text-text-muted">Pairs that may be one person. Nothing merges here until you choose. Merged people can be split again while nothing new was added.</p>
         </header>
+        {done ? <Notice tone="ok" title={`Merged into ${done.name}.`} action={<div className="flex gap-2">
+          <Button variant="outline" size="sm" busy={undo.isPending} onClick={() => { const m = merges.data?.find((x) => x.id === done.mergeRef); if (m) undo.mutate(m); }} disabled={!merges.data?.some((x) => x.id === done.mergeRef && !x.undoneAt)}>Undo</Button>
+          <Button variant="ghost" size="sm" onClick={() => setDone(null)}>Dismiss</Button></div>}>
+          <span data-merged-notice>It is on the Merged tab, where it can be undone later too.</span>
+        </Notice> : null}
+        {done && refused[done.mergeRef] ? <Notice tone="warn" title={refused[done.mergeRef]} /> : null}
         <Tabs value={tab} onValueChange={(v) => setParams((s) => { const n = new URLSearchParams(s); n.set("tab", TABS.find((t) => t.tab === v)!.param); return n; }, { replace: true })}>
           <TabsList aria-label="People to merge" className="h-auto flex-wrap">
             {TABS.map((t) => <TabsTrigger key={t.tab} value={t.tab} data-dup-tab={t.param}>{t.label}{count[t.tab] !== undefined ? ` (${count[t.tab]})` : ""}</TabsTrigger>)}
@@ -122,6 +132,8 @@ function PeopleToMergeBody() {
           <TabsContent value="MERGED" className="mt-3">{mergedTab}</TabsContent>
           <TabsContent value="KEPT_SEPARATE" className="mt-3">{pairs(kept, "KEPT_SEPARATE")}</TabsContent>
         </Tabs>
+        <MergeDialog pair={merging} returnFocus={() => opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>("[data-dup-tab='review']")} onClose={() => setMerging(null)}
+          onMerged={(name, mergeRef) => { setMerging(null); setDone({ name, mergeRef }); refresh(); }} />
         <Dialog open={!!confirm} onOpenChange={(o) => { if (!o && !keep.isPending) setConfirm(null); }} title="Keep these people separate?"
           description={confirm ? `${names(confirm)} stay two records. The pair leaves To review and is not suggested again.` : undefined}
           footer={<><Button variant="ghost" disabled={keep.isPending} onClick={() => setConfirm(null)}>Cancel</Button><Button busy={keep.isPending} onClick={() => confirm && keep.mutate(confirm)}>Keep separate</Button></>}>

@@ -28,3 +28,27 @@ export function mergedBy(m: Pick<MergeRecord, "automatic" | "by">, me: string, n
 }
 /** One query per tab, shared by People to merge and the Sales menu's count (To review's openCount). */
 export const reviewQuery = (status: "OPEN" | "KEPT_SEPARATE") => ({ queryKey: ["fo", "duplicates", "review", status], queryFn: async () => ReviewList.parse(await staffApi(`/front-office/duplicates/review?status=${status}`)) });
+
+// FO-9s part 3 (concept r3 §4 S3, BR-8, BR-9, M7): the guided merge's preview and merge answers.
+export const FieldPick = z.enum(["SURVIVOR", "LOSER"]);
+export type FieldPick = z.infer<typeof FieldPick>;
+const FieldRow = z.object({ field: z.string(), survivor: z.unknown(), loser: z.unknown(), pick: FieldPick });
+export const Preview = z.object({
+  pairId: z.string(), survivorId: z.string(), loserId: z.string(), needsCaseSide: z.boolean(), hasMoney: z.boolean(), fields: z.array(FieldRow),
+  moves: z.object({ leads: z.number(), notes: z.number(), calls: z.number(), bookings: z.number() }),
+  updatedAt: z.object({ survivor: z.string(), loser: z.string() }),
+});
+export type Preview = z.infer<typeof Preview>;
+export const Merged = z.object({ mergeRef: z.string() });
+/** The person's merge fields (ports/person-merge.ts MERGE_FIELDS.PERSON), in words. */
+export const FIELD_LABEL: Record<string, string> = { givenNames: "First name", familyName: "Last name", email: "Email", phone: "Phone", language: "Language", timeZone: "Time zone" };
+const present = (v: unknown) => v !== null && v !== undefined && v !== "";
+/** BR-8: why the default was picked ("same", "only value", else the newer record's). Pure. */
+export function fieldWhy(f: { survivor: unknown; loser: unknown }): string {
+  if (!present(f.survivor) && !present(f.loser)) return "neither has it";
+  if (present(f.survivor) !== present(f.loser)) return "only value";
+  return String(f.survivor) === String(f.loser) ? "same" : "newer";
+}
+/** Word for word: the stale answer (concept §4) and a failed merge (AG-2-16 §11, Minor 4). */
+export const STALE_WORDS = "One of these records changed. Reload to see it.";
+export const MERGE_FAILED = "Could not merge. Nothing changed.";
