@@ -125,6 +125,7 @@ model PlatformFirm {
 
   // back-relation slot: import (PF-10a)
   platImportBatches      PlatImportBatch[]       // platform-import.prisma
+  personExports          PlatformPersonExport[]  // PF-26 (below)
   platImportMappings     PlatImportMapping[]
   platImportAttestations PlatImportAttestation[]
 
@@ -298,6 +299,7 @@ model PlatformStaff {
 
   // back-relation slot: import (PF-10a)
   platImportBatches      PlatImportBatch[]       // platform-import.prisma (the importer)
+  personExportsAsked     PlatformPersonExport[]  // PF-26 (the requester)
   platImportMappings     PlatImportMapping[]     // (who saved it last)
   platImportAttestations PlatImportAttestation[] // (the attesting Owner)
 
@@ -515,4 +517,39 @@ model PlatformSignupPending {
   @@index([expiresAt])
   @@index([signupLinkId])
   @@map("platform_signup_pending")
+}
+
+// PF-26 part 2 (map row 34, R1.34; AG-2-93, SA-11-36, SA-11-40): one person's data as one export. One row per request:
+// the person record (fo_person, checked by the service: no foreign key across areas), who asked and why (a reason in
+// their own words, AG-2-93 rule 7 and the capability's "who and why"), the file once built (person-export/<id>.json),
+// its sha256, READY for the Sample 7 days, then EXPIRED; FAILED names the module only. Checks in migration
+// 20261125150000_platform__pf26_person_export.
+enum PlatformPersonExportState {
+  QUEUED
+  READY
+  EXPIRED
+  FAILED
+}
+
+model PlatformPersonExport {
+  id           String                    @id @default(uuid()) @db.Uuid
+  firmId       String                    @map("firm_id") @db.Uuid
+  personId     String                    @map("person_id") @db.Uuid
+  requestedBy  String                    @map("requested_by") @db.Uuid
+  reason       String
+  state        PlatformPersonExportState @default(QUEUED)
+  records      String[]                  @db.Uuid
+  fileKey      String?                   @map("file_key")
+  sha256       String?
+  sizeBytes    Int?                      @map("size_bytes")
+  expiresAt    DateTime?                 @map("expires_at") @db.Timestamptz
+  failedModule String?                   @map("failed_module")
+  createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+  finishedAt   DateTime?                 @map("finished_at") @db.Timestamptz
+
+  firm      PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requester PlatformStaff @relation(fields: [firmId, requestedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([firmId, personId, createdAt])
+  @@map("platform_person_export")
 }
