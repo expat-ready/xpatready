@@ -54,7 +54,7 @@ const { useAlerts } = await import("../api/src/platform/observability/alerts.ts"
 const { JsonLog, useLog } = await import("../api/src/platform/observability/log.ts");
 const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const { FirmAuditIntegrityController } = await import("../api/src/platform/audit/chain/routes.ts");
-const { AuditChainVerifier, CHAIN_CHECK_QUEUE, CHAIN_DEEP_QUEUE, HEARTBEAT } = await import("../api/src/platform/audit/chain/verify.ts");
+const { AuditChainVerifier, CHAIN_CHECK_QUEUE, CHAIN_DEEP_QUEUE, DEEP_SLICES, HEARTBEAT, sliceOf } = await import("../api/src/platform/audit/chain/verify.ts");
 const feature = (await import("../api/src/features/audit-chain.ts")).default;   // the row's own registration
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -156,7 +156,7 @@ try {
   const mine = alerts.raised.slice(raised0);
   const text = JSON.stringify(mine);
   ok("AUD-1c DW9 pass: each alert carries ids and the range only (rule, firm, chain, from, to): no summary, no detail, no actor",
-    mine.length === 4 && mine.every((a) => a.kind === "audit_chain_break" && Object.keys(a.detail).every((k) => ["rule", "firmId", "entity", "entityKey", "fromSeq", "toSeq"].includes(k)))
+    mine.length === 4 && mine.every((a) => a.kind === "audit.chain_integrity_failure" && Object.keys(a.detail).every((k) => ["rule", "firmId", "entity", "entityKey", "fromSeq", "toSeq"].includes(k)))
       && !/private|Sample line|rewritten|system:aud1cv/.test(text), mine);
   const before = alerts.raised.length; await v.pass("full"); await v.pass("incremental");
   ok("AUD-1c DW9 fail: the same breaks found again by two more passes raise no new alert", alerts.raised.length === before, alerts.raised.slice(before));
@@ -177,6 +177,18 @@ try {
   ok("AUD-1c DW10 fail (break M3): a check row whose key is no chain's fails the pass (no heartbeat), yet every other chain is checked: firm D's new break is found and raised",
     m3threw && beats() === m3b && dState?.status === "BROKEN" && dState.failingFromSeq === "4" && alerts.raised.length === m3a + 1, { m3threw, dState, alerts: alerts.raised.slice(m3a) });
   sql(`delete from aud_chain_check where chain_key = '0 not a chain'`);
+
+  // ------------------------------------------------------------------- part 5: the weekly check in slices (Lead 5 on #2129)
+  const wholeKeys = (await v.all()).map((i) => i.chainKey).filter((k) => /^(platform|(sample:)?[0-9a-f-]{36})$/.test(k));
+  const seen = new Map<string, number>();
+  for (let s = 0; s < DEEP_SLICES; s++) for (const k of wholeKeys.filter((x) => sliceOf(x) === s)) seen.set(k, (seen.get(k) ?? 0) + 1);
+  const sliceRuns: number[] = []; for (let s = 0; s < DEEP_SLICES; s++) { try { sliceRuns.push((await v.pass("full", s)).chains); } catch { sliceRuns.push(-1); } }
+  ok("AUD-1c part 5 pass: the weekly check's 24 slices take every chain exactly once between them (a stable hash), each slice checking only its own",
+    wholeKeys.length > 3 && wholeKeys.every((k) => seen.get(k) === 1) && sliceRuns.reduce((a, b) => a + b, 0) === wholeKeys.length && Math.max(...sliceRuns) < wholeKeys.length, { n: wholeKeys.length, sliceRuns });
+  const deep0 = jobs.jobs.filter((j) => j.name === CHAIN_DEEP_QUEUE).length;
+  await jobClock.set("2026-11-29T00:00:00Z"); await jobClock.advance({ hours: 24 });   // a Sunday, UTC
+  const deepRuns = jobs.jobs.filter((j) => j.name === CHAIN_DEEP_QUEUE).length - deep0;
+  ok("AUD-1c part 5 fail: a Sunday runs the weekly check 24 times, once an hour (one slice each), never in one run", deepRuns === DEEP_SLICES, { deepRuns });
 
   // ------------------------------------------------------------------- DW10: heartbeat and the key
   const beat0 = beats();

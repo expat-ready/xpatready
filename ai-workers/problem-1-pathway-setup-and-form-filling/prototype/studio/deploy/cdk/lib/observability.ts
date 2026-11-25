@@ -22,7 +22,7 @@ import { ON_CALL_PARAMETER } from "./checks.ts";
 export const LOG_RETENTION_DAYS = 90;
 export const NAMESPACE = "ExpatReady/Alarms";
 /** The alert kinds (ports/alert.ts ALERT_KINDS) PF-23c's row names; send_cap_reached is not one of them. */
-export const ALARMED_ALERT_KINDS = ["audit_write_failed", "audit_chain_break", "job_stuck", "privacy_clock_near", "breach_clock_near"] as const;
+export const ALARMED_ALERT_KINDS = ["audit_write_failed", "audit.chain_integrity_failure", "job_stuck", "privacy_clock_near", "breach_clock_near"] as const;
 /** NFR5-15 (ADR line 201): "5xx<0.1%", the error-rate SLO. */
 export const SLO_5XX_PCT = 0.1;
 /** Sample: the fast-burn factor that pages (14.4, the multi-window burn-rate page in Google's SRE workbook: a month's
@@ -41,7 +41,7 @@ export const FILTERS: Record<string, { pattern: string; value: string }> = {
   MailBounced: { pattern: '{ $.event = "mail_bounced" }', value: "$.MailBounced" },
   ...Object.fromEntries(ALARMED_ALERT_KINDS.map((k) => [alertMetric(k), { pattern: `{ $.event = "alert" && $.alert = "${k}" }`, value: "1" }])),
 };
-const ALERT_RULES: Record<(typeof ALARMED_ALERT_KINDS)[number], string> = { audit_write_failed: "SA-11 BR-5", audit_chain_break: "SA-11 BR-2", job_stuck: "SA8-D40", privacy_clock_near: "NFR5-14", breach_clock_near: "NFR5-14" };
+const ALERT_RULES: Record<(typeof ALARMED_ALERT_KINDS)[number], string> = { audit_write_failed: "SA-11 BR-5", "audit.chain_integrity_failure": "SA-11 BR-2", job_stuck: "SA8-D40", privacy_clock_near: "NFR5-14", breach_clock_near: "NFR5-14" };
 export function alertMetric(kind: string): string { return `Alert_${kind}`; }
 
 /** The alarms, by key (the alarm is named xr-<stage>-<key>), and the metrics each reads. */
@@ -50,7 +50,7 @@ export const ALARMS: Record<string, string[]> = {
   "job-failures": ["JobFailures"],
   "job-age": ["JobAge"],
   "mail-bounce-rate": ["MailSent", "MailBounced"],
-  ...Object.fromEntries(ALARMED_ALERT_KINDS.map((k) => [`alert-${k.replace(/_/g, "-")}`, [alertMetric(k)]])),
+  ...Object.fromEntries(ALARMED_ALERT_KINDS.map((k) => [`alert-${k.replace(/[_.]/g, "-")}`, [alertMetric(k)]])),
 };
 
 export interface ObservabilityProps { stage: string }
@@ -115,7 +115,7 @@ export class Observability extends Construct {
     alarm("job-age", "A job waited longer than the app's stuck limit (SA8-D40, STUCK_JOB_MS). Filter event = \"job\", by queue.", metric.JobAge.with({ statistic: "Maximum" }), SAMPLE.stuckJobMs, 1);
     alarm("mail-bounce-rate", `Mail bounces over ${SAMPLE.bounceRatePct} % of mail sent in an hour (Sample).`, rate("MailBounced", "MailSent", SAMPLE.minMailSent, Duration.hours(1)), SAMPLE.bounceRatePct, 1);
     for (const k of ALARMED_ALERT_KINDS) { // the app already sends one alert line per incident (ALERT_REPEAT_MS): page on the first
-      alarm(`alert-${k.replace(/_/g, "-")}`, `The app raised alert ${k} (${ALERT_RULES[k]}); it stays open until handled, whatever this alarm's state. Filter event = "alert", alert = "${k}".`, metric[alertMetric(k)].with({ period: Duration.minutes(1) }), 1, 1, cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD, false);
+      alarm(`alert-${k.replace(/[_.]/g, "-")}`, `The app raised alert ${k} (${ALERT_RULES[k]}); it stays open until handled, whatever this alarm's state. Filter event = "alert", alert = "${k}".`, metric[alertMetric(k)].with({ period: Duration.minutes(1) }), 1, 1, cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD, false);
     }
   }
 }

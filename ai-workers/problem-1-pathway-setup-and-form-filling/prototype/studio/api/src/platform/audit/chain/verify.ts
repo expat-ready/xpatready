@@ -13,6 +13,7 @@
 // Lines are read as text (`at` to the microsecond, `detail::text`), never through a JS Date or a parsed detail.
 // The checker reads in READ COMMITTED, one chain per transaction under that chain's own check lock, so two runners never
 // write one chain's check row at once; the insert trigger's chain lock is not taken, so writers never wait for it.
+import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AlertPort } from "../../../../../ports/alert.ts";
 import { emf } from "../../observability/metrics.ts";
@@ -20,8 +21,13 @@ import { log } from "../../observability/log.ts";
 import { entryHash, ZERO_HASH, type CanonicalLine } from "../canonical.ts";
 
 export const CHAIN_CHECK_QUEUE = "audit.chain_check", CHAIN_DEEP_QUEUE = "audit.chain_deep_check";
-/** SA-11-6: every 30 minutes; the weekly deep check on Sunday at 03:40 UTC (the hour and day Sample). */
-export const CHAIN_CHECK_CRON = "*/30 * * * *", CHAIN_DEEP_CRON = "40 3 * * 0", CHAIN_ZONE = "UTC";
+/** SA-11-6: every 30 minutes; the weekly deep check on Sunday, in DEEP_SLICES slices, one an hour at :40 UTC (the day
+ *  and minute Sample). AUD-1c part 5 (Lead 5 on #2129): each slice checks only the chains whose stable hash falls in its
+ *  hour, so no run comes near the job runner's 15 minutes and no cursor is kept (a lost run costs one slice that week). */
+export const CHAIN_CHECK_CRON = "*/30 * * * *", CHAIN_DEEP_CRON = "40 * * * 0", CHAIN_ZONE = "UTC";
+export const DEEP_SLICES = 24;
+/** The slice (0 to DEEP_SLICES - 1) a chain's weekly check falls in: the first four bytes of sha256(chain key). */
+export const sliceOf = (k: string): number => createHash("sha256").update(k).digest().readUInt32BE(0) % DEEP_SLICES;
 /** Lines read at a time (Sample). */
 export const CHAIN_PAGE = 500;
 export const HEARTBEAT = "audit.chain_verify_ok";
@@ -57,12 +63,12 @@ export class AuditChainVerifier {
   /** One pass over every chain. A chain that cannot be checked (the database does not answer; a check row whose key is
    *  no chain's) never stops the others (break M3): every other chain is still checked and any break raised, then the
    *  pass throws and writes no heartbeat, so the job fails and the heartbeat's absence alarms. */
-  async pass(mode: Mode): Promise<PassResult> {
+  async pass(mode: Mode, slice?: number): Promise<PassResult> {
     const keys = [...new Set([...(await this.d.db.$queryRaw<{ k: string }[]>`select chain_key k from audit_event group by chain_key
       union select chain_key from aud_chain_check order by 1`).map((r) => r.k), ...(mode === "full" ? await this.d.anchors?.chains() ?? [] : [])])].sort();   // the archive's own chain list: weekly (break R1: its cost grows with the archive)
     const out: PassResult = { mode, chains: 0, linesRead: 0, findings: [] };
     let failed = 0;
-    for (const k of keys) {
+    for (const k of slice === undefined ? keys : keys.filter((x) => sliceOf(x) === slice)) {
       if (!CHAIN_KEY.test(k)) { failed++; log().trusted("error", "audit_chain_bad_check_row", { rule: "BR-2" }); continue; }
       try {
         // The archive is read before the chain's transaction, so its requests never count against the 120 s (break R1).
@@ -144,8 +150,8 @@ export class AuditChainVerifier {
 
   private async raise(k: string, f: Finding) {
     try {
-      await this.d.alerts.raise("audit_chain_break", { rule: "BR-2", ...(UUID.test(k) ? { firmId: k } : {}), entity: "audit_chain", entityKey: k, fromSeq: Number(f.fromSeq), toSeq: Number(f.toSeq) });
-    } catch (e) { log().write("error", "alert_not_raised", { alert: "audit_chain_break", rule: "BR-2", error: e }); }
+      await this.d.alerts.raise("audit.chain_integrity_failure", { rule: "BR-2", ...(UUID.test(k) ? { firmId: k } : {}), entity: "audit_chain", entityKey: k, fromSeq: Number(f.fromSeq), toSeq: Number(f.toSeq) });
+    } catch (e) { log().write("error", "alert_not_raised", { alert: "audit.chain_integrity_failure", rule: "BR-2", error: e }); }
   }
 
   /** The firm's own chain (AUD-4's integrity line; GET /api/platform/audit/integrity). */

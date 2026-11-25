@@ -50,7 +50,9 @@ export const BREACH_CATEGORIES = ["identity_documents", "contact_details", "immi
 const CATEGORY_WORDS: Record<(typeof BREACH_CATEGORIES)[number], string> = { identity_documents: "identity documents", contact_details: "contact details", immigration_records: "immigration records",
   financial_details: "financial details", sign_in_credentials: "sign-in credentials", messages_and_files: "messages and files", other: "other data" };
 /** The PF-23 alerts that can open a draft breach: the integrity and security ones (SA-11 BR-2, BR-5). */
-export const BREACH_ALERT_KINDS = ["audit_chain_break", "audit_write_failed"] as const;
+/** AUD-1c part 5: the chain alert is SA-11-6's `audit.chain_integrity_failure`; `audit_chain_break`, its name before, is still taken (an alert
+ *  raised before the rename can still open its draft). */
+export const BREACH_ALERT_KINDS = ["audit.chain_integrity_failure", "audit_chain_break", "audit_write_failed"] as const;
 
 export type BreachCaller = { staffId: string; keys: readonly string[] };
 export type BreachNotice = { id: string; firmId: string; channel: string; recipients: { staffId: string; roles: string[]; outboxId: string; state: string }[]; templateVersionId: string; sentBy: string; sentAt: string };
@@ -154,7 +156,7 @@ export class Breaches {
     const p = AlertBody.safeParse(body ?? {});
     if (!p.success) fields(p.error);
     const a = p.data.alert, firm = a.detail.firmId && UUID.test(a.detail.firmId) ? a.detail.firmId.toLowerCase() : null;
-    const what = a.kind === "audit_chain_break" ? "the activity log's hash chain did not verify" : "an activity log line could not be written after its retries";
+    const what = a.kind === "audit.chain_integrity_failure" || a.kind === "audit_chain_break" ? "the activity log's hash chain did not verify" : "an activity log line could not be written after its retries";
     // Break B7: the alert's ids stay in source_alert only, never in the words a firm may later read.
     const description = `Draft from an alert (${a.kind}, rule ${a.detail.rule}): ${what}. Write the description firms will read, then confirm; nothing has been sent.`;
     const draft = (firms: string[]) => this.insert(key, body, { status: "DRAFT", source: "ALERT", alert: { kind: a.kind, detail: a.detail, raisedAt: a.raisedAt.toISOString() }, discoveredAt: a.raisedAt, description,

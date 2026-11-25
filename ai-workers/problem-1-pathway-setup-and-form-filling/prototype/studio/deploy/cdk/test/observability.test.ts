@@ -84,7 +84,7 @@ test("PF-23c retention fail: a log group kept for ever or 30 days, the app's kep
 });
 
 test("PF-23c alarms pass: every alarm the row names exists in both stages, pages the on-call email and reads its filter", () => {
-  assert.deepEqual(Object.keys(ALARMS).sort(), ["5xx-rate", "alert-audit-chain-break", "alert-audit-write-failed", "alert-breach-clock-near", "alert-job-stuck", "alert-privacy-clock-near", "job-age", "job-failures", "mail-bounce-rate"]);
+  assert.deepEqual(Object.keys(ALARMS).sort(), ["5xx-rate", "alert-audit-chain-integrity-failure", "alert-audit-write-failed", "alert-breach-clock-near", "alert-job-stuck", "alert-privacy-clock-near", "job-age", "job-failures", "mail-bounce-rate"]);
   for (const s of STAGES) assert.deepEqual(alarmFindings(tpl[s], s), []);
   assert.equal(Object.values(tpl.production.Resources).filter((r) => r.Type === "AWS::CloudWatch::Alarm").length, Object.keys(ALARMS).length);
 });
@@ -92,12 +92,12 @@ test("PF-23c alarms pass: every alarm the row names exists in both stages, pages
 test("PF-23c alarms fail: a missing alarm, an alarm with no action, a hard-coded or defaulted address, a changed filter are each named", () => {
   const t = clone(tpl.production);
   const [gone] = alarmNamed(t, "xr-production-job-age"); delete t.Resources[gone];
-  const [mute] = alarmNamed(t, "xr-production-alert-audit-chain-break"); t.Resources[mute].Properties!.AlarmActions = [];
+  const [mute] = alarmNamed(t, "xr-production-alert-audit-chain-integrity-failure"); t.Resources[mute].Properties!.AlarmActions = [];
   const [, f] = find(t, "AWS::Logs::MetricFilter", (r) => r.Properties?.MetricTransformations?.[0]?.MetricName === "ServerErrors");
   f.Properties!.FilterPattern = '{ $.event = "request" && $.status >= 400 }'; // a 404 would page
   const fs = alarmFindings(t, "production");
   assert.ok(fs.includes("xr-production-job-age: no alarm"), fs.join("; "));
-  assert.ok(fs.includes("xr-production-alert-audit-chain-break: AlarmActions reach no topic with the on-call email parameter"), fs.join("; "));
+  assert.ok(fs.includes("xr-production-alert-audit-chain-integrity-failure: AlarmActions reach no topic with the on-call email parameter"), fs.join("; "));
   assert.ok(fs.some((l) => l.startsWith("xr-production-5xx-rate: ServerErrors's filter is")), fs.join("; "));
 
   const hard = clone(tpl.production);
@@ -160,7 +160,7 @@ test("PF-23c thresholds: the 5xx and bounce rates need a minimum volume; job age
   assert.ok(appStuck, "alerts.ts no longer states STUCK_JOB_MS as N * 60_000");
   assert.equal(age.Properties!.Threshold, Number(appStuck![1]) * 60_000);
   for (const k of ALARMED_ALERT_KINDS) {
-    const [, a] = alarmNamed(t, `xr-production-alert-${k.replace(/_/g, "-")}`);
+    const [, a] = alarmNamed(t, `xr-production-alert-${k.replace(/[_.]/g, "-")}`);
     assert.equal(a.Properties!.Threshold, 1);
     assert.equal(a.Properties!.ComparisonOperator, "GreaterThanOrEqualToThreshold");
   }

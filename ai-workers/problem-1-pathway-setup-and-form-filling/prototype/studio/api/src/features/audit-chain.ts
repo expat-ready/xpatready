@@ -9,7 +9,7 @@ import { currentAlerts } from "../platform/observability/alerts.ts";
 import { chooseAuditArchive } from "../platform/audit/write-once/bind.ts";
 import { AuditChainExport, EXPORT_CRON, EXPORT_QUEUE, EXPORT_ZONE } from "../platform/audit/write-once/daily-export.ts";
 import { DemoAuditChainController, FirmAuditIntegrityController, SystemAuditIntegrityController } from "../platform/audit/chain/routes.ts";
-import { AuditChainVerifier, CHAIN_CHECK_CRON, CHAIN_CHECK_QUEUE, CHAIN_DEEP_CRON, CHAIN_DEEP_QUEUE, CHAIN_ZONE } from "../platform/audit/chain/verify.ts";
+import { AuditChainVerifier, CHAIN_CHECK_CRON, CHAIN_CHECK_QUEUE, CHAIN_DEEP_CRON, CHAIN_DEEP_QUEUE, CHAIN_ZONE, DEEP_SLICES } from "../platform/audit/chain/verify.ts";
 
 export default {
   controllers: [FirmAuditIntegrityController, SystemAuditIntegrityController, DemoAuditChainController],
@@ -25,7 +25,7 @@ export default {
       const v = new AuditChainVerifier({ db, alerts: { raise: (k, d) => currentAlerts().raise(k, d) }, now: () => new Date(), anchors: x });
       await jobs.handle(CHAIN_CHECK_QUEUE, async () => { await v.pass("incremental"); });
       await jobs.recurring(CHAIN_CHECK_QUEUE, CHAIN_CHECK_CRON, CHAIN_ZONE);
-      await jobs.handle(CHAIN_DEEP_QUEUE, async () => { await v.pass("full"); });
+      await jobs.handle(CHAIN_DEEP_QUEUE, async (job) => { await v.pass("full", job.runAt.getUTCHours() % DEEP_SLICES); });   // part 5: the hour's slice
       await jobs.recurring(CHAIN_DEEP_QUEUE, CHAIN_DEEP_CRON, CHAIN_ZONE);
       return v;
     }, inject: [Db, PlatformJobs, AuditChainExport] },

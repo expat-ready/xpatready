@@ -272,9 +272,9 @@ Module({ controllers: [ProbeController] })(ProbeModule);
   const refused = (d: unknown) => { try { AlertDetail.parse(d); return false; } catch { return true; } };
   ok("PF-23 fail (AlertPort payload): an email, a name or free text in an alert's detail is refused; a rule is required", refused({ rule: "BR-5", entityKey: CANARIES.email }) && refused({ rule: "BR-5", firmId: CANARIES.name }) && refused({ rule: "BR-5", note: "x" }) && refused({ entity: "case" }));
   const fake = fakeAlerts();
-  await fake.raise("audit_chain_break", { rule: "BR-2", entity: "audit_event", entityKey: "seq-41" });
+  await fake.raise("audit.chain_integrity_failure", { rule: "BR-2", entity: "audit_event", entityKey: "seq-41" });
   const fakeRefused = await fake.raise("job_stuck", { rule: "x y" } as never).then(() => false, () => true);
-  ok("PF-23 pass/fail (AlertPort's fake): keeps a valid alert in order; refuses a bad one like the adapter", fake.raised.length === 1 && fake.raised[0].kind === "audit_chain_break" && fakeRefused);
+  ok("PF-23 pass/fail (AlertPort's fake): keeps a valid alert in order; refuses a bad one like the adapter", fake.raised.length === 1 && fake.raised[0].kind === "audit.chain_integrity_failure" && fakeRefused);
 }
 
 // ---- PF-0c: the log-line adapter and the fake run AlertPort's shared contract

@@ -8,7 +8,7 @@
 // Cross-module port (case-side contract v0.1 §1 rule 3): zod and types only, no app import.
 import { z } from "zod";
 
-export const ALERT_KINDS = ["audit_write_failed", "audit_chain_break", "job_stuck", "privacy_clock_near", "breach_clock_near", "send_cap_reached", "firm_closure_blocked"] as const;
+export const ALERT_KINDS = ["audit_write_failed", "audit.chain_integrity_failure", "job_stuck", "privacy_clock_near", "breach_clock_near", "send_cap_reached", "firm_closure_blocked"] as const;
 export const AlertKind = z.enum(ALERT_KINDS);
 export type AlertKind = z.infer<typeof AlertKind>;
 
@@ -27,7 +27,7 @@ export const AlertDetail = z.object({
   /** When the clock runs out (privacy_clock_near, breach_clock_near). */
   dueAt: z.iso.datetime().optional(),
   count: z.number().int().nonnegative().optional(),
-  /** AUD-1c part 2 (SA-11-6): the broken range of an audit chain (audit_chain_break), seq numbers only. */
+  /** AUD-1c part 2 (SA-11-6): the broken range of an audit chain (audit.chain_integrity_failure, SA-11-6's name; it was audit_chain_break until AUD-1c part 5), seq numbers only. */
   fromSeq: z.number().int().positive().optional(),
   toSeq: z.number().int().positive().optional(),
 }).strict();

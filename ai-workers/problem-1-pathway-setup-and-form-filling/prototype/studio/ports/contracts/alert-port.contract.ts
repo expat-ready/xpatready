@@ -14,7 +14,7 @@ export const alertPortContract = defineContract("AlertPort", (make: () => AlertP
     name: "a first alert of a known kind is raised",
     async run() {
       const a = make();
-      const r = await a.raise("audit_chain_break", { rule: "BR-2", entity: "audit_event", entityKey: fresh() });
+      const r = await a.raise("audit.chain_integrity_failure", { rule: "BR-2", entity: "audit_event", entityKey: fresh() });
       expect(r.raised === true, "raised: true", r);
     },
   },
