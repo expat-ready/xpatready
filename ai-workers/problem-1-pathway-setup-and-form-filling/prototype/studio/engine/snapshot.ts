@@ -12,6 +12,7 @@ import { gateFacts, snapshotEligibility, type SnapshotEligibility } from "./elig
 import { frozenSources, publishedNumbers, type FrozenSource, type SourceEntry } from "./source-register.ts";
 import { snapSets } from "./document-sets.ts";
 import { conditionsToHold } from "./held-conditions.ts"; // QA-237, QA-239
+import { GRID_INCLUDE, snapGrid, type SnapGrid } from "./score-grids.ts"; // AS-1g
 
 export type Mode = "draft" | "published";
 type Versioned = { status: string; version: number; id?: string; supersedesId?: string | null };
@@ -76,6 +77,10 @@ export type Snapshot = {
   /** QA-237, QA-239 (engine/held-conditions.ts): the library conditions this combination cannot honour, so its question is
    *  asked every time here (its placement carries no condition). Present only when there are any; never part of the
    *  fingerprint, so another combination's condition never makes this one "changed". */
+  /** AS-1g (P-577): the score grids that name this combination, frozen with the release (a draft reads the library's
+   *  grid tables; the published view, the latest release's copy). Present only when there are any, so other
+   *  configurations keep their fingerprint. */
+  score_grids?: SnapGrid[];
   held_conditions?: { lineage: string; fact: string; condition: unknown; condition_effect: string | null; condition_plain: string | null; why: string[] }[];
   row_versions: Record<string, string>;
 };
@@ -117,6 +122,10 @@ export async function buildSnapshots(db: PrismaClient, workspaceId: string, comb
     db.sourceEntry.findMany({ where: ws }),
   ]);
   if (comps.length !== new Set(combinationIds).size) throw new Error("Combination not found");
+  const gridRows = mode === "draft" ? await db.scoreRuleset.findMany({ where: { combinationKeys: { hasSome: comps.map((c) => c.combinationKey) } }, include: GRID_INCLUDE }) : [];
+  const released = new Map<string, SnapGrid[]>();
+  // Review m7: only the grids of each combination's current release, never its whole snapshot.
+  if (mode === "published") for (const r of await db.$queryRaw<{ id: string; grids: SnapGrid[] | null }[]>`select distinct on (combination_id) combination_id::text as id, snapshot->'score_grids' as grids from config_release where combination_id::text = any(${combinationIds}) and status = 'RELEASED' order by combination_id, version desc`) released.set(r.id, r.grids ?? []);
   const allEditionIds = [...new Set(allForms.flatMap((f) => f.form.editions.map((e) => e.id)))];
   const allMaps = allEditionIds.length ? await db.formFieldMap.findMany({ where: { formEditionId: { in: allEditionIds } }, orderBy: { dataPath: "asc" } }) : [];
   // The shared library is resolved once per request, not once per row (the 371-row catalogue spent most of its time here).
@@ -146,6 +155,9 @@ export async function buildSnapshots(db: PrismaClient, workspaceId: string, comb
       for (const h of more) held.set(h.lineage, h.why);
       built = assemble(comp, chain, mode, parts, held);
     }
+    // AS-1g: the grids are platform-wide data, not draft rows, so the published view keeps what its release carried.
+    const grids = mode === "draft" ? gridRows.filter((g) => g.combinationKeys.includes(comp.combinationKey)).map(snapGrid) : (released.get(comp.id) ?? []);
+    if (grids.length) { built.snapshot.score_grids = grids.sort((a, b) => a.key.localeCompare(b.key)); built.sha256 = snapshotHash(built.snapshot); }
     out.set(comp.id, built);
   }
   return out;

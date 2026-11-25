@@ -1,6 +1,7 @@
 // Draft validation and release differences. Problems are stated in plain words with where they are; errors block
 // submission, warnings are shown and recorded. Conditions are checked against the portable copy of the team's
 // closed predicate contract (contracts/predicate.v0.schema.json) and against the library's field types.
+import { gridWords, type SnapGrid } from "./score-grids.ts"; // AS-1g
 import { lineSet, setWords, type SnapSet } from "./document-sets.ts";
 import { Ajv } from "ajv";
 import { readFileSync } from "node:fs";
@@ -425,6 +426,14 @@ export function diff(prev: Snapshot | null, next: Snapshot): Change[] {
     for (const [key, x] of b) if (!a.has(key)) out.push({ kind: label, key, change: "added", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
       else if (canonical(a.get(key)) !== canonical(x)) out.push({ kind: label, key, change: "changed", needs_sme: behaviour, label: `${x.name ?? x.plain ?? key}: ${label === "Document type" ? `supplies ${(x.supplies_facts ?? []).map(factName).join(", ") || "no facts"}${x.sets?.length ? `; substitute sets: ${(x.sets as SnapSet[]).map((s) => `${s.name} (${setWords({ mode: s.mode, members: s.members })})`).join("; ")}` : ""}${x.default_provider_roles?.length ? `; provided by (when shared): ${(x.default_provider_roles as string[]).map(providerWords).join(", then ")}` : (a.get(key) as { default_provider_roles?: string[] } | undefined)?.default_provider_roles?.length ? "; provided by (when shared): not set (the person the item is for)" : ""}${defaultsLine(x, a.get(key))}` : `inputs ${(x.inputs ?? []).join(", ") || "none"}`}` });
     for (const [key, x] of a) if (!b.has(key)) out.push({ kind: label, key, change: "removed", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
+  }
+  // AS-1g (breaker m5): a changed grid names only what changed, before and after, so the expert sees 10 → 9 points.
+  const changedGrid = (was: SnapGrid | undefined, now: SnapGrid) => { if (!was) return gridWords(now); const a = gridWords(was).split(" · "), b = gridWords(now).split(" · "); return [`${now.label}, changed:`, ...b.filter((x) => !a.includes(x)).map((x) => `now ${x}`), ...a.filter((x) => !b.includes(x)).map((x) => `was ${x}`)].join(" · "); };
+  // AS-1g (P-577): a score grid the release carries is named once, in words, for the immigration expert's sign-off.
+  {
+    const a = new Map(((prev?.score_grids ?? []) as { key: string; sha256: string; label: string }[]).map((x) => [x.key, x])), b = new Map(((next.score_grids ?? []) as SnapGrid[]).map((x) => [x.key, x]));
+    for (const [key, x] of b) if (!a.has(key) || a.get(key)!.sha256 !== x.sha256) out.push({ kind: "Score grid", key, change: a.has(key) ? "changed" : "added", needs_sme: true, label: changedGrid(a.get(key) as SnapGrid | undefined, x) });
+    for (const [key, x] of a) if (!b.has(key)) out.push({ kind: "Score grid", key, change: "removed", needs_sme: true, label: `${x.label}: no longer carried` });
   }
   // W1-15 slice 1 (challenge M5): each choice over the rules' source and each Pre-qualification tick is named on Review,
   // and needs the immigration expert's sign-off (P-76: PQR picks are approved in the combination's one review).

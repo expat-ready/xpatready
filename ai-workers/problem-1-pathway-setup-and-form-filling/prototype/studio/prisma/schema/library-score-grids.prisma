@@ -1,0 +1,97 @@
+// library-score-grids.prisma — Score grids as cited data on a release (AS-1g, R1.106; AG-3-5 to AG-3-7, AG-3-17 to AG-3-19;
+// P-577). Platform-wide configurator tables (no workspace, no firm): read by the app role, written only through the
+// configurator's guarded change (api/src/library-score-grids.ts) on its named bypass use; the migration revokes the app
+// role's writes. Every row carries its official source (source_ref: url, section, quote, date) or the label Sample
+// (sample = true), never both and never neither (a check in SQL). A combination's release copies the grids that name it
+// into its snapshot (engine/snapshot.ts score_grids), so a pinned case keeps the grid it was released with. No authoring
+// screen (AG-03's named deferral: pack authoring UI is Phase 2). Owner: the configurator (runtime lane builds it).
+
+enum ScoreSelectionModel {
+  FIXED_PASS_MARK
+  DRAW_RANKING
+
+  @@map("score_selection_model")
+}
+
+enum ScoreRole {
+  PRINCIPAL
+  SPOUSE
+
+  @@map("score_role")
+}
+
+/// One grid (FSW's selection factors, CRS): how it selects, its pass mark (FIXED_PASS_MARK only) and maximum, and the
+/// combinations whose release carries it. importSha256 is the canonical hash of the imported file's content.
+model ScoreRuleset {
+  id              String              @id @default(uuid()) @db.Uuid
+  key             String              @unique
+  label           String
+  selectionModel  ScoreSelectionModel @map("selection_model")
+  passMark        Int?                @map("pass_mark")
+  maximum         Int
+  combinationKeys String[]            @map("combination_keys")
+  sourceRef       Json?               @map("source_ref")
+  sample          Boolean             @default(false)
+  importSha256    String              @map("import_sha256")
+  importedBy      String              @map("imported_by")
+  importedAt      DateTime            @default(now()) @map("imported_at") @db.Timestamptz
+
+  factors     ScoreFactor[]
+  conversions LanguageConversion[]
+
+  @@map("score_ruleset")
+}
+
+/// One factor of a grid, for the principal applicant or the spouse: the facts it reads and its maximum.
+model ScoreFactor {
+  id        String    @id @default(uuid()) @db.Uuid
+  rulesetId String    @map("ruleset_id") @db.Uuid
+  factorKey String    @map("factor_key")
+  role      ScoreRole
+  factKeys  String[]  @map("fact_keys")
+  maximum   Int
+  sourceRef Json?     @map("source_ref")
+  sample    Boolean   @default(false)
+  position  Int
+
+  ruleset ScoreRuleset @relation(fields: [rulesetId], references: [id], onDelete: Cascade)
+  bands   ScoreBand[]
+
+  @@unique([rulesetId, factorKey, role])
+  @@map("score_factor")
+}
+
+/// One band of a factor: a condition on its fact in the configurator's condition language (contracts/rules.ts: eq, or a
+/// range of gt/gte/lt/lte, one fact), and the points it gives.
+model ScoreBand {
+  id        String  @id @default(uuid()) @db.Uuid
+  factorId  String  @map("factor_id") @db.Uuid
+  condition Json
+  points    Int
+  sourceRef Json?   @map("source_ref")
+  sample    Boolean @default(false)
+  position  Int
+
+  factor ScoreFactor @relation(fields: [factorId], references: [id], onDelete: Cascade)
+
+  @@index([factorId])
+  @@map("score_band")
+}
+
+/// A language test's score range for one skill and the CLB level it equals (AG-3-18), imported with its grid.
+model LanguageConversion {
+  id        String  @id @default(uuid()) @db.Uuid
+  rulesetId String  @map("ruleset_id") @db.Uuid
+  test      String
+  skill     String
+  scoreMin  Float   @map("score_min")
+  scoreMax  Float   @map("score_max")
+  clb       Int
+  sourceRef Json?   @map("source_ref")
+  sample    Boolean @default(false)
+
+  ruleset ScoreRuleset @relation(fields: [rulesetId], references: [id], onDelete: Cascade)
+
+  @@index([rulesetId])
+  @@map("language_conversion")
+}
