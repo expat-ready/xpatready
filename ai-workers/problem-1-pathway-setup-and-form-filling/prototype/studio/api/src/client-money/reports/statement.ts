@@ -108,7 +108,7 @@ export class MoneyStatement {
 
   /** GET /api/front-office/money/parties/:kind/:id/statement?from=&to=&caseId=&pageSize=&after=. */
   async statement(ctx: StaffContext, kindRaw: string, id: string, query: unknown): Promise<Statement> {
-    const kind = kindOf(kindRaw), q = parseInput(Query, query ?? {}), pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, Cursor);
+    const q = parseInput(Query, query ?? {}), kind = kindOf(kindRaw), pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, Cursor);   // the query first: an unknown field is 422 on any path (PF-28 (b))
     if (q.from && q.to && q.from > q.to) bad("to", "to is before from.");
     const f = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx), caseId = q.caseId?.toLowerCase();
     return this.db.$transaction(async (tx) => {
