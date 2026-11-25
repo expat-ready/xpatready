@@ -13,7 +13,7 @@
 -- Rollback (in this order): DROP TRIGGER case_note_follow_client ON "case_client"; DELETE the client notes (a superuser
 --   session with session_replication_role = replica); DROP INDEX "case_note_case_client_id_note_key_version_idx",
 --   "case_note_case_client_id_idempotency_key_key"; ALTER TABLE "case_note" DROP CONSTRAINT case_note_subject_check, DROP
---   COLUMN case_client_id, ALTER COLUMN case_id SET NOT NULL; re-run part 1's three CREATE FUNCTION bodies as CREATE OR
+--   COLUMN case_client_id, ALTER COLUMN case_id SET NOT NULL; re-run part 1's three function bodies (its migration.sql) as CREATE OR
 --   REPLACE; then delete this folder's row from _prisma_migrations. Lost: the notes on clients.
 
 -- AlterTable
@@ -44,6 +44,10 @@ END $$;
 CREATE OR REPLACE FUNCTION case_note_check_insert() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE s record; prev record; what text;
 BEGIN
+  -- One subject, said before the lookup below would read the wrong table (the CHECK says the same, after this trigger).
+  IF (NEW.case_id IS NULL) = (NEW.case_client_id IS NULL) THEN
+    RAISE EXCEPTION 'case_note: a note is on exactly one case or one case client (case_note_subject_check)' USING ERRCODE = 'check_violation';
+  END IF;
   -- What a foreign key would do: the subject (the case, or the case client) exists, and is held until this transaction
   -- ends (a delete waits).
   IF NEW.case_id IS NOT NULL THEN
