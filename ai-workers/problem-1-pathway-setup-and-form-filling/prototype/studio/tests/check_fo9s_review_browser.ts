@@ -242,6 +242,11 @@ try {
       const cell = await p.locator("[data-dup-pair] td").first().evaluate((td) => ({ w: td.getBoundingClientRect().width, h: td.getBoundingClientRect().height }));
       ok("FO-9s R7 fail (review r1 m2): at 375 px the People column keeps a readable width (names do not break letter by letter)", cell.w >= 140 && cell.h < 160, cell);
     }
+    if (w === 375) {
+      await openPage(p, "merged"); await settle(p);
+      const undoRight = await p.getByRole("button", { name: "Undo merge" }).first().evaluate((b) => b.getBoundingClientRect().right).catch(() => 9999);
+      ok("FO-9s R7 fail (review r2 should): at 375 px the Merged tab's Undo merge is on screen (How and When sit under the names)", undoRight <= 375, undoRight);
+    }
     if (w === 375) ok("FO-9s R7: the phone's Sales links reach People to merge", (await p.getByRole("navigation", { name: "Sales pages" }).getByRole("link", { name: "People to merge" }).count()) === 1);
     await p.context().close();
   }

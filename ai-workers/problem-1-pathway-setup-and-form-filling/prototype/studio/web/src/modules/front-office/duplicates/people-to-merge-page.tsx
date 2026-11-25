@@ -117,14 +117,15 @@ function PeopleToMergeBody() {
       </Table>;
   const mergedTab = merges.isPending ? <Loading label="Loading the merges" rows={3} /> : merges.isError ? failed("the merges", () => void merges.refetch())
     : !merges.data.length ? empty("MERGED")
-      : <Table label="People merged" head={["People", "How", "When", ""]}>
+      : <Table label="People merged" head={["People", "How", "When", ""]} headClass={[undefined, "hidden sm:table-cell", "hidden sm:table-cell", undefined]}>
         {merges.data.map((m) => (
           <tr key={m.id} data-dup-merge={m.id} className="border-t border-border align-top">
             {/* After a merge both records can carry the chosen name (review r1 m3): then one name, said as two records. */}
             <td className="min-w-[9rem] max-w-[22rem] px-3 py-2 break-words">{m.loser.name === m.survivor.name ? <><span className="font-medium">{m.survivor.name}</span> <span className="text-text-muted">(two records)</span></>
-              : <><span className="font-medium">{m.loser.name}</span> <span className="text-text-muted">into</span> <span className="font-medium">{m.survivor.name}</span></>}</td>
-            <td className="px-3 py-2">{mergedBy(m, me.staffId, staffNames)}</td>
-            <td className="whitespace-nowrap px-3 py-2">{when(m.at)}</td>
+              : <><span className="font-medium">{m.loser.name}</span> <span className="text-text-muted">into</span> <span className="font-medium">{m.survivor.name}</span></>}
+              <p className="mt-1 text-xs text-text-muted sm:hidden">{mergedBy(m, me.staffId, staffNames)} · {when(m.at)}</p></td>
+            <td className="hidden px-3 py-2 sm:table-cell">{mergedBy(m, me.staffId, staffNames)}</td>
+            <td className="hidden whitespace-nowrap px-3 py-2 sm:table-cell">{when(m.at)}</td>
             <td className="max-w-[18rem] px-3 py-2">
               {m.undoneAt ? <span tabIndex={-1} data-dup-after className="outline-none"><Pill tone="neutral">Undone {when(m.undoneAt)}</Pill></span>
                 : refused[m.id] ? <p role="status" tabIndex={-1} data-dup-after className="text-xs text-text-warn outline-none" data-undo-refused>{refused[m.id]}</p>
@@ -156,7 +157,7 @@ function PeopleToMergeBody() {
           <TabsContent value="KEPT_SEPARATE" className="mt-3">{pairs(kept, "KEPT_SEPARATE")}</TabsContent>
         </Tabs>
         {/* After a merge the row has gone: focus moves to the notice's Undo (WCAG 2.4.3, as after Keep separate). */}
-        <MergeDialog pair={merging} returnFocus={() => opener.current?.isConnected ? opener.current : null} onClose={() => setMerging(null)}
+        <MergeDialog pair={merging} onRefresh={() => void refresh()} returnFocus={() => opener.current?.isConnected ? opener.current : null} onClose={() => setMerging(null)}
           onMerged={(name, mergeRef) => { opener.current = null; setMerging(null); setDone({ name, mergeRef }); void refresh().then(() => setFocusNext("[data-merged-undo]")); }} />
         <Dialog open={!!confirm} onOpenChange={(o) => { if (!o && !keep.isPending) setConfirm(null); }} title="Keep these people separate?" returnFocus={() => opener.current}
           description={confirm ? `${names(confirm)} stay two records. The pair leaves To review and is not suggested again.` : undefined}

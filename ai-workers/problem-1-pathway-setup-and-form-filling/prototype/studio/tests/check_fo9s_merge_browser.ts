@@ -10,6 +10,8 @@
 //   G5       a record changed after the dialog opened → "One of these records changed. Reload to see it." with Reload;
 //            nothing merged; Reload shows the new value and the merge then goes through
 //   G6       money arriving after the dialog opened → the server's sentence; nothing merged
+//   G8       an answer lost after the server merged says it may have gone through (never "Nothing changed") and re-reads
+//            the list; a server failure reads "Could not merge. Nothing changed."
 //   G7       Cancel and Escape merge nothing; after a merge focus is on the notice's Undo; at 375 px the dialog fits; keyboard only (radios by arrow keys, Next by Enter); axe on the dialog (no
 //            serious); 375 px with no sideways scroll; no page error
 // Sample rows only; US$0, no model call. Usage, from prototype/:
@@ -102,10 +104,17 @@ try {
   ok("FO-9s G1 BR-8 pass: the defaults say why: email 'only value', first name 'same', language 'newer'",
     await why(p, "email") === "only value" && await why(p, "givenNames") === "same" && await why(p, "language") === "newer", { email: await why(p, "email"), given: await why(p, "givenNames"), lang: await why(p, "language") });
   const firstStays = headers[1] ?? "";
+  const bare = (h: string) => h.replace(" (stays)", "").replace(" · keep this one instead", "");
+  // A choice made before switching is reset, and said (review r1 S5).
+  const givenRadios = dialog(p).locator("[data-merge-field='language'] input[type=radio]");
+  const langDefault = (await givenRadios.nth(0).isChecked()) ? 0 : 1;
+  await givenRadios.nth(1 - langDefault).check();
   await p.getByRole("radiogroup", { name: "Which record stays" }).getByRole("radio").nth(1).check();
   await p.waitForFunction((h) => document.querySelectorAll("[data-merge-dialog] thead th")[1]?.textContent !== h, firstStays, { timeout: 10_000 });
   const swapped = await dialog(p).locator("thead th").allInnerTexts();
-  ok("FO-9s G2 BR-8 pass: switching which record stays reloads the preview with the columns swapped", swapped[1] === `${headers[2]} (stays)` && swapped[2] === headers[1].replace(" (stays)", ""), { headers, swapped });
+  ok("FO-9s G2 BR-8 pass: switching which record stays reloads the preview with the columns swapped", bare(swapped[1]) === bare(headers[2]) && swapped[1].endsWith("(stays)") && bare(swapped[2]) === bare(headers[1]), { headers, swapped });
+  ok("FO-9s G2 BR-8 fail (review r1 S5): the choices made before switching are reset to the server's defaults, and it says so",
+    (await p.locator("[data-picks-reset]").count()) === 1 && await why(p, "language") !== "your choice");
   await p.getByRole("radiogroup", { name: "Which record stays" }).getByRole("radio").nth(0).check();
   await p.waitForFunction((h) => document.querySelectorAll("[data-merge-dialog] thead th")[1]?.textContent === h, firstStays, { timeout: 10_000 });
   // Survivor = the first listed. Keep the other record's last name ("Keep this one instead"), by keyboard.
@@ -118,13 +127,18 @@ try {
   ok("FO-9s G1: a changed field says it is the person's choice", await why(p, "familyName") === "your choice");
 
   // ----------------------------------------------------------------------- G3 step 2, Back keeps choices
-  await next(p).focus(); await p.keyboard.press("Enter");
+  // Held Enter never runs past a step (break r1 M2): each Next moves focus to the new step's heading.
+  const posts: string[] = []; p.on("request", (q) => { if (/\/review\/[^/]+\/merge$/.test(q.url())) posts.push(q.url()); });
+  await next(p).focus(); await p.keyboard.press("Enter"); await p.keyboard.press("Enter"); await p.keyboard.press("Enter");
   await dialog(p).locator("[data-merge-moves]").waitFor();
+  const onHeading = await p.evaluate(() => document.activeElement?.hasAttribute("data-step-heading") ?? false);
+  ok("FO-9s G7 fail (break r1 M2): Enter on Next three times moves one step, focus is on the step's heading (announced), and nothing is sent",
+    onHeading && posts.length === 0 && (await dialog(p).getAttribute("data-step")) === "2" && (await p.locator("[aria-live=polite]").filter({ hasText: "Step 2 of 3" }).count()) === 1, { onHeading, posts: posts.length });
   await p.screenshot({ path: join(SHOTS, "fo9s3-02-what-moves-1440.png"), fullPage: true });
   const movesText = await dialog(p).locator("[data-merge-moves]").innerText();
   const loserNotes = sql(`select count(*) from fo_note n join fo_lead l on l.id = n.lead_id where l.person_id = '${L.person}'`);
   ok("FO-9s G3 BR-9 pass: step 2 names what moves as the database counts it (1 lead and its notes) and that nothing is deleted",
-    movesText.includes("1 lead") && movesText.includes(`${loserNotes} note`) && /Nothing is deleted/.test(movesText), { movesText: movesText.slice(0, 200), loserNotes, notesMoving });
+    movesText.includes("1 lead") && movesText.includes(`${loserNotes} note`) && /No record is deleted/.test(movesText), { movesText: movesText.slice(0, 200), loserNotes, notesMoving });
   await p.getByRole("dialog").getByRole("button", { name: "Back" }).click();
   ok("FO-9s G3 fail: Back keeps the choice made on step 1", await dialog(p).getByRole("radio", { name: `Last name: keep ${loserFamily}`, exact: true }).isChecked() && await why(p, "familyName") === "your choice");
 
@@ -137,8 +151,8 @@ try {
   await p.screenshot({ path: join(SHOTS, "fo9s3-04-merged-notice-1440.png"), fullPage: true });
   const focusUndo = await p.waitForFunction(() => document.activeElement?.hasAttribute("data-merged-undo"), null, { timeout: 5_000 }).then(() => true, () => false);
   ok("FO-9s G7 fail: after the merge (its row gone), focus is on the notice's Undo, never the page body", focusUndo);
-  ok("FO-9s G4 pass: Merge 2 people merges the loser into the survivor; the pair is MERGED and leaves To review; the notice names the survivor",
-    / will be merged into /.test(sentence) && mergedInto(L.person) === S.person && sql(`select status from fo_dup_review where id = '${P_LENA}'`) === "MERGED"
+  ok("FO-9s G4 pass: Merge 2 people merges the loser into the survivor; the pair is MERGED and leaves To review; the notice names the survivor by the name it now carries (review r1 S1)",
+    / will be merged into /.test(sentence) && (await p.getByText(/^Merged into /).innerText()).includes(loserFamily) && mergedInto(L.person) === S.person && sql(`select status from fo_dup_review where id = '${P_LENA}'`) === "MERGED"
     && (await p.locator(`[data-dup-pair="${P_LENA}"]`).count()) === 0 && /^Merged into /.test((await p.getByText(/^Merged into /).innerText())), sentence);
   ok("FO-9s G1 BR-8 pass and fail: the chosen (non-default) last name is kept; the untouched language and email keep their defaults (the newer value, the only value)",
     val(S.person, "family_name") === loserFamily && val(S.person, "language") === "fr" && val(S.person, "email") === `lena.parks.${run}@example.org`,
@@ -169,13 +183,34 @@ try {
   sql(`insert into money_invoice (firm_id, person_id, currency, created_by, updated_at) values ('${A}', '${ines2.person}', 'CAD', 'seed:FO-9s-3', now())`);
   await next(p).click(); await next(p).click(); await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).click();
   await dialog(p).getByText(/cannot be merged here yet/).waitFor({ timeout: 15_000 });
-  ok("FO-9s G6 fail: money arriving after the dialog opened → the server's sentence; nothing merged", mergedInto(ines.person) === "" && mergedInto(ines2.person) === "");
+  ok("FO-9s G6 fail: money arriving after the dialog opened → the server's sentence; nothing merged; Merge 2 people is off (it cannot succeed again)",
+    mergedInto(ines.person) === "" && mergedInto(ines2.person) === "" && await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).isDisabled());
   await p.keyboard.press("Escape");
   await openMerge(p, P_INES);
   ok("FO-9s G6: reopened, the dialog says so before any step and Next is off", (await dialog(p).getByText(/cannot be merged here yet/).count()) === 1 && await next(p).isDisabled());
   const axe = await new AxeBuilder({ page: p }).include("[role=dialog]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   const bad = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok("FO-9s G7: the dialog passes axe (no serious or critical)", bad.length === 0, bad.map((v) => `${v.id}: ${v.help}`));
+  await p.keyboard.press("Escape");
+
+  // ----------------------------------------------------------------------- G8 answers lost or failed (break r1 M1)
+  const zoe = await person("Zoe", "Brandt", null, null), zoe2 = await person("Zoe", "Brant", null, null), P_ZOE = pairOf(zoe.person, zoe2.person);
+  await openMerge(p, P_ZOE);
+  await p.route(`**/duplicates/review/${P_ZOE}/merge`, async (q) => { await q.fetch(); await q.abort("connectionreset"); }, { times: 1 });   // the server merges; the answer is lost
+  await next(p).click(); await next(p).click(); await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).click();
+  await dialog(p).getByText(/may have gone through/).waitFor({ timeout: 15_000 });
+  const lostSays = await dialog(p).innerText();
+  await p.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await p.locator(`[data-dup-pair="${P_ZOE}"]`).waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined);
+  ok("FO-9s G8 fail (break r1 M1): an answer lost after the server merged never says \"Nothing changed\"; it says the merge may have gone through, and the list is read again (the pair leaves To review)",
+    !/Nothing changed/.test(lostSays) && (mergedInto(zoe.person) || mergedInto(zoe2.person)) !== "" && (await p.locator(`[data-dup-pair="${P_ZOE}"]`).count()) === 0);
+  const yan = await person("Yan", "Moller", null, null), yan2 = await person("Yan", "Muller", null, null), P_YAN = pairOf(yan.person, yan2.person);
+  await openMerge(p, P_YAN);
+  await p.route(`**/duplicates/review/${P_YAN}/merge`, (q) => q.fulfill({ status: 500, contentType: "text/html", body: "<html>Internal error</html>" }), { times: 1 });
+  await next(p).click(); await next(p).click(); await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).click();
+  ok("FO-9s G8 fail (review r1 S5, break r1 m8): a server failure reads \"Could not merge. Nothing changed.\" word for word; nothing merged; Merge 2 people stays on to try again",
+    await dialog(p).getByText("Could not merge. Nothing changed.", { exact: true }).waitFor({ timeout: 10_000 }).then(() => true, () => false) && mergedInto(yan.person) === "" && mergedInto(yan2.person) === ""
+    && await p.getByRole("dialog").getByRole("button", { name: "Merge 2 people" }).isEnabled());
   await p.keyboard.press("Escape");
 
   // ----------------------------------------------------------------------- G7 keyboard radios, 375 px
