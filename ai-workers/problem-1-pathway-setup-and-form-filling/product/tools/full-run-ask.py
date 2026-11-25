@@ -23,7 +23,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HEAD = re.compile(r"^[ \t]*(?:[-*+]|\d+\.)?[ \t]*[#*_]*[ \t]*question for the tech lead(?![A-Za-z0-9-])[^\n]*(?:\n(?![ \t]*\n)[^\n]*)*", re.I | re.M)
 FULL = r"(?:the |a |one )?(?:full[ -]run|full ci run|full set of suites)(?![\w-])"
 ASK = re.compile(r"(?:\b(?:start|dispatch|trigger|kick off|launch|run|re-?run)\b[^.?!]{0,25}?" + FULL + r"|/run full(?![\w-]))", re.I)
-NOT = re.compile(r"\b(?:failed|fails|failing|red|green|passed|passes|flak\w*|need(?:ed|s)?|not|no|without|skip|instead|enough|already|was|did|done|why)\b", re.I)
+NOT = re.compile(r"\b(?:failed|fails|failing|red|green|passed|passes|flak\w*|need(?:ed|s)?|not|no|never|without|skip|instead|enough|already"
+                 r"|was|did|done|why|wait|yet|later|until|after|before|when|locally|myself|who|should i|should we|ok if|okay if)\b"
+                 r"|\w+n['’]t\b|\b(?:dont|cant|wont|shouldnt|isnt|arent|didnt|doesnt)\b", re.I)
 FENCE = re.compile(r"^\s*(```|~~~).*?^\s*\1", re.S | re.M)
 INLINE = re.compile(r"`[^`\n]*`")
 MAX = 10  # posts per check: a flood of asks is an ACT, not a flood of runs
@@ -87,6 +89,16 @@ def main():
     except Exception:
         done = {}; out.append("warn  full-run ask: memory unreadable, rebuilt empty (an ask may be answered twice)")
     asks = [(n, k) for n, k in cand if n in open_ and k not in done]
+    def save():
+        os.makedirs(a.state, exist_ok=True)
+        with open(mem_path + ".tmp", "w") as f:
+            json.dump({k: v for k, v in done.items() if now - v < KEEP}, f)
+        os.replace(mem_path + ".tmp", mem_path)
+    if a.post:
+        try:
+            save()   # a memory that cannot be written would post again every check: post nothing
+        except Exception as e:
+            a.post = False; out.append(f"ACT   full-run ask: memory cannot be written ({type(e).__name__}): nothing posted, the words to type below")
     seen, posted, tried = set(), set(), 0
     for n, k in asks:
         if n in seen:  # one "/run full" per PR per check; a later ask on it counts as answered only if the post went out
@@ -101,21 +113,30 @@ def main():
             out.append(f"ACT   #{n} asks for the full run: type /run full on it (comment-run.yml)"); continue
         # gh api, not gh pr comment: tools/gh.sh's curl fallback (P-363, the Mac's TLS) answers api calls only
         gh = shlex.split(os.environ["FULL_RUN_ASK_GH"]) if os.environ.get("FULL_RUN_ASK_GH") else ["bash", os.path.join(HERE, "gh.sh")]
-        r = subprocess.run(gh + ["api", "-X", "POST", f"repos/{{owner}}/{{repo}}/issues/{n}/comments", "-f", "body=/run full"],
-                           capture_output=True, text=True, timeout=60)
-        if r.returncode:
-            out.append(f"ACT   #{n} asks for the full run; posting /run full failed ({(r.stderr or r.stdout).strip()[:100]}): type it")
-            continue
-        posted.add(n); done[k] = now
-        out.append(f"full-run ask: #{n} asked for the full run; /run full posted (comment-run.yml starts it and replies)")
-    if a.post:
         try:
-            os.makedirs(a.state, exist_ok=True)
-            with open(mem_path + ".tmp", "w") as f:
-                json.dump({k: v for k, v in done.items() if now - v < KEEP}, f)
-            os.replace(mem_path + ".tmp", mem_path)
+            r = subprocess.run(gh + ["api", "-X", "POST", f"repos/{{owner}}/{{repo}}/issues/{n}/comments", "-f", "body=/run full"],
+                               capture_output=True, text=True, timeout=60)
+            rc, why = r.returncode, (r.stderr or r.stdout).strip()[:100]
+        except subprocess.TimeoutExpired:
+            rc, why = "timeout", "no answer in 60 s"
+        except OSError as e:
+            rc, why = 1, f"{type(e).__name__}"
+        if rc not in (0, "timeout"):
+            out.append(f"ACT   #{n} asks for the full run; posting /run full failed ({why}): type it")
+            continue
+        posted.add(n); done[k] = now   # a timed-out post may have landed: remembered, never posted twice
+        try:
+            save()
         except Exception as e:
-            out.append(f"ACT   full-run ask: memory not written ({e}): the same ask may be answered again")
+            a.post = False; out.append(f"ACT   full-run ask: memory not written after the post on #{n} ({type(e).__name__}): nothing more posted this check")
+        if rc == "timeout":
+            out.append(f"ACT   #{n} asks for the full run; the /run full post got no answer in 60 s and may have landed: look at the PR (not posted again)"); continue
+        out.append(f"full-run ask: #{n} asked for the full run; /run full posted (comment-run.yml starts it and replies)")
+    if a.post and posted:
+        try:
+            save()   # the later asks on a PR already answered this check
+        except Exception as e:
+            out.append(f"ACT   full-run ask: memory not written ({type(e).__name__}): an ask may be answered again")
     out.append(f"full-run ask: {len(asks)} new ask(s) on open PRs")
     print("\n".join(out))
     return 0

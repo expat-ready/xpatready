@@ -22,7 +22,11 @@ for b in $'Question for the tech lead: may I touch core.ts?' $'Please dispatch t
          $'Question for the tech lead: the full run failed on flaky X; is that a known flake?' $'Question for the tech lead: may I touch core.ts?\n\nStatus: full run green on abc123.' \
          $'Question for the tech lead: do I need the full run, or is the fast set enough?' $'Question for the tech lead: no full run needed here, right?' \
          $'Question for the tech lead: could you start the full runtime lane?' $'> Question for the tech lead: could you start the full run?\nStarted it.' \
-         $'Question for the tech lead: please run the full run again, it was red' ; do
+         $'Question for the tech lead: please run the full run again, it was red' \
+         $'Question for the tech lead: please don\'t start the full run yet' $'Question for the tech lead: please don’t start the full run' \
+         $'Question for the tech lead: should I /run full or wait?' $'Question for the tech lead: when should we trigger the full run, after #123 lands?' \
+         $'Question for the tech lead: will you start the full run after the reviewer approves?' $'Question for the tech lead: is it OK if I run the full run locally?' \
+         $'Question for the tech lead: who can start the full run here?' $'Question for the tech lead: we can\'t start the full run' ; do
   rm -rf "$T/s"; run "$(c 101 "$b")"; ok "no ask: '${b//$'\n'/ / }', and nothing printed" "$([ "$(posts)" = 0 ] && [ -z "$o" ] && echo 1)" "$o"; done
 rm -rf "$T/s"; run "$(c 101 "$Q" 11)"; run "$(c 101 "$Q" 12)"; ok "the same words in a new comment (a new id) are a new ask" "$([ "$(posts)" = 1 ] && echo 1)" "$o"
 run "$(c 101 "$Q" 12)"; ok "the same comment id at the next check: not again" "$([ "$(posts)" = 0 ] && echo 1)" "$o"
@@ -40,4 +44,10 @@ mkdir -p "$T/s"; echo '{broken' > "$T/s/full-run-ask.json"; run "$(c 101 "$Q")";
 rm -rf "$T/s"; python3 -I -c 'import json; print(json.dumps([{"number":n} for n in range(1,20)]))' > "$T/prs.json"
 L=(); for n in $(seq 1 12); do L+=("$(c "$n" "$Q")"); done; run "${L[@]}"
 ok "more than 10 PRs asking: 10 posts, then one ACT" "$([ "$(posts)" = 10 ] && [ "$(acts)" = 1 ] && has 'more than 10 PRs asked' && echo 1)" "$o"
+printf '#!/bin/sh\necho "$@" >> "%s/posts"\nsleep 70\n' "$T" > "$T/ghslow"; chmod +x "$T/ghslow"; echo '[{"number":101}]' > "$T/prs.json"
+rm -rf "$T/s"; : > "$T/posts"; printf '%s\n' "$(c 101 "$Q" 77)" > "$T/c.jsonl"; o=$(FULL_RUN_ASK_GH="$T/ghslow" timeout 120 python3 -I "$TOOLS/full-run-ask.py" --comments "$T/c.jsonl" --prs "$T/prs.json" --state "$T/s" --post 2>&1)
+ok "a post with no answer in 60 s: an ACT, remembered (it may have landed)" "$(has 'may have landed' && grep -q '101:id77' "$T/s/full-run-ask.json" && echo 1)" "$o"
+run "$(c 101 "$Q" 77)"; ok "after a timed-out post nothing is posted again" "$([ "$(posts)" = 0 ] && echo 1)" "$o"
+rm -rf "$T/s"; mkdir -p "$T/s/full-run-ask.json.tmp"; run "$(c 101 "$Q" 78)"
+ok "a memory that cannot be written: nothing posted, an ACT with the words" "$([ "$(posts)" = 0 ] && has 'memory cannot be written' && has 'type /run full on it' && echo 1)" "$o"
 finish
