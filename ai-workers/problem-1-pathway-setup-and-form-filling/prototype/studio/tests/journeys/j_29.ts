@@ -18,6 +18,16 @@
 //       second Undo is refused (409) in words.
 //   W6 (roles): the review list without agent/prospect:merge has no merge (403); no session 401.
 //   W7: the walk ends at R1.30's first step: the Leads list (filters) shows the survivor's leads under one person.
+// Aligned by qa 9 (24 Nov) to the ruling qa 8 traced (`product/qa/reports/2026-11-24-capability-R1.29-trace.md`): "Add
+// as new" writes its pair Kept separate, decided by the adder (`duplicates/merge/review.ts` notePairs, FO-9b concept §8
+// B1, AG-2-68 rule 16), and a manual add matching someone on file is stopped (409 KNOWN_PERSON), so an OPEN pair comes
+// at arrival only through a web form or a booking. W1's "Add as new" record now proves the ruling (the Kept separate
+// tab), and each second record of W2-W5 (Lena, Omar, Kim) arrives through the firm's published web form
+// (POST /api/public/forms/:token/submissions, door WEB_FORM), so its pair is OPEN with its score and reasons. W4's two
+// "never by itself" lines are vacuous until FO-9b part 2b (#3527) wires the automatic merge (`mergeIfSafe`, `review.ts:190`)
+// into the doors; W4's control (a safe exact duplicate merges by itself) proves the merge runs, so the two lines bite once
+// it passes. Lena's web-form record is a name-only match (another email and phone): never merged by itself (NOT_EXACT,
+// `whyNotSafe`), so it stays on To review for a person, with or without part 2b.
 // Fails on main today (P-606) only on the steps whose parts are not merged; each failing label names the part.
 // Sample data only; US$0, no model call, no live mail. Run from prototype/ (HEADED=1 opens a visible browser):
 //   zsh studio/tools/isolated.sh j29 4429 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j29 4429 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_29.ts j29 4429
@@ -40,10 +50,13 @@ const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "screens", "J-29", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const { ok, summary } = recorder();
-const { sql: rawSql } = client(PORT, DBNAME);
+const { sql: rawSql, until } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
 // Letters only: FO-9a matches a name with a digit only exactly, so a digit in the tag would hide the similar-name match.
 const run = Date.now().toString(36).replace(/[0-9]/g, (d) => "abcdefghij"[Number(d)]);
+// Each run's own phone exchange (Sample, 200-899): a later run on the same copy must not match an earlier run's people by an
+// exact phone, which (FO-9b part 2b) merges a safe pair by itself and would take the run's people away from its steps.
+const NXX = String(200 + Math.floor(Math.random() * 700));
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
 type Ans = { status: number; body: any };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other journeys
 const api = async (t: string | null, method: string, path: string, body?: unknown): Promise<Ans> => {
@@ -67,13 +80,28 @@ try {
   const R = staffOf("user-R"), O = staffOf("user-O");   // the Owner (may merge), a Case Officer (adds leads)
   const tR = await signIn(R.email), tO = await signIn(O.email);
   const addLead = (t: string, body: Record<string, unknown>) => api(t, "POST", "/front-office/leads", { requestId: randomUUID(), source: "Phone call", ...body });
+  // The firm's web form, published (FO-4a; on as j_27 turns it on, embedded on the firm's own site), and an enquiry sent
+  // through it as a visitor on that site would: read the form (its submission id and load stamp), wait past its minimum
+  // fill time (2 s, sales/public.ts LIMITS), send from the site's origin (an allowed site, or 403 SITE_NOT_ALLOWED).
+  // A form that is on names its consent wording (fo_web_form_consent_check): the wording the firm's set-up gave it (as j_26).
+  const wording = sql(`select coalesce((select id::text from msg_consent_wording where firm_id = '${A}' and channel = 'EMAIL' and purpose = 'MARKETING' order by published_at desc, version desc limit 1), '')`);
+  const FORM = wording ? sql(`update fo_web_form set enabled = true, consent_wording_version_id = coalesce(consent_wording_version_id, '${wording}'), allowed_sites = array['https://firm.example'] where id = (select id from fo_web_form where firm_id = '${A}' order by created_at limit 1) returning public_token`) : "";
+  const enquire = async (person: { givenNames: string; familyName?: string; email?: string; phone?: string; message?: string }) => {
+    const f = await fetch(`${BASE}/api/public/forms/${FORM}`).then((r) => r.json()).catch(() => null) as { submissionId?: string; loadStamp?: string } | null;
+    await new Promise((r) => setTimeout(r, 2_300));
+    const r = await fetch(`${BASE}/api/public/forms/${FORM}/submissions`, { method: "POST", headers: { "content-type": "application/json", origin: "https://firm.example" }, body: JSON.stringify({ submissionId: f?.submissionId, loadStamp: f?.loadStamp, ...person }) });
+    return r.status;
+  };
+  const newPersonBy = (email: string, not: string[]) => sql(`select coalesce((select id::text from fo_person where firm_id = '${A}' and lower(email) = lower('${email}') and id not in (${not.filter(Boolean).map((x) => `'${x}'`).join(", ") || "null"}) order by created_at desc limit 1), '')`);
+  const listOf = async (status?: string) => { const l = await api(tR, "GET", `/front-office/duplicates/review${status ? `?status=${status}` : ""}`); return { status: l.status, items: (l.body?.items ?? []) as { id: string; score?: number; reasons?: unknown[]; status?: string; automatic?: boolean; decidedAt?: string | null; needsCaseSide?: boolean }[] }; };
+  const pairOf = (items: { id: string }[], x: string, y: string) => items.find((i) => JSON.stringify(i).includes(x) && JSON.stringify(i).includes(y));
   // Two people on file, each with a lead and a note of its own (the "histories"), added by the Owner through FO-2's route.
-  const lena = await addLead(tR, { givenNames: `Lena${run}`, familyName: "Park", email: `lena.${run}@example.org`, phone: "+1 (416) 555-0101", note: `Lena's first call ${run}`, confirmedNew: true });
+  const lena = await addLead(tR, { givenNames: `Lena${run}`, familyName: "Park", email: `lena.${run}@example.org`, phone: `+1 (416) ${NXX}-0101`, note: `Lena's first call ${run}`, confirmedNew: true });
   const omar = await addLead(tR, { givenNames: `Omar${run}`, familyName: "Haddad", email: `omar.${run}@example.org`, confirmedNew: true });
   const personOf = (email: string) => sql(`select coalesce(string_agg(id::text, ','), '') from fo_person where firm_id = '${A}' and lower(email) = lower('${email}')`);
   const people = () => sql(`select count(*) from fo_person where firm_id = '${A}'`);
   const LENA = personOf(`lena.${run}@example.org`), OMAR = personOf(`omar.${run}@example.org`);
-  ok("J-29 setup: the Sample firm's front office and two people on file, each with a lead", fo.failed.length === 0 && lena.status === 201 && omar.status === 201 && !!LENA && !!OMAR, [lena.status, omar.status, lena.body?.detail]);
+  ok("J-29 setup: the Sample firm's front office, its web form published, and two people on file, each with a lead", fo.failed.length === 0 && /^[A-Za-z0-9_-]{22,100}$/.test(FORM) && lena.status === 201 && omar.status === 201 && !!LENA && !!OMAR, [lena.status, omar.status, lena.body?.detail]);
 
   // --------------------------------------------------------------------------- W1: warns before saving (by screens)
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
@@ -90,11 +118,11 @@ try {
   };
   await openPanel();
   const n0 = people();
-  await typeIn(p, "First name", `Lena${run}`); await typeIn(p, "Last name (optional)", "Parks"); await typeIn(p, "Phone", "416.555.0101");
+  await typeIn(p, "First name", `Lena${run}`); await typeIn(p, "Last name (optional)", "Parks"); await typeIn(p, "Phone", `416.${NXX}.0101`);
   await p.locator("[data-dup-hint]").waitFor({ timeout: 10_000 }).catch(() => undefined);
   const hint1 = (await p.locator("[data-dup-hint]").innerText().catch(() => "")).replace(/\s+/g, " ");
   await p.screenshot({ path: join(SHOTS, "w1-warning-name-phone-1440.png"), fullPage: true });
-  ok("R1.29 W1: Add a lead with a similar name (Parks) and the same phone in another spelling (416.555.0101) names Lena Park on file with the reason, before Save",
+  ok("R1.29 W1: Add a lead with a similar name (Parks) and the same phone in another spelling (416.NXX.0101) names Lena Park on file with the reason, before Save",
     hint1.includes(`Lena${run} Park`) && /Same phone/.test(hint1) && /Similar name/.test(hint1), hint1.slice(0, 240));
   ok("R1.29 W1: the warning does not block: Save lead stays enabled, and nothing was saved by the warning", await p.getByRole("button", { name: "Save lead" }).isEnabled() && people() === n0);
   await field(p, "Phone").fill(""); await field(p, "First name").fill("Hugo"); await field(p, "Last name (optional)").fill("Sample");
@@ -107,15 +135,24 @@ try {
   await field(p, "First name").fill("Lena"); await field(p, "Last name (optional)").fill(""); await typeIn(p, "Email", `someone.${run}@example.org`); await p.waitForTimeout(1_200);
   ok("R1.29 W1 fail: a first name alone with another email names no one (no warning)", (await p.locator("[data-dup-hint]").count()) === 0, checks.length);
   // A third person with Lena's phone typed apart, added as new by the Case Officer: the pair a manager will merge.
-  const lena2 = await addLead(tO, { givenNames: `Lena${run}`, familyName: "Parks", email: `lena.parks.${run}@example.org`, phone: "416 555 0102", note: `Second record's call ${run}`, confirmedNew: true });
+  const lena2 = await addLead(tO, { givenNames: `Lena${run}`, familyName: "Parks", email: `lena.parks.${run}@example.org`, phone: `416 ${NXX} 0102`, note: `Second record's call ${run}`, confirmedNew: true });
   const LENA2 = personOf(`lena.parks.${run}@example.org`);
   ok("J-29 W1: 'Add as new' keeps a second record (Lena Parks) as the adder chose", lena2.status === 201 && !!LENA2 && LENA2 !== LENA, lena2.body?.detail ?? lena2.status);
+  const kept = await listOf("KEPT_SEPARATE"), keptPair = pairOf(kept.items, LENA, LENA2);
+  ok("R1.29 W1 (the ruling: FO-9b part 2, #3174, on main; concept §8 B1, AG-2-68 rule 16): the 'Add as new' pair Lena Park / Lena Parks is on the Kept separate tab, decided by the adder (not automatic), never on To review",
+    kept.status === 200 && !!keptPair && keptPair.automatic === false && !!keptPair.decidedAt && !pairOf((await listOf()).items, LENA, LENA2), { status: kept.status, pair: keptPair ?? null });
+  // W2-W5's second record of Lena: an enquiry through the firm's web form with Lena's name, from another email and phone
+  // (a name-only match: a person decides it). A web-form arrival always makes a new person and writes its pairs OPEN
+  // (sales/arrival.ts, notePairs).
+  const sentL = await enquire({ givenNames: `Lena${run}`, familyName: "Park", email: `lena.web.${run}@example.org`, phone: `+1 416 ${NXX} 0144`, message: `A web enquiry ${run} (Sample)` });
+  const LENA3 = newPersonBy(`lena.web.${run}@example.org`, [LENA, LENA2]);
+  ok("J-29 W2: a web-form enquiry from Lena Park (another email and phone) arrives as a new record with its own lead", sentL === 201 && !!LENA3 && sql(`select count(*) from fo_lead where person_id = '${LENA3}' and door = 'WEB_FORM'`) === "1", { sent: sentL, person: LENA3 || null });
 
   // ------------------------------------------------------------------------------------ W2: the review list
-  const list = await api(tR, "GET", "/front-office/duplicates/review");
-  const pair = (list.body?.items ?? list.body?.pairs ?? []).find((x: { personIds?: string[]; a?: { id: string }; b?: { id: string } }) => JSON.stringify(x).includes(LENA) && JSON.stringify(x).includes(LENA2));
-  ok("R1.29 W2 (part missing: FO-9b part 2, GET duplicates/review): the pair Lena Park / Lena Parks is on the review list with a score and its reasons",
-    list.status === 200 && !!pair && typeof pair.score === "number" && (pair.reasons ?? []).length > 0, { status: list.status, detail: list.body?.detail ?? list.body?.message ?? null });
+  const list = await listOf();
+  const pair = LENA3 ? pairOf(list.items, LENA, LENA3) : undefined;
+  ok("R1.29 W2 (FO-9b part 2, #3174, on main: GET duplicates/review): the pair Lena Park / her web-form record is on To review with a score and its reasons",
+    list.status === 200 && !!pair && pair.status === "OPEN" && typeof pair.score === "number" && (pair.reasons ?? []).length > 0, { status: list.status, pair: pair ?? null });
   await p.goto(`${BASE}/front-office/leads`); await p.waitForTimeout(800);
   const menu = await p.getByRole("link", { name: /People to merge/ }).count();
   await p.screenshot({ path: join(SHOTS, "w2-sales-menu-1440.png"), fullPage: true });
@@ -127,62 +164,73 @@ try {
 
   // ---------------------------------------------------------------------------- W3: merge keeps both histories
   const notesOf = (person: string) => sql(`select count(*) from fo_note n join fo_lead l on l.id = n.lead_id where l.person_id = '${person}'`);
-  const leadsBefore = Number(sql(`select count(*) from fo_lead where person_id in ('${LENA}', '${LENA2}')`)), notesBefore = Number(notesOf(LENA)) + Number(notesOf(LENA2));
+  const L3 = LENA3 || LENA;   // no web-form record: the merge steps below fail on their own, never on a query
+  const leadsBefore = Number(sql(`select count(*) from fo_lead where person_id in ('${LENA}', '${L3}')`)), notesBefore = Number(notesOf(LENA)) + (LENA3 ? Number(notesOf(LENA3)) : 0);
   const merged = pair ? await api(tR, "POST", `/front-office/duplicates/review/${pair.id}/merge`, { survivorId: LENA, choices: {} }) : { status: 0, body: null };
-  ok("R1.29 W3 (part missing: FO-9b part 1, the merge; part 2, POST review/:id/merge): merging keeps Lena Park and moves Lena Parks' lead and notes to her (both histories on one person)",
+  ok("R1.29 W3 (FO-9b parts 1-2, on main: POST review/:id/merge): merging keeps Lena Park and moves her web-form record's lead and notes to her (both histories on one person)",
     merged.status === 200 && Number(sql(`select count(*) from fo_lead where person_id = '${LENA}'`)) === leadsBefore && Number(notesOf(LENA)) === notesBefore, { status: merged.status, leadsBefore, notesBefore });
   const tomb = sql(`select count(*) from information_schema.columns where table_name = 'fo_person' and column_name = 'merged_into_id'`) === "1"
-    ? sql(`select coalesce(merged_into_id::text, 'none') from fo_person where id = '${LENA2}'`) : "no merged_into_id column";
+    ? sql(`select coalesce(merged_into_id::text, 'none') from fo_person where id = '${L3}'`) : "no merged_into_id column";
   const auditLine = sql(`select coalesce(string_agg(detail::text, ' '), '') from audit_event where firm_id = '${A}' and action in ('person.merged', 'fo.person.merged')`);
-  ok("R1.29 W3 (part missing: FO-9b part 1): the second record is a tombstone pointing at the survivor, with one audit line that carries no email or phone",
-    tomb === LENA && auditLine !== "" && !auditLine.includes(`lena.parks.${run}`) && !auditLine.includes("5550102"), { tomb, audit: auditLine.slice(0, 160) });
+  ok("R1.29 W3 (FO-9b part 1, on main): the web-form record is a tombstone pointing at the survivor, with one audit line that carries no email or phone",
+    tomb === LENA && auditLine !== "" && !auditLine.includes(`lena.web.${run}`) && !auditLine.includes(`${NXX}0144`), { tomb, audit: auditLine.slice(0, 160) });
 
   // ---------------------------------------------------------------------- W4: never automatic with money
-  // Omar has money: a draft invoice (FO-7b part 1a). A new lead with Omar's email is then added as new by the Owner.
+  // The control (P-574 (2)): a safe exact duplicate, a web-form enquiry with the email of a person on file who has no case,
+  // document or money, is merged by itself into the older record, decided by the system (FO-9b part 2b: a job after the
+  // arrival commits). It runs before and after the Omar and Kim arrivals, so their jobs have run when those lines are read.
+  const control = async (tag: string) => {
+    const first = await addLead(tR, { givenNames: `Noor${tag}${run}`, familyName: "Sample", email: `noor.${tag}.${run}@example.org`, confirmedNew: true });
+    const N1 = personOf(`noor.${tag}.${run}@example.org`);
+    const sent = await enquire({ givenNames: `Noor${tag}${run}`, familyName: "Sample", email: `NOOR.${tag}.${run}@example.org` });
+    const N2 = newPersonBy(`noor.${tag}.${run}@example.org`, [N1]);
+    const merged = !!N1 && !!N2 && await until(async () => sql(`select coalesce(merged_into_id::text, '') from fo_person where id = '${N2}'`) === N1, 20_000);
+    const auto = merged && (await listOf("MERGED")).items.some((i) => JSON.stringify(i).includes(N2) && i.automatic === true);
+    return { ok: first.status === 201 && sent === 201 && merged && auto, detail: { add: first.status, sent, merged, auto } };
+  };
+  const c1 = await control("a");
+  ok("R1.29 W4 control (part missing: FO-9b part 2b, #3527, the automatic merge at arrival): a safe exact duplicate (the same email by web form; no case, document or money) is merged by itself into the older record, automatic on the Merged tab", c1.ok, c1.detail);
+  // Omar has money: a draft invoice (FO-7b part 1a). A new lead with Omar's own email then arrives by the web form.
   sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${A}', 'seed:J-29', now()) on conflict (firm_id) do nothing`);
   // Omar is a lead, not a client the Owner may invoice: FO-7b's draft route is C5-scoped (Lead 14 on #3321: a party outside
   // the caller's scope is 404), so his money is a fixture row, as the step needs only "a person with money"
   const invId = sql(`insert into money_invoice (firm_id, person_id, currency, created_by, updated_at) values ('${A}', '${OMAR}', 'CAD', 'seed:J-29', now()) returning id`);
   const invStored = !!invId;   // a fixture row, not an API answer
-  const omar2 = await addLead(tR, { givenNames: `Omar${run}`, familyName: "Haddad", email: `omar.haddad.${run}@example.org`, phone: "+1 416 555 0177", confirmedNew: true });
-  const OMAR2 = personOf(`omar.haddad.${run}@example.org`);
-  await new Promise((r) => setTimeout(r, 1500));   // any automatic merge runs after the add
-  const hasTomb = sql(`select count(*) from information_schema.columns where table_name = 'fo_person' and column_name = 'merged_into_id'`) === "1";
-  const bothStay = sql(`select count(*) from fo_person where id in ('${OMAR}', '${OMAR2 || OMAR}')`) === "2" && (!hasTomb || sql(`select count(*) from fo_person where id in ('${OMAR}', '${OMAR2}') and merged_into_id is null`) === "2");
-  ok("R1.29 W4 fail: a person with money (a draft invoice) is never merged by itself: both Omar records stay, neither a tombstone (vacuous until FO-9b part 2 merges: no merge runs today)",
-    invStored && omar2.status === 201 && !!OMAR2 && bothStay, { invoiceFixture: invStored, add: omar2.status, hasTomb });
-  const list4 = await api(tR, "GET", "/front-office/duplicates/review");
-  ok("R1.29 W4 (part missing: FO-9b part 2, the review list): the Omar pair waits on the review list for a person to decide",
-    list4.status === 200 && JSON.stringify(list4.body).includes(OMAR) && JSON.stringify(list4.body).includes(OMAR2), { status: list4.status });
-
+  const omar2 = { status: await enquire({ givenNames: `Omar${run}`, familyName: "Haddad", email: `OMAR.${run}@Example.org`, phone: `+1 416 ${NXX} 0177` }) };
+  const OMAR2 = newPersonBy(`omar.${run}@example.org`, [OMAR]);
   // A person with a case (the case side's client row linked to the front-office person, CS-K1; seeded as its row, Sample)
-  // and a new lead with the same phone: never merged by itself, and the pair waits on the review list.
-  const kim = await addLead(tR, { givenNames: `Kim${run}`, familyName: "Sample", email: `kim.${run}@example.org`, phone: "+1 416 555 0188", confirmedNew: true });
+  // and a new lead with the same phone in another spelling, by the web form.
+  const kim = await addLead(tR, { givenNames: `Kim${run}`, familyName: "Sample", email: `kim.${run}@example.org`, phone: `+1 416 ${NXX} 0188`, confirmedNew: true });
   const KIM = personOf(`kim.${run}@example.org`);
   let caseSeeded = "";
   try {
     sql(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', (select coalesce(max(client_number), 9000) + 1 from case_client where firm_key = 'sample-firm'), 'Kim Sample', 'PERSON', '${KIM}', 'user-R')`);
     caseSeeded = "yes";
   } catch (e) { caseSeeded = String((e as { stderr?: string }).stderr ?? e).split("\n")[0]; }
-  const kim2 = await addLead(tR, { givenNames: `Kim${run}`, familyName: "Sample", email: `kim.other.${run}@example.org`, phone: "416.555.0188", confirmedNew: true });
-  const KIM2 = personOf(`kim.other.${run}@example.org`);
-  await new Promise((r) => setTimeout(r, 1500));
-  const kimStay = !!KIM && !!KIM2 && sql(`select count(*) from fo_person where id in ('${KIM}', '${KIM2}')`) === "2" && (!hasTomb || sql(`select count(*) from fo_person where id in ('${KIM}', '${KIM2}') and merged_into_id is null`) === "2");
-  ok("R1.29 W4 fail: a person with a case (the case side's client row) is never merged by itself: both Kim records stay (vacuous until FO-9b part 2 merges: no merge runs today)",
-    kim.status === 201 && kim2.status === 201 && caseSeeded === "yes" && kimStay, { caseSeeded, add: [kim.status, kim2.status] });
-  const list4c = await api(tR, "GET", "/front-office/duplicates/review");
-  const kimPair = (list4c.body?.items ?? list4c.body?.pairs ?? []).find((x: unknown) => JSON.stringify(x).includes(KIM) && JSON.stringify(x).includes(KIM2));
-  ok("R1.29 W4 (part missing: FO-9b part 2, the review list with needsCaseSide): the Kim pair waits on the review list, marked as needing the case side",
-    list4c.status === 200 && !!kimPair && kimPair.needsCaseSide === true, { status: list4c.status });
+  const kim2 = { status: await enquire({ givenNames: `Kim${run}`, familyName: "Sample", email: `kim.other.${run}@example.org`, phone: `416.${NXX}.0188` }) };
+  const KIM2 = newPersonBy(`kim.other.${run}@example.org`, [KIM]);
+  const c2 = await control("b");   // the Omar and Kim jobs were queued before this one
+  ok("R1.29 W4 control again, after the Omar and Kim arrivals (part missing: FO-9b part 2b, #3527): a second safe exact duplicate is merged by itself", c2.ok, c2.detail);
+  const live = (x: string, y: string) => !!x && !!y && sql(`select count(*) from fo_person where id in ('${x}', '${y}') and merged_into_id is null`) === "2";
+  ok("R1.29 W4 fail: a person with money (a draft invoice) is never merged by itself: both Omar records stay, neither a tombstone (bites once W4's control passes: FO-9b part 2b, #3527)",
+    invStored && omar2.status === 201 && live(OMAR, OMAR2), { invoiceFixture: invStored, add: omar2.status });
+  const list4 = await listOf(), omarPair = OMAR2 ? pairOf(list4.items, OMAR, OMAR2) : undefined;
+  ok("R1.29 W4 (FO-9b part 2, #3174, on main: the review list): the Omar pair (the same email) waits on To review for a person to decide",
+    list4.status === 200 && !!omarPair && omarPair.status === "OPEN", { status: list4.status, pair: omarPair ?? null });
+  ok("R1.29 W4 fail: a person with a case (the case side's client row) is never merged by itself: both Kim records stay (bites once W4's control passes: FO-9b part 2b, #3527)",
+    kim.status === 201 && kim2.status === 201 && caseSeeded === "yes" && live(KIM, KIM2), { caseSeeded, add: [kim.status, kim2.status] });
+  const kimPair = KIM2 ? pairOf(list4.items, KIM, KIM2) : undefined;
+  ok("R1.29 W4 (FO-9b part 2, #3174, on main: the review list with needsCaseSide): the Kim pair waits on To review, marked as needing the case side",
+    list4.status === 200 && !!kimPair && kimPair.needsCaseSide === true, { status: list4.status, pair: kimPair ?? null });
 
   // --------------------------------------------------------------------------- W5: undo from the review list
   const mergesList = await api(tR, "GET", "/front-office/duplicates/merges");
-  const m = (mergesList.body?.items ?? []).find((x: unknown) => JSON.stringify(x).includes(LENA2));
+  const m = LENA3 ? (mergesList.body?.items ?? []).find((x: unknown) => JSON.stringify(x).includes(LENA3)) : undefined;
   const undo = m ? await api(tR, "POST", `/front-office/duplicates/merges/${m.id}/undo`, {}) : { status: 0, body: null };
-  ok("R1.29 W5 (parts missing: FO-9b part 1 Undo, part 2 GET duplicates/merges): Undo merge from the Merged tab's list restores both people and their own leads",
-    undo.status === 200 && sql(`select count(*) from fo_lead where person_id = '${LENA2}'`) === "1" && sql(`select count(*) from fo_person where id in ('${LENA}', '${LENA2}')`) === "2", { list: mergesList.status, undo: undo.status });
+  ok("R1.29 W5 (FO-9b parts 1-2, on main: GET duplicates/merges, POST merges/:id/undo): Undo merge from the Merged tab's list restores both people and their own leads",
+    undo.status === 200 && !!LENA3 && sql(`select count(*) from fo_lead where person_id = '${L3}'`) === "1" && sql(`select count(*) from fo_person where id in ('${LENA}', '${L3}') and merged_into_id is null`) === "2", { list: mergesList.status, undo: undo.status });
   const undo2 = m ? await api(tR, "POST", `/front-office/duplicates/merges/${m.id}/undo`, {}) : { status: 0, body: null };
-  ok("R1.29 W5 fail (part missing: FO-9b part 1): a second Undo is refused (409) in words, nothing changed", undo2.status === 409 && typeof undo2.body?.detail === "string", undo2.status);
+  ok("R1.29 W5 fail (FO-9b part 1, on main): a second Undo is refused (409) in words, nothing changed", undo2.status === 409 && typeof undo2.body?.detail === "string", undo2.status);
   const pm = await ctx.newPage(); await pm.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tR);
   await pm.goto(`${BASE}/front-office/duplicates`); await pm.waitForTimeout(1_500);
   const tabs = await pm.getByRole("tab", { name: /To review|Merged|Kept separate/ }).count();
@@ -195,7 +243,7 @@ try {
   const offList = await api(tO, "POST", `/front-office/duplicates/review/${pair?.id ?? randomUUID()}/merge`, { survivorId: LENA, choices: {} });
   const anon = await api(null, "GET", "/front-office/duplicates/review"), anonCheck = await api(null, "POST", "/front-office/duplicates/check", { givenNames: "Lena" });
   ok("R1.29 W6 fail: no session gets 401 on the check (FO-9a)", anonCheck.status === 401, anonCheck.status);
-  ok("R1.29 W6 fail (part missing: FO-9b part 2): no session gets 401 on the review list; a Case Officer without agent/prospect:merge gets 403 on a merge",
+  ok("R1.29 W6 fail (FO-9b part 2, on main): no session gets 401 on the review list; a Case Officer without agent/prospect:merge gets 403 on a merge",
     anon.status === 401 && offList.status === 403, [anon.status, offList.status]);
 
   // --------------------------------------------------------------------------- W7: R1.30's first step

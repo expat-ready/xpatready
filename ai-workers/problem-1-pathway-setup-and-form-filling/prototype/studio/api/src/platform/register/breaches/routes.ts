@@ -6,7 +6,8 @@
 import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Req, Res } from "@nestjs/common";
 import { IDEMPOTENCY_HEADER, readIdempotencyKey } from "../../idempotency.ts";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../../system-identity/keys.ts";
-import { BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches } from "./service.ts";
+import { AlertBody, BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches, ChangeBody, NoticeBody, OpenBody } from "./service.ts";
+import { ChangesFirm, NoFirmData, ReadsAcrossFirms } from "../../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext };
 type Status = { status(code: number): unknown };
@@ -17,26 +18,26 @@ const repeat = <T extends { repeated?: true }>(res: Status, v: T) => { if (v.rep
 export class BreachController {
   constructor(@Inject(Breaches) private readonly breaches: Breaches) {}
 
-  @Get() @SystemKeys(BREACH_READ_KEY)
+  @Get() @SystemKeys(BREACH_READ_KEY) @ReadsAcrossFirms("the breach register, which names affected firms")
   list(@Req() r: R, @Query() q: Record<string, unknown>) { return this.breaches.list(systemStaffOf(r), q); }
 
-  @Get(":id") @SystemKeys(BREACH_READ_KEY)
+  @Get(":id") @SystemKeys(BREACH_READ_KEY) @ReadsAcrossFirms("one breach and the firms it names")
   one(@Req() r: R, @Param("id") id: string) { return this.breaches.one(systemStaffOf(r), id); }
 
   /** Creates need an Idempotency-Key (STANDARDS §4): a repeat answers 200 with the first breach. */
-  @Post() @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
+  @Post() @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason(OpenBody) @NoFirmData("ExpatReady's own breach register, whose rows name firms but are not their records")
   async open(@Req() r: R, @Body() b: unknown, @Headers(IDEMPOTENCY_HEADER) k: unknown, @Res({ passthrough: true }) res: Status) {
     return repeat(res, await this.breaches.open(systemStaffOf(r), b, readIdempotencyKey(k, "Send an Idempotency-Key header with each new breach.")));
   }
 
-  @Post("from-alert") @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
+  @Post("from-alert") @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason(AlertBody) @NoFirmData("ExpatReady's own breach register, whose rows name firms but are not their records")
   async fromAlert(@Req() r: R, @Body() b: unknown, @Headers(IDEMPOTENCY_HEADER) k: unknown, @Res({ passthrough: true }) res: Status) {
     return repeat(res, await this.breaches.fromAlert(systemStaffOf(r), b, readIdempotencyKey(k, "Send an Idempotency-Key header with each new draft (the alert's own id is a good one).")));
   }
 
-  @Patch(":id") @HttpCode(200) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
+  @Patch(":id") @HttpCode(200) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason(ChangeBody) @NoFirmData("ExpatReady's own breach register, whose rows name firms but are not their records")
   change(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.breaches.change(systemStaffOf(r), id, b); }
 
-  @Post(":id/notices") @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason()
+  @Post(":id/notices") @HttpCode(201) @SystemKeys(BREACH_MANAGE_KEY) @SystemReason(NoticeBody) @ChangesFirm("sends one firm's security incident notice and writes its line on that firm's trail")
   notify(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.breaches.notify(systemStaffOf(r), id, b); }
 }

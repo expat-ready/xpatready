@@ -134,8 +134,8 @@ try {
   const noReason = await call(base, "POST", path(firmA), { token: owner, body: { address: "pf25w-elm" } });
   const badAddress = await call(base, "POST", path(firmA), { token: owner, body: { address: "No Spaces!", reason: "A bad address" } });
   const same = await call(base, "POST", path(firmA), { token: owner, body: { address: "pf25w-oak", reason: "The same one" } });
-  ok("PF-25w DW4 fail: no reason is 400 REASON_REQUIRED; a bad address 422 naming the field; the same address 409; nothing changed",
-    noReason.status === 400 && noReason.body.code === "REASON_REQUIRED" && badAddress.status === 422 && !!badAddress.body.fields?.address && same.status === 409 && addressOf() === "pf25w-oak", { noReason, badAddress, same });
+  ok("PF-25w DW4 fail: no reason is 422 REASON_REQUIRED naming reason (R1.10 A4); a bad address 422 naming the field; the same address 409; nothing changed",
+    noReason.status === 422 && noReason.body.code === "REASON_REQUIRED" && !!noReason.body.fields?.reason && badAddress.status === 422 && !!badAddress.body.fields?.address && same.status === 409 && addressOf() === "pf25w-oak", { noReason, badAddress, same });
   const extra = await call(base, "POST", path(firmA), { token: owner, body: { address: "pf25w-cedar", reason: "An extra field", pf28Unknown: "x" } });
   ok("PF-25w DW4 fail (PF-28; review M1): an unknown field is 422 naming it, nothing changed",
     extra.status === 422 && Object.hasOwn(extra.body.fields ?? {}, "pf28Unknown") && addressOf() === "pf25w-oak", extra);

@@ -1,0 +1,5 @@
+Tue Nov 24 04:57:16 PM UTC 2026
+2026-11-24T04:28:34.171000+00:00	xr-staging-5xx-rate	Action	Successfully executed action arn:aws:sns:ca-central-1:581508167097:xr-staging-on-call
+2026-11-24T04:28:34.129000+00:00	xr-staging-5xx-rate	StateUpdate	Alarm updated from ALARM to OK
+2026-11-24T04:22:34.171000+00:00	xr-staging-5xx-rate	Action	Successfully executed action arn:aws:sns:ca-central-1:581508167097:xr-staging-on-call
+2026-11-24T04:22:34.129000+00:00	xr-staging-5xx-rate	StateUpdate	Alarm updated from OK to ALARM

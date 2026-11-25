@@ -1,6 +1,7 @@
 // FO-2 (contracts §2.1, §7; AG-02): what the sales files share: the answers, the text and contact rules, who sees what,
 // and how a change is written down (one audit line through AuditPort, then the outbox row last: §0.5, PF-3 m8).
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
 import type { EventName } from "../../../../ports/events.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -18,6 +19,12 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\u3164\ufeff\u{e0000}-\u{e007f}]/u;   // + invisible, direction and tag marks (break m4)
 const LINE_BREAK = /[\n\r\u2028\u2029]/;
 const HAS_WORD = /[\p{L}\p{N}]/u;
+
+/** PF-28 A3 (R1.10): a text field's own length at the parse, counted as text() counts it (characters after NFC and trim)
+ *  and in its words, so an over-long value is refused on its field before any other field's rule or a record's look-up.
+ *  text() keeps every other rule; an outer bound the probe's 20,000 characters fit in would let a missing field or a
+ *  random id's 404 answer first. */
+export const textUpTo = (max: number) => z.string().refine((v) => [...v.normalize("NFC").trim()].length <= max, { error: `at most ${max} characters.` });
 
 /** One trimmed text field, or null: not text, too long, no letter or digit, or a control mark → refused (AG-2-49 rule 5). */
 export function text(v: unknown, o: { field: string; what: string; max: number; required?: boolean; multiline?: boolean }): string | null {

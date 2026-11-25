@@ -16,6 +16,7 @@ import { addressHostSuffixes } from "./rules.ts";
 import { platformConfig } from "../config/settings.ts";
 import { asBypass, touchingAudit, withFirm } from "../firm-scope.ts";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../system-identity/keys.ts";
+import { ChangesFirm } from "../audit/access/declare.ts";
 import { logPort } from "../observability/log.ts";
 import { dbRuleOf } from "../observability/redact.ts";
 import { parseInput, query, strict } from "../http/input.ts";
@@ -89,7 +90,7 @@ export class WebAddressController {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** PF-28: the change's body, strict (an unknown field is 422, named); each field's own rule is PF-25's service's. */
-const ChangeBody = strict({ address: z.unknown().optional(), reason: z.unknown().optional() });
+export const ChangeBody = strict({ address: z.unknown().optional(), reason: z.unknown().optional() });
 
 /** PF-25w: ExpatReady's own staff change a firm's web address (SA-2-27). The system guard has checked the key and the
  *  reason and written its line; the change runs inside the firm's own scope (PF-12's walls see that one firm), and its
@@ -128,6 +129,7 @@ Inject(WebAddresses)(SystemWebAddressController, undefined, 0);
   Post(":id/web-address")(proto, "change", d);
   HttpCode(200)(proto, "change", d);
   SystemKeys(ADDRESS_CHANGE_KEY)(proto, "change", d);
-  SystemReason()(proto, "change", d);
+  ChangesFirm("changes one firm's web address")(proto, "change", d);   // AUD-3: it writes its own ourstaff: line on the firm's trail
+  SystemReason(ChangeBody)(proto, "change", d);
   [Param("id"), Body(), Req()].forEach((p, i) => p(proto, "change", i));
 }

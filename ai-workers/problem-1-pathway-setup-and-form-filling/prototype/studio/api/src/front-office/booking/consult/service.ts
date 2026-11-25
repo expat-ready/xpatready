@@ -25,7 +25,10 @@ import type { ConsultRecordRead, PartyRef } from "../../../../../ports/consult-r
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
-import { assertAgreementSigned } from "../consultation-agreement/gate.ts";
+import { agreementWarning, type AgreementWarning } from "../consultation-agreement/gate.ts";
+/** The record's copy of the agreement warning: its code and words only. The record is open to agent/booking:edit, which
+ *  the agreement's own read may refuse (FO-3vr), so the agreement's id and causes stay out (FO-3c-warn review m3). */
+const brief = (w: AgreementWarning | null) => (w ? { code: w.code, words: w.words } : null);
 
 type Tx = Prisma.TransactionClient;
 export type ConsultPorts = { audit: AuditPort<Tx> };
@@ -115,8 +118,9 @@ export class ConsultRecordService {
   async get(ctx: StaffContext, bookingId: string) {
     const b = await this.booking(this.db, ctx, bookingId);
     const r = await this.db.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
-    if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b) });
-    return this.view(ctx, b, r);
+    // FO-3c-warn break F4: before the first save, the no-record answer carries the warning too.
+    if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b), agreementWarning: brief(await agreementWarning(this.db, ctx.firmId, b.id)) });
+    return { ...this.view(ctx, b, r), agreementWarning: brief(await agreementWarning(this.db, ctx.firmId, b.id)) };
   }
 
   async put(ctx: StaffContext, bookingId: string, body: unknown) {
@@ -132,12 +136,11 @@ export class ConsultRecordService {
     const fee = v.quotedFeeMinor ?? null;
     if (fee !== null && !v.quotedFeeCurrency) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, WORDS.currency, { code: "INVALID", fields: { quotedFeeCurrency: WORDS.currency }, issues: [`quotedFeeCurrency: ${WORDS.currency}`] });
     await this.booking(this.db, ctx, bookingId);   // who may, before the lock (a 404 or 403 takes no lock)
-    const { b, saved } = await this.db.$transaction(async (tx) => {
+    const { b, saved, warning } = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM fo_booking WHERE firm_id = ${firmScope(ctx.firmId).firmId}::uuid AND id = ${bookingId}::uuid FOR UPDATE`;
       const b = await this.booking(tx, ctx, bookingId);
       if (b.status === "CANCELLED") throw problem(409, "not-active", "Cancelled", WORDS.cancelled, { code: "CANCELLED" });
       if (b.status !== "COMPLETED") throw problem(409, "not-attended", "Not attended", WORDS.notAttended, { code: "NOT_ATTENDED" });
-      await assertAgreementSigned(tx, ctx.firmId, b.id);   // FO-3c part 2 (R1.104, Lead 10 W4): no record of a consultation whose agreement is unsigned
       const before = await tx.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
       // A save from a form read before someone else's save (or a second "first" save) never overwrites it (review M1).
       if ((before?.version ?? null) !== (v.version ?? null)) throw problem(409, "stale-version", "Changed by someone else", WORDS.stale, { code: "STALE_VERSION", version: before?.version ?? null });
@@ -154,9 +157,11 @@ export class ConsultRecordService {
         detail: { recordId: saved.id, bookingId: b.id, ...facts(before, "before"), ...facts(saved, "after"), notesChanged: (before?.notes ?? null) !== saved.notes },
         before: before ? values(before) : null, after: values(saved),
       });
-      return { b, saved };
+      // FO-3c part 2 (AG-4-15 rule 4, the founder's ruling of 24 Nov): saved whatever the agreement's state; an unsigned
+      // one is the record's warning, never a refusal; read in the transaction, so a failed read saves nothing (break F3).
+      return { b, saved, warning: brief(await agreementWarning(tx, ctx.firmId, b.id)) };
     }, TX);
-    return this.view(ctx, b, saved);
+    return { ...this.view(ctx, b, saved), agreementWarning: warning };
   }
 
   /** The adapter's read (ports/consult-record.ts): the firm's record by its id, or null. */

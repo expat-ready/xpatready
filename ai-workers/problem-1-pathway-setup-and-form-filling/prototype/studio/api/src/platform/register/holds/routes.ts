@@ -4,7 +4,8 @@
 // agent/legal-hold:manage stays dormant (SA-11 §3.5). The controller only reads the request and calls the service.
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../../system-identity/keys.ts";
-import { LEGAL_HOLD_KEY, LegalHolds } from "./service.ts";
+import { LEGAL_HOLD_KEY, LegalHolds, PlaceBody, ReleaseBody } from "./service.ts";
+import { ChangesFirm, ReadsAcrossFirms } from "../../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext };
 
@@ -12,12 +13,12 @@ type R = { systemStaff?: SystemStaffContext };
 export class LegalHoldController {
   constructor(@Inject(LegalHolds) private readonly holds: LegalHolds) {}
 
-  @Get() @SystemKeys(LEGAL_HOLD_KEY)
+  @Get() @SystemKeys(LEGAL_HOLD_KEY) @ReadsAcrossFirms("legal holds of every firm", { firmFilter: true })
   list(@Req() r: R, @Query() q: Record<string, unknown>) { return this.holds.list(systemStaffOf(r), q); }
 
-  @Post() @HttpCode(201) @SystemKeys(LEGAL_HOLD_KEY) @SystemReason()
+  @Post() @HttpCode(201) @SystemKeys(LEGAL_HOLD_KEY) @SystemReason(PlaceBody) @ChangesFirm("places a hold on one firm")
   place(@Req() r: R, @Body() b: unknown) { return this.holds.place(systemStaffOf(r), b); }
 
-  @Post(":id/release") @HttpCode(200) @SystemKeys(LEGAL_HOLD_KEY) @SystemReason()
+  @Post(":id/release") @HttpCode(200) @SystemKeys(LEGAL_HOLD_KEY) @SystemReason(ReleaseBody) @ChangesFirm("releases one firm's hold")
   release(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.holds.release(systemStaffOf(r), id, b); }
 }
