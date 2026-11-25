@@ -42,3 +42,24 @@ Not a screen: concept fit, keyboard/zoom, D1-D20, BIC-01..20 and the journey sco
 
 ## Could not check
 The PR body (contract-change notice P-584, the Lead question), full CI, `check_pf14_jobs`/reset/case suites, the module-cards PR check.
+
+## Round 2 (diff-only, 7a9690d4)
+Scope: `git diff 7d86eb32 7a9690d4 -- ':!*.md'` (verify.ts, check_aud1c_verify.ts). Not a screen: journey score N/A, as in round 1.
+**Runs:** suite at the head 20 passed, 0 failed. Old verify.ts against the new test (scratch copy): 9 passed, 11 failed. Single-fix reverts on the new code: ORDER BY reverted gives 10 failed (the 25-line case among them); the old anchor rule gives 5 failed (the tail case among them); the old at..at range fails the tail case only; dropping the key filter fails the M3 case only. `tsc` (tsconfig.check): no errors in the touched files. Probe on a scratch database (page 3, not committed).
+**Round 1 findings:**
+* Blocker (text order): fixed (`order by audit_event.seq`). Pinned by a 25-line chain in both modes.
+* Major (anchor): fixed. On every pass, a non-sample chain's verified place must still exist with its hash. `found()` keeps verified_seq/hash, so a removal or a re-chained rewrite stays BROKEN (probe: a forged whole chain stays BROKEN after 3 more passes). The weekly pass finds a removed tail. verified_seq never goes down.
+* Major (M3): fixed. A key that is no chain's shape is skipped with no key in the line. Every other chain is still checked and alerted, then the pass throws with no heartbeat (probe: 2 bad rows, firm chain alerted, 0 heartbeats). A per-chain catch now also covers round 1 m2 (a timeout on one chain).
+* Minor (range): fixed for a removed tail (10..12).
+**The fix's own behaviour:**
+* BROKEN for good: holds for `missing` and `verified-changed`. A changed line below the verified place that is later put back exactly verifies whole and is written INTACT (probe: BROKEN 4..12, then INTACT v=12). The comment at verify.ts:86 ("no run turns it back to INTACT") overstates this. See m2.
+* Bad key: as required (skip, check the others, throw, no heartbeat).
+* sample: path: kept separate and unchanged (P-571). A sample tail removal re-verifies silently (v=4) and a sample hash change is found by the weekly pass. Accepted in round 1.
+**New Minors (none blocks):**
+1. Inverted range: when the verified line alone is removed and later lines remain, the result is `missing 13..8` (verify.ts:93, head+1 > at). Use `min(head+1, at)`, or the highest seq below `at`, plus 1.
+2. Restore clears: see above. Either keep BROKEN until a deliberate reset, or state the rule in the comment and the card (a Lead decision, not new scope).
+3. Drift after re-appends: after a tail removal, new lines reuse seq 10 onward. Each pass then moves the range (10..12, 11..12, 12..12, 12..13) and raises a new alert each time fromSeq changes: 3 pages for one incident, and the row loses 10..12. Keeping the earliest fromSeq while BROKEN would fix both.
+4. `raise()` wrapper (verify.ts:131-135): a failed raise commits BROKEN as raised, so the alert is never retried. The heartbeat is still written, and nothing alarms on `alert_not_raised`. No test pins it (removing it keeps 20/20). The per-chain catch alone would roll back and retry. With LogAlerts and the key filter, a failed raise is unlikely.
+5. A bad check row stops every heartbeat until someone deletes it. `all()` (the system read) lists it as a chain. The error line does not say which row. Say how to find it in the card.
+**Could not check:** CI and the PR body (still owed from round 1: the Lead's answer on `audit_chain_break`, P-584 notice).
+**Verdict: Approve** (no open Blocker or Major; Minors 1-5 for the builder or a follow-up).

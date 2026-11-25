@@ -69,3 +69,42 @@ Head `7d86eb32f`, detached in `/home/user/wt-p2`. Isolated copy `p2brk` on :4631
 - **No content leaks:** the alert lines carry only rule, firmId, entity, entityKey, fromSeq and toSeq. Neither the answers nor the heartbeat carry summary, detail or actor (I planted "secret summary/detail" text).
 
 Breaker verdict: Block 7d86eb32f00c18814a67abd9865132a45390c5a6
+
+## Round 2 (7a9690d4)
+
+New isolated copy `p2brk2` on :4632 (`xr_studio_p2brk2`), real code only (no patched copy), stopped afterwards with its database dropped. `tests/check_aud1c_verify.ts` at this head gives **20 passed, 0 failed**. Same method as round 1: the owner tampers with `aud_event_no_change` off, re-chaining with `canonical.ts`, and passes run through `POST /api/demo/audit-chain/check`.
+
+**Blocker 1: fixed.**
+- Sample-firm 4 to 14 lines (crossing 9 to 10), sample-solo 3 to 123 (crossing 99 to 100): no break, incremental or full. 200,000 lines on one firm: first incremental 3.06 s (200,002 read), full 3.01 s, then incremental 0.04 s; server RSS 856 MB; no timeout, no break.
+
+**Major 2: fixed.** All chains had 8 lines, verified at 8.
+
+| Chain | Tamper | Result on every pass (2 incremental, full, incremental) |
+|---|---|---|
+| c004 | seq 7 and 8 deleted | `missing` 7..8 |
+| c007 | seq 3 rewritten, then re-chained | `verified-changed` 8..8 |
+| c001 | old line changed | full `hash` 3..8, still BROKEN on the next incremental |
+| c003 | middle line deleted | full `gap` 4..8, still BROKEN on the next incremental |
+
+- One alert each; no chain went back to INTACT. A demo reset then both passes: no false break on firm, platform or 200k chains; the new `sample:` chain is INTACT at seq 1.
+
+**Major 3: fixed.**
+- As `xr_app` I inserted two bad check rows (`'0 not a chain'`, a 300-character key): one `audit_chain_bad_check_row` line each, no key text. Chain c020, tampered at seq 2, was still checked (BROKEN 2..4, one alert); the pass then answered 500 and wrote no heartbeat (count stayed 14).
+- I held firm A's check lock in another session for 130 s: A's transaction timed out at 120 s (`audit_chain_check_failed`, P2028), firm B after it was still verified (to 125), no heartbeat.
+
+**Defeating the verified-place check from `xr_app` (Minor 5 stands; nothing new for the owner).** The owner tampers and then `xr_app` edits `aud_chain_check`:
+
+| Chain | What was done | Result |
+|---|---|---|
+| c011 | re-chained; `verified_hash` set to the new hash at 8 | INTACT forever, weekly pass included |
+| c012 | seq 7 and 8 deleted; `verified_seq` set to 6 with seq 6's hash | INTACT forever, weekly pass included |
+| c014 | re-chained; check row deleted | INTACT forever, weekly pass included |
+| c013 | re-chained and caught (`verified-changed`, one alert); then `verified_hash` replaced | INTACT from the next pass |
+
+- What still catches it: only an alert already raised before the edit (c013) and the log's `AuditChainBreaks` count. The weekly pass sees nothing that changes old lines in place without re-chaining (c001 and c003 stay caught).
+- Nothing in the chain alone can catch re-chaining or tail cuts covered this way. That is part 3's anchor, and an owner can write this table anyway. Removing `xr_app`'s write grant would leave the owner as the only one who can hide these.
+
+**New Minor: after a tail cut, later lines move the range and drop the first cut seq.**
+- After c004's `missing` 7..8, the app wrote 3 new lines (new seq 7 to 9). The next pass gave `verified-changed` 8..9, so seq 7, also cut, left the range (`verify.ts:92-93`). The second alert fell in the 5-minute repeat window (Minor 4); in production it pages about 30 minutes later. The chain stays BROKEN, so nothing goes unnoticed.
+
+Breaker verdict: Approve 7a9690d46d66074b411450c5f430c7ea5d432f82
