@@ -44,7 +44,7 @@ ok "branch-sweep.sh, which reads items.json, waits for lead-queue.sh, which writ
 # steps 3 and 3b, cut out and run as written, on three comments: an open PR's question and lane report, a closed PR's question
 sed -n '/^# One read of every comment/,/^git fetch/p' "$L" | grep -v '^git fetch' > "$T/asks.sh"; mkdir -p "$T/a"
 c() { jq -nc --argjson n "$1" --arg b "$2" '{n: ($n | tostring), b: $b}'; }
-asks() { ( STATE_DIR="$T/a"; since=x; gh() { [ "${RC:-0}" = 0 ] || return 1; [ -z "${NONE:-}" ] || return 0; c 7 "x Question for the tech lead: y"; c 7 "again: Question for the tech lead"; c 8 "Ready for Lead 5"; c 9 "Question for the tech lead"; c 10 "thanks"; [ -z "${FULL:-}" ] || c 7 "Question for the tech lead: full run please"; [ -z "${CUT:-}" ] || printf '{"n":"8","b":"Question fo\n'; [ -z "${HALF:-}" ]; }
+asks() { ( STATE_DIR="$T/a"; since=x; gh() { [ "${RC:-0}" = 0 ] || return 1; [ -z "${NONE:-}" ] || return 0; c 7 "x Question for the tech lead: y"; c 7 "again: Question for the tech lead"; c 8 "Ready for Lead 5"; c 9 "Question for the tech lead"; c 10 "thanks"; [ -z "${FULL:-}" ] || c 7 "Question for the tech lead: please start the full run"; [ -z "${CUT:-}" ] || printf '{"n":"8","b":"Question fo\n'; [ -z "${HALF:-}" ]; }
   ACT() { echo "ACT $1"; }; fresh() { :; }; seen() { :; }; act=0; . "$T/asks.sh" ) 2>&1; }
 echo '[{"number":7},{"number":8},{"number":10}]' > "$T/a/prs-body.json"; o=$(asks)
 ok "one ACT for an open PR's question and one for a lane report, none for a closed PR" "$([ "$(grep -c '^ACT' <<<"$o")" = 2 ] && grep -q '#7 has a new question' <<<"$o" && grep -q '#8 has a lane report' <<<"$o" && echo 1)" "$o"

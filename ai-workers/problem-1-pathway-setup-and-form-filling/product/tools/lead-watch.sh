@@ -177,7 +177,7 @@ fresh "queue-blocked.py: GitHub open PRs, their comments and labels, and the gua
 # 3. Questions for the tech lead in the window.
 # One read of every comment since the window's start, for 3 and 3b (Lead 26, 24 Nov): it was two searches and one read per PR
 # found, and a search can lag or stop at 30. Only open PRs count, as before; an unreadable answer is an ACT.
-cm=$(gh api "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --paginate -q ".[] | select(.created_at >= \"$since\") | {n: (.issue_url | split(\"/\") | last), b: .body} | @json" 2>/dev/null) || ACT "comments since $since unreadable: questions and lane reports (3, 3b) not read this check"
+cm=$(gh api "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --paginate -q ".[] | select(.created_at >= \"$since\") | {n: (.issue_url | split(\"/\") | last), b: .body, id: .id} | @json" 2>/dev/null) || ACT "comments since $since unreadable: questions and lane reports (3, 3b) not read this check"
 jq -e . >/dev/null 2>&1 <<<"${cm:-null}" || [ -z "$cm" ] || ACT "comments since $since cut short (a line of the answer is not whole): some questions and lane reports (3, 3b) may be missing this check"
 asked() { grep . <<<"$cm" | jq -r --arg re "$1" 'select((.b // "") | test($re)) | .n' 2>/dev/null | sort -un | while read -r n; do
   # dropped only when the open-PR list was read and does not hold it; an unreadable list keeps every PR

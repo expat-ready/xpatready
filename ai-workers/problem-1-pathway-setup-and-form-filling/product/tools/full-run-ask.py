@@ -4,54 +4,67 @@ often asks the Lead in a "Question for the tech lead" instead of typing comment-
 turn. This reads the comments lead-watch.sh already fetched (step 3) and, for each one on an open PR that is a question for
 the tech lead AND asks for the full run, posts "/run full" on that PR once: comment-run.yml (main's copy) then checks the
 head, starts the run and replies, or replies why not. It never labels, merges or cancels anything (P-371).
-  asks       a line of its own starts "Question for the tech lead" (any "#", "*", ">" or spaces before it, any case), and
-             the comment names the full run: "full run", "full-run", "/run full" or "run the full ...", outside a code block.
-  once       <state>/full-run-ask.json keeps the asks already answered (PR number + a hash of the comment's text); an
-             unreadable memory is rebuilt empty and said, so an ask may be answered twice, never dropped.
+  asks       a line of its own starts "Question for the tech lead" (after "#", "*", "_", a list mark or spaces; never ">",
+             a quote is a reply), and that question's paragraph asks to start it: an ask verb (start, dispatch, trigger,
+             kick off, launch, run, rerun) before "full run", or "/run full"; with no word of a result, need or negation
+             (failed, green, passed, flaky, need, not, no, already, why ...): those are questions about a run, for the Lead.
+             Code blocks, inline code marks and HTML comments are read as text or dropped as written.
+  once       <state>/full-run-ask.json keeps the asks answered in the last 14 days (PR number + the comment's id, or a hash
+             of its text when no id is given); an unreadable memory is rebuilt empty and said.
   open only  a PR not in the open-PR list (prs-body.json from lead-watch) is skipped; an unreadable list skips every PR
              and says so (never a post to a closed PR).
 --post makes the comment through gh (the Lead's copy, whose account comment-run accepts); without it the line is an ACT
 with the words to type. A failed post is an ACT. Prints nothing when no comment asks. Exit 0 (a crash is not 0); lead-watch.sh counts the ACT lines. US$0.
   python3 -I product/tools/full-run-ask.py --comments FILE --prs FILE --state DIR [--post]
 Comments FILE: one JSON object per line, {"n": "<PR number>", "b": "<body>"} (lead-watch's $cm). Test: check-full-run-ask.sh."""
-import argparse, hashlib, json, os, re, subprocess, sys
+import argparse, hashlib, json, os, re, shlex, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HEAD = re.compile(r"^[\s#*>_]*question for the tech lead\b", re.I | re.M)
-ASK = re.compile(r"full[ -]run|/run full\b|\brun the full\b", re.I)
+HEAD = re.compile(r"^[ \t]*(?:[-*+]|\d+\.)?[ \t]*[#*_]*[ \t]*question for the tech lead(?![A-Za-z0-9-])[^\n]*(?:\n(?![ \t]*\n)[^\n]*)*", re.I | re.M)
+FULL = r"(?:the |a |one )?(?:full[ -]run|full ci run|full set of suites)(?![\w-])"
+ASK = re.compile(r"(?:\b(?:start|dispatch|trigger|kick off|launch|run|re-?run)\b[^.?!]{0,25}?" + FULL + r"|/run full(?![\w-]))", re.I)
+NOT = re.compile(r"\b(?:failed|fails|failing|red|green|passed|passes|flak\w*|need(?:ed|s)?|not|no|without|skip|instead|enough|already|was|did|done|why)\b", re.I)
 FENCE = re.compile(r"^\s*(```|~~~).*?^\s*\1", re.S | re.M)
 INLINE = re.compile(r"`[^`\n]*`")
 MAX = 10  # posts per check: a flood of asks is an ACT, not a flood of runs
+KEEP = 14 * 86400  # memory entries older than this are dropped
 
 
 def asks_full_run(body):
+    """The question's own paragraph (the heading line and the lines after it up to a blank line) asks to start the full
+    run: an ask verb before "full run", or "/run full"; and it says nothing of a result, a need or a negation (those are
+    questions about a run, which the Lead answers: step 3's ACT). A quoted question (">") is a reply, never an ask."""
     text = FENCE.sub("", body or "")
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    if not HEAD.search(text):
-        return False
-    return bool(ASK.search(INLINE.sub(lambda m: m.group(0).strip("`"), text)))
+    text = re.sub(r"<!--.*?(?:-->|\Z)", "", text, flags=re.S)
+    text = INLINE.sub(lambda m: m.group(0).strip("`"), text)
+    for m in HEAD.finditer(text):
+        para = m.group(0)
+        if ASK.search(para) and not NOT.search(para):
+            return True
+    return False
 
 
-def key(n, body):
-    return f"{n}:{hashlib.sha256((body or '').encode()).hexdigest()[:16]}"
+def key(n, cid, body):
+    """The comment's id when lead-watch gives it (a re-ask in the same words is a new ask); else a hash of its text."""
+    return f"{n}:id{cid}" if cid else f"{n}:{hashlib.sha256((body or '').encode()).hexdigest()[:16]}"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--comments", required=True); ap.add_argument("--prs", required=True)
     ap.add_argument("--state", required=True); ap.add_argument("--post", action="store_true")
-    a = ap.parse_args()
+    a = ap.parse_args(); now = time.time()
     out, cand, bad = [], [], 0
     for line in open(a.comments, encoding="utf-8", errors="replace"):
         line = line.strip()
         if not line:
             continue
         try:
-            c = json.loads(line); n, b = str(c["n"]), c.get("b") or ""
+            c = json.loads(line); n, b, cid = str(c["n"]), c.get("b") or "", str(c.get("id") or "")
         except Exception:
             bad += 1; continue
         if asks_full_run(b):
-            cand.append((n, key(n, b)))
+            cand.append((n, key(n, cid, b)))
     if bad:
         out.append(f"ACT   full-run ask: {bad} comment line(s) unreadable: an ask may be missed this check")
     if not cand:  # quiet when nobody asked
@@ -67,17 +80,18 @@ def main():
         print("\n".join(out)); return 0
     mem_path = os.path.join(a.state, "full-run-ask.json")
     try:
-        done = set(json.load(open(mem_path)))
+        done = json.load(open(mem_path)); assert isinstance(done, dict)
+        done = {k: float(v) for k, v in done.items()}
     except FileNotFoundError:
-        done = set()
+        done = {}
     except Exception:
-        done = set(); out.append("warn  full-run ask: memory unreadable, rebuilt empty (an ask may be answered twice)")
+        done = {}; out.append("warn  full-run ask: memory unreadable, rebuilt empty (an ask may be answered twice)")
     asks = [(n, k) for n, k in cand if n in open_ and k not in done]
     seen, posted, tried = set(), set(), 0
     for n, k in asks:
         if n in seen:  # one "/run full" per PR per check; a later ask on it counts as answered only if the post went out
             if n in posted:
-                done.add(k)
+                done[k] = now
             continue
         seen.add(n)
         if tried >= MAX:
@@ -85,18 +99,20 @@ def main():
         tried += 1
         if not a.post:
             out.append(f"ACT   #{n} asks for the full run: type /run full on it (comment-run.yml)"); continue
-        gh = os.environ.get("FULL_RUN_ASK_GH") or f"bash {HERE}/gh.sh"
-        r = subprocess.run(gh.split() + ["pr", "comment", n, "--body", "/run full"], capture_output=True, text=True, timeout=60)
+        # gh api, not gh pr comment: tools/gh.sh's curl fallback (P-363, the Mac's TLS) answers api calls only
+        gh = shlex.split(os.environ["FULL_RUN_ASK_GH"]) if os.environ.get("FULL_RUN_ASK_GH") else ["bash", os.path.join(HERE, "gh.sh")]
+        r = subprocess.run(gh + ["api", "-X", "POST", f"repos/{{owner}}/{{repo}}/issues/{n}/comments", "-f", "body=/run full"],
+                           capture_output=True, text=True, timeout=60)
         if r.returncode:
             out.append(f"ACT   #{n} asks for the full run; posting /run full failed ({(r.stderr or r.stdout).strip()[:100]}): type it")
             continue
-        posted.add(n); done.add(k)
+        posted.add(n); done[k] = now
         out.append(f"full-run ask: #{n} asked for the full run; /run full posted (comment-run.yml starts it and replies)")
     if a.post:
         try:
             os.makedirs(a.state, exist_ok=True)
             with open(mem_path + ".tmp", "w") as f:
-                json.dump(sorted(done), f)
+                json.dump({k: v for k, v in done.items() if now - v < KEEP}, f)
             os.replace(mem_path + ".tmp", mem_path)
         except Exception as e:
             out.append(f"ACT   full-run ask: memory not written ({e}): the same ask may be answered again")
