@@ -34,6 +34,7 @@ TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
 TESTS="$TESTS check-full-run-ask.sh"   # OS-06: full run on ask
 TESTS="$TESTS check-startup-failures.sh"   # OS-52: runs that never started
+TESTS="$TESTS check-verify-plan.sh"   # OS-72: the verify skill's plan
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
@@ -687,6 +688,12 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
+# OS-72: the verify skill's plan; each row switches one rule off.
+MUT="$MUT"'
+OS72 cap|prototype/studio/tools/verify-plan.sh|s/-lt "\$MAX" ]; then caps+=/-lt 99 ]; then caps+=/|check-verify-plan.sh
+OS72 tests|prototype/studio/tools/verify-plan.sh|/^if ! printf .%s.n. "\$files" /s/ grep -vqE / grep -qE /|check-verify-plan.sh
+OS72 empty|prototype/studio/tools/verify-plan.sh|/select-suites.mjs --packs failed/s/exit 2/true/|check-verify-plan.sh
+OS72 data|prototype/studio/tools/verify-plan.sh|/scoring data could not be read/s/exit 2/true/|check-verify-plan.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
