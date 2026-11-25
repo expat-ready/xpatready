@@ -86,3 +86,30 @@ D1 Requirement fit 4: AG-6-28 r1 figures per case and client, per currency; r3's
 **Could not check:** a real Postgres plan at production size (my sizes are synthetic); the per-tenant RLS plan as `xr_app` beyond what the check runs; parts 2–4.
 
 Reviewer: Block 432fba2023523f8952f0aa7c85684ebd5e252426
+
+## Round 2 (diff-only, 3f88a5d…)
+**Verdict: Approve. Head `3f88a5d304c8172d572a49cc940c60630883526d`.** No open Blocker or Major. I reviewed only `git diff 432fba20..3f88a5d3 -- prototype`. The check gave **39 passed, 0 failed**. I re-ran my round-1 probe on the new head.
+* **M1 fixed.** The `ca` CTE (statement.ts) splits the OR join into two hashable joins, and `is distinct from` keeps money_invoice_credit's "either matches" count. Probe timings:
+
+  | Client | Before (round 1) | Now (statement / summary) |
+  |---|---|---|
+  | 10,000 invoices, 1,000 applied credits, 1,000 withdrawals | about 3,043 ms | 113 / 97 ms |
+  | 20,000 invoices, 5,000 applied credits, 5,000 withdrawals | the read timed out | 289 / 284 ms |
+
+  The check's S8 (with other clients' noise) gave 189 ms, or 216 ms through the route.
+* **M2 fixed.** S9 writes these facts with triggers on: the OVERPAID_TO_TRUST correction, OVERPAID_REFUND, kept-as-credit (through FO-7b's real `extra` route), and credit APPLIED and REVERSED. Its closing equals invoiceFacts Σ(due − extra) and its owed equals the list's due. The S1 fail line now changes another client's data; the S8 fail line checks the default page size.
+* **Breaker M1 (kept credit counted twice) holds.** With KEPT_AS_CREDIT, closing = Σ(due − extra) = owed − waiting. This relies on the database rule `money_credit_kept_holds` (kept is never more than what was paid over). My probe: closing 170.00 = Σ(due − extra) 170.00 = owed 170.00, waiting 0.
+* **m1 and m2 fixed.** Probe:
+  * the same-day cheque now follows its invoice;
+  * credit applied to a draft now counts from 1 Mar (its issue date), so February closes at 170.00.
+* **m5 fixed.** "Refunded" is defined in summary.ts's header.
+
+**Accepted as stated limits (not findings):** m3 (trust lines cut by time but ordered by seq), m4 (the "Held in trust" figure goes to part 2 from `summary.cases`), and the breaker's m2.
+
+**New Minor, for the part 4 screen's words:** the summary's `paidMinor` is now money received. It excludes credit applied, while the invoice list's `paidMinor` (facts.ts) includes it, so the two "Paid" figures differ by `creditAppliedMinor` (probe: 1,000.00 against 1,080.00). Label them apart.
+
+**Still open from round 1, Minor:** summary.ts's credit read scans the firm's `money_credit_entry` by party with no party index; at today's sizes the reads are within budget.
+
+**Observation, not a finding:** `set local work_mem = '32MB'` holds for the read's transaction only.
+
+Reviewer: Approve 3f88a5d304c8172d572a49cc940c60630883526d
