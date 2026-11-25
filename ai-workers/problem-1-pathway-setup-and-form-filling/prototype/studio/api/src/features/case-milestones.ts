@@ -13,6 +13,7 @@ import { isoDay, milestoneRemindersOf, showDue, wordsOf } from "../case-deadline
 import { deadlineDay } from "../case-stages.ts";
 import { Audit, CaseRead, Db } from "../core.ts";
 import type { Feature } from "../features.ts";
+import { idParam } from "../platform/http/input.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../platform/identity/keys.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -141,10 +142,10 @@ export class CaseMilestonesController {
   list(@Req() r: R, @Param("id") id: string) { return this.svc.list(staffOf(r), id); }
 
   @Post() @PermissionKeys("agent/case:edit")
-  record(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.record(staffOf(r), id, b); }
+  record(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.record(staffOf(r), idParam(id, "case"), b); }   // R1.10 A5: a malformed id is the one 404 before the body
 
   @Post(":mid/cancel") @HttpCode(200) @PermissionKeys("agent/case:edit")
-  cancel(@Req() r: R, @Param("id") id: string, @Param("mid") mid: string, @Body() b: unknown) { return this.svc.cancel(staffOf(r), id, mid, b); }
+  cancel(@Req() r: R, @Param("id") id: string, @Param("mid") mid: string, @Body() b: unknown) { return this.svc.cancel(staffOf(r), idParam(id, "case"), idParam(mid, "government step"), b); }
 }
 
 export default { controllers: [CaseMilestonesController], providers: [CaseMilestones] } satisfies Feature;

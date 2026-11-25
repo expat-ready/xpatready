@@ -198,6 +198,7 @@ export class FormAdditions {
 
   /** POST …/form-additions: add the form for one person on this filing (BR-1 to BR-6, BR-9). */
   async add(actor: Actor, filingId: string, body: unknown) {
+    if (!UUID.test(filingId)) fail("No such filing.", HttpStatus.NOT_FOUND);   // R1.10 A5 (W5): a malformed id is the one not-found, before the body
     const b = parsed(FormAdditionBody, body ?? {}); // the checks below keep their words
     if (typeof b.form !== "string" || !b.form.trim()) throw problem(400, "Name the form to add, by its number.");
     const { f, c } = await this.filing(actor, filingId);

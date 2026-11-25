@@ -145,6 +145,9 @@ export class CaseDocumentFlags {
   async read(actor: Actor, id: string) { const { d, c } = await this.reach(actor, id); return this.view(c, d); }
 
   async set(actor: Actor, id: string, body: unknown) {
+    // R1.10 A5 (W5): who may set, then a malformed id (the one 404), before the body is read (authorise, then the id, then the body).
+    if (!(actor.duties as readonly string[]).includes("case")) problem(403, "staff_only", "Staff only", `${actor.name} (simulated) cannot set a document's flags: firm staff do.`);
+    if (!UUID.test(id)) problem(404, "no_document", "No such document", "No such document.");
     const b = SetFlags.safeParse(body);
     if (!b.success) problem(400, "check_flags", "Check the flags", b.error!.issues[0]?.message ?? "Check the flags.");
     const x = b.data!;
