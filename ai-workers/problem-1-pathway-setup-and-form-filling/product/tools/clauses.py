@@ -48,7 +48,7 @@ def rows():
         if not line.startswith("| R1."):
             continue
         c = [x.strip() for x in line.split("|")]
-        if len(c) < 9:
+        if len(c) < 10:   # "| 8 cells |" splits into 10 parts
             MALFORMED.append(c[1]); continue
         r[c[1]] = {"status": c[4].replace("*", "").strip(), "tested": c[5], "note": c[8], "accept": c[7] or c[2]}
     return r
@@ -101,7 +101,7 @@ def seed():
         if [l["clause"] for l in have] == want:
             out += have; continue
         keep = {l["clause"]: l for l in have}
-        v = verdict(caps[rid]) if caps[rid]["status"] == "Works" else None
+        v = verdict(caps[rid]) if caps[rid]["status"].split(" ")[0] == "Works" else None
         for i, t in enumerate(want, 1):
             k = keep.get(t)
             if k:
@@ -115,7 +115,14 @@ def seed():
     print(f"clauses.tsv: {len(out)} clauses for {len(caps)} R1 rows ({added} rows added, {resplit} re-split)")
 
 
-EVIDENCE = re.compile(r"qa/(reports|verdicts)/[^/].*\Z|qa/CAPABILITIES\.md\Z")   # qa's reports, or a row's own qa note
+EVIDENCE = re.compile(r"qa/(reports|verdicts)/[^/].*\Z")   # qa's reports and verdicts
+
+
+def own_note(row, l):
+    """qa/CAPABILITIES.md is evidence only where seed put it: a Works row whose qa note names no report, at the commit
+    of its own verdict (the six rows judged on their C rows, 16 Nov)."""
+    v = verdict(row) if row["status"].split(" ")[0] == "Works" else None
+    return bool(v and v[0] == "qa/CAPABILITIES.md" and l["evidence"] == v[0] and l["commit"] == v[1])
 
 
 def real_date(d):
@@ -147,7 +154,7 @@ def check():
                 bad.append(f"{w}: status \"{l['status']}\" is not confirmed or not (line {l['line']})"); continue
             if l["status"] == "confirmed":
                 ev = l["evidence"]
-                if not (EVIDENCE.match(os.path.normpath(ev)) and os.path.exists(os.path.join(P, ev))):
+                if not (EVIDENCE.match(os.path.normpath(ev)) and os.path.isfile(os.path.join(P, ev)) or own_note(caps[rid], l)):
                     bad.append(f"{w}: confirmed without evidence (a qa/reports/ or qa/verdicts/ path that exists; got \"{ev}\")")
                 if not re.fullmatch(r"[0-9a-f]{7,40}", l["commit"]):
                     bad.append(f"{w}: confirmed without the commit it tested")
