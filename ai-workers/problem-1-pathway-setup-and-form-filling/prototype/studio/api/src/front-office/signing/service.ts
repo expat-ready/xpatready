@@ -14,7 +14,7 @@
 //     client and nobody signs without recorded consent (part 4's door records it), else the event is stored, refused
 //     and the state unchanged; `completed` fetches the sealed and audit files, stores and hashes them, moves the request
 //     and the retainer to SIGNED, makes the prospect WON through the retainers module, writes `signing.completed` last,
-//     then emails each client signer "Your signed agreement" once. `declined` is stored and left to FO-5d. A CONSULTATION
+//     then emails each client signer "Your signed agreement" once. `declined` ends the request for everyone (FO-5d, ./decline.ts). A CONSULTATION
 //     request goes to the handler its module registered (./handlers.ts), else is stored and answered "no handler".
 // Every value is Sample. Legal points (e-signature identity, D-6): Unconfirmed: no counsel.
 import { HttpException } from "@nestjs/common";
@@ -27,7 +27,8 @@ import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { asBypass, touchFirms, withFirm } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { onSigningCompleted, SIGNING_ACTOR } from "../retainers/on-signing-completed.ts";
-import { signingHandlerFor, signingMail, signingPort } from "./handlers.ts";
+import { applyDecline } from "./decline.ts";
+import { signingHandlerFor, signingMail, signingNotifications, signingPort } from "./handlers.ts";
 import { sendPleaseSign } from "./link-mail.ts";
 import { SIGNING_WEBHOOK } from "./webhook.bypass.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent } from "./port.ts";
@@ -193,7 +194,7 @@ export class Signing {
       signed: `${signedCount} of ${q.signers.length} signed`, signedCount, signerCount: q.signers.length,
       signers: q.signers.map((s) => {
         const p = people.find((x) => x.id === s.personId), st = staff.find((x) => x.id === s.staffId);
-        return { role: s.role, name: p ? nameOf(p) || "Client" : st?.displayName ?? "Representative", personId: s.personId, staffId: s.staffId, viewedAt: s.viewedAt, signedAt: s.signedAt, declinedAt: s.declinedAt };
+        return { role: s.role, name: p ? nameOf(p) || "Client" : st?.displayName ?? "Representative", personId: s.personId, staffId: s.staffId, viewedAt: s.viewedAt, signedAt: s.signedAt, declinedAt: s.declinedAt, declineReason: s.declineReason };   // FO-5d: the client's own words, for staff who may read the retainer
       }),
       evidence: q.evidence ? { storedAt: q.evidence.storedAt, sealedSha256: q.evidence.sealedSha256, auditSha256: q.evidence.auditSha256, consentTextVersion: q.evidence.consentTextVersion } : null,
     };
@@ -273,8 +274,18 @@ export class Signing {
       // Break M1: a refusal that a later event can lift (the firm before the clients, no consent yet) keeps nothing and
       // answers 409, so the provider's redelivery applies once the order or the consent is right.
       const notYet = (reason: string): never => conflict(`${reason}. The provider may send the event again.`, "NOT_YET");
-      if (ev.type === "declined" || ev.type === "other") return refuse(ev.type === "declined" ? "a decline is applied by FO-5d" : "nothing to apply");
+      if (ev.type === "other") return refuse("nothing to apply");
       if (!live) return refuse(`the request is ${q.status.toLowerCase()}`);
+      // FO-5d (1): the provider's decline is applied as the door's, with no reason (./decline.ts); the provider ended its
+      // envelope itself. A signer who signed or declined already is refused, stored once.
+      if (ev.type === "declined") {
+        const s = signers.find((x) => x.id === ev.signerId);
+        if (!s) return refuse("no such signer on this request");
+        if (s.signedAt || s.declinedAt) return refuse("this signer has answered already");
+        await applyDecline(tx, { firmId, request: { id: q.id, documentKind: "RETAINER", documentId: q.document_id, documentVersion: q.document_version, status: q.status }, signer: { id: s.id, role: s.role },
+          reason: null, actor: SIGNING_ACTOR, audit: this.audit, now, notifications: signingNotifications() });
+        return { received: true as const, applied: true };
+      }
       // Part 4c (QA-770's signing path; Lead 29, answer 1): a view or a signature on an agreement that was withdrawn, signed
       // on paper, declined, expired or replaced by a newer version is refused, stored once and never applied. The retainer's
       // row is locked here, so a withdraw cannot slip in between (challenge m9). FO-5d ends the request itself.
