@@ -145,8 +145,11 @@ export class PlatformIdentity implements OnModuleInit {
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
-    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)
-      && (await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs))) === "inactive") return unauthorized(NOT_ACTIVE_NOW, "STAFF_NOT_ACTIVE");
+    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)) {
+      const r = await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs));
+      if (r === "inactive") return unauthorized(NOT_ACTIVE_NOW, "STAFF_NOT_ACTIVE");
+      if (r === "locked") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });   // locked while signing in (round 3 breaker M1)
+    }
     const rev = await this.db.platformSessionRevocation.findFirst({ where: firmScope(staff.firmId, { staffId: staff.id }), orderBy: { revokedAt: "desc" } });
     // A session that started at or before the person's last revocation is refused (deactivation, a newer sign-in).
     if (rev && authMs <= rev.revokedAt.getTime()) return unauthorized(rev.reason === "another-device" ? ANOTHER_DEVICE : "This session was ended. Sign in again.", rev.reason === "another-device" ? "SIGNED_IN_ELSEWHERE" : "SESSION_REVOKED");
@@ -165,12 +168,17 @@ export class PlatformIdentity implements OnModuleInit {
    *  deadlock and a stream of sign-ins never starves a staff change (re-break R1: an explicit key share here did). They
    *  meet only on the person's row; under that lock the person must still be active, so a sign-in that raced a
    *  deactivation is refused ("inactive") rather than dated after it, where reactivation would bring its token back. */
-  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive"> {
+  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive" | "locked"> {
     return this.db.$transaction(async (tx) => {
       const fid = firmScope(firmId).firmId;
       const [row] = await tx.$queryRaw<{ last: Date | null; status: string }[]>`select last_sign_in_at as last, status::text as status from platform_staff where id = ${staffId}::uuid and firm_id = ${fid}::uuid for update`;
       if (!row) return null;
       if (row.status !== "ACTIVE") return "inactive" as const;
+      // PF-27 (round 3 breaker M1): the firm's status again, under the person's row lock. A sign-in that passed the door's
+      // check before a lock committed is refused here, not dated after the lock's revocation (a plain read: the lock holds
+      // this row before it commits, so its status is seen; no lock on the firm row, so J-5 B1's order is kept).
+      const [firm] = await tx.$queryRaw<{ status: string }[]>`select status::text as status from platform_firm where id = ${fid}::uuid`;
+      if (firm?.status === "SECURITY_LOCK" || firm?.status === "DELETED") return "locked" as const;
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       const atMs = atOf(row.last?.getTime() ?? null, rev?.revokedAt.getTime() ?? null);
       if (atMs === null) return null;   // another request recorded this sign-in already
@@ -206,6 +214,7 @@ export class PlatformIdentity implements OnModuleInit {
     // The new session starts after the last sign-in and the last revocation (a deactivation in the same millisecond).
     const authMs = await this.recordSignIn(firm.id, firm.key, staff.id, "local stand-in", (last, revoked) => Math.max(this.clock.now(), (last ?? 0) + 1, (revoked ?? 0) + 1));
     if (authMs === "inactive") return unauthorized("This staff account is not active. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");   // deactivated while signing in (J-5 B2)
+    if (authMs === "locked") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });   // locked while signing in (round 3 breaker M1)
     if (authMs === null) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");
     return { token: this.port.issue(staff.id, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600, staffId: staff.id, firmKey: firm.key };
   }

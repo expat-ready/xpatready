@@ -97,6 +97,8 @@ try {
   const locked = await call(base, "POST", L, { token: ownerT, body: { reason: "Sample: suspected account takeover" } });
   ok("PF-27 pass: the Platform Owner locks (200): the firm is SECURITY_LOCK, the prior TRIAL named", locked.status === 200 && locked.body.status === "SECURITY_LOCK" && locked.body.prior === "TRIAL" && st(A) === "SECURITY_LOCK", locked.body);
   const after = await me(firmT); clock.t += 2000; const again = await firmSignIn();
+  // round 3 breaker M2: a session that started while the lock held (a hosted-page sign-in; here a stand-in token dated in the lock)
+  const staffR = sql(`select id from platform_staff where firm_id = '${A}' and actor_id = 'user-R'`), duringT = firmLocal.issue(staffR, { authTimeMs: clock.now(), secondStep: true });
   ok("PF-27 pass: the firm's staff token answers 401 FIRM_LOCKED on its next request, and sign-in is refused in the same plain words (no reason given)",
     after.status === 401 && after.body.code === "FIRM_LOCKED" && again.status === 401 && again.body.code === "FIRM_LOCKED" && again.body.detail === FIRM_LOCKED && !/takeover/i.test(JSON.stringify([after.body, again.body])), [after.body, again.body]);
   ok("PF-27 pass: one firm line (neutral: no reason on the firm's own trail), one firm.locked event naming the prior status, our console's ALLOWED line with the reason",
@@ -114,6 +116,10 @@ try {
   ok("PF-27 pass/fail: Support cannot lift (403); the Platform Owner lifts (200) back to the prior TRIAL, not ACTIVE", supportLift.status === 403 && lifted.status === 200 && lifted.body.status === "TRIAL" && st(A) === "TRIAL", [supportLift.status, lifted.body]);
   clock.t += 2000;
   ok("PF-27 fail (review M1): a token from before the lock stays refused after the lift (its session was ended, not paused)", (await me(firmT)).status === 401, (await me(firmT)).body);
+  const duringNow = await me(duringT);
+  ok("PF-27 fail (round 3 breaker M2): a session started while the lock held stays refused after the lift (the lift ends every session too), and the lift's line counts them",
+    duringNow.status === 401 && duringNow.body.code === "SESSION_REVOKED" && Number(sql(`select count(*) from platform_session_revocation where firm_id = '${A}' and reason = 'firm security lock lifted'`)) > 0
+    && Number(sql(`select (detail->>'staffSessionsEnded')::int from audit_event where firm_id = '${A}' and action = 'platform.firm.unlocked'`)) > 0, duringNow.body);
   ok("PF-27 pass: sign-in works again and the firm line and firm.unlocked event are written", (await firmSignIn()).status === 200 && lines(A, "platform.firm.unlocked") === 1 && sql(`select payload->>'to' from module_event where firm_id = '${A}' and type = 'firm.unlocked'`) === "TRIAL");
   const notLocked = await call(base, "POST", U, { token: ownerT, body: { reason: "Sample" } });
   ok("PF-27 fail: lifting a firm that is not locked → 409 NOT_LOCKED", notLocked.status === 409 && notLocked.body.code === "NOT_LOCKED", notLocked.body);
@@ -173,6 +179,24 @@ try {
     clock.t += 2000;
   }
   ok("PF-27 fail (review round 2 Major): 12 rounds of a lock racing two sign-ins: no 500 (no deadlock)", fivehundreds === 0 && Number(sql(`select deadlocks from pg_stat_database where datname = current_database()`)) === 0, fivehundreds);
+  // round 3 breaker M1: a sign-in in flight when the lock commits (it passed the door's check first) never yields a token that
+  // works after the lift. Held open: the revocations table, so the lock and the sign-in are both inside their transactions.
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${B}'; update platform_subscription set status = 'ACTIVE' where firm_id = '${B}'`);
+  let flightLive = 0; const flight: unknown[] = [];
+  for (let i = 0; i < 5; i++) {
+    const hold = new Client({ connectionString: urlOf(DB) }); await hold.connect();
+    await hold.query("begin"); await hold.query("lock table platform_session_revocation in share mode");
+    const lk = call(base, "POST", LB, { token: ownerT, body: { reason: "Sample: in flight" } }); await new Promise((r) => setTimeout(r, 150));
+    const si = firmSignIn("sample-solo"); await new Promise((r) => setTimeout(r, 300));
+    await hold.query("commit"); await hold.end();
+    const [l, s1] = await Promise.all([lk, si]); flight.push([l.status, s1.status, s1.body?.code]);
+    clock.t += 2000;
+    if (st(B) === "SECURITY_LOCK") await call(base, "POST", UB, { token: ownerT, body: { reason: "Sample" } });
+    clock.t += 2000;
+    if (s1.status === 200 && (await me(s1.body.token as string)).status === 200 && l.status === 200) flightLive++;
+  }
+  ok("PF-27 fail (round 3 breaker M1): 5 rounds of a sign-in in flight as the lock commits: each is refused 401 FIRM_LOCKED (the firm read again under the person's row lock), and none leaves a token that works after the lift",
+    flightLive === 0 && (flight as [number, number, string][]).every(([l, s1, code]) => l === 200 && s1 === 401 && code === "FIRM_LOCKED"), flight);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {

@@ -1,19 +1,20 @@
 // PF-27 part 3a (R1.22; map row 22's "suspend"; SA-2-34, SA-2-8, SA-2-4): our Platform Owner locks a firm at once and
 // lifts the lock. Keys: SA-07's own names for the row's `system/security:lock`, seeded by PF-4s on the Platform Owner only:
 // system/firm:suspend (lock) and system/firm:reinstate (lift); a written reason on each (the system guard's @SystemReason).
-//   * Lock: from PROVISIONING, TRIAL, ACTIVE or PAYMENT_HOLD → SECURITY_LOCK (409 from a lock, ABANDONED or DELETED). Every
+//   * Lock: from TRIAL, ACTIVE or PAYMENT_HOLD → SECURITY_LOCK (409 from a lock, PROVISIONING, ABANDONED or DELETED). Every
 //     staff session of the firm ends at once: the firm guard refuses a locked firm's staff on their next request (401
 //     FIRM_LOCKED, identity/service.ts), and sign-in is refused in the same words; billing never moves a locked firm
 //     (billing/webhook.ts FIRM_MOVES).
 //     Every staff session also ends for good: one platform_session_revocation row per staff member (as PF-11c's close), so
-//     a token from before the lock stays refused after the lift (review M1).
+//     a token from before the lock stays refused after the lift (review M1). The lift ends every session again, so one
+//     started while the lock held stays refused too (round 3 breaker M1, M2).
 //   * Lift: SECURITY_LOCK → the status billing gives now (review M2: the firm's newest subscription through webhook.ts's
 //     FIRM_OF, so a payment or a hold that arrived during the lock takes effect), else the prior status read from the
 //     newest firm.locked event (no new column; the event is written in the lock's own transaction). A lift into Payment
 //     hold from another status writes firm.payment_hold (a new 90-day clock: never closed early); into Active,
 //     firm.activated. The hold countdown's pause for the locked days (SA-02 §6) is part 3c's (asked of the tech lead).
 //   * Both take billing's own lock first (plat_billing:<firm>, the order webhook.ts and PF-11c's close take), then the
-//     firm row FOR UPDATE, so a Stripe event and a lock never interleave (review B1).
+//     firm row FOR NO KEY UPDATE (round 2), so a Stripe event and a lock never interleave (review B1).
 //   * Each: one audit line on the firm's chain (actor ourstaff:<id>, before and after; the written reason stays on our
 //     console's own line, so the firm's trail stays neutral, SA-2-35, review m2 and breaker M1), one event written last, our console's own line (the guard's), and the firm's platform.bypass line, all in one
 //     transaction. Part 3b: the client doors (firmAllows); part 3c: close and the 90-day clock.
@@ -36,6 +37,8 @@ type Tx = Prisma.TransactionClient;
 export const LOCK_KEY = "system/firm:suspend", UNLOCK_KEY = "system/firm:reinstate";
 /** platform_session_revocation.reason for the lock's ended sessions. */
 export const LOCK_REVOKE_REASON = "firm security lock";
+/** platform_session_revocation.reason for the sessions the lift ends (round 3 breaker M1, M2). */
+export const UNLOCK_REVOKE_REASON = "firm security lock lifted";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCKABLE: readonly PlatformFirmStatus[] = LOCKABLE_STATUSES;
 export type LockView = { firmId: string; status: PlatformFirmStatus; prior: PlatformFirmStatus };
@@ -68,18 +71,17 @@ export class FirmLocks {
 
   private async record(tx: Tx, c: SystemStaffContext, id: string, from: PlatformFirmStatus, to: PlatformFirmStatus, locked: boolean, prior: PlatformFirmStatus) {
     await tx.platformFirm.update({ where: { id }, data: { status: to } });
-    let sessionsEnded = 0;
-    if (locked) {
-      // Each person's row locked in id order (as endSessions), so a sign-in in progress is seen and a later one waits; the
-      // revocation dated at least that person's latest sign-in, so no session started before the lock lives on (round 2).
-      const staff = await tx.$queryRaw<{ id: string; last: Date | null }[]>`select id, last_sign_in_at as last from platform_staff where firm_id = ${id}::uuid order by id for update`;
-      const now = this.d.now().getTime();
-      if (staff.length) await tx.platformSessionRevocation.createMany({ data: staff.map((s) => ({ firmId: id, staffId: s.id, revokedAt: new Date(Math.max(now, s.last?.getTime() ?? 0)), reason: LOCK_REVOKE_REASON })) });
-      sessionsEnded = staff.length;
-    }
+    // Both the lock and the lift end every staff session (the lift: round 3 breaker M1, M2): each person's row locked in id
+    // order (as endSessions), so a sign-in in progress is seen and a later one waits; the revocation dated at least that
+    // person's latest sign-in. So no session started before the lock, while it held (a hosted-page sign-in, a sign-in in
+    // flight when the lock came) or racing either change lives on after the lift: everyone signs in again.
+    const staff = await tx.$queryRaw<{ id: string; last: Date | null }[]>`select id, last_sign_in_at as last from platform_staff where firm_id = ${id}::uuid order by id for update`;
+    const now = this.d.now().getTime();
+    if (staff.length) await tx.platformSessionRevocation.createMany({ data: staff.map((s) => ({ firmId: id, staffId: s.id, revokedAt: new Date(Math.max(now, s.last?.getTime() ?? 0)), reason: locked ? LOCK_REVOKE_REASON : UNLOCK_REVOKE_REASON })) });
+    const sessionsEnded = staff.length;
     await this.d.audit.record(tx, { firmId: id, actor: `ourstaff:${c.staffId}`, action: locked ? "platform.firm.locked" : "platform.firm.unlocked", entity: "platform_firm", entityKey: id,
       summary: locked ? "ExpatReady put the firm's account under a security lock" : "ExpatReady lifted the security lock on the firm's account",
-      detail: locked ? { staffSessionsEnded: sessionsEnded } : { returnedTo: to }, before: { status: from }, after: { status: to } });
+      detail: locked ? { staffSessionsEnded: sessionsEnded } : { returnedTo: to, staffSessionsEnded: sessionsEnded }, before: { status: from }, after: { status: to } });
     const payload = locked ? FirmLocked.parse({ firmId: id, prior: from }) : FirmUnlocked.parse({ firmId: id, to });
     await tx.moduleEvent.create({ data: { firmId: id, type: locked ? FIRM_LOCK_EVENT.FIRM_LOCKED : FIRM_LOCK_EVENT.FIRM_UNLOCKED, subjectId: id, payload } });   // events last
     // A lift into a status other than the one before the lock is billing's own move: its event too (review M2).
