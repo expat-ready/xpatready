@@ -141,8 +141,8 @@ export class CustomFieldsService {
 
   /** Changes a field (agent/custom-field:manage): label, required, choices, help text, place, type (only while unused), archive. */
   async change(ctx: StaffContext, id: string, body: unknown): Promise<FieldView> {
-    const b = parseInput(ChangeField, body ?? {});   // PF-28: the body's field errors (422) before the lookup
-    if (!UUID.test(id)) return notFound("field");
+    if (!UUID.test(id)) return notFound("field");   // PF-28: a malformed id is 404, then the body's field errors (422), then the lookup
+    const b = parseInput(ChangeField, body ?? {});
     const firmId = firmScope(ctx.firmId).firmId;
     const found = await this.d.db.platCustomField.findFirst({ where: firmScope(firmId, { id: id.toLowerCase() }) });
     if (!found) return notFound("field");
@@ -230,9 +230,9 @@ export class CustomFieldsService {
 
   /** Saves a record's values: only the keys sent change (null or empty clears one); every required field must end filled. */
   async put(ctx: StaffContext, kindRaw: unknown, idRaw: string, body: unknown) {
-    const b = parseInput(PutValues, body ?? {});   // PF-28: the body's field errors (422) before the lookup
-    const { kind, access } = this.access(kindRaw, true);
+    const { kind, access } = this.access(kindRaw, true);   // PF-28: a malformed address is 404, then the body's field errors (422), then the lookup
     const id = UUID.test(idRaw) ? idRaw.toLowerCase() : notFound("record");
+    const b = parseInput(PutValues, body ?? {});
     if (!(await access.canView(ctx, id))) return notFound("record");
     if (!(await access.canEdit(ctx, id))) return problem(403, "Not allowed", "You can see this record but not change it.", { code: "NOT_ALLOWED" });
     const firmId = firmScope(ctx.firmId).firmId;
