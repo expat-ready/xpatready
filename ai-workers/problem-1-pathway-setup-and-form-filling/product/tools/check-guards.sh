@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh check-pipeline-watch.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
 TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
@@ -708,6 +708,15 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# OS-84 (A400): pipeline-watch.py posts each detector act on its PR once
+MUT="$MUT"'
+OS84 dedupe|product/tools/pipeline-watch.py|s/            if k in have or k in seen:/            if k in seen:/|check-pipeline-watch.sh
+OS84 key|product/tools/pipeline-watch.py|s/    norm = re.sub(r"(?<!\[#.\\d\])\\d+(?:\[.:\]\\d+)\*", "N", text)/    norm = text/|check-pipeline-watch.sh
+OS84 bot|product/tools/pipeline-watch.py|s/            if (c.get("user") or {}).get("login") != BOT:/            if False:/|check-pipeline-watch.sh
+OS84 again|product/tools/pipeline-watch.py|s/            if now - t < AGAIN:/            if True:/|check-pipeline-watch.sh
+OS84 sle|product/tools/pipeline-watch.py|s/(Q #\\d+: \.\*)/([A-Z] #\\d+: .*)/|check-pipeline-watch.sh
+OS84 broken|product/tools/pipeline-watch.py|s/        if not out or (name in/        if False and (name in/|check-pipeline-watch.sh
+OS84 writers|../../.github/workflows/pipeline-watch.yml|s/      contains(fromJSON(.\[.OWNER.,.MEMBER.,.COLLABORATOR.\].), github.event.comment.author_association)/      true/|check-pipeline-watch.sh'
 # OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'
 OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
