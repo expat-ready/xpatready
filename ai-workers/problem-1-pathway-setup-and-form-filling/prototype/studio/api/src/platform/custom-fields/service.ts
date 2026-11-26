@@ -56,7 +56,7 @@ const noun = (kind: string, n: number) => { const w = kind.replace(/^[a-z]+_/, "
 const records = (kind: string, n: number) => `${n} ${noun(kind, n)} ${n === 1 ? "has" : "have"}`;
 const recordsUse = (kind: string, n: number) => `${n} ${noun(kind, n)}`;
 /** A value as the audit line takes it: at most 4000 characters a string (AuditValues; LONG_TEXT holds 5000: review M2). */
-const audited = (v: Value | null): Value | null => (typeof v === "string" && [...v].length > 4000 ? `${[...v].slice(0, 3990).join("")} … (cut)` : v);
+const audited = (v: Value | null): Value | null => (typeof v === "string" && v.length > 4000 ? `${v.slice(0, 3980).replace(/[\uD800-\uDBFF]$/, "")} … (cut)` : v);   // UTF-16 units, as the audit check counts (break R2-m1)
 /** The audit line's name for a field: its id, never its key (a key such as "credential_assessment" would read as a secret's
  *  name and refuse the line: review M1). Hex has no letters of a secret word. */
 const auditKey = (fieldId: string) => `cf_${fieldId.replace(/-/g, "")}`;
@@ -74,8 +74,6 @@ function dbRefusal(e: unknown): never {
   if (/P2002|unique constraint/i.test(m)) conflict("Another field has this name. Reload and try again.", "DUPLICATE_KEY");
   throw e;
 }
-
-const byKeyOf = (fields: PlatCustomField[]) => new Map(fields.map((f) => [f.key, f]));
 
 export class CustomFieldsService {
   constructor(private readonly d: CustomFieldDeps) {}
@@ -255,7 +253,7 @@ export class CustomFieldsService {
     // PF-28's order: a malformed address (kind or id) is 404, then the body's field errors (422), then the lookup.
     if (!EntityKind.safeParse(kindRaw).success || !UUID.test(idRaw)) return notFound("record");
     const sent = (body as { values?: unknown } | null)?.values;
-    if (sent && typeof sent === "object" && Object.hasOwn(sent, "__proto__")) fieldsError({ __proto__: "This is not a field." });   // never a silent 200 (break m5)
+    if (sent && typeof sent === "object" && Object.hasOwn(sent, "__proto__")) fieldsError({ ["__proto__"]: "This is not a field." });   // a computed key, so it is an own key (break R2-n1)   // never a silent 200 (break m5)
     const b = parseInput(PutValues, body ?? {});
     const { kind, access } = this.access(kindRaw, true);
     const id = idRaw.toLowerCase();
@@ -265,13 +263,14 @@ export class CustomFieldsService {
     try {
       return await this.d.db.$transaction(async (tx) => {
         await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`plat-custom-value:${firmId}:${kind}:${id}`}))`;
-        // The kind's fields FOR SHARE: an archive or a type change waits for this save, and this save for it (break m3).
-        await tx.$queryRaw`select id from plat_custom_field where firm_id = ${firmId}::uuid and entity_kind = ${kind} for share`;
+        // The kind's lock, shared: a field change (add, archive, type, choices, place) holds it exclusive, so it waits for
+        // this save and this save for it (break m3), always in one order (record, then kind), so never a deadlock (break R2-M1).
+        await tx.$executeRaw`select pg_advisory_xact_lock_shared(hashtext(${`plat-custom-field:${firmId}:${kind}`}))`;
         const fields = await tx.platCustomField.findMany({ where: firmScope(firmId, { entityKind: kind, archivedAt: null }), orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
         const rows = await tx.platCustomValue.findMany({ where: firmScope(firmId, { entityKind: kind, entityId: id }) });
         if (this.version(rows) !== b.version) {
           const now = await this.read(tx, firmId, kind, id, true);
-          conflict("Someone changed these fields after you opened them. Their change is shown; save again to keep yours.", "STALE_VERSION", { current: now, changed: Object.keys(b.values).filter((k) => byKeyOf(fields).has(k) && JSON.stringify(now.values[k] ?? null) !== JSON.stringify(b.values[k] ?? null)) });
+          conflict("Someone changed these fields after you opened them. Their change is shown; save again to keep yours.", "STALE_VERSION", { current: now });   // the screen compares with current (the house shape; review r2-1)
         }
         const byKey = new Map(fields.map((f) => [f.key, f]));
         const errors: Record<string, string> = {}, next = new Map<string, Value | null>();
