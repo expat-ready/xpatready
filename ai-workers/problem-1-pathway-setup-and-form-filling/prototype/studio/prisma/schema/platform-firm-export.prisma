@@ -1,6 +1,6 @@
 // platform-firm-export.prisma — the firm's full data download. Owner: Lead B (platform, P-559).
 // PF-11 part 1 (map row 22; SA-2-33, AG-16-20): one row per request (firm, operationId); the zip stored per attempt (firm-export/<id>/<n>.zip); READY for
-// the Sample 7 days, then EXPIRED; failed_reason in plain words only. Checks in migration 20261125140100_shared__pf11_firm_export.
+// the Sample 7 days, then EXPIRED; failed_reason in plain words only. Checks in migration 20261125150100_shared__pf11_firm_export.
 
 enum PlatformFirmExportState {
   QUEUED
