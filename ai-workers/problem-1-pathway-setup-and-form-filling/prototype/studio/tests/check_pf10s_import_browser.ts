@@ -5,7 +5,7 @@
 // is told an Owner must confirm (the attestation answer stubbed, as no Sample user is an Admin); keyboard only: New
 // import → upload → Preview → a chip by Space → Import by Enter; BR-5 the Case Officer has no entry and the page says no
 // access. US$0, no model call. The journey j_35 walks the whole row.
-//   zsh studio/tools/isolated.sh screens_pf10s 4442 start PLATFORM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf10s_import_browser.ts 4442 xr_studio_screens_pf10s
+//   zsh studio/tools/isolated.sh screens_pf10s 4442 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf10s_import_browser.ts 4442 xr_studio_screens_pf10s
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { chromium, type Page } from "playwright";

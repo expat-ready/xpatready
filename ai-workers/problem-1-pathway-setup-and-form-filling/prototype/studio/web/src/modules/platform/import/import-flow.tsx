@@ -9,6 +9,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FoldOut } from "@/components/fold-out";
 import { Loading } from "@/modules/front-office/sales/loading";
 import { cn } from "@/lib/utils";
 import { PlatformFrame, usePlatformStaff } from "../frame";
@@ -135,7 +136,7 @@ function AttestationBox({ onDone }: { onDone: () => void }) {
     <section aria-labelledby="attest-h" className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4" data-attest>
       <h2 id="attest-h" className="text-sm font-semibold text-text">Confirm once for your firm (Owner)</h2>
       <label className="flex items-start gap-2 text-sm text-text"><input type="checkbox" className="mt-1" checked={busy} disabled={busy} onChange={(e) => { if (e.target.checked) void confirm(); }} aria-invalid={err ? true : undefined} aria-describedby="attest-note" data-attest-tick />{att.data.wording.words}</label>
-      <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary>{att.data.wording.unconfirmed}. Wording version {att.data.wording.version}.</details>
+      <FoldOut className="text-xs text-text-muted" summary="Details">{att.data.wording.unconfirmed}. Wording version {att.data.wording.version}.</FoldOut>
       {err ? <p role="alert" className="text-xs text-text-danger">{err}</p> : null}
       <p id="attest-note" className="text-xs text-text-muted">{busy ? "Recording your confirmation…" : "Ticking records your confirmation for the firm; it is asked again only if the wording changes."}</p>
     </section>
