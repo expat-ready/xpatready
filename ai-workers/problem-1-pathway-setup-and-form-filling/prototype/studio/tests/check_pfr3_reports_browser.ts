@@ -62,11 +62,12 @@ inv("CAD", 100000, 130000, 13000, "current_date + 30"); inv("USD", 20000, 50000,
 
 try {
   // ---------------------------------------------------------------------------------------------------- the API underneath
-  const dO = await api(TR, "GET", "/platform/reports/dashboards/owner"), dC = await api(TO, "GET", "/platform/reports/dashboards/case-officer");
+  const dO = await api(TR, "GET", "/platform/reports/filters"), dC = await api(TO, "GET", "/platform/reports/filters");
+  const lO = await api(TR, "GET", "/platform/reports/dashboards/owner"), lC = await api(TO, "GET", "/platform/reports/dashboards/case-officer");
   const month = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit" }).format(new Date());
-  ok("PF-R3 BR3 pass (API): the dashboard answer carries the firm's month, and the Owner (view.all) gets the people and may export",
-    dO.status === 200 && dO.body.period.from === `${month}-01` && dO.body.period.to.startsWith(month) && Array.isArray(dO.body.people) && dO.body.people.length > 0 && dO.body.canExport === true, dO.body);
-  ok("PF-R3 BR3 fail (API; challenge M1): the Case Officer (view.own) gets no people at all, and may not export", dC.status === 200 && dC.body.people === undefined && dC.body.canExport === false, dC.body);
+  ok("PF-R3 BR3 pass (API): GET filters carries the firm's month and, for the Owner (view.all), the people; and that they may export",
+    dO.status === 200 && dO.body.period.from === `${month}-01` && dO.body.period.to.startsWith(month) && Array.isArray(dO.body.people) && dO.body.people.length > 0 && dO.body.canExport === true && lO.status === 200, dO.body);
+  ok("PF-R3 BR3 fail (API; challenge M1): the Case Officer (view.own) gets no people at all, and may not export", dC.status === 200 && dC.body.people === undefined && dC.body.canExport === false && JSON.stringify(lC.body.widgets) !== undefined, dC.body);
   const lines = () => Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'report.exported'`));
   const before = lines(), filters = { from: dO.body.period.from, to: dO.body.period.to };
   const ex = await api(TR, "POST", "/platform/reports/export", { metric: "reports.money.tax_collected", filters });

@@ -11,7 +11,7 @@ import { Button, Field, Input, Notice, Select, Table } from "@/components/ui/con
 import { cn } from "@/lib/utils";
 import { PlatformFrame, usePlatformStaff } from "../frame";
 import { staffApi, StaffApiError, staffToken, useStaffToken } from "../session";
-import { Answer, apiFilters, Dashboard, emptyWords, heading, isEmpty, mayReport, moneyWords, readFilters, REPORT, ROLE_WORDS, ROLES, scopeWords, withheldTip, writeFilters,
+import { Answer, apiFilters, Dashboard, emptyWords, FilterContext, heading, isEmpty, mayReport, moneyWords, readFilters, REPORT, ROLE_WORDS, ROLES, scopeWords, withheldTip, writeFilters,
   type DashboardRole, type Filters, type Metric } from "./contract";
 
 type Widget = Dashboard["widgets"][number];
@@ -77,7 +77,8 @@ function Reports() {
   const role = readFilters(params, { roles: me.roles, keys: me.keys, period: null }).dashboard;
   const dash = useQuery({ queryKey: ["pf", "reports", "dashboard", token, role], enabled: !!token, retry: false, staleTime: 60_000,
     queryFn: async () => Dashboard.parse(await staffApi(`/platform/reports/dashboards/${role}`)) });
-  const period = dash.data?.period ?? null;
+  const ctxQ = useQuery({ queryKey: ["pf", "reports", "filters", token], enabled: !!token, retry: false, staleTime: 60_000, queryFn: async () => FilterContext.parse(await staffApi("/platform/reports/filters")) });
+  const period = ctxQ.data?.period ?? null, people = ctxQ.data?.people;
   const f = readFilters(params, { roles: me.roles, keys: me.keys, period });
   const set = (patch: Partial<Filters>) => setParams(writeFilters({ ...f, ...patch }, period, seesAll), { replace: true });
   // BR-6 (m2): only registered widgets are asked for; an unregistered key would refuse the whole query
@@ -86,7 +87,7 @@ function Reports() {
   const answer = useQuery({ queryKey: ["pf", "reports", "query", token, JSON.stringify(body)], enabled: !!token && keys.length > 0 && !!f.from, retry: false, placeholderData: keepPreviousData,
     queryFn: async () => Answer.parse(await staffApi("/platform/reports/query", { method: "POST", json: body })) });
   const byKey = new Map(answer.data?.metrics.map((m) => [m.key, m]) ?? []);
-  const personName = f.staffId ? dash.data?.people?.find((p) => p.id === f.staffId)?.name ?? null : null;
+  const personName = f.staffId ? people?.find((p) => p.id === f.staffId)?.name ?? null : null;
   const [said, setSaid] = React.useState(""), [exportError, setExportError] = React.useState("");
   const exportNow = async (metric: string) => {
     setSaid(""); setExportError("");
@@ -101,7 +102,7 @@ function Reports() {
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
     setSaid(`Downloaded ${name}. The export is recorded in the activity log.`);
   };
-  const failed = dash.error instanceof StaffApiError ? dash.error : answer.error instanceof StaffApiError ? answer.error : null;
+  const failed = dash.error instanceof StaffApiError ? dash.error : ctxQ.error instanceof StaffApiError ? ctxQ.error : answer.error instanceof StaffApiError ? answer.error : null;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -111,9 +112,9 @@ function Reports() {
       <div role="group" aria-label="Filters" className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface-raised p-3" data-report-filters>
         <Field label="From"><Input type="date" value={f.from} onChange={(e) => e.target.value && set({ from: e.target.value })} data-report-from /></Field>
         <Field label="To"><Input type="date" value={f.to} onChange={(e) => e.target.value && set({ to: e.target.value })} data-report-to /></Field>
-        {seesAll && dash.data?.people
+        {seesAll && people
           ? <Field label="Person"><Select value={f.staffId ?? ""} onChange={(e) => set({ staffId: e.target.value || undefined })} data-report-person><option value="">Everyone</option>
-              {dash.data.people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? "" : " (left the firm)"}</option>)}</Select></Field>
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? "" : " (left the firm)"}</option>)}</Select></Field>
           : <Field label="Person"><p className="flex min-h-9 items-center text-sm" data-report-person-you>You</p></Field>}
         <Field label="Client type"><Select value={f.clientType ?? "ALL"} onChange={(e) => set({ clientType: e.target.value === "ALL" ? undefined : (e.target.value as Filters["clientType"]) })} data-report-client-type>
           <option value="ALL">All</option><option value="INDIVIDUAL">Individual</option><option value="CORPORATE">Corporate</option></Select></Field>
@@ -124,7 +125,7 @@ function Reports() {
       {failed ? <Notice tone="danger" title="Reports could not be shown"><span data-report-error>{failed.problem?.detail ?? "Try again in a moment."}</span></Notice> : null}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" data-report-grid>
         {dash.isPending ? Array.from({ length: 4 }, (_, i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-text/5" aria-hidden data-report-skeleton />)
-          : dash.data?.widgets.map((w) => <Card key={w.metricKey} w={w} m={byKey.get(w.metricKey)} person={personName} canExport={dash.data!.canExport} onExport={(k) => void exportNow(k)} retry={() => void answer.refetch()} />)}
+          : dash.data?.widgets.map((w) => <Card key={w.metricKey} w={w} m={byKey.get(w.metricKey)} person={personName} canExport={ctxQ.data?.canExport === true} onExport={(k) => void exportNow(k)} retry={() => void answer.refetch()} />)}
       </div>
     </div>
   );

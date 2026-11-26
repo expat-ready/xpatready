@@ -6,8 +6,9 @@
 //    door; the row says 400: asked of the tech lead in the PR), an unknown metric key → 400.
 //    Each metric is read at the scope worked out on the server from agent/report:view.own, view.all and view-financial
 //    (AG-14-19); a `scope` in the body is never read.
-// R1.79 part 4 (PF-R3, export.ts): the dashboard answer adds `people` (view.all only) and `period` (the firm's month),
-// and POST export answers one table's CSV, audited (one `report.exported` line before the file).
+// R1.79 part 4 (PF-R3, export.ts): GET filters answers the viewer's `period` (the firm's month), `people` (view.all only) and
+// `canExport`, apart from the layout, which stays the same for every viewer (PF-R1 (2)); POST export answers one table's
+// CSV, audited (one `report.exported` line before the file).
 // All three need a report key: the guard lets any signed-in staff member in (AnyStaff) and the door refuses 403 without one,
 // because view.own, view.all and view-financial each open it alone (PermissionKeys would need all of them). The request
 // already runs as the caller's firm (PF-4's guard, PF-12's walls), so every read is walled. It writes nothing (AG-14-1).
@@ -28,13 +29,14 @@ import { MetricRegistry } from "./registry.ts";
 type R = { platform?: StaffContext };
 const NEEDS = `${REPORT_KEYS.own}, ${REPORT_KEYS.all} or ${REPORT_KEYS.financial}, checked by the door (PF-R1)`;
 
-export type DashboardAnswer = { role: string; title: string; widgets: { metricKey: string; visual: string; position: number; registered: boolean; label: string | null }[];
+export type DashboardAnswer = { role: string; title: string; widgets: { metricKey: string; visual: string; position: number; registered: boolean; label: string | null }[] };
+export type FiltersAnswer = {
+  /** Whether the viewer may export a table (agent/report:export). */
+  canExport: boolean;
   /** The firm's current month (its zone): the page's default period. */
   period: { from: string; to: string };
   /** The firm's staff for the Person filter: only for a holder of agent/report:view.all (else absent). */
-  people?: { id: string; name: string; active: boolean }[];
-  /** Whether the viewer may export a table (agent/report:export). */
-  canExport: boolean };
+  people?: { id: string; name: string; active: boolean }[] };
 
 @Controller("api/platform/reports")
 export class ReportsController {
@@ -44,17 +46,24 @@ export class ReportsController {
   private database(): Db { if (!this.dbOrNone) throw new Error("ReportsController: no database"); return this.dbOrNone; }
 
   @Get("dashboards/:role") @AnyStaff(NEEDS)
-  async dashboard(@Req() r: R, @Param("role") role: string): Promise<DashboardAnswer> {
+  dashboard(@Req() r: R, @Param("role") role: string): DashboardAnswer {
     const ctx = staffOf(r);
     if (!mayReport(ctx.keys)) forbidden(`Your roles include no report permission (${REPORT_KEYS.own}, ${REPORT_KEYS.all} or ${REPORT_KEYS.financial}).`, "MISSING_PERMISSION");
     if (!isDashboardRole(role)) problem(404, "Not found", "No such dashboard.", { code: "NO_DASHBOARD" });
     const d = DASHBOARDS[role];
     const labels = new Map(this.registry.definitions().map((m) => [m.key, m.label]));
+    return { role: d.role, title: d.title, widgets: d.widgets.map((w, position) => ({ metricKey: w.metricKey, visual: w.visual, position, registered: labels.has(w.metricKey), label: labels.get(w.metricKey) ?? null })) };
+  }
+
+  /** GET filters: the filter bar's default period (the firm's month) and, for view.all only, the firm's people (challenge M1, m7). */
+  @Get("filters") @AnyStaff(NEEDS)
+  async filters(@Req() r: R): Promise<FiltersAnswer> {
+    const ctx = staffOf(r);
+    if (!mayReport(ctx.keys)) forbidden(`Your roles include no report permission (${REPORT_KEYS.own}, ${REPORT_KEYS.all} or ${REPORT_KEYS.financial}).`, "MISSING_PERMISSION");
     const zone = await readSetting<string>(this.database(), ctx.firmId, TIME_ZONE.key);
     const people = seesPeople(ctx.keys) ? (await this.database().platformStaff.findMany({ where: firmScope(ctx.firmId), select: { id: true, displayName: true, status: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] }))
       .map((p) => ({ id: p.id, name: p.displayName, active: p.status === "ACTIVE" })) : undefined;
-    return { role: d.role, title: d.title, widgets: d.widgets.map((w, position) => ({ metricKey: w.metricKey, visual: w.visual, position, registered: labels.has(w.metricKey), label: labels.get(w.metricKey) ?? null })),
-      period: monthOf(zone, new Date(this.clock.now())), ...(people ? { people } : {}), canExport: mayExport(ctx.keys) };
+    return { period: monthOf(zone, new Date(this.clock.now())), ...(people ? { people } : {}), canExport: mayExport(ctx.keys) };
   }
 
   /** POST export: one table's CSV, read as `query` reads it; one audit line committed before the file (export.ts). */

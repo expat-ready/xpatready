@@ -19,10 +19,9 @@ export const mayReport = (keys: readonly string[]) => keys.includes(REPORT.own) 
 export const Dashboard = z.object({
   role: z.enum(ROLES), title: z.string(),
   widgets: z.array(z.object({ metricKey: z.string(), visual: z.enum(["TILE", "TABLE", "BAR", "AGING"]), position: z.number(), registered: z.boolean(), label: z.string().nullable() })),
-  period: z.object({ from: z.string(), to: z.string() }),
-  people: z.array(z.object({ id: z.string(), name: z.string(), active: z.boolean() })).optional(),
-  canExport: z.boolean(),
 });
+/** GET /api/platform/reports/filters: the default period (the firm's month), the people (view.all only), and whether the viewer may export. */
+export const FilterContext = z.object({ period: z.object({ from: z.string(), to: z.string() }), people: z.array(z.object({ id: z.string(), name: z.string(), active: z.boolean() })).optional(), canExport: z.boolean() });
 export type Dashboard = z.infer<typeof Dashboard>;
 const Cell = z.union([z.string(), z.number(), z.null()]);
 export const Reading = z.discriminatedUnion("kind", [
