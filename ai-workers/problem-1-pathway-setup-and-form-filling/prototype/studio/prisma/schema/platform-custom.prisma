@@ -5,7 +5,7 @@
 // (ports/custom-fields.ts, ports/saved-views.ts) and never read these tables.
 //
 // Rules Prisma cannot say are pf_custom_ checks, functions and triggers in this row's migration (prisma/migrations/
-// 20261125140100_shared__pf22a_custom_fields): a field's type is one of ten, its key and kind are names, its options are a list of distinct
+// 20261126063100_shared__pf22a_custom_fields): a field's type is one of ten, its key and kind are names, its options are a list of distinct
 // labels and only a SELECT or MULTI_SELECT has any (at least one); a field is never deleted (archived instead, its values kept
 // and hidden), and its firm, kind, key and creator never change; its type never changes once it has a value; a value is
 // checked against its field's type and options by the database too, and names its field's own entity kind; a saved view's
