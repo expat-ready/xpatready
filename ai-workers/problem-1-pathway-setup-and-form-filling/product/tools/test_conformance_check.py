@@ -348,11 +348,11 @@ class Conformance(unittest.TestCase):
         good["on"]["schedule"] = [{"cron": "*/30 * * * *"}]
         self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
         # OS-83: events start it too, when the manifest names them
-        hb["heartbeat"]["events_required"] = ["push", "workflow_run", "issue_comment"]
+        hb["heartbeat"]["events_required"] = ["push", "workflow_run"]
         self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "fail")   # schedule only
-        good["on"].update({"push": {"branches": ["main"]}, "workflow_run": {"workflows": ["ci"]}, "issue_comment": {"types": ["created"]}})
+        good["on"].update({"push": {"branches": ["main"]}, "workflow_run": {"workflows": ["ci"]}})
         self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
-        self.assertEqual(status(self.check(with_wf(lambda d: d["on"].pop("issue_comment")), hb), "heartbeat.workflow"), "fail")
+        self.assertEqual(status(self.check(with_wf(lambda d: d["on"].pop("workflow_run")), hb), "heartbeat.workflow"), "fail")
 
     # -- ruleset -----------------------------------------------------------------------------------------------------
     def test_ruleset_states(self):

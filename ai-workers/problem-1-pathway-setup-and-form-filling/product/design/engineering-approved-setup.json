@@ -61,7 +61,7 @@
   {
    "version": "1.8.0",
    "date": "2026-11-26",
-   "change": "OS-83: ci.yml may also have workflow_dispatch with inputs exactly pr and head (the CI-PRE full run, \"/run full\", P-731, added 19 Nov in 207619aca; the manifest never allowed it, so ci.triggers failed and the heartbeat was red on all 23 scheduled runs from 18 Nov, e.g. run 45727547952); any other extra trigger still fails. The heartbeat workflow must also start on push, workflow_run and issue_comment (events_required): GitHub ran its 30-minute schedule only every 8-11 hours.",
+   "change": "OS-83: ci.yml may also have workflow_dispatch with inputs exactly pr and head (the CI-PRE full run, \"/run full\", P-731, added 19 Nov in 207619aca; the manifest never allowed it, so ci.triggers failed and the heartbeat was red on all 23 scheduled runs from 18 Nov, e.g. run 45727547952); any other extra trigger still fails. The heartbeat workflow must also start on push and workflow_run (events_required): GitHub ran its 30-minute schedule only every 8-11 hours. Event runs save no state, so only a scheduled run (whose red mails the owner) marks an alarm seen; no issue_comment (anyone can comment; a red run mails its starter).",
    "approval": "the tech lead, 26 Nov (OS-PM 4 brief, founder ask A400: every watcher runs inside the pipeline): fix the expectation where workflow_dispatch on ci.yml is intended, and add event triggers to the heartbeat"
   }
  ],
@@ -295,7 +295,7 @@
  "heartbeat": {
   "workflow": "pipeline-heartbeat.yml",
   "every_min": 30,
-  "events_required": ["push", "workflow_run", "issue_comment"],
+  "events_required": ["push", "workflow_run"],
   "timeout_min": 5,
   "no_merge_min": 90,
   "queue_no_progress_min": 60,
