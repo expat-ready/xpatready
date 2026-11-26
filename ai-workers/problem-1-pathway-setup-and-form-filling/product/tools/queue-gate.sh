@@ -4,7 +4,11 @@
 #   label  — puts `review: approved` on once (a) a PR comment line "Reviewer: Approve <the head's full 40-hex SHA>" is
 #            by the repository owner's account or a login in REVIEWERS (space-separated; the repository variable, so no
 #            name sits in a file), author association OWNER, MEMBER or COLLABORATOR, and it is the last "Reviewer:"
-#            line naming that head (a later "Changes needed" on it wins); (b) the check "ci" on that head is green; (c) no changed path
+#            line naming that head (a later "Changes needed" on it wins); (b) the check "ci" on that head is green; (b2) the
+#            check "pr-suites" (pr-suites.yml's job, the PR's affected suites; P-822) is "success" on that exact head, from
+#            pr-suites.yml's own pull_request run: missing, pending, skipped, neutral, cancelled or red all refuse (a PR
+#            whose plan picks no suite gets "success" from that job, so "skipped" is never needed; SUITES_GATE below
+#            blocks on landing: the founder's ruling of 25 Nov 11:3x IST waives P-717 (b)'s 24 h warn for it); (c) no changed path
 #            matches lead-read-paths.txt (.github/, .mergify.yml, the guards, schema, migrations, money,
 #            permissions; a screenshot, an image or .txt under product/, or a records-only PR sets off only the guard
 #            lines, never money or permissions: B206 part 3).
@@ -37,6 +41,7 @@
 #            "Batch failures covered: <that run's id>: <part>, <part>", names every failed job of that run.
 #   proof  — for label-guard.sh: exit 0 when the full-run rule holds for one of HEADS (the head, back to its approved
 #            commit) and, with RELABEL=1 (the label was just put on) or on a PR carrying "dequeued", the batch rule too;
+#            with RELABEL=1, pr-suites green on the head too (P-822: a person's label as the gate's own);
 #            exit 1 and the reason if not.
 #   start  — the full run on the PR's head when a failed batch held it, the head is this repository's, open, not a draft,
 #            based on main, its ci not red, approved, and no full run is on it yet; a comment says so. Never a cancel (P-371).
@@ -74,6 +79,38 @@ ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id
   run_id=$(echo "$c" | jq -r '.details_url // ""' | sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p')
   local r; r=$(api "$API/repos/$REPO/actions/runs/$run_id" 2>/dev/null) || r='{}'
   run_started=$(echo "$r" | jq -r '.run_started_at // empty'); run_attempt=$(echo "$r" | jq -r '.run_attempt // 1'); run_status=$(echo "$r" | jq -r '.status // ""'); }
+
+# --- P-822 (founder, 25 Nov ~08:1x IST): "`pr-suites` (the PR's affected suites) becomes required before the label".
+# It blocks on landing (founder's ruling, 25 Nov ~11:3x IST, relayed by the tech lead on #3632: "blocks on landing, with no
+# 24 h warn period: P-717 (b) is waived for this check"). warn stays only as the kill switch; the one line the
+# Lead changes to make it block (QG_SUITES_GATE: the test's stand-in only; queue-gate.yml never sets it):
+SUITES_GATE="${QG_SUITES_GATE:-block}"   # block | warn (the kill switch; any other value blocks)
+suites() {  # a commit → suites_state (success | missing | pending | <the conclusion> | unread), suites_why. The newest
+  # check run "pr-suites" on it decides, counted only when it is pr-suites.yml's own pull_request run of THIS PR, based on
+  # main, on this very commit, the check run in that run's own check suite, and the run itself ended success (breaker
+  # M1: a check run made by another workflow's token, pointing at a real run, or a run of a PR into a side branch whose
+  # pr-suites.yml is that branch's, never counts; a job of that name in another workflow needs a .github/ change anyway).
+  local s=$1 c rid r st co url cs ok; suites_state=missing; suites_why="no pr-suites run of pr-suites.yml on it yet"
+  c=$(api "$API/repos/$REPO/commits/$s/check-runs?check_name=pr-suites&filter=latest&per_page=100") || { suites_state=unread; suites_why="its check runs cannot be read"; return; }
+  while IFS=$'\t' read -r st co url cs; do
+    rid=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$url"); [[ "$rid" =~ ^[0-9]+$ && "$cs" =~ ^[0-9]+$ ]] || continue
+    r=$(api "$API/repos/$REPO/actions/runs/$rid" 2>/dev/null) || { suites_state=unread; suites_why="the pr-suites run $rid cannot be read"; return; }
+    ok=$(jq -r --arg s "$s" --argjson n "$PR" --argjson cs "$cs" '((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml" and .event == "pull_request"
+      and .head_sha == $s and .check_suite_id == $cs and any(.pull_requests[]?; .number == $n and .base.ref == "main")' <<< "$r" 2>/dev/null)
+    [ "$ok" = true ] || continue
+    if [ "$st $co" = "completed success" ]; then
+      [ "$(jq -r '.status + " " + (.conclusion // "")' <<< "$r")" = "completed success" ] && { suites_state=success; suites_why="green on ${s:0:9}"; return; }
+      suites_state=pending; suites_why="its run $rid has not ended green ($url)"; return; fi
+    [ "$st" = completed ] && suites_state=$co || suites_state=pending; suites_why="$suites_state on ${s:0:9} ($url)"; return   # the newest decides (breaker m2)
+  done < <(jq -r '[.check_runs[]? | select(.app.slug == "github-actions")] | sort_by(.started_at) | reverse | .[] | [.status, (.conclusion // "none"), (.details_url // ""), (.check_suite.id // "" | tostring)] | @tsv' <<< "$c"); }
+suitesok() {  # a commit → 0 when pr-suites is green on it, or SUITES_GATE=warn (suites_warn says why); 1 with why.
+  # suites_retry=1 (eligible exits 3: the sweep keeps the label, tries again) only when this refusal is an unreadable or
+  # unfinished pr-suites (review m2, m3: a re-run in progress never strips a good label; warn never leaks into exit 3).
+  suites_warn=""; suites_retry=""; suites "$1"; [ "$suites_state" = success ] && return 0
+  local w="pr-suites is not green on ${1:0:9}: $suites_why (P-822)"
+  [ "$SUITES_GATE" = warn ] && { suites_warn=$w; return 0; }
+  case "$suites_state" in unread|pending) suites_retry=1;; esac
+  why=$w; return 1; }
 
 # --- CI-PRE (P-731): the full run and the failed batch
 FULL_WF=".github/workflows/ci.yml"; TEAM='.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"'
@@ -209,6 +246,7 @@ judge() {  # eligibility for the label; reason in $why
   bad=$(leadread <<< "$files" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
   [ -z "$bad" ] || { why="it touches a path that keeps the Lead's read (P-423): $bad"; return 1; }
   ci; [ "$ci_state" = success ] || { why="ci on ${head:0:9} is $ci_state"; return 1; }
+  suitesok "$head" || return 1   # P-822: the PR's affected suites green on this exact head
   fullproof "$head" || return 1   # CI-PRE (P-731, P-743): after a failed merge batch, one green full run on this exact head
   return 0; }
 
@@ -280,8 +318,8 @@ _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null
     return $src; fi
   LABELLING=1 fresh || return 2; did_fresh=1   # review M2: queue-fresh is decided before the label goes on
   api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || { echo "#$PR: could not label"; return 2; }
-  labels="$labels"$'\n'"$LABEL"; echo "#$PR: labelled ($head has the reviewer's Approve, a green ci, and a green full run when a failed merge batch held it (P-743); no Lead-read path)"
-  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, no failed merge batch held it or the full run (P-731, P-743) is green on it (or the PR is records only), and no path keeps the Lead's read (P-423)." '{body: $b}')" >/dev/null || true; }
+  labels="$labels"$'\n'"$LABEL"; [ -z "${suites_warn:-}" ] || echo "#$PR: warning: $suites_warn"; echo "#$PR: labelled ($head has the reviewer's Approve, a green ci, and a green full run when a failed merge batch held it (P-743); no Lead-read path)"
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, no failed merge batch held it or the full run (P-731, P-743) is green on it (or the PR is records only), and no path keeps the Lead's read (P-423).${suites_warn:+ **Warning:** $suites_warn: warn-only for its first 24 h (P-717 (2)); then this refuses the label.}" '{body: $b}')" >/dev/null || true; }
 
 start() {  # the full run (comment-run.yml's "/run full": main's ci.yml by workflow_dispatch) on $head; held_rid is the failed batch run
   [ "$(echo "$pr" | jq -r '.head.repo.full_name // ""')" = "$REPO" ] || { echo "#$PR: a fork's head: no full run (comment-run.yml refuses one too)"; return 0; }
@@ -340,13 +378,16 @@ case "${1:-}" in
   proof) load || exit 2; [ -n "${HEADS:-}" ] || { echo "queue-gate: HEADS is not set"; exit 2; }
     # shellcheck disable=SC2086
     fullproof $HEADS || { echo "$why"; exit 1; }
+    # P-822: a label just put on (a person's, after the Lead's read) needs pr-suites green on the head itself, as the
+    # gate's own does (breaker m1: never on an older commit of the walk back). HEADS starts with the head.
+    if [ "${RELABEL:-}" = 1 ]; then suitesok "$(awk '{print $1}' <<< "$HEADS")" || { echo "$why"; [ "$suites_state" = unread ] && exit 2; exit 1; }; fi
     # RELABEL (the label just put on) or a PR Mergify dequeued (B206 part 2 review M1): the batch rule too.
     if [ "${RELABEL:-}" = 1 ] || has dequeued; then covered || { echo "$why"; exit 1; }; fi; exit 0;;
   # 3, not 1, when the full runs or (inside the full-run rule, P-743) the merge batches could not be read: label-sweep.sh
   # then keeps the label and tries again. covered()'s own unreadable batches (records PRs) stay 1.
   # With LABELED_AT (label-sweep.sh: a label a workflow's token put on, which starts no label-guard run), the batch rule
   # is asked too, for a batch that failed before that label (breaker R2-M2: a side branch's workflow can label any PR).
-  eligible) load || exit 2; judge && { [ -z "${LABELED_AT:-}" ] || covered; } && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
+  eligible) load || exit 2; judge && { [ -z "${LABELED_AT:-}" ] || covered; } && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; { [ "${full_state:-}" = unread ] || [ "${suites_retry:-}" = 1 ]; } && exit 3; exit 1;;
   event) event; exit $?;;
   *) echo "usage: queue-gate.sh label|fresh|eligible|proof|start|event"; exit 2;;
 esac

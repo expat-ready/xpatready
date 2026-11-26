@@ -11,7 +11,7 @@
 
 **How a row's status is set.** *Not shaped*: no BACKLOG row with a Done when for all of it (a row that is only named counts here). *Shaped*: every part has a BACKLOG row with a Done when. *In PR*: every part has an open pull request. *Merged*: built on `main`, not yet Works. *qa Works*: qa's independent Works verdict on `main`. **A row takes the status of its least advanced part**; the line names the parts that are further on. \* = proven in the reference app for the one Sample firm; the work to make it run for many firms is in map row 3 (walls) and has no row of its own yet.
 
-**Counts (101 Build rows):**
+**Counts (101 Build rows; P-842 adds rows 113-121 on 25 Nov, so 110 in all; the table below counts the first 101):**
 
 | Status | Rows |
 |---|---|
@@ -171,6 +171,20 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 97 | Tamper-evident audit chain | Audit | AUD-1c, AUD-2, AUD-2c | Shaped |
 | 105 | Keep periods; a leaving firm is closed, not deleted | Audit + platform | PF-11c; PF-5 closes at 90 days; AUD-5 (6 years from closing, College s. 7.2; CS-D6 reads it) | Shaped · qa R1.105 Partial (was Not built), 18 Nov, main 15c75cd52: AUD-5 part 1 #2008 merged; parts missing AUD-5 part 2, AUD-2, PF-5's close at 90 days, PF-11c (qa commits dd48695cd, #2117; 361a0f49f, #2131) |
 | 109 | Complaints record | Platform | PF-21, PF-21s | qa Works (was Shaped until 20 Nov: qa R1.109 Works on main 6f6efac88, 20 Nov 02:1x IST, after PF-21j #2315; j_109 26/26 twice, runs 44608469689 and 44608482750; QA-517 closed; QA-506, QA-525 (Minors) open; qa commit fc274c2c4, on main with #2382) |
+
+
+### M. Added 25 Nov from the team-code scope check (P-842: counted in Release 1; the Build total is 110)
+| Map | Capability | Module | BACKLOG rows | Status |
+|---|---|---|---|---|
+| 113 | Platform-wide maintenance mode with a bilingual message | Platform (our console) | Not shaped (SA-12-20, SA-12-22 (SA-12 v2.9; SA12-D5; SA-12-21 bypass token parked); Phase 1 Must; team code: backend only (maintenance.guard.ts, platform-maintenance controller); screen is a mock) | Not shaped |
+| 114 | One platform banner, EN/FR, with start and end | Platform (our console) | Not shaped (SA-12-23 (SA12-D5); Phase 1 Must; team code: backend only (platform-banner controllers); screen is a mock, no firm-side display) | Not shaped |
+| 115 | Platform settings registry (security settings; offboarding policy) | Platform (our console) | Not shaped (SA-12-17, SA-12-19, SA-12-27, SA-12-28 (SA12-D3 parks the registry beyond the security settings); billing-timeline screen is SA-4 Phase 3, out; Phase 1 (security settings); team code: end to end (platform-setting controllers, FE platform-settings): lift candidate) | Not shaped |
+| 116 | Staff session timeout: auto sign-out for our staff (60 min idle / 12 h) | Platform (our console) | Not shaped (SA-12-27 to SA-12-29; SA-07 auto-logout row; Phase 1 Must; team code: end to end (session-timeout-policy controller, FE hooks and tests): lift candidate) | Not shaped |
+| 117 | Our staff administration: invite (company domains), deactivate, reactivate, reset two-step, account-manager handover | Platform (our console) | Not shaped (SA-7-4, SA-7-5, SA-7-6, SA-7-10, SA-7-15 (SA-07 v2.17); PF-4s cites only the sign-in ids; Phase 1 Must (My account, activity list: Phase 2); team code: end to end, partly mock (platform-user-directory and lifecycle controllers): lift candidate) | Not shaped |
+| 118 | Platform analytics: one Business page with an audited CSV | Platform (our console) | Not shaped (SA-9-1, SA-9-1a onward (SA-09 v2.5); X-31 keeps health graphs and alert rules parked; Phase 1 Must; team code: stub (front-end fixtures only, no backend)) | Not shaped |
+| 119 | Read-only integrations status page | Platform (our console) | Not shaped (SA-8-26 (SA-08 v2.13); Phase 1 Must; team code: end to end, read-only (integration-status controller and evaluators): lift candidate) | Not shaped |
+| 120 | Our global templates and system emails: catalogue, publish, 7-day notice, send test | Platform (our console) | Not shaped (SA-5-48, SA-5-49, SA-5-50 (SA-05 v3.9); our rows 45-47 are the firm's own templates; X-24 still defers editing billing emails; Phase 1 Must; team code: end to end for system emails; preview and role switch mock: lift candidate) | Not shaped |
+| 121 | Firm capability switches: escalation and at-risk marks | Platform (our console) | Not shaped (AG16-8, key agent/firm-capability:manage (AG-16 v1.24); Release 1 (agent 99-Phasing, Advanced); team code: service only, not registered) | Not shaped |
 
 **Optional (8, out of the first build, P-572; kept as BACKLOG X-1 to X-8):** 7 custom roles · 17 feature switches · 18 French and Quebec tax · 25 demo firm · 51 outgoing webhooks and API keys · 71 reading text from scans · 78 full-text search · 81 ordinary PDF form filling.
 **Held (3, BACKLOG X-22):** 44 pay when booking · 94 card payment into trust (P-567) · 103 our own signer (only if BoldSign fails a P-561 condition).
