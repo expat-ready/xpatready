@@ -96,3 +96,75 @@ Reviewer: Block 9245f58089458dc2b66534f96116ee025620127e
 **Journey (re-scored on this head):** 8/10, pass with no 0. Task completed, feedback, correct data and speed each move to 1; next step obvious, error recovery, accessibility and visual quality stay ½.
 
 Reviewer: Approve bbeb2bd7e112bb743dfe07cd6077f46e848c72de
+
+## Round 3 (diff-only, 6434d8e…)
+**Verdict: Block (the fixes are local, so the skill's word is Changes). Head `6434d8e31accb76362c7e07f9170a823d0836461`.** One Major is open: R2-M1 is not fixed at the product's own line limit. I reviewed only `git diff bbeb2bd7..6434d8e3` (5 code files, +101 −27).
+
+**Checks**, on an archived copy of the head:
+* `check_fo7r_statement_send`: 32 passed, 0 failed.
+* PF-28 sweep: 51/51, against my own API copy on :4431 (local identity, live AI off).
+* My probes:
+  * the PR's stale-statistics fixture, scaled to 2,000 and to 2,500 invoices;
+  * `EXPLAIN ANALYZE` of `wholeSql` and `summarySql` in that state;
+  * a check that a dated period's figures match part 1's.
+
+Every scratch database I made has been dropped.
+
+**What holds**
+* **Money figures.**
+  * `wholeSql`'s totals step `t` is the same text as `readSql`'s, so opening and closing still equal Σ facts.
+  * Each line's balance is a running sum over every line of its account and currency, in the same order (k, o, r, id, inv). It is the figure `readSql` builds as `st.s` plus the windowed sum.
+  * Probe: a client with 30 back-dated invoices and payments, period 2026-01-10 to 2026-01-20. All 22 lines match part 1's JSON (amount and balance), opening and closing match, and the last balance (14,759) equals the closing.
+  * `summary.ts`: `agg` groups by `l.inv` over account 0, and the left join uses `coalesce(…, 0)`. This gives the same figures as before, including zeros for an invoice with no lines and `greatest(trust, 0)` per invoice.
+* **The sweep change is an honest fix.** `fine()` is unchanged.
+  * With `logo` as the kind, `kindOf` answered 404 before any body was read, so the send's body probes proved nothing.
+  * With `person`, the probes reach the schema:
+    * an unknown field gets 422 naming `pf28Unknown`;
+    * a wrong type gets 422, and a missing body gets 422 naming `period`;
+    * 1 MB gets 413;
+    * a malformed kind or id gets 404.
+  * A door that looked the client up before reading the body would now answer 404 and fail. That makes the sweep stricter, not looser.
+  * Only the four money party routes get `person`. The branding door keeps `logo`.
+* **The API change is sound for part 4.**
+  * Send now requires `period`: `EVERYTHING` with dates gets 422 naming `period`; `DATES` with neither date gets 422 naming `from`; `from` after `to` gets 422 naming `to`.
+  * The order (path shape 404, then body 422, then lookup 404) matches the booking, sign-up and signing doors.
+  * Part 4 sends `period` from its Everything/Dates choice (AG-6-28 rule 3).
+  * Note for part 4, not a finding: the PDF GET rejects an unknown query field, so the download URL must not carry `period`.
+* **R2-m1:** `channelTakes` runs after `z.email()`, and `a@b-.example` gets 422.
+* **`b.party` → `b.client`:** harmless; the audit detail keys are unchanged. The real fault is the CS-W3 census regex, which mistook `.party.` for a Prisma model.
+
+**R3-1 (Major, Must). R2-M1 is still open at the line limit.** The breaker's round-3 R3-M1, in progress, measures the same thing independently.
+* **Measured** with the PR's stale fixture:
+  * 2,500 invoices with one payment each (5,000 lines, within `STATEMENT_LINE_MAX`):
+    * PDF: 500 in 7.1–7.8 s (3 runs);
+    * Send: 500 in 7.7 s;
+    * part 1's JSON page: 3.8–4.2 s.
+  * 2,000 invoices (4,000 lines):
+    * PDF: 4.97 s with 200, then 5.49 s with 500;
+    * Send: 4.5 s.
+* **Cause, from the plan:** the time is not in `wholeSql` or `agg`. It is in `ledgerCtes`, which runs twice in one 5 s transaction (`allLines` and `summaryIn`):
+  * `statement.ts:66-67`: the `inv` total is a Nested Loop Left Join that re-runs the grouped line sums for each invoice. That is 2,500 loops, "Rows Removed by Join Filter: 3,123,750", 1.5 s. Its index probe also has `invoice_id = inv0.id AND = ANY(ids)`.
+  * `statement.ts:79-80`: the payment branch probes the same way, about 0.56 ms × 2,500 = 1.4 s.
+  * Totals: the whole-statement query takes 4.35 s and the summary 3.76 s.
+  * The cost grows with the square of the client's invoice count, so a faster machine only moves the point where it fails.
+* **Fix**, either one:
+  * make `ledgerCtes` linear when it estimates 1 row: read each fact table once with `= ANY(ids)` into a materialized step joined by id, and put the totals in their own materialized step;
+  * or set `STATEMENT_LINE_MAX`, a Sample value, to a limit proven on stale statistics.
+
+**R3-2 (Must; R3-1 is not closed without it).** The fail test that R2-M1 needs (WAY-OF-WORKING step 4) does not exist yet.
+* `check_fo7r_statement_send.ts:279` asserts `!(3001 < 3000)`. It cannot fail, yet it counts towards 32/32.
+* **The stale step is racy.** The 20,000-row seed and its `analyze` run in one psql call, so `n_mod_since_analyze` is still 22,500 afterwards and autovacuum re-analyzes on its next pass.
+  * In one of my runs that happened mid-run, and the "stale" PDF took 153 ms.
+  * In another run, 3,000 lines took 4,965 ms and failed the 3 s line.
+* **Replace it with:**
+  * autovacuum off on the money tables for that step, or `analyze` in its own call;
+  * a client at the line limit that prints and sends;
+  * one line over the limit that answers 422 "choose a shorter period", not 500.
+* Both of those fail on this head.
+
+**Journey (this head):** 7.5/10, which is below the pass mark. Speed goes from 1 to ½ (a statement within the limit gets 500 on stale statistics). Error recovery stays ½ (a 500 gives no reason). The other criteria are unchanged. Fixing R3-1 brings it back to 8.
+**Could not check:** `graph.mjs` (it writes `GRAPH.md`, and this diff adds no route); timing on a CI runner; the real `MessagesMail` (unchanged since round 2).
+
+**Verdict: Block.** To fix: R3-1, with R3-2's test.
+
+Reviewer: Changes 6434d8e31accb76362c7e07f9170a823d0836461

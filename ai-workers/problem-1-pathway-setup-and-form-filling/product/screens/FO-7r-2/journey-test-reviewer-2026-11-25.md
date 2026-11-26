@@ -73,3 +73,32 @@ I walked J1–J10 again over HTTP, using the check (26/26) and my probe (scratch
 | Visual quality | ½ | ½ | unchanged (columns not aligned) |
 | Trust and sources | 1 | 1 | unchanged |
 | **Total** | 6.5 | **8 / 10** | **Pass**, with no 0 |
+
+## Round 3 (2026-11-26, head `6434d8e31accb76362c7e07f9170a823d0836461`)
+I ran the check on an archived copy of the head (32/32), with my probes on scratch databases. All of them were dropped.
+* **J11, new: the period is named on purpose.** This holds.
+  * Everything: SENT.
+  * Dates 2020-01-01 to 2020-01-31: SENT, and the PDF equals that period's download.
+  * No period: 422 naming `period`, also for an unknown client.
+  * Everything with a date: 422, "Everything takes no dates: choose Dates to send a from and to."
+  * Dates with no dates: 422 naming `from`.
+  * None of these sent anything or wrote an audit line.
+* **J6 holds again only on fresh statistics.**
+  * Fresh statistics: 4,000 lines are SENT, 5,000 lines print in about 200 ms.
+  * Stale statistics, 2,500 invoices with one payment each (5,000 lines): the PDF and Send each answer 500 after 7.1–7.8 s, and nothing is sent.
+  * Stale statistics, 4,000 lines: the PDF takes 4.97 s, then fails with 500 at 5.49 s.
+* **Figures:** a dated period (22 lines with earlier history) matches part 1's JSON line by line, and the last balance equals the closing.
+
+| Criterion | R2 | R3 | Evidence |
+|---|---|---|---|
+| Task completed | 1 | 1 | J1–J7 and J11 complete on normal clients |
+| Next step obvious | ½ | ½ | NOT_SENT still gives no reason |
+| Plain words | 1 | 1 | the period errors are in plain words |
+| Feedback and state | 1 | 1 | SENT / HELD / NOT_SENT; a 500 sends nothing |
+| Correct data | 1 | 1 | the dated-period probe matches; closing = Σ facts |
+| Error recovery | ½ | ½ | J8 double send; a 500 gives no reason |
+| Accessibility and screen sizes | ½ | ½ | unchanged |
+| Speed | 1 | ½ | stale statistics: a statement within the limit fails with 500 at 5,000 lines (7.1–7.8 s) |
+| Visual quality | ½ | ½ | unchanged |
+| Trust and sources | 1 | 1 | unchanged |
+| **Total** | 8 | **7.5 / 10** | **Below pass.** Fix review R3-1 (with R3-2's test) to bring speed back to 1 |

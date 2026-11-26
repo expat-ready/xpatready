@@ -97,3 +97,68 @@ Round 1's pages of 200 did not have this problem. The PR's own check adds `analy
 - A company billed on a case that is linked to a person is refused with 404 for that case, while part 1's JSON answers it. Nothing on main writes `money_invoice.case_id`, and trust checks the case's party, so this cannot happen today.
 
 Verdict (round 2): Changes
+
+## Round 3 (diff-only, 6434d8e31)
+
+Head tested: `6434d8e31accb76362c7e07f9170a823d0836461`, only `git diff bbeb2bd7..6434d8e3`. Isolated copy `brk3fo7r` on :4433 (`isolated.sh … PLATFORM_IDENTITY=local`: the app's real mail stack, live AI off, US$0), stopped and its database dropped afterwards. Fixtures went through the real routes, and bulk rows were written with SQL in replica mode. Autovacuum was off on the money tables so that the statistics lag stays fixed. Timings are given without auto_explain (I used it only to read the plans). The PR's check passes 33/33, and the PF-28 sweep passes 51/51 against the copy.
+
+**R3-M1 (Major; R2-M1 is only fixed below about 3,500 lines). With out-of-date statistics, a statement inside the 5,000-line limit still answers 500, and so does the summary.**
+- Setup: 20,000, then 60,000 other invoices (each with a line and a payment), then `analyze`.
+- Then one client gets N invoices with a payment each, not analyzed. In the 81,000-row run the new rows stayed below the 10 % re-analyze threshold.
+
+| Lines (stale) | PDF | Send | Summary alone | Part 1 JSON page |
+|---|---|---|---|---|
+| 800 | 0.24 s, 200 | 0.26 s | 0.11 s | 0.14 s |
+| 2,000 | 1.25 s, 200 | 1.37 s | 0.72 s | 0.65 s |
+| 3,000 | 2.7 s, 200 | 2.8 s | | |
+| 3,500 | 4.0 s, 200 | 4.0 s | 2.3 s | |
+| 4,000 | 5.0 s, **500** | 4.9 s, 200 | | |
+| 5,000 | 7.6–8.5 s, **500** | 7.6–8.3 s, **500** | 4.0 s | 3.8–4.5 s |
+| 5,000 (5,000 invoices, no payments) | 17.8 s, **500** | | 18.4 s, **500** | |
+| 6,000 (over the limit) | 6.0 s, 422 (expected) | | 5.6 s, **500** | 5.8 s, **500** |
+
+- The log shows Prisma P2028: the transaction expired after its 5 s limit.
+- After `analyze`, the same 5,000-line client takes 0.24 s (PDF), 0.27 s (Send) and 0.08 s (summary).
+- With no statistics at all (a fresh copy), 1,000 lines take 0.28 s, but 5,000 lines take 4.0 s (PDF) and 4.3 s (Send), about 1 s under the limit.
+- A failed Send sends no email and writes no line, so it fails closed.
+- Cause, from the plans: `wholeSql` removed the page self-join, but `ledgerCtes`, which the PDF, Send, summary and JSON all share, is still quadratic when it estimates 1 row per client:
+  - `statement.ts:66-67`: the `inv` total is a Nested Loop Left Join that rescans the grouped line sums for each invoice (2,500 loops, "Rows Removed by Join Filter: 3,123,750", 1.5 s). Its index probe has `invoice_id = inv0.id AND invoice_id = ANY(ids)`, 0.48 ms × 2,500.
+  - `statement.ts:79-80`: the payment branch probes the same way, 0.61 ms × 2,500 = 1.5 s.
+  - The `agg` change in `summary.ts:46-58` does not touch this, because the time goes into the `ledgerCtes` that it reads.
+  - `send.ts:121` and `send.ts:123` run both reads (about 4 s each) in one 5 s transaction (`send.ts:131`).
+- Expected (R2-M1): any statement within `STATEMENT_LINE_MAX` prints and sends, whatever the statistics are, and an over-limit client gets 422 or a summary, never 500.
+
+**R3-m1 (Minor). The stale-statistics check cannot catch R3-M1.**
+- `tests/check_fo7r_statement_send.ts:230-236` seeds 1,500 invoices (3,000 lines) and bounds them at 3 s. They measured 2,606 ms here and 2,715 ms on the copy, so a busy CI runner will make the test flaky.
+- It logs the summary's time but never asserts it (`:233`).
+- Nothing tests at or near the 5,000-line limit, which is where the 500 starts.
+
+**What held**
+- **R2-M1 at round 2's sizes:** 800 lines now take 0.24 s, down from 8.5 s and a 500. 2,000 lines take 1.25 s, down from 171 s.
+- **Figures** (a client with an invoice, payments, a refund, a credit note, a write-off, kept credit, USD, a trust deposit and trust applied, spread over 2026):
+  - Periods tried: Everything, from-only, to-only, both, an empty period, a single day, and a case with Everything, from–to, to-only and from-only. In each, every PDF line's amount and running balance equals part 1's JSON, walked in pages of 7.
+  - Opening and closing are printed, the last running balance equals the closing, and the audit's `closing` equals the JSON closing.
+  - The closing of CAD 1,805.50 equals Σ facts computed by hand, and the bulk clients close at N × 6.00.
+- **Period rules:**
+  - `{}`, no body, null, `everything`, `" EVERYTHING"`, `ALL`, a number, an array, or a `Period` key: 422 naming `period`.
+  - Everything with `from` or `to`: 422 naming `period`. Everything with a `caseId`: 200, case only.
+  - Dates with only `to` or only `from`: 200. Dates with neither, or with only a `caseId`: 422 naming `from`.
+  - `from > to`, with or without a case: 422 naming `to`.
+  - `from` of `""`, `null` or 2026-02-30: 422 naming `from`.
+  - Dates with another client's case: 404.
+  - None of these sends anything or writes an audit line.
+- **Path order:**
+  - Kind `logo`, `PERSON`, `person%20`, or `company` with a person's id: 404.
+  - An id of `not-a-uuid`, 10,000 characters, or a uuid with a suffix: 404, before the body, even with an unknown field.
+  - A well-formed unknown uuid: `{}` gives 422 `period`, and `from > to` gives 422 `to`, before the client lookup. A valid body gives 404.
+  - The client's own id in upper case: 200.
+  - An array body: 422. `"x"`, `null` or broken JSON: 400 (platform-wide).
+- **R2-m1 on the real port:** `a@b-.example`, `a@-b.example`, `a@b.example-`, `ü@…`, `a@bücher.example`, `a@ex.c`, `a.@…`, `.a@…`, an IP literal, `a@example`, `a@b..example`, a trailing dot, `localhost` and `a@b_c.example` each give 422 naming `to`, with no line. None answered NOT_SENT.
+- No 500 anywhere outside R3-M1.
+
+**Notes, not findings**
+- **Firm wall:** another firm's real client with `{}` gets 404 from the firm-walls interceptor, while an unknown uuid with `{}` gets 422. That tells a caller the id exists in some firm. Any invalid body did the same before this diff, and the behaviour is platform-wide.
+- **Order differs between sibling routes:** the PDF and JSON parse the query before the path's shape (`send.ts:114`, `statement.ts:111`), while Send now checks the path first. Each order meets PF-28 (b) on its own.
+- **Overlong addresses:** a 65-character local part and 64-character labels are SENT, because the channel's own rule takes them.
+
+Verdict (round 3): Changes 6434d8e31accb76362c7e07f9170a823d0836461
