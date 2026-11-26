@@ -81,3 +81,4 @@ Drafter's response (16 Nov, for Build Lead C, who approves). Every Blocker and M
 ## Agreement
 
 ## Build discoveries
+* **FO-7s2-1 (26 Nov, runtime lane, PR #3808; breaker M2, reviewer m5):** the concept's "Card payments: on / off" for a non-Owner (concept-settings.md "Card payments") and FO-7s2's check "a non-Owner sees the status" have no read behind them: `GET …/payment-account` is Owner only (rev 16.36), and the `cardPayments` boolean "in their own reads" is answered by no route on main. Part 1 shows a non-Owner only "Only the Owner manages card payments" (the concept's own line). **Recommended:** FO-7s2 part 2 adds `cardPayments` to the invoice detail read it already needs for "Copy pay link" (FO-7q, one field), and Getting paid reads it from there; until then the check's non-Owner line stays open. Question 2 on #3808.

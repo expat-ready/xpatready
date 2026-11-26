@@ -30,26 +30,32 @@ export function said(a: Pick<Account, "status" | "chargesEnabled" | "alert">): S
   if (a.status === "RESTRICTED")
     return { words: "Stripe needs more details. Until you finish, clients see your payment details instead of a card button.", step: "Update details on Stripe", tone: "warn", broken: false };
   if (a.status === "ACTIVE") return { words: "Clients can pay invoices by card. Money goes to your own Stripe account.", step: null, tone: "ok", broken: false };
-  // A new account still PENDING after a disconnect keeps the alert (FO-7c, Lead B on #2938): the words stay "checking", the
-  // alert line shows above them.
-  if (a.status === "PENDING") return { words: "Stripe is checking your details.", step: "Continue set-up", tone: "info", broken: !!a.alert };
+  // A new account still PENDING after a disconnect keeps the alert (FO-7c, Lead B on #2938): one alert, saying both (break m2).
+  if (a.status === "PENDING" && a.alert) return { words: "Payment account disconnected. Stripe is checking the details of your new account; until it finishes, clients see your payment details instead of a card button.", step: "Continue set-up", tone: "danger", broken: true };
+  if (a.status === "PENDING") return { words: "Stripe is checking your details.", step: "Continue set-up", tone: "info", broken: false };
   return { words: "Clients can't pay by card yet.", step: "Connect with Stripe", tone: "info", broken: false };
 }
 
-/** The words for a back-link from Stripe (`?account=return|refresh`, FO-7c's return and refresh addresses). */
-export function backWords(param: string | null): string | null {
-  if (param === "return") return "Back from Stripe. If you finished, Stripe now checks your details; this page shows the result when Stripe tells us.";
-  if (param === "refresh") return "That Stripe set-up link has expired. Use the button below to get a new one.";
+/** The words for a back-link from Stripe (`?account=return|refresh`, FO-7c's return and refresh addresses), read once when the
+ *  page opens (the page then drops the query, so a reload never brings it back: break m1, review m3). "Use the button below"
+ *  only while a step is offered; "checking" only while the account is still being checked. */
+export function backWords(param: string | null, s: Pick<Said, "step"> & { status: Status }): string | null {
+  if (param === "refresh" && s.step) return "That Stripe set-up link has expired. Use the button below to get a new one.";
+  if (param === "return" && s.status === "PENDING") return "Back from Stripe. Stripe now checks your details; reload this page in a few minutes to see the result.";
   return null;
 }
 
 /** A refusal of the onboarding call, in words. Step-up is handled by "Confirm it's you" before this is reached. */
-export function refusalWords(status: number, code: string | undefined, detail: string | undefined): string {
+export function refusalWords(status: number, code: string | undefined): string {
   if (code === "PAYMENT_ACCOUNT_NOT_SET_UP") return "Card payments are not set up on this server yet. Nothing was changed.";
   if (code === "PAYMENTS_NOT_SET_UP") return "Set up payments first: this firm's payment settings are not saved yet. Nothing was saved.";
   if (status === 403) return "Only the Owner manages card payments.";
-  return detail && detail.length < 300 ? detail : "Could not reach Stripe now. Nothing was changed. Please try again.";
+  if (status === 429) return "Too many tries just now. Nothing was changed. Please wait a minute and try again.";
+  return "Could not reach Stripe now. Nothing was changed. Please try again.";   // never the server's raw text (break m3)
 }
 
-/** Only a Stripe address is followed (the server answers Stripe's hosted page; the fake rail answers a fake-rail address). */
-export const safeStripeUrl = (u: string) => { try { const h = new URL(u); return h.protocol === "https:" && /(^|\.)(stripe\.com|fake-rail\.example)$/.test(h.hostname); } catch { return false; } };
+/** Only Stripe's hosted set-up page is followed: https, the default port, `connect.stripe.com`; on a copy the fake rail's
+ *  `connect.fake-rail.example` (a name under the reserved .example domain, never resolvable). */
+export const safeStripeUrl = (u: string) => { try { const h = new URL(u); return h.protocol === "https:" && h.port === "" && !h.username && (h.hostname === "connect.stripe.com" || h.hostname === "connect.fake-rail.example"); } catch { return false; } };
+/** The read failed: fixed words, never the server's title (review m4); an unknown state is the same (break m4). */
+export const READ_FAILED = "Card payments could not be read just now. Nothing has changed. Try again in a minute.";
