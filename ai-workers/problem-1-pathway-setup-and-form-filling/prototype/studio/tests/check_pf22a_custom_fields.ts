@@ -167,7 +167,8 @@ try {
   const readerGet = await call("GET", path, reader.token), readerPut = await call("PUT", path, reader.token, { version: saved.body.version, values: { follow_up_date: "2027-01-01" } });
   ok("PF-22a C3 pass/fail: with everyone-sees-all, a Read-only person reads the values (canEdit false) and a PUT → 403", readerGet.status === 200 && readerGet.body.canEdit === false && readerPut.status === 403, [readerGet.body, readerPut.status]);
   const badId = await call("GET", "/values/fo_prospect/not-a-uuid", agent.token), badKind = await call("GET", `/values/case_x/${prospect.id}`, agent.token);
-  ok("PF-22a C3 fail: a malformed id → 404, an unregistered kind → 400", badId.status === 404 && badKind.status === 400, [badId.status, badKind.status]);
+  const emptyPatch = await call("PATCH", `/${ref.body.id}`, owner.token, {});
+  ok("PF-22a C3 fail: a malformed id → 404; an unregistered kind in the record's address → 404 (PF-28: a path is an id); a PATCH naming nothing → 422", badId.status === 404 && badKind.status === 404 && emptyPatch.status === 422, [badId.status, badKind.status, emptyPatch.status]);
 
   // ------------------------------------------------------------------ C4: archive with a confirm
   const archive = await call("PATCH", `/${due.body.id}`, owner.token, { archived: true });

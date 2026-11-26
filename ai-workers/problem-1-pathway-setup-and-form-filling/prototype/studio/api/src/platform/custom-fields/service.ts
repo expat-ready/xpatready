@@ -32,7 +32,8 @@ const help = z.string().refine((s) => [...trimText(s)].length <= LIMITS.helpText
 const choices = z.array(z.string().max(400)).max(LIMITS.choices);
 export const AddField = strict({ kind: z.string().max(64), label, type: CustomFieldType, required: z.boolean().optional(), options: choices.optional(), helpText: help.optional() });
 export const ChangeField = strict({ label: label.optional(), type: CustomFieldType.optional(), required: z.boolean().optional(), options: choices.optional(), helpText: help.optional(),
-  position: z.number().int().min(0).max(1000).optional(), archived: z.boolean().optional(), confirm: z.boolean().optional() });
+  position: z.number().int().min(0).max(1000).optional(), archived: z.boolean().optional(), confirm: z.boolean().optional() })
+  .refine((b) => Object.keys(b).some((k) => k !== "confirm"), { error: "Name what to change." });
 export const PutValues = strict({ values: z.record(z.string().max(40), z.unknown()), version: z.string().max(80) });
 
 /** A field as the API answers it. */
@@ -60,9 +61,12 @@ function dbRefusal(e: unknown): never {
 export class CustomFieldsService {
   constructor(private readonly d: CustomFieldDeps) {}
 
-  private access(kind: unknown): { kind: string; access: EntityAccess<StaffContext> } {
+  /** A kind's checks. In a query or body an unregistered kind is 400 UNKNOWN_KIND; in a path (the values routes) it is
+   *  part of the record's address, so it is the one not-found, as a bad id is (PF-28's rule). */
+  private access(kind: unknown, inPath = false): { kind: string; access: EntityAccess<StaffContext> } {
     const k = typeof kind === "string" ? kind : "";
     const access = this.d.registry.accessOf(k);
+    if (!access && inPath) return notFound("record");
     if (!access) return problem(400, "Unknown record type", "Custom fields are not available for this record type.", { code: "UNKNOWN_KIND", kinds: this.d.registry.kinds() });
     return { kind: k, access };
   }
@@ -137,8 +141,8 @@ export class CustomFieldsService {
 
   /** Changes a field (agent/custom-field:manage): label, required, choices, help text, place, type (only while unused), archive. */
   async change(ctx: StaffContext, id: string, body: unknown): Promise<FieldView> {
+    const b = parseInput(ChangeField, body ?? {});   // PF-28: the body's field errors (422) before the lookup
     if (!UUID.test(id)) return notFound("field");
-    const b = parseInput(ChangeField, body ?? {});
     const firmId = firmScope(ctx.firmId).firmId;
     const found = await this.d.db.platCustomField.findFirst({ where: firmScope(firmId, { id: id.toLowerCase() }) });
     if (!found) return notFound("field");
@@ -206,7 +210,7 @@ export class CustomFieldsService {
 
   /** A record's active fields and values, whether this person may change them, and the version to send back. */
   async readValues(ctx: StaffContext, kindRaw: unknown, idRaw: string) {
-    const { kind, access } = this.access(kindRaw);
+    const { kind, access } = this.access(kindRaw, true);
     const id = UUID.test(idRaw) ? idRaw.toLowerCase() : notFound("record");
     if (!(await access.canView(ctx, id))) return notFound("record");
     return this.read(this.d.db, ctx.firmId, kind, id, await access.canEdit(ctx, id));
@@ -226,11 +230,11 @@ export class CustomFieldsService {
 
   /** Saves a record's values: only the keys sent change (null or empty clears one); every required field must end filled. */
   async put(ctx: StaffContext, kindRaw: unknown, idRaw: string, body: unknown) {
-    const { kind, access } = this.access(kindRaw);
+    const b = parseInput(PutValues, body ?? {});   // PF-28: the body's field errors (422) before the lookup
+    const { kind, access } = this.access(kindRaw, true);
     const id = UUID.test(idRaw) ? idRaw.toLowerCase() : notFound("record");
     if (!(await access.canView(ctx, id))) return notFound("record");
     if (!(await access.canEdit(ctx, id))) return problem(403, "Not allowed", "You can see this record but not change it.", { code: "NOT_ALLOWED" });
-    const b = parseInput(PutValues, body ?? {});
     const firmId = firmScope(ctx.firmId).firmId;
     try {
       return await this.d.db.$transaction(async (tx) => {
