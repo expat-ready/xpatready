@@ -7,3 +7,9 @@
 
 ## Moved by Lead 1, 26 Nov 11:46 IST (superseded by plan v2)
 **Plan of action (Lead 1, A396), in A386 order:** (0) canary push proves the new account, founder signs in claude.ai + GitHub in the pane; (1) unblock the queue: one fix-up cloud lane per conflicted or red approved PR (merge main once, fix the guard, re-run), Lead reads of #2129 #3647 #3701 #3715 #3696 #3506, relabel; (2) qa 1-3 prove the ~23 unproven merges; (3) Partials nearest to proven, one session per capability within `waves.py allow`, WIP cap 8; (4) outside accounts for the 14 blocked rows (AWS, Stripe test, BoldSign sandbox, Google/Microsoft OAuth, alarm) with the founder signing in. GitHub workflows use only the built-in GITHUB_TOKEN; no outside keys are set up yet (AWS secrets not checked: no AWS sign-in here).
+
+
+## Moved by Lead 1, 26 Nov (first-hour line)
+**Lead 1, new account (from 11:07 IST 26 Nov, local_90e2d17d, check 9ee4a01a):** weekly 39% (Ultra, resets 28 Nov 20:29 IST). Started: cloud 'qa 1 · proof for merges with no qa proof' (task_6b2be700, push canary on `claude/qa1-2026-11-26`), standbys Lead 2 local_43b637a0 and Lead 3 local_adad5033 (Mac, preflight 29.6 GB). #3693 (OS-15) Lead read posted and labelled 11:1x. Nightly part 7 (fo7s3a walk timeout) re-run. Measured 11:1x: queue empty except #3693; dequeued or conflicted with Approve: #3418 (dirty, red ci), #3681 (dirty), #3696 #3715 (dirty), #3755 (dirty, red ci), #3692 #3734 #3623 (guards red), #3733 #3421 #3659 (review-rounds red); Lead reads owed: #3715 #3696 #3506 #2129 #3647 #3701. claude.ai and GitHub signed out in the browser pane: founder signs in.
+
+**Numbers (00:03):** 64/110 Works (+9 on 25 Nov; 17 Partial, 29 Not built); merges 3.7/h; red batches 7 of 22 in 6 h (constraint, easing). Control room v7: claude.ai/artifact/DmNfxoqNqmoPYTkX6XvZb2 (source `design/control-room-2026-11-25.html`).
