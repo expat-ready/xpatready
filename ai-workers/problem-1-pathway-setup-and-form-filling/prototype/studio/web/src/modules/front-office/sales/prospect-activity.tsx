@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Button, Field, Input, Notice, Panel, Pill, Select, Textarea } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FoldArrow } from "@/components/fold-out";
 import { can, KEY, type Me } from "./contract";
 import { staffApi, StaffApiError } from "./session";
 
@@ -89,7 +90,7 @@ export function ProspectActivity({ prospectId, name, me }: { prospectId: string;
                   <Pill className="mt-0.5 w-16 self-start justify-center">{KIND[l.kind]}</Pill>
                   <div className="min-w-0 flex-1">
                     {l.kind === "NOTE" || l.kind === "CALL" ? <><p className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${cut && !long.has(id) ? "line-clamp-3" : ""}`} data-prospect-words><bdi>{l.summary}</bdi></p>
-                      {cut ? <button type="button" className="text-xs font-medium text-text-link underline" aria-expanded={long.has(id)} onClick={() => setLong((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} data-prospect-show-more>{long.has(id) ? "Show less" : "Show all of it"}</button> : null}</> : <p>{wordsOf(l)}</p>}
+                      {cut ? <button type="button" className="text-xs font-medium text-text-link underline" aria-expanded={long.has(id)} onClick={() => setLong((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} data-prospect-show-more><FoldArrow open={long.has(id)} />{long.has(id) ? "Show less" : "Show all of it"}</button> : null}</> : <p>{wordsOf(l)}</p>}
                     <p className="text-xs text-text-muted">{l.actorName ?? (l.actor ? "Someone at the firm" : "The system")} · <time dateTime={l.at} title={new Date(l.at).toString()}>{when(l.at)}</time></p>
                   </div>
                 </li>); })}</ol>}
