@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
 import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
+import { customFieldIdsWhere } from "../../platform/custom-fields/filter.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/calendar/working-days.ts";
 import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
@@ -40,7 +41,7 @@ export class Leads {
 
   /** Unassigned leads (open, no active owner, oldest first), Mine, All open, Closed; each open row with the time it has
    *  waited in the firm's open hours (BR-4, AG-2-13c rule 6), worked out here. */
-  async list(ctx: StaffContext, view: unknown, source?: unknown, f: { owner?: unknown; from?: unknown; to?: unknown } = {}) {
+  async list(ctx: StaffContext, view: unknown, source?: unknown, f: { owner?: unknown; from?: unknown; to?: unknown; cf?: Record<string, string[]> } = {}) {
     const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine, all or closed.", { view: "Unknown view." });
     const vis = await visibilityOf(this.db, ctx);
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
@@ -50,13 +51,14 @@ export class Leads {
     const asked = await sourcesChecked(this.db, ctx, vis, source, inactive);
     // FO-2 part 3: the owner (a staff member of the firm) and the arrival day (in the firm's zone) narrow inside the visibility, as the source does.
     const owner = await ownerAsked(this.db, ctx.firmId, f.owner), arrived = await dayRange(this.db, ctx.firmId, f.from, f.to);
+    const custom = await customFieldIdsWhere(this.db, ctx.firmId, "fo_person", f.cf ?? {});   // PF-22v: cf.<key> on the lead's person, inside the visibility
     const state: FoLeadState = v === "closed" ? "CLOSED" : "OPEN";
     const where = v === "unassigned" ? { state, OR: [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] }
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
       : { state, ...leadsSeenWhere(ctx, vis, inactive) };   // in the query, before the page cap (review m5)
     const rows = await this.db.foLead.findMany({
       // The source filter narrows inside the visibility, never widens it (FO-4sf).
-      where: firmScope(ctx.firmId, { AND: [where, asked.length ? { source: { in: asked } } : {}, owner ? { ownerStaffId: owner } : {}, arrived ? { arrivedAt: arrived } : {}] }), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
+      where: firmScope(ctx.firmId, { AND: [where, asked.length ? { source: { in: asked } } : {}, owner ? { ownerStaffId: owner } : {}, arrived ? { arrivedAt: arrived } : {}, custom ? { personId: { in: custom } } : {}] }), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
       include: { person: { select: { givenNames: true, familyName: true, phoneReadable: true } }, interestedIn: { select: { label: true } } },
     });
     const unowned = (o: string | null) => o === null || inactive.includes(o);

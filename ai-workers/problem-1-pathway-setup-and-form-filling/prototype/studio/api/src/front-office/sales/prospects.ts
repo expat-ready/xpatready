@@ -12,6 +12,7 @@ import { EVENT, LeadEventPayload, ProspectEventPayload, ProspectMovePayload, Pro
 import { wonDuplicates } from "../duplicates/service.ts";
 import { logPort } from "../../platform/observability/log.ts";
 import { Db } from "../../core.ts";
+import { customFieldIdsWhere } from "../../platform/custom-fields/filter.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS } from "../../platform/http/input.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -199,7 +200,7 @@ export class Prospects {
    *  ones, never Lost unless `stage` asks for the LOST stage (the Lost filter); `owner`, `source` (the lead's, checked
    *  as Leads checks it; R1.30, QA-533) and `from`/`to` (the day it was engaged, in the firm's zone) narrow inside the
    *  visibility, never widen it. */
-  async list(ctx: StaffContext, q: { type?: unknown; stage?: unknown; owner?: unknown; source?: unknown; from?: unknown; to?: unknown }) {
+  async list(ctx: StaffContext, q: { type?: unknown; stage?: unknown; owner?: unknown; source?: unknown; from?: unknown; to?: unknown; cf?: Record<string, string[]> }) {
     const t = q.type === undefined || q.type === "" ? "INDIVIDUAL" : (TYPES as readonly unknown[]).includes(String(q.type).toUpperCase()) ? (String(q.type).toUpperCase() as FoPipeline) : bad("type: INDIVIDUAL or CORPORATE.", "type");
     const stages = await this.db.foStage.findMany({ where: firmScope(ctx.firmId, { pipeline: t }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
     const stageKey = q.stage === undefined || q.stage === "" ? null : String(q.stage).toUpperCase();
@@ -208,10 +209,11 @@ export class Prospects {
     const range = await dayRange(this.db, ctx.firmId, q.from, q.to);
     const { vis } = await this.seer(ctx);
     const sources = await sourcesChecked(this.db, ctx, vis, q.source);
+    const custom = await customFieldIdsWhere(this.db, ctx.firmId, "fo_prospect", q.cf ?? {});   // PF-22v: cf.<key>, inside the visibility
     const rows = await this.db.foProspect.findMany({
       where: firmScope(ctx.firmId, {
         AND: [{ type: t }, vis.seesAll ? {} : { ownerStaffId: ctx.staffId }, stage ? { stageId: stage.id } : { stage: { kind: { not: "LOST" as const } } },
-          owner ? { ownerStaffId: owner } : {}, sources.length ? { lead: { source: { in: sources } } } : {}, range ? { createdAt: range } : {}],
+          owner ? { ownerStaffId: owner } : {}, sources.length ? { lead: { source: { in: sources } } } : {}, range ? { createdAt: range } : {}, custom ? { id: { in: custom } } : {}],
       }),
       include: { stage: true, subjectPerson: true, subjectCompany: true, lostReason: { select: { key: true, label: true } } }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 500,
     });
