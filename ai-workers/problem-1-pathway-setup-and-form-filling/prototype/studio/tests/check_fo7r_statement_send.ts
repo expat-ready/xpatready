@@ -20,6 +20,8 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { runContract } from "../ports/contracts/contract.ts";
+import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
 import { fakeMail } from "../ports/mail.ts";
 import { moneyVisible } from "./lib/money-visible.ts";
 
@@ -263,5 +265,13 @@ try {
   await app?.close(); await owner.$disconnect();
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* a later prune drops it */ }
 }
+// PF-0c (P-606 (8)): StatementDocuments is a DocumentRenderPort adapter, so it runs that port's shared contract, read back
+// with FO-7b's text-page reader. Pure: no database.
+const { StatementDocuments, STATEMENT_TEMPLATE } = await import("../api/src/client-money/reports/statement-document.ts");
+const stmt = { firmName: "Sample Firm", firmAddress: "", billTo: "Client A", period: "Everything", issuedOn: "2026-11-26",
+  accounts: "Invoices and payments (CAD)\nOpening balance: CAD 0.00\nNo entries in this period\nClosing balance: CAD 0.00", held: "", summary: "As of 2026-11-26:\nOwed: CAD 0.00" };
+const stmtText = (bytes: Uint8Array) => [...Buffer.from(bytes).toString("latin1").matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => m[1]).join("\n");
+await runContract(documentRenderPortContract, "StatementDocuments", () => ({ render: new StatementDocuments(), template: STATEMENT_TEMPLATE, data: stmt,
+  reordered: Object.fromEntries(Object.entries(stmt).reverse()), other: { ...stmt, summary: "As of 2026-11-26:\nOwed: CAD 0.01" }, text: stmtText }), ok);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
