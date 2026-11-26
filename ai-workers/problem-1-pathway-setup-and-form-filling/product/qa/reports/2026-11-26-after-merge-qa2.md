@@ -48,3 +48,7 @@ Merged since round 1: #3640 (R1.64 PF-F2 part 1b), #3812 (R1.79 PF-R2cm), #3805 
 ## Round 3 (main e673b5701, ~14:2x IST)
 * R1.85: PF-21d part 2b-1 (#3713) merged. j_85 is **21/21 on GitHub** (walks run 45785023537 on e13169736, walk on merge) and 21/21 here. One named part is still open: 2b-2 (the insert-only tables, filed mail), which #3713 itself defers. Partial, with a question to the Lead: if 2b-2 is outside R1.85, it becomes Works on that run.
 * R1.79: PF-R2fo (#3734) merged. Only PF-R3 (the Reports page) is left.
+
+## Round 4 (main 55c027a8d, ~14:4x IST)
+* R1.112: FO-3v part 1 (#3418) merged. It was not the last part: part 1b (the My account → Video panel, DW7) and part 2 (Zoom, DW4 and DW8) are still to come, as #3418 itself says. `check_fo3v_video.ts` is 33/33 on main. Partial (was Not built).
+* Environment note: after a merge that adds Prisma models, a cloud copy has to run `prisma generate` again. On a stale client the check first answered 500 ("reading 'count'"). That was a fault in my copy, not the app's.
