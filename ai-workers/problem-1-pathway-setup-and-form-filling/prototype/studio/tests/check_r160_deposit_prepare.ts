@@ -276,7 +276,7 @@ try {
   ok("R1.60 case 15 pass (R1): the listener's code names no invoice table or service", !/money_invoice|moneyInvoice|InvoiceDrafts|InvoiceMoney/.test(src.replace(/^\/\/.*$/gm, "")));
 
   // ------------------------------------------------------------- review a1 M1: the recorded rollback, then forward again
-  const migDir = join(MIG, "20261125150000_client-money__r160_trust_request_prepared");
+  const migDir = join(MIG, "20261126064000_client-money__r160_trust_request_prepared");
   const cols = () => sql(`select coalesce(string_agg(column_name, ',' order by column_name), '') from information_schema.columns where table_name = 'money_trust_request' and column_name in ('prepared_at', 'estimated_tax_minor')`);
   ok("R1.60 a1 M1 fail: before the rollback both columns are there", cols() === "estimated_tax_minor,prepared_at");
   execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-1", "-f", join(migDir, "rollback.sql")], { stdio: ["ignore", "ignore", "pipe"] });

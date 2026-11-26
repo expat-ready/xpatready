@@ -105,3 +105,42 @@ Tax matches a typed line in an ON firm (13 %), a BC firm (5 %) and an unregister
 **8 / 10, no 0: pass.** Fix r1 first (Correct data back to 1), then r4.
 
 **Not tested:** a screen reader, a visible-browser walk, an intended user's walk (D17 and D20 stay with the founder).
+
+## Re-run on 6dc148b1e (diff only, reviewer role)
+The diff adds RetainerFeesPort's contract and its run (R11). The adapter now returns null for a firm id that is not a uuid. Its only caller, `drafts.ts:209`, passes `firmScope(ctx.firmId).firmId`, so the API never reaches that case.
+
+**What I ran:** the check, **39/39**. Journeys 1–8 (R1–R10) pass as before. I did not re-run j_56, because no route, answer or data changed.
+
+**Journeys that changed:** none.
+
+**Score:** **8/10, pass**, unchanged (the table above, from c5e9aede5). The low criterion is still Correct data at ½ because of review r1.
+
+## Re-run on c21b5cb38 (PR #3737, follow-up, diff only, reviewer role)
+**What I ran:**
+* j_56 on an isolated copy at :4434: **17/18**. W1–W8 pass; W9's pay link is FO-7c/FO-7s2, as before. The copy is stopped, and the W9 screenshots are restored.
+* The check: **43/43** in the checkout, 5 runs, 3 of them under CPU load. Mutants and probes are in `review-followup.md`.
+
+**Journeys that changed:**
+* **1, Main path, with a label as signed.** A Persian label with a ZWNJ, a family emoji (ZWJs) and a soft hyphen reaches the line unchanged (201). Embedded LRM, RLM, ZWSP and WJ characters are kept too. **Held.**
+* **4, Error, now a pass.** A label holding a C1 control (NEL) is billed with a space in its place, where before the bill was refused. A label with nothing printable left gives 422 at `feeRowIds` naming "Fee row 2", with nothing written. **Held.**
+* **8, Recovery: another writer at once.** A row written by an outside writer while the start waits on the index gives 409 `ROW_ON_INVOICE` naming that row, and the row is on one line only. **Held**, every run.
+* **3, Empty.** `NOTHING_TO_BILL` now fits a retainer that never billed anything. The deposit-only reading is slightly awkward (n2). **Held.**
+
+**Break it:** isolates U+2067 and U+2069 are dropped, and leading C1 characters are trimmed. A mark between two controls leaves a double space (cosmetic).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | j_56 W1 201; W7 issues |
+| Next step obvious | 1 | No empty draft. Refusals say what to do |
+| Plain words | 1 | Refusals end "Nothing was saved."; one Nit on the deposit-only words (n2) |
+| Feedback and state | 1 | 409 for state, 422 at the field, `feeRowIds` on both 409 shapes |
+| Correct data | 1 (was ½) | Labels are copied as signed, except only what `money_text_ok` refuses (every code point checked). Amounts, tax and billed-once are unchanged |
+| Error recovery | 1 | Each refusal writes no draft and no audit line |
+| Accessibility and screen sizes | ½ | No screen |
+| Speed | ½ | Not measured against §9; one query and one insert per row (round 1's m5) |
+| Visual quality | ½ | No screen |
+| Trust and sources | 1 | `sourceFeeRowId` on each line; Sample data only; no AI |
+
+**8.5 / 10, no 0: pass.** The rest waits for the screen (FO-7s1, FO-7s2) and round 1's m5.
+
+**Not tested:** a screen reader, a visible-browser walk, an intended user's walk (D17 and D20 stay with the founder).

@@ -19,6 +19,7 @@ export const NOTIFICATION_KIND = {
   LEAD_ASSIGNED: "lead-assigned", // PF-18n part 2: a lead handed to me by the firm's rule or by someone's Assign (AG-16-10 test 1, AG-10-29a)
   KEEP_PERIOD_PASSED: "keep-period-passed", // CS-D6 part 2: a closed client file is past the firm's keep period (SA-11-33; a reminder, weekly)
   TRUST_TO_MOVE_WAITING: "trust-to-move-waiting", // FO-7t part 3: a "To move" line has waited more than 25 days (AG-6-73 rule 5); item: the firm
+  RETAINER_DECLINED: "retainer-declined", // FO-5d: the client declined a retainer; the prospect's owner (else its representative) is told (AG-5-68 r4); item: the retainer
   DEPOSIT_REQUEST_PREPARED: "deposit-request-prepared", // R1.60 a1: a signed retainer prepared a trust deposit request, Ask me first (AG-6-61 §5.4); item: the request
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
@@ -31,10 +32,11 @@ export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   [NOTIFICATION_KIND.LEAD_ASSIGNED]: "WORK_HANDED_TO_ME",
   [NOTIFICATION_KIND.KEEP_PERIOD_PASSED]: "NEEDS_YOU",
   [NOTIFICATION_KIND.TRUST_TO_MOVE_WAITING]: "PAYMENTS",
+  [NOTIFICATION_KIND.RETAINER_DECLINED]: "NEEDS_YOU",
   [NOTIFICATION_KIND.DEPOSIT_REQUEST_PREPARED]: "NEEDS_YOU",
 };
 /** What a notification points at. Consumers add their own. */
-export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage", "case-milestone", "lead", "trust-request"] as const;   // lead: PF-18n part 2; trust-request: R1.60 a1
+export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage", "case-milestone", "lead", "retainer", "trust-request"] as const;   // lead: PF-18n part 2; retainer: FO-5d; trust-request: R1.60 a1
 export type NotificationItemKind = (typeof NOTIFICATION_ITEM_KIND)[number];
 export const NotificationKindSchema = z.enum(NOTIFICATION_KIND);
 export const NotificationRecipient = z.strictObject({ staffId: Uuid });

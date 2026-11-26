@@ -46,7 +46,65 @@ for m in 'Next step: add the Done when line to #2578 (I will do it in the built-
 r=$(stop qa "$click"); ok "a non-Lead copy is untouched" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop unbound "$click"); ok "... and an unbound copy" "$([ "$r" = pass ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" --arg m "$click" '{cwd:$d,last_assistant_message:$m}' | FAKE_LANE=lead bash "$G")
-ok "the refusal tells the Lead to do it in the built-in browser now" "$(jq -e '.reason | contains("Do it yourself in the built-in browser now (P-752/P-763)")' <<<"$out" >/dev/null && echo 1)" "$out"
+ok "the refusal says the fix text: do it in the built-in browser (P-752) (P-778 E-c)" "$(jq -e '.reason | contains("do it in the built-in browser (P-752")' <<<"$out" >/dev/null && echo 1)" "$out"
+# ENF-778a E-c (P-778): close, archive, reopen, label, dispatch, "Run workflow", merge and press, in a message or an ask line
+for m in 'Please close #2413, it is superseded.' 'Could you archive the session of lane forms-2?' 'You need to merge the PR when green.' \
+         'Please press Run workflow on the nightly.' 'Can you dispatch the nightly workflow?' 'Please hit Run workflow on lead-watch.' \
+         'Reopen #2210 please.' 'Please label it review: approved.' 'Could you press the green button?'; do
+  r=$(stop lead "$m"); ok "refused (E-c): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I closed #2413 and archived the forms-2 session in the built-in browser.' 'I dispatched the nightly myself (run 4551).' \
+         'The merge queue merged #2413.' 'I pressed Run workflow on the nightly; it is running.'; do
+  r=$(stop lead "$m"); ok "passes (E-c, the Lead's own report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+# Review of #3665: a verb needs its own object (no false block on a report), and the E-c verbs as plain commands
+for m in 'Press coverage is fine for now.' 'Dispatching the qa lane now, so you need not wait.' 'No need for you to press anything; I did it in the built-in browser.' \
+         'You should see the nightly dispatch result by 03:00.' 'Merge conflicts on the branch were fixed.' 'I will dispatch it next.' \
+         'Run workflow was pressed by the Lead.' 'Could you confirm the wording? I will merge the PR after that.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review, a report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'Archive the forms-2 session.' 'Merge #2413.' 'Dispatch the nightly.' 'Run workflow on the nightly.' 'Label #2413 blocked.' \
+         'Please archive it.' 'Could you merge it?' 'Please label the issue blocked.' 'Please run the workflow.' 'Could you dispatch it?'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'Merge of #2413 landed at 10:02.' 'Dispatch of the nightly finished; run 4551 is green.' 'Would you like me to merge it now?' \
+         'You should not merge it yourself; the queue merges it on green.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 2, a report or an offer): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'No need to wait: please merge #12 now.' 'I can'"'"'t, so could you archive it?' 'I can see CI is green, so please merge #12.' \
+         'Never mind the earlier note, please close #3601.' 'Please merge #12, there is no need to wait for me.' 'Could you merge it before the demo, I should not touch it?' \
+         'Please close all of the old branches.'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 3, an offer or no-need clause beside an ask): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'No need to wait, merge #12.' 'Never mind me please merge #12.' "You don't need to wait please merge #12." 'Do not forget to merge #12 please.' \
+         'No need to wait - merge #12 please.' 'Do not wait for me, just merge #12.'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 4, the cut stops before the ask): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I can close the stale issues and archive both sessions if you agree.' 'You should not have to click anything today.' \
+         'You never need to merge the PR yourself; the queue does it.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 5, an offer or a reassurance): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'Do you want me to? Otherwise close all of the stale PRs.' 'If not, merge #12.' 'Do not hesitate to merge #12 please.' \
+         'No need to wait - dispatch the nightly workflow by hand please.' 'If you do not mind, close #3601 for me.'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 5): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I can wait while you close #3601 and archive the lane yourself.' 'Do you want me to look at it first or will you merge #12?' \
+         'I can wait if you archive both sessions yourself.' 'Shall I explain why you have to dispatch the nightly workflow by hand?'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 6, an ask after an offer): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'Never click Convert to draft yourself; I handle it.' "You don't have to label the PR; Mergify does it."; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 6): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+# Lead 7 on #3665 (13:29 IST), the last round: a command after a leading clause or after first, kindly, go ahead and;
+# "you can" and "if you ...ed" as request words; past-tense verbs; an offer's cut carries through ", then"
+for m in 'When you get a moment, merge #12.' 'First, archive the forms-2 session, then tell me.' 'Kindly close all of the stale PRs.' \
+         'Go ahead and merge the PR when CI is green.' 'I can prepare it so you can merge #12 tonight.' 'It would help if you reopened #3601.'; do
+  r=$(stop lead "$m"); ok "refused (Lead 7, last round): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'You can check that I closed #3601.' 'You can tell the queue merged #12 because CI is green.' 'You can relax: Mergify will merge the PR.' \
+         'Once you are back, you can trust that the queue will merge the PR.' 'If you checked, the queue closed the stale PRs.' 'If you approved, it merged #12 automatically.'; do
+  r=$(stop lead "$m"); ok "passes (Lead 7 round review, a report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'I can merge #12 now, then archive the forms lane.' 'You can see #2322 is now ready for review.' 'The queue merged #2413, then closed the issue.'; do
+  r=$(stop lead "$m"); ok "passes (Lead 7, last round): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")
+ok "the Python program inside the bash single quotes has no ' (one would end it, and every check would pass silently)" "$([ "$q" = 0 ] && echo 1)" "$q line(s) with '"
+r=$(stop lead 'Nothing for you to do: I will close #3601 myself.'); ok "passes (#3665 review 4): nothing for you to do" "$([ "$r" = pass ] && echo 1)" "got $r"
+for m in 'I can merge it now if you want.' 'Shall I close the stale issue?' 'Archive of the old lanes is done.' 'Next I merge #12 and archive the forms-2 session.'; do
+  r=$(stop lead "$m"); ok "passes (#3665 review 3): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+for m in 'Can you archive the two old forms sessions?' 'Please archive both stale forms-2 and runtime-1 sessions.' 'Please dispatch lead-watch by hand.' \
+         'Could you trigger the nightly from the Actions tab?'; do
+  r=$(stop lead "$m"); ok "refused (#3665 review 2): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+printf '%s\n' '**Needs you:** archive the forms-2 session; dispatch the nightly' '- ask: Run workflow on lead-watch by hand' '| A300 | the Lead archives its own lanes | not an ask |' > "$T/STATE2.md"
+out=$(bash "$G" --state "$T/STATE2.md")
+ok "lead-watch (E-c): Needs you and ask lines with archive, dispatch, Run workflow are flagged" "$([ "$(grep -c '^ACT' <<<"$out")" -ge 3 ] && grep -q 'archive the forms-2' <<<"$out" && grep -q 'dispatch the nightly' <<<"$out" && grep -q 'Run workflow on lead-watch' <<<"$out" && ! grep -q A300 <<<"$out" && echo 1)" "$out"
 # lead-watch: STATE's asks to the founder that are clicks.
 cat > "$T/STATE.md" <<'EOF'
 **For the founder (open):** (a) R1.20 vs PF-4c invite rule: done; (b) close #2088; (c) sign in to claude.ai again (signed out)
