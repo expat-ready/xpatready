@@ -63,9 +63,11 @@ try {
     firmOf("runtime_case") === want && firmOf("case_stage") === want && firmOf("firm_case_counter") === want, [firmOf("runtime_case"), firmOf("case_stage"), firmOf("firm_case_counter")]);
   ok("CS-W1 DW1 fail: the case, stage and counter of a key with no platform firm stay null (never another firm's id)",
     sql(`select count(*) from (select firm_id from runtime_case where firm_key = 'ghost-firm' union all select firm_id from case_stage where firm_key = 'ghost-firm' union all select firm_id from firm_case_counter where firm_key = 'ghost-firm') x where firm_id is not null`) === "0");
+  // CS-W2 (later migrations) adds runtime_case's (id, firm_id) unique for its composite keys and case_firm_fill triggers on
+  // its own tables; these two checks keep to CS-W1's three tables and its (firm_id, …) indexes.
   ok("CS-W1 DW1: the column is nullable in part 1, and each table has its (firm_id, …) index",
     sql(`select count(*) from information_schema.columns where column_name = 'firm_id' and is_nullable = 'YES' and table_name in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "3"
-    && sql(`select string_agg(indexname, ',' order by indexname) from pg_indexes where indexname like '%firm_id%' and tablename in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "case_stage_firm_id_case_id_idx,firm_case_counter_firm_id_year_idx,runtime_case_firm_id_created_at_idx");
+    && sql(`select string_agg(indexname, ',' order by indexname) from pg_indexes where indexname like '%firm_id%idx' and tablename in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "case_stage_firm_id_case_id_idx,firm_case_counter_firm_id_year_idx,runtime_case_firm_id_created_at_idx");
 
   // ---------------------------------------------------------------- DW2: the fill triggers (each insert rolled back)
   const caseRow = (id: string, key: string, firm?: string) => `insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number${firm ? ", firm_id" : ""})
@@ -106,7 +108,7 @@ try {
   ok("CS-W1 DW7 fail: no trigger function of the migration runs as definer (contract §8 condition 3)",
     /public\.case_firm_fill:false:/.test(defs) && /public\.case_firm_from_key:false:/.test(defs) && /public\.case_firm_backfill:false:/.test(defs)
     && sql(`select count(*) from pg_trigger t join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%' and p.prosecdef`) === "0"
-    && sql(`select string_agg(c.relname || '.' || t.tgname, ',' order by c.relname, t.tgname) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%'`) === "case_stage.case_firm_fill,firm_case_counter.case_firm_from_key,runtime_case.case_firm_from_key", defs);
+    && sql(`select string_agg(c.relname || '.' || t.tgname, ',' order by c.relname, t.tgname) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%' and c.relname in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "case_stage.case_firm_fill,firm_case_counter.case_firm_from_key,runtime_case.case_firm_from_key", defs);
   ok("CS-W1 DW7: the migration's own text says how to roll back", /Rollback \(in this order\)/.test(readFileSync(join(MIG, NEW, "migration.sql"), "utf8")));
 
   // ---------------------------------------------------------------- DW9: the lookup under PF-12's forced wall
