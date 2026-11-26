@@ -48,6 +48,8 @@ const host = async (firmId: string, name: string) => {
   // Mon-Fri 09:00-17:00, Sunday 00:00-04:00 (the DST nights, J-P5) and Monday 19:00-20:00 (an evening past UTC midnight,
   // Devin #1921) Toronto. Sample.
   await db.foAvailability.createMany({ data: [1, 2, 3, 4, 5].map((weekday) => ({ firmId, staffId: s.id, weekday, startMinute: 540, endMinute: 1020, timeZone: TZ })).concat([{ firmId, staffId: s.id, weekday: 0, startMinute: 0, endMinute: 240, timeZone: TZ }, { firmId, staffId: s.id, weekday: 1, startMinute: 1140, endMinute: 1200, timeZone: TZ }]) });
+  // FO-3v part 1: the join line is the host's own My meeting link (the type's meetingLink is not a source, AG-16-73).
+  await db.foVideoPref.create({ data: { firmId, staffId: s.id, myMeetingLink: "https://meet.example/sample-room", sourceChoice: "MY_LINK" } });
   return s;
 };
 const F = await host(M.id, "Client F"), FQ = await host(Q.id, "Client C");
