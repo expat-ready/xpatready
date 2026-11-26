@@ -53,3 +53,37 @@ Code: `trust/home.tsx:63`: the name cell has no `[overflow-wrap:anywhere]`, whic
 * Keyboard order on Money › Trust is header, menu, table region, rows, finder. axe finds 0 serious or critical issues on every page probed, including after 6 "Show more" presses. No sideways page scroll at 375, 1024, 1440 px or at 200 % zoom (720 and 512 CSS px).
 
 Breaker: fail on a66e6a13a12487ac0e8db6fe283ed92a44cf7ec1
+
+## Round 2 (head a327ff37a, diff since a66e6a13a)
+
+Fresh isolated copy `br3b` on :4762 (live AI off), stopped afterwards. The PR's check passes 26/26 on it. Seed, all through the API as user-R, viewed as the Billing person:
+* S1: CAD 500.00 before a case, with case A at −CAD 200.00 and case B at −CAD 100.00.
+* S2: CAD −150.00 before a case, with USD 80.00.
+* S3: CAD −300.00 before a case, with a case at +CAD 100.00 (total −CAD 200.00).
+* S5: −CAD 100.00 before a case, case A at −CAD 200.00 and case B at +CAD 1,000.00 (total +CAD 700.00).
+* S4: 300 CAD and 300 USD deposits, made alternately.
+
+**Re-test of round 1**
+* **M1, fixed.** In S1 both short cases are listed on their own, each red and labelled, and "Trust held: CAD 200.00 (CAD 500.00 before a case)" counts neither. In S5, "Before a case: −CAD 100.00" and "C-…: −CAD 200.00" are each shown red and labelled. Every negative on the page passes the red-and-labelled scan.
+* **M2, fixed.** There is one ledger per currency ("Trust ledger — CAD" / "— USD"). Each table holds 300 rows of its own currency (none from the other), 300 distinct balances falling from 300.00 to 1.00, after 5 "Show more" presses each.
+* **m2, fixed.** After each "Show more" (Enter), focus goes to the first new row (TR #50, #100, … with tabindex −1). Tab then goes to "Show more", or after the last page to the next ledger.
+* **m3, fixed.** When the second USD page fails (intercepted 500), the 50 rows stay, the notice "Could not load more entries — Sample outage" appears, and "Show more" stays. A retry loads 100 rows and clears the notice. The CAD ledger is unaffected.
+* **m4, fixed.** The long name wraps. At 375 and 1024 px every red figure on Money › Trust is in view, with no sideways scroll.
+* **m1, fixed as words.** The hint says "Lists clients you have won or who have a case; a client below zero is also on the list above." The empty result says "No won client or client with a case matches “…”." Both are now true. The search itself is FO-7q's and is unchanged.
+* m5 (dates in UTC) is unchanged, as expected.
+
+**New finding**
+**r2-m1 (Minor): once the currency total is below zero, the breakdown by case disappears.**
+Steps: S3. Open the client's Money view.
+Expected (as in S5): "Before a case: −CAD 300.00", red and labelled, and the case's CAD 100.00 mentioned.
+Actual: one notice, "−CAD 200.00. Your firm needs to put CAD 200.00…". Neither the −CAD 300.00 before a case nor the case's +CAD 100.00 is stated anywhere on the page. The ledger shows −300.00 only as the running balance on the correction row, then −200.00 on the case deposit row.
+Why it matters: R1 has no route to move money between a case and "before a case", so the amount that is short before a case (CAD 300.00) differs from the figure the words give. That reading is Unconfirmed: no counsel.
+Code: `trust/party.tsx:86` (`shortCases` leaves out every currency whose total is below zero) and `:82` (`held` is skipped for that currency).
+Smaller wording point, S5: "Trust held: CAD 700.00 (1 case)" uses the server's total. That total includes the two negative amounts, yet the line names only the case that holds CAD 1,000.00 (`contract.ts:76`). The shortfall lines right under it explain the difference, so this is not counted as a finding.
+
+**Held in round 2**
+* S2: the CAD shortfall notice and red balance appear, USD shows "Trust held: USD 80.00" and its own ledger, and the summary cells read −CAD 150.00 (labelled) and USD 80.00. Nothing is added across currencies.
+* axe finds 0 serious issues on S1, S2, S3, S5 and on S4 after the paging.
+* There is no sideways scroll at 375 or 1024 px, and no page errors.
+
+Breaker: pass on a327ff37a3988eba1f3463cbdc37890f5cb1ede3
