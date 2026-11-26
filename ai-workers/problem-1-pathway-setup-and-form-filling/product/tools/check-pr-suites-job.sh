@@ -50,7 +50,10 @@ on = d.get(True) or d.get("on") or {}
 # OS-87: workflow_dispatch too, with inputs exactly pr and head (queue-gate.sh starts a missing run), named by them, no cache
 wd = on.get("workflow_dispatch") or {}
 out.append("pr-event" if set(on) == {"pull_request", "workflow_dispatch"} and set((wd.get("inputs") or {})) == {"pr", "head"}
-           and "format('pr-suites PR #{0} {1}', inputs.pr, inputs.head)" in str(d.get("run-name")) and not __import__("re").search(r"^ *cache: npm *(#.*)?$", txt, __import__("re").M) else "other-events")
+           and "format('pr-suites PR #{0} {1}', inputs.pr, inputs.head)" in str(d.get("run-name"))
+           and (lambda st: bool(st) and st[0].get("if") == "github.event_name == 'workflow_dispatch'" and "continue-on-error" not in st[0]
+                and "] || { echo \"::error::pr-suites: that commit is not the head of this repository's PR" in str(st[0].get("run")) and "grep -qx '[1-9][0-9]*' <<< \"$ok\" || { echo \"::error::" in str(st[0].get("run")) and "reviewer:" in str(st[0].get("run")))(
+                [x for x in (j.get("plan", {}).get("steps") or []) if "uses" not in x][:1]) and not __import__("re").search(r"^ *cache: npm *(#.*)?$", txt, __import__("re").M) else "other-events")
 out.append("own-workflow" if "pr-suites-plan.sh" not in ci and "pr-suites" not in ci else "in-ci")
 c = d.get("concurrency") or {}
 cip = str(c.get("cancel-in-progress"))   # SPD-2 item 5: a newer push cancels the PR's older run; a batch is never cancelled
@@ -58,7 +61,7 @@ out.append("supersedes-pr-not-batch" if "pr-suites-" in str(c.get("group")) and 
 p, s = j.get("plan", {}), j.get("parts", {})
 cond = str(p.get("if", ""))
 out.append("no-draft-no-batch" if "draft" in cond and "mergify/" in cond else "drafts-or-batches")
-ps = p.get("steps", [])[1:]; ss = s.get("steps", [])[1:]
+ps = [x for x in p.get("steps", [])[1:] if x.get("if") != "github.event_name == 'workflow_dispatch'"]; ss = s.get("steps", [])[1:]   # OS-87: the dispatch check fails the run on purpose
 # P-822: every step is continue-on-error (summaries and logs always written) but the part's last step, "verdict"
 out.append("one_verdict_step" if ps and ss and all(x.get("continue-on-error") is True for x in ps + ss[:-1]) and "continue-on-error" not in ss[-1]
   and "verdict" in ss[-1].get("name", "") and ss[-1].get("if") == "always()" and 'SETUP" = success' in ss[-1]["run"] and 'OUTCOME" = success' in ss[-1]["run"] else "verdict_step_shape")
@@ -73,7 +76,8 @@ out.append("changed" if run and "--changed" in run[0]["run"] and "--modules" in 
 out.append("limits" if s.get("timeout-minutes", 0) >= sum(x.get("timeout-minutes", 0) for x in ss) + 5 else "job-limit-too-short")
 out.append("plan" if any("pr-suites-plan.sh" in str(x.get("run", "")) and "change-kind.sh" in str(x.get("run", "")) for x in ps) else "no_plan")
 perm = lambda x: x.get("permissions") == {"contents": "read"}
-out.append("read-only" if d.get("permissions") == {} and perm(p) and perm(s) else "write-token")
+permp = lambda x: x.get("permissions") == {"contents": "read", "pull-requests": "read", "issues": "read"}   # OS-87: the plan reads the PR and its comments
+out.append("read-only" if d.get("permissions") == {} and permp(p) and perm(s) else "write-token")
 print(" ".join(out))
 PY
 )

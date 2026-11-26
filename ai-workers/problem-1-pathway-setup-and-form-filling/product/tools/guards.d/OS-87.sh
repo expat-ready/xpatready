@@ -7,4 +7,5 @@ OS87 job|product/tools/queue-gate.sh|s/\[.jobs\[\]? . select(.name == "pr-suites
 OS87 approved|product/tools/queue-gate.sh|s/^  approved \(.. { echo "#\$PR: no pr-suites run started\)/  true \1/|check-queue-gate.sh
 OS87 label|product/tools/queue-gate.sh|s/= "labeled \$LABEL" \(\]; then load\)/= "never"\1/|check-queue-gate.sh
 OS87 wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .pr-suites PR #.)/false/|check-queue-gate.sh
+OS87 reviewed|../../.github/workflows/pr-suites.yml|s/          \[ "\$now" = "\$HEAD_SHA \$GITHUB_REPOSITORY" \] .. { echo "::error::pr-suites: that commit/          true; { echo "::warning::pr-suites: that commit/|check-pr-suites-job.sh
 OS87 cache|../../.github/workflows/pr-suites.yml|s/cache: \${{ github.event_name == .pull_request. \&\& .npm. .. .. }}/cache: npm/|check-pr-suites-job.sh'

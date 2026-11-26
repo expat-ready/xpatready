@@ -23,7 +23,10 @@ name: pr-suites
 # OS-87 (Lead 2, 26 Nov): a PR head with no pr-suites run, or only a skipped one (pushed while a draft: a re-run replays the
 # draft's payload and skips again), gets one by workflow_dispatch from queue-gate.sh (on main, the PR's number and head;
 # its name "pr-suites PR #<n> <head>" is how queue-gate.sh finds it). The PR's code runs with the same read-only tokens;
-# such a run (a run of main) saves nothing to main's npm cache.
+# such a run (a run of main) saves nothing to main's npm cache. Before any of the PR's code is fetched, the plan checks, as
+# ci.yml's full run does, that the head is PR #n's head now in this repository and has a "Reviewer: Approve <head>" line by
+# the owner's account or a known reviewer (a dispatch by hand passes queue-gate.sh by; review round 1 of #3843). Such a
+# run's own check runs sit on main's commit, not the PR's head; queue-gate.sh reads the run by its name.
 run-name: "${{ github.event_name == 'workflow_dispatch' && format('pr-suites PR #{0} {1}', inputs.pr, inputs.head) || '' }}"
 on:
   pull_request:
@@ -43,7 +46,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions: { contents: read }
+    permissions: { contents: read, pull-requests: read, issues: read }   # OS-87: the dispatch check reads the PR and its comments
     outputs:
       shards: ${{ steps.p.outputs.shards }}
       n: ${{ steps.p.outputs.n }}
@@ -55,6 +58,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0, filter: "blob:none", persist-credentials: false }
+      - name: a dispatched run (OS-87) tests only a reviewed head of this repository's PR (as ci.yml's full run; fails the run)
+        if: github.event_name == 'workflow_dispatch'
+        env: { HEAD_SHA: "${{ inputs.head }}", PRN: "${{ inputs.pr }}", GH_TOKEN: "${{ github.token }}", REVIEWERS: "${{ vars.REVIEWERS }}" }
+        run: |
+          [[ "$PRN" =~ ^[1-9][0-9]{0,6}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::pr-suites: pr and head must be a number and a 40-hex commit id"; exit 1; }
+          now=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PRN" --jq '"\(.head.sha) \(.head.repo.full_name // "")"') || exit 1
+          [ "$now" = "$HEAD_SHA $GITHUB_REPOSITORY" ] || { echo "::error::pr-suites: that commit is not the head of this repository's PR #$PRN now"; exit 1; }
+          export WHO="${GITHUB_REPOSITORY%%/*} $REVIEWERS"
+          ok=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PRN/comments?per_page=100" --jq '[.[] | select(.user.login as $l | (env.WHO | split(" ")) | index($l)) | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+            | select((.body // "") | gsub("[*_`]"; "") | test("(^|\n)\\s*reviewer:\\s*approve[sd]?\\s+" + env.HEAD_SHA + "\\b"; "i"))] | length') || exit 1
+          grep -qx '[1-9][0-9]*' <<< "$ok" || { echo "::error::pr-suites: no \"Reviewer: Approve <this head>\" line by the owner's account or a known reviewer on PR #$PRN"; exit 1; }
       - id: p
         name: which suites can this change affect? (pr-suites-plan.sh; a failed plan runs nothing, says so, and turns job pr-suites red, P-822)
         continue-on-error: true
