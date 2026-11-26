@@ -93,7 +93,7 @@ export type CognitoAdminOptions = {
 const POOL_ID = /^ca-central-1_[0-9A-Za-z]+$/;
 const SUB = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** One port call's whole time with Cognito (break M1): its callers hold a database transaction (session/firm-lock.ts
- *  FIRM_TX: 8 s, covering a bounded 1.5 s wait for the firm's lock, these 3 s and the commit). */
+ *  FIRM_TX: 12 s, covering two bounded lock waits of about 3 s each, these 3 s and the commit). */
 export const COGNITO_DEADLINE_MS = 3_000;
 const NOT_SET_UP = "SIGN_IN_NOT_SET_UP";
 /** Two-step reads (review M2): at most this many Cognito reads at once per server, each under this deadline. */
