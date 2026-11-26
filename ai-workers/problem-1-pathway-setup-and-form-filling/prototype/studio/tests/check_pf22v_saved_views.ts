@@ -214,7 +214,7 @@ try {
   const ver = first.body.version;
   const r1 = await call("PATCH", `${V}/${first.body.id}`, agent.token, { name: "Once renamed", version: ver });
   const r2 = await call("PATCH", `${V}/${first.body.id}`, agent.token, { name: "Lost edit", version: ver });
-  const d1 = await call("DELETE", `${V}/${first.body.id}`, agent.token, { version: ver });
+  const d1 = await call("DELETE", `${V}/${first.body.id}?version=${encodeURIComponent(ver)}`, agent.token);
   ok("PF-22v V9 fail (review M3): a change or a delete on the version read before → 409 STALE_VERSION with the view as it is; the first change kept",
     r1.status === 200 && r2.status === 409 && r2.body.code === "STALE_VERSION" && r2.body.current?.name === "Once renamed" && d1.status === 409 && sql(`select name from plat_saved_view where id = '${first.body.id}'`) === "Once renamed", [r2.body, d1.body]);
   const sorted = await call("PATCH", `${V}/${first.body.id}`, agent.token, { sort: { by: "arrivedAt", dir: "asc" } });

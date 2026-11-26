@@ -9,6 +9,7 @@ import { SavedViewsService } from "./service.ts";
 
 type R = { platform?: StaffContext };
 const LIST_QUERY = query("list");
+const DELETE_QUERY = query("version");
 const OWN = "anyone keeps personal views; sharing and shared views need the list's share key, checked by the service";
 
 @Controller("api/platform/saved-views")
@@ -25,5 +26,9 @@ export class SavedViewsController {
   change(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.change(staffOf(r), id, b); }
 
   @Delete(":id") @AnyStaff(OWN) @Versioned()
-  remove(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.remove(staffOf(r), id, b ?? {}); }
+  /** The version as read: `?version=` or an If-Match header (PF-31 puts it on the request; a DELETE carries no body). */
+  remove(@Req() r: R & { body?: { version?: unknown } }, @Param("id") id: string, @Query() q: unknown) {
+    const { version } = parseInput(DELETE_QUERY, q ?? {});
+    return this.svc.remove(staffOf(r), id, { version: version ?? (typeof r.body?.version === "string" ? r.body.version : undefined) });
+  }
 }
