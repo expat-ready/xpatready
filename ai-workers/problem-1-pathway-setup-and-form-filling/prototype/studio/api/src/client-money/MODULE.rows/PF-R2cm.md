@@ -1,3 +1,3 @@
-Entry points: `moneyMetrics` / `MoneyReports` (`reports/metrics.ts`): seven `reports.money.*` figures on PF-R1's `MetricRegistry` (fees billed, fees collected, trust received, overdue total, overdue ageing, overdue by client, tax collected), per currency, view-financial only; registered by `features/client-money-metrics.ts`.
+Entry points: `moneyMetrics` / `MoneyReports` (`reports/metrics.ts`): seven `reports.money.*` figures on PF-R1's `MetricRegistry` (fees billed, fees collected, trust received, overdue total, overdue ageing, overdue by client, tax collected), per currency, view-financial only; registered by `../features/client-money-metrics.ts`.
 Tests: `tests/check_pfr2cm_metrics.ts`.
 Tables: moneyInvoice, moneyInvoiceLine, moneyCreditNote, moneyPayment, moneyRefund, moneyTrustEntry, moneyCreditEntry, moneyWriteOff, moneyPaymentSettings; runtime_case, case_client, case_team_member (the person filter), foPerson, foCompany (names): all read only.
