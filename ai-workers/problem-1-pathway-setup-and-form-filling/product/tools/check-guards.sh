@@ -39,6 +39,7 @@ TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
@@ -150,6 +151,7 @@ W24 once|product/tools/merge-wake.py|s/^            if k in mem:/            if 
 W24 unwritable|product/tools/merge-wake.py|s/o.post = False; print(f"ACT   wake: memory {clean/print(f"ACT   wake: memory {clean/|check-merge-wake.sh
 W24 cap|product/tools/merge-wake.py|s/if posted >= POSTS:/if False:/|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
+4 drop|prototype/studio/tools/isolated.sh|s/^  dropdb .*--force "\$DB" .*/  true/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
 A351 c2 wrap|product/tools/checks-changed.py|s/ or words(old) == words(nw):/:/|check-checks-changed.sh
@@ -218,6 +220,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 9 dispatch|../../.github/workflows/label-guard.yml|s/ github.event_name == .workflow_dispatch. ..//|check-label-sweep.sh
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
 11|product/tools/push-guard.sh|s/^\( *\)\[ "\$h" = "\$want" \] \(..\)/\1true \2/|check-push-guard-fixtures.sh
+11 const|product/tools/push-guard.sh|s/sed -E "\$CONST_SED"/cat/|check-push-guard-fixtures.sh
 11 records|product/tools/check-stale-paths.sh|/prototype\/\*-manifest\*.sha256/d|check-cleanup-checks.sh
 12 who|../../.github/workflows/comment-run.yml|s/OWNER.MEMBER.COLLABORATOR) ;;/*) ;;/|check-comment-run.sh
 12 if|../../.github/workflows/comment-run.yml|s/ \&\& contains(fromJSON([^)]*), github.event.comment.author_association)//|check-comment-run.sh
@@ -272,7 +275,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 full records|product/tools/queue-gate.sh|s/^  records \&\& return 0/  true \&\& return 0/|check-queue-gate.sh
 15 full reclabel|product/tools/queue-gate.sh|s/^records() { has records \&\& /records() { /|check-queue-gate.sh
 15 full recfiles|product/tools/queue-gate.sh|s/^records() { has records \&\& .*/records() { has records; }/|check-queue-gate.sh
-15 full unread|product/tools/queue-gate.sh|s/ \[ "\${full_state:-}" = unread \] \&\& exit 3; exit 1;;/ exit 1;;/|check-queue-gate.sh
+15 full unread|product/tools/queue-gate.sh|s/{ \[ "\${full_state:-}" = unread \] .. /{ /|check-queue-gate.sh
 15 full sweep3|product/tools/label-sweep.sh|s/^    if \[ "\$g" = 3 \]; then/    if false; then/|check-label-sweep.sh
 15 full nottested|../../.github/workflows/ci.yml|s/, FULL_PR: "\${{ inputs.pr }}", GATE_B_NOT_TESTED: "[^"]*" }/, FULL_PR: "${{ inputs.pr }}" }/|check-queue-gate.sh
 15 batch only|product/tools/queue-gate.sh|s/(map(select(. != "ci")) . if length > 0 then . else empty end) \/\/ ./map(select(. != "ci"))/|check-queue-gate.sh
@@ -406,6 +409,14 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+31 E-c words|product/tools/founder-click-guard.sh|s/(close.closed.archive.archived.merge.merged.reopen.reopened).s+/(Xclose)\\s+/|check-founder-click-guard.sh
+31 E-c run|product/tools/founder-click-guard.sh|s/.b(dispatch.trigger).s+((the/\\bXdispatch\\s+((the/|check-founder-click-guard.sh
+31 E-c imp|product/tools/founder-click-guard.sh|s/\(.edit\).close.archive.merge.dispatch.trigger.label"/\1"/|check-founder-click-guard.sh
+31 E-c offer|product/tools/founder-click-guard.sh|s/k = NOT_ASK.sub(" OFFERED ", s) if need_you else s/k = s/|check-founder-click-guard.sh
+31 E-c ask|product/tools/founder-click-guard.sh|s/needs you.(^.\[\\s\*(-\])ask:/needs you/|check-founder-click-guard.sh
+E-a age|product/tools/question-gate.py|s/        if age > limit:/        if False:/|check-question-gate.sh
+E-a tooling|product/tools/question-gate.py|s/^PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 60, 35/PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 20, 35/|check-question-gate.sh
+E-a wired|product/tools/stop-check.sh|/question-gate.py" --sle/d|check-question-gate.sh
 HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
 HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
 HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh
@@ -678,7 +689,7 @@ A348 first|product/tools/proof-number.py|s/git("log", "--first-parent", "-s",/gi
 A348 app|product/tools/proof-number.py|s/"web.src", //|check-proof-number.sh
 A348 paths|product/tools/proof-number.py|s/^        if not git("ls-tree".*/        if False:/|check-proof-number.sh
 A348 edge|product/tools/proof-number.py|s/^    if today is None or rp.*/    if False:/|check-proof-number.sh
-A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 11, 30/RELEASE_END = datetime(2026, 12, 13/|check-proof-number.sh
+A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 12, 13/RELEASE_END = datetime(2026, 11, 30/|check-proof-number.sh
 A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
 A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
 A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
@@ -688,6 +699,16 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
+# P-822 (founder, 25 Nov): pr-suites green on the exact head before the label; only "success" counts
+MUT="$MUT"'
+P822 judge|product/tools/queue-gate.sh|s/^  suitesok "\$head" .. return 1/  true/|check-queue-gate.sh
+P822 only|product/tools/queue-gate.sh|s/    if \[ "\$st \$co" = "completed success" \]; then/    if true; then/|check-queue-gate.sh
+P822 own run|product/tools/queue-gate.sh|s/^    \[ "\$ok" = true \] .. continue/    true/|check-queue-gate.sh
+P822 proof|product/tools/queue-gate.sh|s/if \[ "\${RELABEL:-}" = 1 \]; then suitesok/if false; then suitesok/|check-queue-gate.sh
+P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.conclusion .. "")\(.\) <<< "\$r")" = "completed success" \] \&\& { suites_state=success/{ suites_state=success/|check-queue-gate.sh
+P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
+P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
+P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
 # OS-17 (P-526c): records PRs open over 24 h; the row switches the age rule off.
 MUT="$MUT"'
 OS17 age|product/tools/known-failures.py|s/(p for p in recs if hours(p) > lim)/(p for p in recs)/|check-known-failures.sh
