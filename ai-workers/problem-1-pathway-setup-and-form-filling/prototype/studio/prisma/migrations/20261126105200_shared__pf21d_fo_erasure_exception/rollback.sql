@@ -1,4 +1,4 @@
--- Rollback of 20261126090000_shared__pf21d_fo_erasure_exception: the three trigger functions as they were before it (word
+-- Rollback of 20261126105200_shared__pf21d_fo_erasure_exception: the three trigger functions as they were before it (word
 -- for word, from pg_get_functiondef on a database migrated up to the migration before), and the definer dropped.
 -- Roll back this PR's app code with it (review m5): without the exception the eraser's INSERT_ONLY_SQL is refused inside a
 -- claimed erasure, so the job fails and retries (nothing erased, never a false COMPLETED) until the code goes too.
@@ -56,6 +56,6 @@ DROP FUNCTION fo_compliance_erasure_names(uuid, uuid);
 -- Break m1: so prisma migrate deploy applies it again after this rollback.
 DO $pm$ BEGIN
   IF to_regclass('"_prisma_migrations"') IS NOT NULL THEN   -- a database migrated by psql alone (the tests) has no such table
-    DELETE FROM "_prisma_migrations" WHERE migration_name = '20261126090000_shared__pf21d_fo_erasure_exception';
+    DELETE FROM "_prisma_migrations" WHERE migration_name = '20261126105200_shared__pf21d_fo_erasure_exception';
   END IF;
 END $pm$;

@@ -243,7 +243,7 @@ try {
     && /front-office: KEPT/.test(sql(`select string_agg(note, ' | ') from plat_data_request_event where request_id = '${rKeeps}'`)) && words(A, KEEPS.p).startsWith("Erased person"), { run, s: statusOf(rKeeps) });
   ok("PF-21d 2b fail: nothing kept ends COMPLETED, never HELD", run.erased.includes(rClean) && statusOf(rClean) === "COMPLETED", { run, s: statusOf(rClean) });
   // ------------------------------------------------------------------------------------------------ part 2b-2: the exception
-  const NEW = "20261126090000_shared__pf21d_fo_erasure_exception", allMig = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
+  const NEW = "20261126105200_shared__pf21d_fo_erasure_exception", allMig = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
   ok(`PF-21d 2b-2: its migration has its own stamp, after every one before it (newest before: ${allMig.filter((d) => d < NEW).at(-1)})`, allMig.includes(NEW) && allMig.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && allMig.at(-1) === NEW);
   ok("PF-21d 2b-2: the definer and the three trigger functions are the wall reader's, security definer, search_path pinned; the definer is not executable by the app",
     sql(`select count(*) from pg_proc where proname in ('fo_compliance_erasure_names', 'fo_sales_insert_only', 'fo_dup_merge_write', 'msg_write_once') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader' and proconfig::text like '%search_path%'`) === "4"
