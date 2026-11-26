@@ -20,6 +20,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import type { MoneyScope } from "../api/src/client-money/reads/visibility.ts";
 import { overBudget, REPORT_KEYS, type MetricAnswer, type MetricFilters, type ReportAnswer } from "../ports/metrics.ts";
 import { AGEING_BUCKETS, bucketOf, frameOf, major, moneyMetrics, MoneyReports, openSql, taxNameOf } from "../api/src/client-money/reports/metrics.ts";
 import { DUE_SQL, FACTS_LATERAL } from "../api/src/client-money/reads/status-sql.ts";
@@ -167,9 +168,9 @@ try {
     eq(ageing, [{ currency: "CAD", current: "640.00", days_1_30: "1100.00", days_31_60: "0.00", days_61_90: "0.00", days_90_plus: "0.00", overdue_total: "1100.00" },
       { currency: "USD", current: "0.00", days_1_30: "0.00", days_31_60: "160.00", days_61_90: "0.00", days_90_plus: "0.00", overdue_total: "160.00" }]), ageing);
   ok("PF-R2cm DW4 fail: the written-off invoice (due 1 Sep, 100.00) is in no bucket, and the date range changes nothing", Array.isArray(ageing) && (ageing as Record<string, string>[]).filter((r) => r.currency === "CAD").every((r) => AGEING_BUCKETS.reduce((n, b) => n + Math.round(Number(r[b.key]) * 100), 0) === 174000) && eq(rows(await one(OWNER, K("overdue_ageing"), { from: "2020-01-01", to: "2020-01-02" })), ageing));
-  ok("PF-R2cm DW4 pass: overdue total and overdue by client (AG-14-14): the client, the amount and the oldest days late, per currency",
+  ok("PF-R2cm DW4 pass: overdue total and overdue by client (AG-14-14) through the door: the client, the amount and the oldest days late, per currency; the Owner may open Client A (linked to user-O's case) and not Maple (no case, no prospect: client money's C5 rule), so Maple is one line",
     eq(figs(await one(OWNER, K("overdue_total"))), { CAD: "1100.00", USD: "160.00" }) && eq(rows(await one(OWNER, K("overdue_by_client"))), [
-      { client: "Client A Sample", client_type: "Individual", currency: "CAD", overdue: "1100.00", oldest_days: 5 }, { client: "Maple Sample Ltd", client_type: "Corporate", currency: "USD", overdue: "160.00", oldest_days: 55 }]), rows(await one(OWNER, K("overdue_by_client"))));
+      { client: "Client A Sample", client_type: "Individual", currency: "CAD", overdue: "1100.00", oldest_days: 5 }, { client: "1 client you cannot open", client_type: null, currency: "USD", overdue: "160.00", oldest_days: 55 }]), rows(await one(OWNER, K("overdue_by_client"))));
   // the solo firm's one invoice (777.77, due 1 Jun) on the clock at each boundary day after its due date
   const bucketAt = async (days: number) => {
     const at = new Date(Date.parse("2026-06-01T17:00:00Z") + days * 86_400_000);
@@ -225,6 +226,47 @@ try {
   ok("PF-R2cm DW7 fail: each name is summed apart (GST never inside HST, CAD GST never with USD GST: 35.00 and 170.00 appear nowhere); the government fee adds nothing",
     !JSON.stringify(tax).includes("35.00") && !JSON.stringify(tax).includes("170.00"));
 
+  // ------------------------------------------------------------------- DW2 and DW3 again: each rule of fees collected bites
+  // December, Client A: ID1 600.00... (500.00 fee); 300.00 paid into trust ON the invoice (the payment route's own shape: a
+  // payment with the invoice, its deposit and its withdrawal), 50.00 of that withdrawal corrected back, a 20.00 credit note
+  // refunding a trust-paid part, a 10.00 payment recorded for 1 Dec (before the 5 Dec issue), and 40.00 refunded out of trust
+  const DEC = { from: "2026-12-01", to: "2026-12-31" };
+  const ID1 = invoice({ person: PA, issued: "2026-12-05T15:00:00Z", due: "2027-01-05", lines: [["FEE", 50000, 0, 0]] });
+  const PT = pay(ID1, 30000, "2026-12-06T15:00:00Z", "TRUST");
+  trustEntry("DEPOSIT", 30000, "2026-12-06T15:00:00Z", `payment_id=${PT}`);
+  const WD = trustEntry("WITHDRAWAL_TO_INVOICE", -30000, "2026-12-06T15:00:00Z", `invoice_id=${ID1}`);
+  sql(`${R} insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, corrects_entry_id, reason, created_by, created_at) values ('${A}', '${PA}', 'CORRECTION', 5000, 'CAD', ${++seq}, 0, '${WD}', 'Sample', 'seed', '2026-12-07T15:00:00Z')`);
+  sql(`${R} insert into money_credit_note (firm_id, invoice_id, number, amount_minor, currency, reason, overpaid_choice, overpaid_minor, overpaid_entry_id, created_by, created_at) values ('${A}', '${ID1}', 'CN-R2CM-2', 2000, 'CAD', 'Sample', 'OVERPAID_REFUND', 2000, '${WD}', 'seed', '2026-12-08T15:00:00Z')`);
+  pay(ID1, 1000, "2026-12-01T00:00:00Z");
+  sql(`${R} insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, refund_method, refunded_on, refund_reference, reason, created_by, created_at) values ('${A}', '${PA}', 'REFUND_TO_CLIENT', -4000, 'CAD', ${++seq}, 0, 'E_TRANSFER', '2026-12-09', 'ET-R2CM-2', 'Sample', 'seed', '2026-12-09T15:00:00Z')`);
+  const decC = figs(await one(OWNER, K("fees_collected"), DEC)), decB = figs(await one(OWNER, K("fees_billed"), DEC)), decT = figs(await one(OWNER, K("trust_received"), DEC));
+  ok("PF-R2cm DW2 pass (review M3 and minors): December collected = 300.00 paid from trust − 50.00 corrected − 20.00 refunded by the credit note + 10.00 paid = 240.00; billed 500.00 − 20.00",
+    eq(decC, { CAD: "240.00" }) && eq(decB, { CAD: "480.00" }), { decC, decB });
+  ok("PF-R2cm DW3 fail (review M3): the payment into trust on the invoice is counted once, as its withdrawal (never also as a payment: 540.00); trust received is its 300.00 less the 40.00 refunded out of trust",
+    !JSON.stringify(decC).includes("540.00") && eq(decT, { CAD: "260.00" }), { decC, decT });
+  const early = figs(await one(OWNER, K("fees_collected"), { from: "2026-12-01", to: "2026-12-04" }));
+  ok("PF-R2cm DW2 fail (review minor): a payment recorded for a day before its invoice's issue counts from the issue day (nothing 1-4 Dec)", eq(early, {}), early);
+
+  // review M1: the solo firm (zone America/Toronto) — a payment recorded for 1 Nov (stored at 00:00 UTC, 31 Oct 20:00 in
+  // Toronto) is November's; an invoice issued and paid at 03:30 UTC on 1 Nov (31 Oct 23:30 in Toronto) is October's
+  const IZ = invoice({ firm: B, person: PB, issued: "2026-10-20T15:00:00Z", due: "2026-11-20", lines: [["FEE", 40000, 0, 0]] });
+  pay(IZ, 40000, "2026-11-01T00:00:00Z", "OPERATING", "CAD", B);
+  const IZ2 = invoice({ firm: B, person: PB, issued: "2026-11-01T03:30:00Z", due: "2026-11-30", lines: [["FEE", 1000, 0, 0]] });
+  pay(IZ2, 1000, "2026-11-01T03:30:00Z", "OPERATING", "CAD", B);
+  const OCT = { from: "2026-10-01", to: "2026-10-31" };
+  const zNov = figs(await one(SOLO, K("fees_collected"), NOV)), zOct = figs(await one(SOLO, K("fees_collected"), OCT)), zOctB = figs(await one(SOLO, K("fees_billed"), OCT));
+  ok("PF-R2cm DW2 pass (review M1): a payment recorded for 1 Nov counts in November (400.00), not October", eq(zNov, { CAD: "400.00" }), { zNov, zOct });
+  ok("PF-R2cm DW2 fail (review M1): a moment at 03:30 UTC on 1 Nov is the firm's 31 Oct: October holds its 10.00 paid and both October invoices (410.00 billed)", eq(zOct, { CAD: "10.00" }) && eq(zOctB, { CAD: "410.00" }), { zOct, zOctB });
+
+  // review M2: overdue by client names only clients whose money the viewer may open (C5)
+  const byClient = (scope: MoneyScope) => withFirm(A, async () => (await moneyMetrics(walled, () => NOW, async () => scope).find((m) => m.key === K("overdue_by_client"))!.read({ firmId: A, staffId: OWNER.staffId, keys: OWNER.keys, scope: "financial" }, {})));
+  const none = await byClient({ cases: [], parties: [] }), allSeen = await byClient("ALL"), onlyA = await byClient({ cases: [], parties: [PA] });
+  ok("PF-R2cm DW6 fail (review M2): a viewer who may open no client's money sees no name, only one line per currency that still adds up",
+    eq(none, { kind: "LIST", rows: [{ client: "1 client you cannot open", client_type: null, currency: "CAD", overdue: "1100.00", oldest_days: 5 }, { client: "1 client you cannot open", client_type: null, currency: "USD", overdue: "160.00", oldest_days: 55 }] }), none);
+  ok("PF-R2cm DW6 pass (review M2): a viewer who may open Client A sees Client A named and Maple folded; one who may open all sees both named",
+    eq(onlyA, { kind: "LIST", rows: [{ client: "Client A Sample", client_type: "Individual", currency: "CAD", overdue: "1100.00", oldest_days: 5 }, { client: "1 client you cannot open", client_type: null, currency: "USD", overdue: "160.00", oldest_days: 55 }] })
+      && allSeen.kind === "LIST" && allSeen.rows.map((r) => r.client).join() === "Client A Sample,Maple Sample Ltd", { onlyA, allSeen });
+
   // ------------------------------------------------------------------------------------------------------------ DW8
   sql(`${R} insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at)
       select '${B}', '${PB}', 'BULK-' || g, case when g % 4 = 0 then 'USD' else 'CAD' end::"MoneyCurrency", date '2026-06-01' + (g % 150), timestamptz '2026-11-01 12:00Z' - (g || ' minutes')::interval, 'seed', 'seed', now() from generate_series(1, 3000) g;
@@ -253,7 +295,7 @@ try {
   };
   const pA = await parity(A, OWNER), pB = await parity(B, SOLO);
   ok("PF-R2cm DW4 pass (parity): the set-based balance equals status-sql.ts's DUE_SQL invoice for invoice, in both firms (credit applied and reversed, refunds, trust paid, ~3,000 invoices)", pA.same && pB.same && pB.n > 3000 && pB.ic, { pA, pB });
-  ok("PF-R2cm DW4 fail (parity): the written-off invoice is in neither list, and the credit-applied invoice owes 265.00 (300.00 − 10.00 paid − 40.00 applied + 15.00 reversed)", pA.n === 4 && pB.ic, { pA, pB });
+  ok("PF-R2cm DW4 fail (parity): the written-off invoice is in neither list, and the credit-applied invoice owes 265.00 (300.00 − 10.00 paid − 40.00 applied + 15.00 reversed)", pA.n === 5 && pB.ic, { pA, pB });
   const ctxs = [{ firmId: A, staffId: OWNER.staffId, keys: OWNER.keys, scope: "financial" as const }, { firmId: B, staffId: SOLO.staffId, keys: SOLO.keys, scope: "financial" as const }];
   const slow = await overBudget(registry.all(), ctxs, (f, fn) => withFirm(f, fn), NOV);
   ok("PF-R2cm DW8 pass: every money figure answers within 200 ms (STANDARDS §9) in each firm with ~3,000 invoices in the other (15,000 credit applications and their reversals among them: break m2)", slow.length === 0, slow);
@@ -267,9 +309,10 @@ try {
         from fo_person p where p.created_by = 'seed:cap';
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency)
       select '${A}', i.id, 1, 'FEE', 'Sample', 1, case when i.currency = 'CAD' then 100000 else 90000 end, case when i.currency = 'CAD' then 100000 else 90000 end, 0, 0, i.currency from money_invoice i where i.number like 'CAP-%'`);
-  const capped = rows(await one(OWNER, K("overdue_by_client"))) as Record<string, string | number | null>[];
+  const cappedRead = await withFirm(A, () => moneyMetrics(walled, () => NOW, async () => "ALL").find((m) => m.key === K("overdue_by_client"))!.read({ firmId: A, staffId: OWNER.staffId, keys: OWNER.keys, scope: "financial" }, {}));
+  const capped = (cappedRead.kind === "LIST" ? cappedRead.rows : []) as Record<string, string | number | null>[];
   const named = (cur: string) => capped.filter((r) => r.currency === cur && r.client_type !== null).length;
-  ok("PF-R2cm DW4 pass (break m1): past the cap each currency keeps its own most owed (99 CAD, 99 USD named), never ranked CAD against USD", capped.length === 200 && named("CAD") === 99 && named("USD") === 99, { n: capped.length, cad: named("CAD"), usd: named("USD") });
+  ok("PF-R2cm DW4 pass (break m1; a viewer who may open every client): past the cap each currency keeps its own most owed (99 CAD, 99 USD named), never ranked CAD against USD", capped.length === 200 && named("CAD") === 99 && named("USD") === 99, { n: capped.length, cad: named("CAD"), usd: named("USD") });
   ok("PF-R2cm DW4 fail (break m1, m3): the rest is one row per currency with its sum: \"3 more clients\" CAD 3,000.00 and \"1 more client\" USD 160.00 (singular)",
     eq(capped.slice(-2), [{ client: "3 more clients", client_type: null, currency: "CAD", overdue: "3000.00", oldest_days: 24 }, { client: "1 more client", client_type: null, currency: "USD", overdue: "160.00", oldest_days: 55 }]), capped.slice(-2));
 } finally {

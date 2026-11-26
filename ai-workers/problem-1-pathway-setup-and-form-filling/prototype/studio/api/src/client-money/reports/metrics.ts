@@ -36,7 +36,10 @@ import { Db } from "../../core.ts";
 import { PlatformClock } from "../../platform/identity/port.ts";
 import { MetricRegistry } from "../../platform/reports/registry.ts";
 import { readSetting, TIME_ZONE } from "../../platform/settings.ts";
+import type { StaffContext } from "../../platform/identity/keys.ts";
 import { trustShows } from "../reads/common.ts";
+import type { MoneyScope } from "../reads/visibility.ts";
+import { PgMoneyVisibility } from "../visibility-adapter.ts";
 import { PROVINCE_TAX_RATES } from "../tax/canada-gst-hst.ts";
 
 type Reader = PrismaClient | Prisma.TransactionClient;
@@ -68,14 +71,13 @@ export function taxNameOf(ratePpm: number): string {
 }
 
 /** The read's frame: who (a condition on a money row with firm_id, case_id, person_id and company_id), the firm's zone and
- *  the period as timestamps in that zone (the end exclusive: the day after `to`). */
-export type Frame = { firmId: string; who: (x: string) => Prisma.Sql; zone: string; from: Prisma.Sql | null; to: Prisma.Sql | null };
+ *  the period's first and last days (both included; null: open). */
+export type Frame = { firmId: string; who: (x: string) => Prisma.Sql; zone: string; from: string | null; to: string | null };
 export async function frameOf(db: Reader, ctx: MetricReadContext, f: MetricFilters): Promise<Frame> {
   // the door reads a PER_CURRENCY figure only at the financial scope; any other read is refused here too (UNAVAILABLE)
   if (ctx.scope !== "financial") throw new Error("money figures are firm-wide (view-financial) only");
   const zone = await readSetting<string>(db as PrismaClient, ctx.firmId, TIME_ZONE.key);
   const clamp = (d: string | undefined) => (d && d < EARLIEST_DAY ? EARLIEST_DAY : d);
-  const at = (day: string, plus = 0) => Prisma.sql`((${day}::date + ${plus}::int)::timestamp at time zone ${zone})`;
   const from = clamp(f.from), to = clamp(f.to);
   const person = f.staffId ? await caseScope(db, { firmId: ctx.firmId, staffId: f.staffId, keys: [CASE_VIEW_OWN] }) : null;
   const who = (x: string) => {
@@ -84,9 +86,17 @@ export async function frameOf(db: Reader, ctx: MetricReadContext, f: MetricFilte
     if (f.clientType) parts.push(f.clientType === "CORPORATE" ? Prisma.sql`${a}.company_id is not null` : Prisma.sql`${a}.person_id is not null`);
     return Prisma.join(parts, " and ");
   };
-  return { firmId: ctx.firmId, who, zone, from: from ? at(from) : null, to: to ? at(to, 1) : null };
+  return { firmId: ctx.firmId, who, zone, from: from ?? null, to: to ?? null };
 }
-const inPeriod = (col: Prisma.Sql, fr: Frame) => Prisma.sql`${fr.from ? Prisma.sql`and ${col} >= ${fr.from}` : Prisma.empty} ${fr.to ? Prisma.sql`and ${col} < ${fr.to}` : Prisma.empty}`;
+/** A day expression `day` (a date) inside the period. */
+const inPeriod = (day: Prisma.Sql, fr: Frame) => Prisma.sql`${fr.from ? Prisma.sql`and ${day} >= ${fr.from}::date` : Prisma.empty} ${fr.to ? Prisma.sql`and ${day} <= ${fr.to}::date` : Prisma.empty}`;
+/** The firm's day of a moment. */
+const dayIn = (fr: Frame, at: Prisma.Sql) => Prisma.sql`(${at} at time zone ${fr.zone})::date`;
+/** A payment's day: one recorded for an earlier date is stored at that date's 00:00 UTC (invoices/money.ts, facts.ts's UTC
+ *  day), so that date is its day; one recorded today is stored at the moment, read in the firm's zone (review M1). */
+const paidDay = (fr: Frame, at: Prisma.Sql) => Prisma.sql`(case when ${at} = date_trunc('day', ${at}, 'UTC') then (${at} at time zone 'UTC')::date else ${dayIn(fr, at)} end)`;
+/** A fact's day, never before its invoice's issue day (the statement's greatest(…, issued_at)). */
+const onOrAfterIssue = (fr: Frame, day: Prisma.Sql) => Prisma.sql`greatest(${day}, ${dayIn(fr, Prisma.sql`i.issued_at`)})`;
 /** One figure per currency that has one, CAD first (never one total). */
 const perCurrency = (rows: { currency: Currency; amount: string }[]): Reading => ({ kind: "MONEY", figures: rows.sort((a, b) => a.currency.localeCompare(b.currency)).map((r) => ({ currency: r.currency, amount: major(r.amount) })) });
 /** The firm's today (YYYY-MM-DD in its zone). */
@@ -98,31 +108,34 @@ const ON_INVOICE = (x: string) => Prisma.sql`join money_invoice i on i.firm_id =
 /** Fees billed, each fact signed and dated (exported for the plan check). */
 export const billedSql = (fr: Frame) => Prisma.sql`
   select x.currency, sum(x.amount)::text as amount from (
-    select i.currency::text as currency, money_invoice_total(i.firm_id, i.id)::bigint as amount, i.issued_at as at from money_invoice i where ${issued(fr)}
-    union all select i.currency::text, -c.amount_minor::bigint, greatest(c.created_at, i.issued_at) from money_credit_note c ${ON_INVOICE("c")} where ${issued(fr)}
-  ) x where true ${inPeriod(Prisma.sql`x.at`, fr)} group by x.currency`;
-/** Fees collected, each fact signed and dated as the statement's INVOICES lines (exported for the plan check). */
+    select i.currency::text as currency, money_invoice_total(i.firm_id, i.id)::bigint as amount, ${dayIn(fr, Prisma.sql`i.issued_at`)} as day from money_invoice i where ${issued(fr)}
+    union all select i.currency::text, -c.amount_minor::bigint, ${onOrAfterIssue(fr, dayIn(fr, Prisma.sql`c.created_at`))} from money_credit_note c ${ON_INVOICE("c")} where ${issued(fr)}
+  ) x where true ${inPeriod(Prisma.sql`x.day`, fr)} group by x.currency`;
+/** Fees collected, each fact signed and dated as the statement's INVOICES lines (exported for the plan check). Money paid
+ *  beyond the bill counts until it is refunded (the refund takes it off); credit applied never counts (FO-7r break M1). */
 export const collectedSql = (fr: Frame) => Prisma.sql`
   select x.currency, sum(x.amount)::text as amount from (
-    select i.currency::text as currency, p.amount_minor::bigint as amount, greatest(p.received_at, i.issued_at) as at from money_payment p ${ON_INVOICE("p")} where ${issued(fr)} and p.received_into = 'OPERATING'
-    union all select i.currency::text, -r.amount_minor::bigint, greatest(r.created_at, i.issued_at) from money_refund r join money_payment p on p.firm_id = r.firm_id and p.id = r.payment_id ${ON_INVOICE("p")} where ${issued(fr)}
-    union all select i.currency::text, -e.amount_minor::bigint, greatest(e.created_at, i.issued_at) from money_trust_entry e ${ON_INVOICE("e")} where ${issued(fr)} and e.kind = 'WITHDRAWAL_TO_INVOICE'
-    union all select i.currency::text, -c.amount_minor::bigint, greatest(c.created_at, i.issued_at) from money_trust_entry c join money_trust_entry w on w.firm_id = c.firm_id and w.id = c.corrects_entry_id ${ON_INVOICE("w")} where ${issued(fr)} and c.kind = 'CORRECTION'
-    union all select i.currency::text, -coalesce(c.overpaid_minor, 0)::bigint, greatest(c.created_at, i.issued_at) from money_credit_note c ${ON_INVOICE("c")} where ${issued(fr)} and c.overpaid_choice = 'OVERPAID_REFUND'
-  ) x where true ${inPeriod(Prisma.sql`x.at`, fr)} group by x.currency`;
-/** Trust received (exported for the plan check). */
+    select i.currency::text as currency, p.amount_minor::bigint as amount, ${onOrAfterIssue(fr, paidDay(fr, Prisma.sql`p.received_at`))} as day from money_payment p ${ON_INVOICE("p")} where ${issued(fr)} and p.received_into = 'OPERATING'
+    union all select i.currency::text, -r.amount_minor::bigint, ${onOrAfterIssue(fr, dayIn(fr, Prisma.sql`r.created_at`))} from money_refund r join money_payment p on p.firm_id = r.firm_id and p.id = r.payment_id ${ON_INVOICE("p")} where ${issued(fr)}
+    union all select i.currency::text, -e.amount_minor::bigint, ${onOrAfterIssue(fr, dayIn(fr, Prisma.sql`e.created_at`))} from money_trust_entry e ${ON_INVOICE("e")} where ${issued(fr)} and e.kind = 'WITHDRAWAL_TO_INVOICE'
+    union all select i.currency::text, -c.amount_minor::bigint, ${onOrAfterIssue(fr, dayIn(fr, Prisma.sql`c.created_at`))} from money_trust_entry c join money_trust_entry w on w.firm_id = c.firm_id and w.id = c.corrects_entry_id ${ON_INVOICE("w")} where ${issued(fr)} and c.kind = 'CORRECTION'
+    union all select i.currency::text, -coalesce(c.overpaid_minor, 0)::bigint, ${onOrAfterIssue(fr, dayIn(fr, Prisma.sql`c.created_at`))} from money_credit_note c ${ON_INVOICE("c")} where ${issued(fr)} and c.overpaid_choice = 'OVERPAID_REFUND'
+  ) x where true ${inPeriod(Prisma.sql`x.day`, fr)} group by x.currency`;
+/** Trust received (exported for the plan check). A deposit of a payment takes the payment's day (a payment recorded for an
+ *  earlier date: that date). */
 export const trustSql = (fr: Frame) => Prisma.sql`
-  select e.currency::text as currency, sum(e.amount_minor::bigint)::text as amount from money_trust_entry e
-    left join money_trust_entry d on d.firm_id = e.firm_id and d.id = e.corrects_entry_id
-   where ${fr.who("e")} and (e.kind in ('DEPOSIT', 'REFUND_TO_CLIENT', 'MOVE_TO_CASE') or (e.kind = 'CORRECTION' and d.kind = 'DEPOSIT')) ${inPeriod(Prisma.sql`e.created_at`, fr)}
-   group by e.currency`;
+  select x.currency, sum(x.amount)::text as amount from (
+    select e.currency::text as currency, e.amount_minor::bigint as amount, coalesce(${paidDay(fr, Prisma.sql`p.received_at`)}, ${dayIn(fr, Prisma.sql`e.created_at`)}) as day
+      from money_trust_entry e left join money_trust_entry d on d.firm_id = e.firm_id and d.id = e.corrects_entry_id left join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id
+     where ${fr.who("e")} and (e.kind in ('DEPOSIT', 'REFUND_TO_CLIENT', 'MOVE_TO_CASE') or (e.kind = 'CORRECTION' and d.kind = 'DEPOSIT'))
+  ) x where true ${inPeriod(Prisma.sql`x.day`, fr)} group by x.currency`;
 /** Each issued invoice not written off, with its currency, party, days past due on `today` and what is still due: status-sql.ts's
  *  DUE_SQL over FACTS_LATERAL's terms (total − credited − paid, paid = operating − refunded + trust + applied, trust per
  *  invoice never below zero), read set-based: each fact table once for the firm's invoices, grouped, never a function per
  *  invoice (3,000 invoices: 250 ms that way). tests/check_pfr2cm_metrics.ts DW4 holds it equal to DUE_SQL per invoice. */
 export const openSql = (fr: Frame, today: string) => {
   const F = Prisma.sql`${fr.firmId}::uuid`;
-  return Prisma.sql`with inv as materialized (select i.id, i.currency, i.person_id, i.company_id, i.due_date from money_invoice i
+  return Prisma.sql`with inv as materialized (select i.id, i.case_id, i.currency, i.person_id, i.company_id, i.due_date from money_invoice i
         where ${issued(fr)} and not exists (select 1 from money_write_off w where w.firm_id = i.firm_id and w.invoice_id = i.id)),
       tot as (select l.invoice_id as id, sum(l.amount_minor::bigint + l.tax_minor) as v from money_invoice_line l join inv on inv.id = l.invoice_id where l.firm_id = ${F} group by 1),
       cn as (select c.invoice_id as id, sum(c.amount_minor::bigint) as v, sum(coalesce(c.overpaid_minor, 0)::bigint) filter (where c.overpaid_choice = 'OVERPAID_REFUND') as back
@@ -139,12 +152,19 @@ export const openSql = (fr: Frame, today: string) => {
       -- each entry's reversals, grouped once (a lookup per entry was 6.5 ms per 1,000 applications: break m2)
       rv as (select r.reverses_entry_id as entry, sum(r.amount_minor::bigint) as v from money_credit_entry r where r.firm_id = ${F} and r.reverses_entry_id in (select ae.entry from ae) group by 1),
       ap as (select ae.id, -sum(ae.v + coalesce(rv.v, 0)) as v from ae left join rv on rv.entry = ae.entry group by 1)
-    select inv.currency::text as currency, inv.person_id, inv.company_id, (${today}::date - inv.due_date)::int as days,
+    select inv.currency::text as currency, inv.case_id, inv.person_id, inv.company_id, (${today}::date - inv.due_date)::int as days,
            greatest(0, coalesce(tot.v, 0) - coalesce(cn.v, 0) - (coalesce(op.v, 0) - coalesce(rf.v, 0) + greatest(coalesce(tw.v, 0) - coalesce(cn.back, 0), 0) + coalesce(ap.v, 0))) as due
       from inv left join tot on tot.id = inv.id left join cn on cn.id = inv.id left join op on op.id = inv.id left join rf on rf.id = inv.id left join tw on tw.id = inv.id left join ap on ap.id = inv.id`;
 };
 
-export function moneyMetrics(db: Reader, now: () => Date = () => new Date()): MetricRegistration[] {
+/** The C5 condition on an open-invoice row `o` (case_id, person_id, company_id): scopeSql's rule. */
+const seenOf = (s: MoneyScope) => s === "ALL" ? Prisma.sql`true` : !s.cases.length && !s.parties.length ? Prisma.sql`false`
+  : Prisma.sql`(o.case_id = any(${s.cases}::uuid[]) or (o.case_id is null and coalesce(o.person_id, o.company_id) = any(${s.parties}::uuid[])))`;
+/** The viewer's money visibility (the app's: PgMoneyVisibility; a test may pass its own). */
+export type VisibilityOf = (ctx: MetricReadContext) => Promise<MoneyScope>;
+
+export function moneyMetrics(db: Reader, now: () => Date = () => new Date(), visibility: VisibilityOf = (ctx) => new PgMoneyVisibility(db).scopeOf(ctx as unknown as StaffContext)): MetricRegistration[] {
+  const self = { visibility };
   const money = (key: string, label: string, source: string, sql: (fr: Frame) => Prisma.Sql, gate?: (ctx: MetricReadContext) => Promise<boolean>): MetricRegistration => ({
     key: `reports.money.${key}`, module: MODULE, label, kind: "MONEY", aggregation: "SUM", moneyTreatment: "PER_CURRENCY", scopeAware: false, drillTarget: null, source,
     async read(ctx, f): Promise<Reading> {
@@ -180,26 +200,32 @@ export function moneyMetrics(db: Reader, now: () => Date = () => new Date()): Me
     },
     {
       key: "reports.money.overdue_by_client", module: MODULE, label: "Overdue by client", kind: "LIST", aggregation: "LIST", moneyTreatment: "PER_CURRENCY", scopeAware: false, drillTarget: null,
-      source: "Each client with money overdue today, per currency: the amount and how many days the oldest is past due; most owed first in each currency. The date range does not apply.",
+      source: "Each client with money overdue today, per currency: the amount and how many days the oldest is past due; most owed first in each currency. Only clients whose money you may open are named; the rest are one line per currency. The date range does not apply.",
       async read(ctx, f): Promise<Reading> {
         const fr = await frameOf(db, ctx, f), today = todayIn(fr.zone, now());
-        const rows = await db.$queryRaw<{ client: string | null; kind: string; currency: Currency; amount: string; oldest: number }[]>`
-          select coalesce(nullif(trim(concat_ws(' ', p.given_names, p.family_name)), ''), nullif(trim(c.operating_name), '')) as client,
-                 case when o.person_id is not null then 'Individual' else 'Corporate' end as kind, o.currency, sum(o.due)::text as amount, max(o.days)::int as oldest
-            from (${openSql(fr, today)}) o
-            left join fo_person p on p.firm_id = ${ctx.firmId}::uuid and p.id = o.person_id left join fo_company c on c.firm_id = ${ctx.firmId}::uuid and c.id = o.company_id
-           where o.due > 0 and o.days >= 1
-           group by coalesce(o.person_id, o.company_id), 1, 2, o.currency
+        // a client is named only when the viewer may open their money (client money's C5 rule, PgMoneyVisibility, as the
+        // invoice list and FO-7r's reads: AG-14-19, review M2); the rest is one row per currency, so the rows still add up
+        const scope = await self.visibility(ctx), seen = seenOf(scope);
+        const all = await db.$queryRaw<{ party: string | null; client: string | null; kind: string | null; currency: Currency; amount: string; oldest: number; clients: number }[]>`
+          select v.party::text as party, case when v.party is null then null else coalesce(nullif(trim(concat_ws(' ', p.given_names, p.family_name)), ''), nullif(trim(c.operating_name), '')) end as client,
+                 case when v.party is null then null when v.person_id is not null then 'Individual' else 'Corporate' end as kind, v.currency, v.amount, v.oldest, v.clients
+            from (select case when ${seen} then coalesce(o.person_id, o.company_id) end as party, case when ${seen} then o.person_id end as person_id, case when ${seen} then o.company_id end as company_id,
+                         o.currency, sum(o.due)::text as amount, max(o.days)::int as oldest, count(distinct coalesce(o.person_id, o.company_id))::int as clients
+                    from (${openSql(fr, today)}) o where o.due > 0 and o.days >= 1 group by 1, 2, 3, o.currency) v
+            left join fo_person p on p.firm_id = ${ctx.firmId}::uuid and p.id = v.person_id left join fo_company c on c.firm_id = ${ctx.firmId}::uuid and c.id = v.company_id
            -- the most owed of each currency in turn (never CAD against USD, break m1): rank within the currency first
-           order by row_number() over (partition by o.currency order by sum(o.due) desc), o.currency, 1 nulls last`;
+           order by row_number() over (partition by v.currency order by v.amount::bigint desc), v.currency, 2 nulls last`;
+        const rows = all.filter((r) => r.party !== null);
+        const hidden = all.filter((r) => r.party === null).sort((a, b) => a.currency.localeCompare(b.currency))
+          .map((r): Row => ({ client: `${r.clients} ${r.clients === 1 ? "client" : "clients"} you cannot open`, client_type: null, currency: r.currency, overdue: major(r.amount), oldest_days: Number(r.oldest) }));
         const keep = (r: (typeof rows)[number]): Row => ({ client: r.client ? Array.from(r.client).slice(0, 120).join("") : null, client_type: r.kind, currency: r.currency, overdue: major(r.amount), oldest_days: Number(r.oldest) });
         // shown by currency, most owed first within it (the cut above took each currency's most owed in turn)
         const shown = (xs: typeof rows) => [...xs].sort((a, b) => a.currency.localeCompare(b.currency) || (BigInt(b.amount) > BigInt(a.amount) ? 1 : BigInt(b.amount) < BigInt(a.amount) ? -1 : 0) || (a.client ?? "\uffff").localeCompare(b.client ?? "\uffff"));
-        if (rows.length <= LIST_MAX_ROWS) return { kind: "LIST", rows: shown(rows).map(keep) };
+        if (rows.length + hidden.length <= LIST_MAX_ROWS) return { kind: "LIST", rows: [...shown(rows).map(keep), ...hidden] };
         // past the cap: one "more clients" row per currency for the rest, so no currency is ever added to another
-        const head = rows.slice(0, LIST_MAX_ROWS - 2), rest = rows.slice(LIST_MAX_ROWS - 2);
+        const head = rows.slice(0, LIST_MAX_ROWS - 2 - hidden.length), rest = rows.slice(LIST_MAX_ROWS - 2 - hidden.length);
         const more = (["CAD", "USD"] as const).flatMap((cur) => { const m = rest.filter((r) => r.currency === cur); return m.length ? [{ client: `${m.length} more ${m.length === 1 ? "client" : "clients"}`, client_type: null, currency: cur, overdue: major(m.reduce((n, r) => n + BigInt(r.amount), 0n)), oldest_days: Math.max(...m.map((r) => Number(r.oldest))) }] : []; });
-        return { kind: "LIST", rows: [...shown(head).map(keep), ...more] };
+        return { kind: "LIST", rows: [...shown(head).map(keep), ...more, ...hidden] };
       },
     },
     {
@@ -210,7 +236,7 @@ export function moneyMetrics(db: Reader, now: () => Date = () => new Date()): Me
         const rows = await db.$queryRaw<{ currency: Currency; rate: number; tax: string }[]>`
           select l.currency::text as currency, l.tax_rate_ppm as rate, sum(l.tax_minor::bigint)::text as tax
             from money_invoice_line l join money_invoice i on i.firm_id = l.firm_id and i.id = l.invoice_id
-           where ${issued(fr)} and l.tax_minor <> 0 ${inPeriod(Prisma.sql`i.issued_at`, fr)} group by l.currency, l.tax_rate_ppm`;
+           where ${issued(fr)} and l.tax_minor <> 0 ${inPeriod(dayIn(fr, Prisma.sql`i.issued_at`), fr)} group by l.currency, l.tax_rate_ppm`;
         // per tax name: two rates of one name (HST at 13 % and 15 %) add up, in one currency only
         const by = new Map<string, { currency: Currency; tax_name: string; minor: bigint }>();
         for (const r of rows) { const name = taxNameOf(Number(r.rate)), k = `${r.currency}|${name}`; const x = by.get(k) ?? { currency: r.currency, tax_name: name, minor: 0n }; x.minor += BigInt(r.tax); by.set(k, x); }
