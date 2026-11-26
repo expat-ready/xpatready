@@ -2,7 +2,7 @@
 
 current_lead: local_33c127af Lead 6 · 26 Nov 22:33 IST (after Lead 5 local_1c8b2ecd at about 295k, ~190k past its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 23:0x IST (clock): **Lead 6 running (check a1b9cf16).** #3697 labelled (green). #3872 (P-214: PF-21d stamp test demanded the newest migration forever; took #3831 out of the queue) Approve + labelled; then requeue #3831. #3753: cloud builder started by the founder from card task_a54c1612. Lead 7 standby NOT started (the app's classifier refused start_session); asked the founder. 66/110 Works on main. Weekly ~75%.
+updated: 2026-11-26 23:0x IST (clock): **Lead 6 running (check a1b9cf16).** #3697 labelled (green). #3872 (P-214: PF-21d stamp test demanded the newest migration forever; took #3831 out of the queue) Approve + labelled; then requeue #3831. #3753: cloud builder started by the founder from card task_a54c1612. Lead 7 standby started 23:2x at the founder's yes (local_a579023a). Records PR #3873 (P-845): label guard took the label off until pr-suites runs; relabel when green. 66/110 Works on main. Weekly ~75%.
 
 ## Hand-over Lead 5 → Lead 6, 22:3x IST 26 Nov (Lead 5 at ~295k, P-446; the earlier block word for word: `history/STATE-2026-11-26-2235-lead5-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 5's 2ee5c4a4 is deleted. Re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Start one more standby at the founder's next typed turn (P-286).
@@ -56,4 +56,4 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**Leads:** account of 24 Nov: Lead 1-11; account of 26 Nov: Lead 1 (local_90e2d17d), Lead 2 (local_43b637a0), Lead 3 (local_adad5033, 14:36 IST), Lead 4 (local_b2e5d43a, 15:10 IST), Lead 5 (local_1c8b2ecd, 17:2x IST, current). Standby: Lead 6 (local_33c127af). Full line, word for word: `history/STATE-2026-11-26-1500-lead3-leads-report-owed-lines.md`.
+**Leads:** account of 24 Nov: Lead 1-11; account of 26 Nov: Lead 1 (local_90e2d17d), Lead 2 (local_43b637a0), Lead 3 (local_adad5033, 14:36 IST), Lead 4 (local_b2e5d43a, 15:10 IST), Lead 5 (local_1c8b2ecd, 17:2x IST, current). Lead 6 (local_33c127af, 22:33 IST, current). Standby: Lead 7 (local_a579023a). Full line, word for word: `history/STATE-2026-11-26-1500-lead3-leads-report-owed-lines.md`.
