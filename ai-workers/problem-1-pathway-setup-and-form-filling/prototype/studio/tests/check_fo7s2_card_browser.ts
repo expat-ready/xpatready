@@ -50,7 +50,8 @@ if (sql(`select count(*) from money_payment_settings where firm_id = '${A}'`) ==
 sql(`delete from money_payment_account where firm_id = '${A}'`);
 const setState = (status: string, charges: boolean) => sql(`insert into money_payment_account (firm_id, stripe_account_id, status, charges_enabled, payouts_enabled, updated_at) values ('${A}', ${status === "NOT_CONNECTED" ? "null" : "'acct_fo7s2sample'"}, '${status}', ${charges}, ${charges}, now())
   on conflict (firm_id) do update set status = excluded.status, charges_enabled = excluded.charges_enabled, payouts_enabled = excluded.payouts_enabled, stripe_account_id = excluded.stripe_account_id`);
-const TOWNER = await signIn("user-R"), TOFF = await signIn("user-O");
+let TOWNER = await signIn("user-R");
+const TOFF = await signIn("user-O");
 const audits = () => sql(`select count(*) from audit_event where firm_id = '${A}' and entity = 'money_payment_account'`);
 
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
@@ -129,6 +130,8 @@ try {
   await dialog.getByRole("button", { name: "Sign in again" }).click();
   await ps.waitForURL(/connect\.fake-rail\.example/, { timeout: 30_000 });
   ok("FO-7s2 S4 pass: after signing in again the Connect is sent once more and the browser opens Stripe's hosted set-up page", calls === 2 && /connect\.fake-rail\.example\/setup\//.test(ps.url()), { calls, url: ps.url() });
+  // One session at a time: the sign-in again ended the Owner's earlier session, so later tabs use the new one.
+  await ps.goBack(); TOWNER = await ps.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session") ?? "{}").token as string);
   answer = "https://evil.example/steal"; calls = 1;
   await open(ps); await ps.locator("[data-card-step]").click(); await ps.locator("[data-card-refused]").waitFor({ timeout: 20_000 });
   ok("FO-7s2 S4 fail: an onboarding answer naming another site is not followed; the words say nothing was changed", ps.url().startsWith(BASE) && /could not be opened/.test(await ps.locator("[data-card-refused]").innerText()), ps.url());
@@ -136,12 +139,12 @@ try {
 
   // ---------------------------------------------------------------------------------------------- S5: back from Stripe
   setState("PENDING", false);
-  await open(po, "?account=refresh");
-  ok("FO-7s2 S5 pass: ?account=refresh says the set-up link expired and offers the step again", (await po.locator("[data-card-back]").innerText()) === backWords("refresh") && (await po.locator("[data-card-step]").innerText()) === "Continue set-up");
-  await open(po, "?account=return");
-  ok("FO-7s2 S5 pass: ?account=return says Stripe now checks the details", (await po.locator("[data-card-back]").innerText()) === backWords("return"));
-  await open(po, "?account=anything");
-  ok("FO-7s2 S5 fail: any other value shows no Stripe line", (await po.locator("[data-card-back]").count()) === 0);
+  const pb = await tab(TOWNER); await open(pb, "?account=refresh");
+  ok("FO-7s2 S5 pass: ?account=refresh says the set-up link expired and offers the step again", (await pb.locator("[data-card-back]").innerText()) === backWords("refresh") && (await pb.locator("[data-card-step]").innerText()) === "Continue set-up");
+  await open(pb, "?account=return");
+  ok("FO-7s2 S5 pass: ?account=return says Stripe now checks the details", (await pb.locator("[data-card-back]").innerText()) === backWords("return"));
+  await open(pb, "?account=anything");
+  ok("FO-7s2 S5 fail: any other value shows no Stripe line", (await pb.locator("[data-card-back]").count()) === 0);
 
   // ---------------------------------------------------------------------------------------------- K: widths, axe
   setState("DISCONNECTED", false);
@@ -152,8 +155,8 @@ try {
     ok(`FO-7s2 K pass: at ${w} px Getting paid has no sideways scroll`, !side);
   }
   ok("FO-7s2 K pass: axe-core finds 0 serious or critical (WCAG 2.2 A/AA) at 375, 1024 and 1440 px", axeAll.length === 0, axeAll);
-  await po.evaluate(() => { const i = document.createElement("input"); document.querySelector("main")?.appendChild(i); });
-  ok("FO-7s2 K fail: the same axe run finds an unlabelled field we add", (await serious(po)).some((x) => x.startsWith("label")));
+  await pb.evaluate(() => { const i = document.createElement("input"); document.querySelector("main")?.appendChild(i); });
+  ok("FO-7s2 K fail: the same axe run finds an unlabelled field we add", (await serious(pb)).some((x) => x.startsWith("label")));
   ok("FO-7s2: no page error in any tab", errs.length === 0, errs);
 } catch (e) { failed++; ok(`FO-7s2: the walk stopped: ${(e as Error).message.split("\n")[0]}`, false, process.env.DEBUG ? await Promise.all(browser.contexts().flatMap((c) => c.pages()).map((p, i) => p.screenshot({ path: `${process.env.DEBUG}/fail-${i}.png`, fullPage: true }).then(() => i).catch(() => -1))) : undefined); }
 finally { await browser.close(); }
