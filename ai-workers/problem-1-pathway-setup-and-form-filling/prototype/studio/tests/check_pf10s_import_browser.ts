@@ -7,11 +7,13 @@
 // access. US$0, no model call. The journey j_35 walks the whole row.
 //   zsh studio/tools/isolated.sh screens_pf10s 4442 start PLATFORM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf10s_import_browser.ts 4442 xr_studio_screens_pf10s
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { chromium, type Page } from "playwright";
 import { client, recorder } from "./runtime/api.ts";
 import { COPY, doneWords, importWords, runBlocked, stateWords, stepOf, templateCsv, usedElsewhere, type Batch } from "../web/src/modules/platform/import/contract.ts";
 
 const { ok, summary } = recorder();
+const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 0), DB = process.argv[3] ?? "";
 
 // ------------------------------------------------------------------------------------------------ part 1: the helpers
@@ -34,10 +36,10 @@ if (!PORT || PORT === 4400 || !DB) { ok("PF-10s browser part: an isolated copy's
 const BASE = `http://localhost:${PORT}`, { sql: rawSql } = client(PORT, DB), sql = (q: string) => (rawSql(q) ?? "").split("\n")[0].trim();
 const browser = await chromium.launch({ ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
 const errors: string[] = [];
-const signIn = async (actor: string): Promise<Page> => {
+const signIn = async (actor: string, width = 1440): Promise<Page> => {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: actor, secondStep: true }) });
   const token = ((await r.json()) as { token: string }).token;
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+  const ctx = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
   await ctx.addInitScript((t) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, token);
   const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e))); return p;
 };
@@ -59,7 +61,7 @@ try {
   const kUp = await tabTo(p, "[data-upload]"); await p.keyboard.press("Enter");
   const onCols = await seen(p, '[data-step="columns"]', 30_000);
   ok("PF-10s BR-1 fail: before a preview there is no Import button (Columns shows Preview only)", onCols && (await p.locator("[data-run]").count()) === 0);
-  if (await seen(p, "[data-attest]", 5_000)) { await p.locator("[data-attest-tick]").check(); await p.locator("[data-attest-confirm]").click(); await p.locator("[data-attest]").waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined); }
+  if (await seen(p, "[data-attest]", 5_000)) { await p.locator("[data-attest-tick]").click(); await p.locator("[data-attest]").waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined); }
   const kPrev = await tabTo(p, "[data-preview]"); await p.keyboard.press("Enter");
   const onPrev = await seen(p, '[data-step="preview"]', 30_000) && await seen(p, "[data-row]");
   const kChip = await tabTo(p, '[data-chip="CREATE"]'); await p.keyboard.press("Space");
@@ -69,6 +71,35 @@ try {
   ok("PF-10s keyboard pass: New import, the source, Next, Preview, an outcome chip (Space) and Import (Enter) are all reached by Tab and work without a mouse",
     kNew && kSource && kUp && onCols && kPrev && onPrev && kChip && pressed && kRun && done, { kNew, kSource, kUp, onCols, kPrev, onPrev, kChip, pressed, kRun, done });
   ok("PF-10s BR-1 pass: Import ran exactly the preview seen: 2 people made from the keyboard file", sql(`select count(*) from fo_person where email in ('kb.${run}@client.test','kb2.${run}@client.test')`) === "2");
+
+  // Review round 1 Major: the declaration ticked, then the consent column unmapped → a fresh preview may run (the
+  // declaration no longer applies), never "The columns changed" for ever.
+  const d = await signIn("user-R");
+  await d.goto(`${BASE}/platform/import/new`);
+  await d.locator("[data-source]").fill("Declaration trap");
+  await d.locator("[data-file]").setInputFiles({ name: "d.csv", mimeType: "text/csv", buffer: Buffer.from(`Email,First name,Marketing\r\ndt.${run}@client.test,Dee,yes\r\n`) });
+  await d.locator("[data-upload]").click(); await seen(d, '[data-step="columns"]', 30_000);
+  await d.locator("[data-declare]").check();
+  await d.locator('[data-import-as="Marketing"]').selectOption("");
+  const declGone = (await d.locator("[data-declare]").count()) === 0;
+  await d.locator("[data-preview]").click(); await seen(d, '[data-step="preview"]', 30_000); await seen(d, "[data-row]");
+  const trapOn = await d.locator("[data-run]").isEnabled(), trapWhy = await d.locator("[data-run-why]").count();
+  ok("PF-10s BR-2 fail (review M1): declaration ticked, then the consent column unmapped → the fresh preview's Import is enabled (no false \"columns changed\")", declGone && trapOn && trapWhy === 0, { declGone, trapOn, trapWhy });
+  await d.context().close();
+
+  // Axe on every step (review S5): file, columns, preview, at 1440 and 375 px.
+  for (const width of [1440, 375]) {
+    const a = await signIn("user-R", width), bad: string[] = [];
+    const axe = async (step: string) => { await a.waitForTimeout(300); const v = (await new AxeBuilder({ page: a }).include("main").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations; bad.push(...v.map((x) => `${step}: ${x.id} ${x.nodes[0]?.target}`)); };
+    await a.goto(`${BASE}/platform/import/new`); await seen(a, "[data-source]"); await axe("file");
+    await a.locator("[data-source]").fill(`Axe ${width}`); await a.locator("[data-file]").setInputFiles({ name: "x.csv", mimeType: "text/csv", buffer: Buffer.from(FILE) }); await a.locator("[data-upload]").click();
+    await seen(a, '[data-step="columns"]', 30_000); await axe("columns");
+    const fits = await a.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+    const selectShown = await a.locator('[data-import-as="Email"]').evaluate((el) => { const r = el.getBoundingClientRect(); return r.right <= window.innerWidth && r.width > 0; });
+    await a.locator("[data-preview]").click(); await seen(a, '[data-step="preview"]', 30_000); await seen(a, "[data-row]"); await axe("preview");
+    ok(`PF-10s pass (review S3, S5): file, columns and preview at ${width} px: no WCAG 2.2 A/AA violation, no sideways scroll, "Import as" on screen`, bad.length === 0 && fits && selectShown, { bad, fits, selectShown });
+    await a.context().close();
+  }
 
   // BR-3 / challenge M1: an Admin sees the Owner line, not the box (the attestation answer stubbed: no Sample Admin).
   const q = await signIn("user-R");

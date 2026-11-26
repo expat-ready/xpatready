@@ -77,7 +77,7 @@ function RowsTable({ b, phase }: { b: Batch; phase: "DRY_RUN" | "RUN" }) {
   const pages = rows.data ? Math.max(1, Math.ceil(rows.data.total / rows.data.pageSize)) : 1;
   const words = phase === "RUN" ? "run" : "preview";
   const reason = (r: Rows["rows"][number]) => r.reasons.length ? r.reasons.map((x) => x.words).join("; ")
-    : r.outcome === "CREATE" ? (phase === "RUN" ? `Imported from ${b.sourceName}` : "A new person") : r.outcome === "MERGE" ? "Fills only empty fields" : "Nothing new";
+    : r.outcome === "CREATE" ? (phase === "RUN" ? `Imported from ${b.sourceName}` : "A new person") : r.outcome === "MERGE" ? (phase === "RUN" ? "Filled only empty fields" : "Fills only empty fields") : "Nothing new";
   return (
     <div className="flex flex-col gap-3">
       <div role="group" aria-label="Which rows" className="flex flex-wrap gap-2">
@@ -110,11 +110,12 @@ function RowsTable({ b, phase }: { b: Batch; phase: "DRY_RUN" | "RUN" }) {
 // ------------------------------------------------------------------------------------------------ step 2: columns
 function AttestationBox({ onDone }: { onDone: () => void }) {
   const att = useQuery({ queryKey: ["pf", "imports", "attestation"], queryFn: async () => Attestation.parse(await staffApi("/platform/imports/attestation")) });
-  const [tick, setTick] = React.useState(false), [busy, setBusy] = React.useState(false), [err, setErr] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false), [err, setErr] = React.useState<string | null>(null);
   if (!att.data || att.data.current) return null;
   if (!att.data.canAttest) return <div data-attest-wait><Notice tone="warn">{COPY.adminWait}</Notice></div>;
+  // Ticking is the confirmation (review S1, challenge M1): it is recorded at once, before any preview, so a preview
+  // made after the tick is bound to it and can run; there is no second button to forget.
   const confirm = async () => {
-    if (!tick) { setErr("Tick the box to confirm."); return; }
     setBusy(true); setErr(null);
     try { await staffApi("/platform/imports/attestation", { method: "POST", json: { version: att.data!.wording.version, confirm: true } }); await att.refetch(); onDone(); }
     catch (x) { setErr(errorOf(x, "Could not record your confirmation. Try again.")); } finally { setBusy(false); }
@@ -122,10 +123,10 @@ function AttestationBox({ onDone }: { onDone: () => void }) {
   return (
     <section aria-labelledby="attest-h" className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4" data-attest>
       <h2 id="attest-h" className="text-sm font-semibold text-text">Confirm once for your firm (Owner)</h2>
-      <label className="flex items-start gap-2 text-sm text-text"><input type="checkbox" className="mt-1" checked={tick} onChange={(e) => setTick(e.target.checked)} aria-invalid={err ? true : undefined} data-attest-tick />{att.data.wording.words}</label>
+      <label className="flex items-start gap-2 text-sm text-text"><input type="checkbox" className="mt-1" checked={busy} disabled={busy} onChange={(e) => { if (e.target.checked) void confirm(); }} aria-invalid={err ? true : undefined} aria-describedby="attest-note" data-attest-tick />{att.data.wording.words}</label>
       <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary>{att.data.wording.unconfirmed}. Wording version {att.data.wording.version}.</details>
       {err ? <p role="alert" className="text-xs text-text-danger">{err}</p> : null}
-      <div><Button variant="outline" size="sm" busy={busy} onClick={() => void confirm()} data-attest-confirm>Confirm</Button></div>
+      <p id="attest-note" className="text-xs text-text-muted">{busy ? "Recording your confirmation…" : "Ticking records your confirmation for the firm; it is asked again only if the wording changes."}</p>
     </section>
   );
 }
@@ -152,15 +153,15 @@ function ColumnsStep({ b, columns, setColumns, declared, setDeclared, onPreviewe
     <div className="flex flex-col gap-4" data-step="columns">
       {savedFrom ? <div data-saved-mapping><Notice tone="info">Mapping from your last import from {b.sourceName}.</Notice></div> : null}
       <p className="text-sm text-text-muted">{b.rows} row{b.rows === 1 ? "" : "s"} in the file. Choose what each column is; one column per field.</p>
-      <Table label="Columns of the file" head={["Column", "First values", "Import as"]}>
+      <Table label="Columns of the file" head={["Column", "First values", "Import as"]} headClass={[undefined, "max-sm:hidden", undefined]}>
         {b.header.map((h, i) => {
           const used = usedElsewhere(columns, h), id = `col-${i}`;
           return (
             <tr key={h} data-column={h}>
-              <td className="max-w-48 font-medium"><label htmlFor={id} className="block truncate" title={h}>{h}</label></td>
-              <td className="max-w-64 text-xs text-text-muted"><span className="block truncate">{b.sample.map((r) => r[i] ?? "").filter((v) => v !== "").slice(0, 3).join(" · ") || "—"}</span></td>
-              <td className="min-w-48">
-                <Select id={id} value={columns[h] ?? ""} onChange={(e) => setColumns({ ...columns, [h]: e.target.value || null })} data-import-as={h}>
+              <td className="max-w-48 font-medium max-sm:max-w-28"><label htmlFor={id} className="block truncate" title={h}>{h}</label></td>
+              <td className="max-w-64 text-xs text-text-muted max-sm:hidden"><span className="block truncate">{b.sample.map((r) => r[i] ?? "").filter((v) => v !== "").slice(0, 3).join(" · ") || "—"}</span></td>
+              <td className="min-w-40 max-sm:min-w-0">
+                <Select id={id} value={columns[h] ?? ""} onChange={(e) => { const next = { ...columns, [h]: e.target.value || null }; setColumns(next); if (!consentMapped(next, t.fields)) setDeclared(false); }} data-import-as={h}>
                   <option value="">Don't import</option>
                   {t.fields.map((f) => <option key={f.key} value={f.key} disabled={used.has(f.key)}>{f.label}{used.has(f.key) ? " (used)" : ""}</option>)}
                 </Select>
@@ -258,7 +259,7 @@ function BatchBody({ id }: { id: string }) {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold text-text">Import {b.targetLabel.toLowerCase()} from {b.sourceName}</h1>
+        <h1 className="truncate text-2xl font-semibold text-text" title={`Import ${b.targetLabel.toLowerCase()} from ${b.sourceName}`}>Import {b.targetLabel.toLowerCase()} from {b.sourceName}</h1>
         {step === "columns" || step === "preview" ? <Steps at={at as 1 | 2} /> : <p className="text-sm text-text-muted"><Pill tone={stateWords(b.state, b.counts).tone}>{stateWords(b.state, b.counts).text}</Pill></p>}
       </header>
       {viewOnly ? <RowsTable b={b} phase="DRY_RUN" />

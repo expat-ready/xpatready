@@ -125,7 +125,7 @@ try {
   const declRefused = await seen(p.locator("#decl-err"), 5_000) && (await p.locator("[data-declare]").getAttribute("aria-invalid")) === "true";
   await p.locator("[data-declare]").check();
   const attestShown = await seen(p.locator("[data-attest]"), 10_000);
-  if (attestShown) { await p.locator("[data-attest-tick]").check(); await p.locator("[data-attest-confirm]").click(); await p.locator("[data-attest]").waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined); }
+  if (attestShown) { await p.locator("[data-attest-tick]").click(); await p.locator("[data-attest]").waitFor({ state: "detached", timeout: 10_000 }).catch(() => undefined); }
   ok("J-35 W3: a field one column uses is disabled in the others; the consent column is refused on the declaration until ticked; the Owner confirms the attestation once",
     usedDisabled && declRefused && attestShown && sql(`select count(*) from plat_import_attestation where firm_id = '${A}'`) === "1", { usedDisabled, declRefused, attestShown });
   await p.locator("[data-preview]").click();
