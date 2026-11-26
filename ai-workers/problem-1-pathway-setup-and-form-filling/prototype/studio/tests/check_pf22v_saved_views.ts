@@ -236,9 +236,8 @@ try {
     budget.status === 201 && dec.status === 200 && dec.body.length === 1 && decOpen.body.length === 1 && decOut.status === 200 && decOut.body.length === 0, [dec.body, decOpen.body, decOut.body]);
   // review M1 / challenge M3: a shared view naming a source the viewer's leads do not have is dropped for them, never a 422
   sql(`update fo_lead set source = 'Web form' where id = '${theirs.lead.id}'`);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });   // the Admin sees every lead's source
+  // break round 2 R2-M1: the Admin's own leads lack "Web form" (everyone-sees-all is off), yet it is a source of the firm, so it saves
   const webView = await save(admin, { list: "fo.leads", name: "Web leads", filter: { view: "all", source: "Web form" }, shared: true });
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
   const agentWeb = (await call("GET", `${V}?list=fo.leads`, agent.token)).body.shared.find((v: { id: string }) => v.id === webView.body.id);
   const agentOpens = await call("GET", `${FO}/leads?${new URLSearchParams(agentWeb?.applies ?? {})}`, agent.token);
   ok("PF-22v V9 pass (review M1, challenge M3): the Admin shares a source view; for an Agent whose leads lack that source the part is dropped and named, and the rest opens (200)",
@@ -255,6 +254,8 @@ try {
   const k2 = await call("POST", V, agent.token, { requestId: keyRid, list: "fo.pipeline.individual", name: "Two keys", filter: { from: "2026-01-01", owner: agent.id, stage: "QUALIFIED" } });
   ok("PF-22v V9 pass (round 2 R2-2): a retry with the filter's keys in another order answers the same view (no 409)", k1.status === 201 && k2.status === 201 && k2.body.id === k1.body.id, [k1.status, k2.status, k2.body]);
   const oneBad = await save(agent, { list: "fo.leads", name: "Half dates", filter: { from: "2026-01-01", to: "2026-13-45" } });
+  const reversed = await save(agent, { list: "fo.leads", name: "Backwards", filter: { from: "2026-06-01", to: "2026-01-01" } });
+  ok("PF-22v V9 fail (break round 2 R2-m5): a reversed range names the end", reversed.status === 400 && /before the start/.test(reversed.body.fields?.to ?? ""), reversed.body);
   ok("PF-22v V9 fail (round 2 R2-4): one bad date names only itself", oneBad.status === 400 && !!oneBad.body.fields?.to && !oneBad.body.fields?.from, oneBad.body);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
   const adminAll = await call("GET", `${FO}/prospects?${new URLSearchParams(seenBy[0].body.shared[0].applies)}`, admin.token);

@@ -69,7 +69,7 @@ export class SavedViewsService {
   private async checked(ctx: StaffContext, reg: ListRegistration<StaffContext>, raw: unknown): Promise<ViewFilter> {
     const r = reg.filterSchema.safeParse(raw);
     if (!r.success) return invalid(Object.fromEntries(Object.entries(fieldsOf(r.error)).map(([k, v]) => [k, v])));
-    const c = await reg.check(ctx, r.data);
+    const c = await reg.check(ctx, r.data, "save");
     if (c.dropped.length) return invalid(Object.fromEntries(c.dropped.map((d) => [d.part, d.label])));
     return r.data;
   }
@@ -133,7 +133,8 @@ export class SavedViewsService {
 
   /** The same request again: the view it made, or 409 when the request id is reused for another view. */
   private repeat(ctx: StaffContext, v: PlatSavedView, b: z.infer<typeof CreateView>, f: ViewFilter) {
-    if (v.listKind !== b.list || v.name !== trimText(b.name) || canonicalJson(v.filter) !== canonicalJson(f)) return problem(409, "Request already used", "This request id already made another view. Send a new one.", { code: "REQUEST_REUSED" });
+    // A replay after the view was taken back by someone else is no longer this request's view (break round 2 R2-m4).
+    if ((v.ownerStaffId !== null && v.ownerStaffId !== ctx.staffId) || v.listKind !== b.list || v.name !== trimText(b.name) || canonicalJson(v.filter) !== canonicalJson(f)) return problem(409, "Request already used", "This request id already made another view. Send a new one.", { code: "REQUEST_REUSED" });
     return this.one(ctx, v);
   }
 

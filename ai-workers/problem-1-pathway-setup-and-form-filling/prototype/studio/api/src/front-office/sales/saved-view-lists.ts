@@ -31,7 +31,7 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
     if (this.registry.listOf("fo.leads")) return;   // a second start of the same registry registers nothing new
     const reg = (shape: z.ZodRawShape, kind: "fo_person" | "fo_prospect", pipeline?: "INDIVIDUAL" | "CORPORATE"): ListRegistration<StaffContext> => ({
       filterSchema: customFieldQuery(shape) as unknown as z.ZodType<ViewFilter>, shareKey: FO_SHARE_KEY,
-      check: (ctx, f) => this.check(ctx, f, kind, pipeline),
+      check: (ctx, f, mode) => this.check(ctx, f, kind, pipeline, mode),
     });
     this.registry.registerList("fo.leads", reg(LEADS_QUERY_SHAPE, "fo_person"));
     this.registry.registerList("fo.pipeline.individual", reg(PIPELINE_SHAPE, "fo_prospect", "INDIVIDUAL"));
@@ -39,7 +39,7 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
     this.registry.registerList("fo.prospects", reg(PROSPECTS_QUERY_SHAPE, "fo_prospect"));
   }
 
-  async check(ctx: StaffContext, filter: ViewFilter, kind: "fo_person" | "fo_prospect", fixed?: "INDIVIDUAL" | "CORPORATE"): Promise<{ filter: ViewFilter; dropped: DroppedPart[] }> {
+  async check(ctx: StaffContext, filter: ViewFilter, kind: "fo_person" | "fo_prospect", fixed?: "INDIVIDUAL" | "CORPORATE", mode: "save" | "read" = "read"): Promise<{ filter: ViewFilter; dropped: DroppedPart[] }> {
     const out: ViewFilter = { ...filter }, dropped: DroppedPart[] = [];
     const drop = (part: string, label: string) => { delete out[part]; dropped.push({ part, label }); };
     const one = (v: unknown) => (typeof v === "string" ? v : undefined);
@@ -53,12 +53,16 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
         drop(part, "This date is not a real day (YYYY-MM-DD).");
       }
     }
+    if (out.from !== undefined && out.to !== undefined) {   // both real days, but the end before the start (break round 2 R2-m5)
+      try { await dayRange(this.db, ctx.firmId, out.from, out.to); } catch (e) { if (!(e instanceof HttpException)) throw e; drop("to", "The end date is before the start date."); }
+    }
     // challenge M3: only the sources no lead this person can see has are left out (said); the others still narrow. When
     // none is left, the view opens empty for them (`empty`), never as every lead they see (round 2 R2-1).
     let empty = false;
     const asked = sourcesAsked(filter.source);
     if (asked.length) {
-      const vis = await visibilityOf(this.db, ctx), seen = await sourcesSeen(this.db, ctx, vis);
+      // At save a source is judged by the firm's leads (a sharer may name one their own leads lack: break round 2 R2-M1).
+      const vis = mode === "save" ? { seesAll: true, seesUnassigned: true } : await visibilityOf(this.db, ctx), seen = await sourcesSeen(this.db, ctx, vis);
       const gone = asked.filter((x) => !seen.includes(x)), kept = asked.filter((x) => seen.includes(x));
       if (gone.length) {
         dropped.push({ part: "source", label: `No lead you can see has the source ${gone.map((x) => `“${x}”`).join(", ").slice(0, 200)}${kept.length ? "; the other sources still apply" : ", so the view shows nothing for you"}.` });
@@ -74,11 +78,17 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
       const s = /^[0-9a-f-]{36}$/i.test(filter.owner) ? await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: filter.owner.toLowerCase() }), select: { status: true } }) : null;
       if (!s || s.status !== "ACTIVE") drop("owner", "The owner is no longer on the staff.");
     }
-    for (const [key, values] of Object.entries(cfPart(filter))) {
-      try { await customFieldIdsWhere(this.db, ctx.firmId, kind, { [key]: values }); } catch (e) {
+    // The custom-field parts together, as the list reads them (break round 2 R2-m3: one part alone can match more than all do).
+    const cf = cfPart(filter);
+    if (Object.keys(cf).length) {
+      try { await customFieldIdsWhere(this.db, ctx.firmId, kind, cf); } catch (e) {
         if (!(e instanceof HttpException)) throw e;
-        const why = (e.getResponse() as { fields?: Record<string, string> }).fields?.[`cf.${key}`] ?? "";
-        drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : /too many/i.test(why) ? `The custom field “${key}” matches too many records to apply.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
+        const fields = (e.getResponse() as { fields?: Record<string, string> }).fields ?? {};
+        for (const key of Object.keys(cf)) {
+          const why = fields[`cf.${key}`];
+          if (why === undefined) continue;
+          drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : /too many/i.test(why) ? `The custom field “${key}” matches too many records to apply.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
+        }
       }
     }
     return { filter: out, dropped, empty };

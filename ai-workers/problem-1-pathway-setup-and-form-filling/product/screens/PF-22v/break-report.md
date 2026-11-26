@@ -55,3 +55,41 @@ For every view, the check runs a stage count, an owner lookup and, for each cf p
 * **Text:** an 80-character name in Arabic plus emoji saves; invisible-only and 81-character names → 422. CHECKBOX (true/TRUE/false, `1` refused), NUMBER (`..2`, `2..`, `1e0..2`, `3..1` → []) and Infinity (refused) behave as documented. A 15.9 k filter under the limit saves.
 
 Verdict: Changes 0cfb49afd19945dd638146427fec577ef8bc47c9
+
+## Round 2 (diff only, 8eccabb30)
+**What was run:** `break.mts`, with a `requestId` on every POST, the If-Match interceptor and about 60 new calls; and `inlist.mts`. Both ran against a clean `git archive` of 8eccabb30 (`/tmp/claude-0/pf22v-r2src`), because during the run the worktree moved to e14ff9f0b and gained uncommitted edits. Neither is judged here. Same setup as round 1, plus a third prospect for the Agent (source "Referral") and one for the Owner (source "Web form"). Both databases were dropped.
+
+**Closed**
+* **M2:** a stale PATCH or DELETE → 409 STALE_VERSION with `current`; a stale If-Match → 409. In 60 runs of two concurrent PATCHes on one version, both never succeeded. Every save changes the version.
+* **M3:** `view`, `from`, `to`, `source` and `type` are refused at save with 400, each part named.
+* **m2:** `constructor`, `toString`, `hasOwnProperty`, `valueOf` and `isPrototypeOf` → 422 on the list and 400 on a view.
+* **m3:** `1.5..3`, `..1.8` and `.5..2` filter correctly.
+* **m6:** `sort:null` clears the sort.
+* **m4:** the 500 is gone. The new 30,000 limit is judged under R2-m3.
+* **m1:** mostly closed. NUL or a lone surrogate in a name, a filter or a cf value → 422/400. A 25 k filter → 422. What remains is R2-m1.
+
+**R2-M1 (Major, M1 not closed): the source part is dropped for each viewer. That is the outcome challenge M3 calls wrong.**
+Repro: the Owner shares "R2 Web form" `{source:"Web form"}`. The Agent has no web-form lead. For the Agent, `dropped` is the source, `applies` is `{}`, and the list answers 200 with **all 3** of the Agent's prospects (Phone call and Referral) under a view called "Web form". With `{source:["Phone call","Web form"]}` the whole part is dropped, so the Agent sees 3 rows instead of the 2 Phone-call ones. Challenge M3 says "the source is dropped and the Agent sees **all** their leads … Both are wrong", and that a source counts as "no longer applies" only when no lead in the firm has it.
+The save side is viewer-relative too. With `everyone_sees_all=false` the Owner sees only their own leads, so the Owner cannot share "Web form", which exists in the firm: 400 "No lead you can see has the source". It saves only once the Owner owns a web-form lead.
+Where: `saved-view-lists.ts:56-60`. Fix as M3 says: keep the part, so the list shows the viewer's matching rows or none, and check "gone" against the whole firm.
+
+**R2-M2 (Major, m7 not closed): an honest retry of a create gets 409 REQUEST_REUSED when the filter has two or more keys.**
+`repeat()` compares `JSON.stringify(v.filter)` with `JSON.stringify(f)` (`service.ts:131`). jsonb reorders keys (shorter first), while zod outputs them in shape order, so the two strings differ even when the filters are the same.
+Repro: POST `{requestId:R, list:"fo.pipeline.individual", name:"R2 idem", filter:{stage:"QUALIFIED", owner:<me>}}` → 201. Sending exactly the same body again → **409** "This request id already made another view." Two at once → 201 and 409. A retry with the keys in jsonb's order also gets 409; a one-key filter retries fine (201, 201).
+Result: a double click shows a false error and invites a duplicate save, so STANDARDS §4 [M] is still unmet. Fix: compare a canonical form (keys sorted), or compare deep-equal against the stored row.
+
+**Minor**
+* **R2-m1: a filter of up to 16,000 characters of JSON can still get a 500.** The database checks `length(filter::text)`, and jsonb text adds a space after every `:` and `,`. Repro: eight MULTI_SELECT parts with 100 or 60 repeated choices is 15,803 characters of JSON → **500**. Separately, the plain text `\u0000` (a backslash and five characters, no NUL) is refused as if it were a NUL. Both are in `service.ts:33`. Fix: measure the size as jsonb text would, or keep a margin, and test each string with `storable` instead.
+* **R2-m2: the version is optional.** `service.ts:37,39`: a PATCH or DELETE with no version → 200, and the last write wins. Offices require the version. The protection only works if the screen sends it; the Lead decides whether that is enough.
+* **R2-m3: judging the 30,000 limit (`filter.ts:98`).** It counts matches across the whole firm, before visibility, which has three effects:
+  * (a) A `view.own` Agent with 3 prospects gets 422 for `cf.vip=true` when the firm has 40 k VIPs. Adding `owner=<me>` still gives 422, although the message says "Add another filter to narrow it"; only another cf part narrows the count.
+  * (b) It is a one-bit oracle: "more than 30,000 records in the firm match". This is coarser than round 1's timing leak; acceptable as Minor.
+  * (c) The saved-view check runs each cf part on its own (`saved-view-lists.ts:71`). A two-part filter that the list answers (2 × 31 k matches, 12 in common → 200) is refused at save with the wrong words ("The value no longer fits the custom field"). A view saved before the counts grew would open with both parts dropped, showing more rows than the view asks for.
+  * Verdict on the limit: an acceptable stop-gap at sample scale (§9), but the words are wrong and the check should run all cf parts together. The real fix is a SQL subquery inside the visibility.
+* **R2-m4: a replayed create returns a view that is now someone else's personal one.** The Owner creates a shared view with request R; the Admin takes it back and sets `columns:["secretColumn"]`. The Owner replays R → **201** with the Admin's personal view (owner Admin, those columns), while a PATCH on it gives the Owner 404 (`service.ts:117,130`). It leaks only columns, sort and version.
+* **R2-m5:** `from:2026-01-01, to:2025-01-01` names both parts as "This date is not a real day". It should say the range is reversed.
+* **m5** (queries for each view) is unchanged, as the builder listed.
+
+**Held again:** every round-1 hold re-ran with the same results: injection and wildcards, visibility on both lists, permissions, firm walls, leavers, odd keys and text. The 10× race of delete, take-back and the Agent's rename, now with versions, has one winner each time and no 500. `inlist.mts`: 32,000 ids pass and 33,000 fail, so the 30,000 limit keeps the list under the database's parameter limit.
+
+Verdict: Changes 8eccabb30738e88a1df5289078babeb128c58d50
