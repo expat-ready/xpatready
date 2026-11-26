@@ -24,6 +24,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SAMPLE_FIRM_ID, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const NEW = "20261126100000_shared__csnt1c_case_client_note", PART1 = "20261122110000_csnt1a_case_note";
@@ -57,7 +58,8 @@ ok(`CS-NT1 DW17 pass: the migration has its own stamp, later than part 1's and e
 for (const d of all.filter((x) => x < NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
 {
   const W0 = randomUUID(), K0 = randomUUID();
-  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id) values ('${K0}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001', '${randomUUID()}');
+  // CS-W1 part 2 needs the case's firm; it is written with it, as its client row is not (no later backfill update to check it).
+  sql(`${SAMPLE_FIRMS_SQL} set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id, firm_id) values ('${K0}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001', '${randomUUID()}', '${SAMPLE_FIRM_ID["sample-firm"]}');
        insert into case_note (firm_id, workspace_id, case_id, note_key, version, text, author, by_actor) values ('${randomUUID()}', '${W0}', '${K0}', '${randomUUID()}', 1, 'An existing note', 'staff:x', 'staff:x')`, DEMO);
 }
 psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]);
