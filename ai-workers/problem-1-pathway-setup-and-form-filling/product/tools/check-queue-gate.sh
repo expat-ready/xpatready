@@ -28,6 +28,8 @@ case "$m $p" in
   "GET issues/"*/comments*) n=${p#issues/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] || { echo '[]'; exit 0; }
     if [ -f "$FX/comments-extra-$n.json" ] && [ -f "$FX/comments-$n.json" ]; then jq -s add "$FX/comments-$n.json" "$FX/comments-extra-$n.json"; else serve "comments-$n.json"; fi;;
   "GET issues?"*) [ "${pg:-1}" = 1 ] && serve issues.json || echo '[]';;
+  "GET actions/workflows/pr-suites.yml/runs"*) [ -f "$FX/suiteruns.json" ] && cat "$FX/suiteruns.json" || echo '{"workflow_runs":[]}';;   # OS-82
+  "GET check-runs/"*/annotations*) c=${p#check-runs/}; serve "annot-${c%%/*}.json";;
   "GET commits/"*/check-runs?check_name=pr-suites*) s=${p#commits/}; serve "suites-${s%%/*}.json";;   # P-822
   "GET commits/"*/check-runs*) s=${p#commits/}; serve "checks-${s%%/*}.json";;
   "GET actions/runs/"*) serve "run-${p#actions/runs/}.json";;
@@ -557,6 +559,57 @@ W2="$(git -C "$TOOLS" rev-parse --show-toplevel)/.github/workflows/queue-gate.ym
 ok "P-822: queue-gate.yml wakes when pr-suites ends, as when ci ends" "$(python3 -I -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); print("ok" if set(d[True]["workflow_run"]["workflows"]) == {"ci", "pr-suites"} else "no")' "$W2" | grep -qx ok && echo 1)" "$(grep -n 'workflows:' "$W2")"
 suites $HEAD1 completed success; prj 7 $HEAD1
 
+# --- OS-82 (OS-PM 4, 26 Nov): a tools-only PR whose only pr-suites run predates the job "pr-suites" (#3632, 25 Nov 19:16
+# UTC) has no "pr-suites" check run: its plan succeeded and the job "parts" was skipped (the change reaches no suite).
+# label-guard.sh asks proof with RELABEL=1; #3693 lost its label this way at 05:43 UTC. Only that exact shape counts.
+oldrun() {  # oldrun <head> <run conclusion> <parts conclusion> [plan annotation title] [pr-suites job conclusion] → run 99
+  echo '{"check_runs": []}' > "$T/fx/suites-$1.json"
+  jq -n --arg h "${SR_HEAD:-$1}" --arg co "$2" --argjson n "${SR_PRS:-[7]}" --arg b "${SR_BASE:-main}" --arg st "${SR_STATUS:-completed}" '{workflow_runs: [{id: 99,
+    path: ".github/workflows/pr-suites.yml", event: "pull_request", head_sha: $h, status: $st, conclusion: (if $co == "" then null else $co end),
+    run_started_at: "2026-11-25T16:48:17Z", created_at: (env.SR_CREATED // "2026-11-25T16:48:15Z"), pull_requests: ($n | map({number: ., base: {ref: $b}}))}]}' > "$T/fx/suiteruns.json"
+  jq -n --arg pc "$3" --arg x "${5:-}" '{jobs: ([{id: 990, name: "plan", conclusion: "success"},
+    {id: 991, name: (if $pc == "skipped" then "parts" else "parts (1)" end), conclusion: $pc}]
+    + (if $x == "" then [] else [{id: 992, name: "pr-suites", conclusion: $x}] end))}' > "$T/fx/jobs-99.json"
+  jq -n --arg t "${4:-}" --arg lv "${SR_LEVEL:-warning}" 'if $t == "" then [] elif $t == "-" then [{title: "", annotation_level: $lv}] else [{title: $t, annotation_level: $lv}] end' > "$T/fx/annot-990.json"; }
+TOOLF=ai-workers/x/product/tools/records-pr.sh
+prj 7 $HEAD1 false "review: approved"; files 7 "$TOOLF"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; NOSUITES=1 cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: tools-only PR, its pr-suites run skipped parts (no job pr-suites yet): a label just put on is kept (label-guard proof exit 0)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped "pr-suites (report only)"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the old plan warned (pr-base or the picker failed, so parts were skipped): refused" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success success; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: parts ran (no check pr-suites): refused, only skipped parts count" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped "" failure; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run has a job pr-suites (red) but no check run read: refused, that job decides" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 failure skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run itself ended red: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_STATUS=in_progress oldrun $HEAD1 "" skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run has not ended: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "SR_BASE=side:a run of a PR into a side branch"; do
+  ( export "${c%%:*}"; oldrun $HEAD1 success skipped ); SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+  ok "OS-82: ${c#*:}: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+done
+oldrun $HEAD1 success skipped -; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): the old plan step died before its warning (an untitled warning): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=failure oldrun $HEAD1 success skipped -; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): a failure annotation on plan (\"Process completed with exit code 1\"): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=notice oldrun $HEAD1 success skipped "pr-suites (report only)"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a pr-suites-titled annotation at any level: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=notice oldrun $HEAD1 success skipped "Some notice"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a notice annotation on plan is no failure: kept" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF" "$S/api/src/form.ts"; oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): the PR changes app code (change-kind.sh may have crashed into \"no suite\"): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF" "$S/README.md" "ai-workers/x/product/STATE.md"; oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a doc under prototype/ is not app code: kept" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF"; SR_CREATED=2026-11-25T19:16:45Z oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review m1): a run created when #3632 merged or later (it should have the job pr-suites): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped; rm -f "$T/fx/jobs-99.json"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run's jobs cannot be read: proof exit 2 (the guard fails closed, never a silent keep)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped; rm -f "$T/fx/annot-990.json"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the plan's annotations cannot be read: proof exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped; suites $HEAD1 completed failure; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a real pr-suites check run (red) on the head wins over an old run's skipped parts" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+rm -f "$T/fx/suiteruns.json" "$T/fx/jobs-99.json" "$T/fx/annot-990.json"; prj 7 $HEAD1; files 7 "$S/api/src/form.ts"; suites $HEAD1 completed success
 # --- P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after the label (money,
 # additive migrations, public routes); a migration is judged on the PR's added lines, never its name. PR 9 is drawn for
 # the 1-in-3 after-read (9 mod 3 = 0), PR 7 is not.

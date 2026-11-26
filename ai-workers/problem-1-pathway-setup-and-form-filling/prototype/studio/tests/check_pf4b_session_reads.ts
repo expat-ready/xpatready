@@ -224,8 +224,8 @@ try {
   const stranger = await handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "ENCRYPTED", userAttributes: { email: "nobody@example.com" } } }, { decrypt: async () => "1", mail, firmOf: async () => null });
   ok("PF-4b pass: the custom email sender decrypts the code and sends our words through MailPort (transactional, to the person)", forgot.sent && mail.sent.length === sentC + 1 && /493021/.test(mail.sent.at(-1)!.text) && mail.sent.at(-1)!.class === "TRANSACTIONAL" && mail.sent.at(-1)!.to === "new.person@example.com");
   ok("PF-4b fail: a person who is not our staff, or an unknown trigger, gets nothing", !stranger.sent && !(await handleCustomEmail({ triggerSource: "CustomEmailSender_Other", request: {} }, { decrypt: async () => "", mail, firmOf: async () => FIRM_A })).sent && mail.sent.length === sentC + 1);
-  const cog = new CognitoIdentityAdmin({ userPoolId: "ca-central-1_X", clientId: "c", mfaRequired: true });
-  ok("PF-4b fail: the cognito admin adapter refuses (503 SIGN_IN_NOT_SET_UP) and says why, never a silent success", await cog.createUser().then(() => false, (e: any) => e.getStatus() === 503 && /technology gate/.test(e.getResponse().detail)));
+  const cog = new CognitoIdentityAdmin({ userPoolId: null, clientId: null, mfaRequired: true });   // PF-4bc built the configured side (check_pf4bc_cognito_admin.ts)
+  ok("PF-4b fail: the cognito admin adapter with no pool refuses (503 SIGN_IN_NOT_SET_UP) and says why, never a silent success", await cog.createUser("x@example.com").then(() => false, (e: any) => e.getStatus() === 503 && /no Cognito pool/.test(e.getResponse().detail)));
   await runContract(mailPortContract, "LocalMail", () => new LocalMail(() => clock.now()), ok);
   await runContract(mailPortContract, "fakeMail", () => fakeMail(), ok);
 

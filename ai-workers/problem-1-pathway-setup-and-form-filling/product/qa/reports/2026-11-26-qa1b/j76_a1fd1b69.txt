@@ -1,0 +1,29 @@
+PASS  J-76 setup: the two Sample firms (A sample-firm, B sample-solo), their front office and both Owners signed in — []
+PASS  J-76 setup: Demo › Load the configured checkpoint — 201
+PASS  J-76 setup: firm A has two cases (A1, A2) and firm B one (B1), each with its case client — [201,201,201]
+PASS  J-76 setup: firm A has two prospects and firm B one (FO-2, engaged from a lead) — [[201,201],[201,201],[201,201]]
+PASS  J-76 W1 (part missing: CS-NT1 part 1, #2999): firm A's Owner adds a note to case A1 (201) — {"status":201,"detail":null}
+PASS  J-76 W1 (part missing: CS-NT1 part 1, #2999): the case's notes list it with who wrote it (the Owner's name) and when — {"status":200}
+PASS  J-76 W1 (part missing: CS-NT1 part 1, #2999): case_note holds it once, with its author (staff:<the Owner>) and the database's time — "1|staff:a8ae673a-8190-43d3-9af1-32a02d2bc020|true"
+PASS  J-76 W2 (part missing: CS-NT1 part 1, #2999): an edit writes the next version and the first stays readable in the note's history — {"edit":200,"history":200}
+PASS  J-76 W2 (part missing: CS-NT1 part 1, #2999): the database keeps both versions, the first unchanged
+PASS  J-76 W2 fail (part missing: CS-NT1 part 1, #2999): the database refuses to change or remove a note version (UPDATE and DELETE on case_note)
+PASS  J-76 W3 (part missing: CS-NT1 part 3, notes on a case client; the route is this journey's guess): firm A's Owner adds a note to the case client (a person) — {"status":201,"column":true}
+PASS  J-76 W3: a note on a prospect (FO-2 part 4, merged) is stored once on its person with who and when (fo_note) — {"status":201,"foRow":"1|staff:a8ae673a-8190-43d3-9af1-32a02d2bc020|true|66a0a112-12ec-4ffa-bbdd-1c7456e6a628"}
+PASS  J-76 W2 fail: the front office's notes are add-only too: the database refuses UPDATE and DELETE on fo_note (FO-1a)
+PASS  J-76 W7 setup: firm B's Owner writes a prospect note (FO-2, merged) — 201
+PASS  J-76 W7 setup (part missing: CS-NT1 part 1, #2999): firm B's Owner writes a note on its own case B1 — 201
+PASS  J-76 W4 (part missing: CS-NT1 part 3, GET cases/:id/timeline): case A1's timeline shows its note with who and when — {"status":200}
+PASS  J-76 W4 fail (part missing: CS-NT1 part 3): case A2's own timeline answers and never shows case A1's note — 200
+FAIL  J-76 W5 (part missing: CS-NT1t, GET case-clients/:id/timeline): the case client's own timeline shows the note on that person — 404
+PASS  J-76 W6: the prospect's own timeline (FO-2 part 4) shows its note with who (the Owner's name) and when — {"status":200,"line":{"at":"2026-11-26T16:01:53.035Z","kind":"NOTE","type":"note","actor":"staff:a8ae673a-8190-43d3-9af1-32a02d2bc020","actorName":"Representative (Sample)","summary":"Sample prospect note mwxqngom: asked about fees","refId":"8cedc7f5-3d07-4d25
+PASS  J-76 W6 fail: another prospect's timeline (same firm) answers and never shows that note — 200
+PASS  J-76 W7: firm A's prospect timeline never shows firm B's prospect note, and firm A reading firm B's prospect timeline is 404 (its own is 200) — [200,404]
+PASS  J-76 W7 (part missing: CS-NT1 part 1, #2999): firm A's case notes never show firm B's case note, and firm A reading case B1's notes is 404 (its own is 200) — [200,404]
+PASS  J-76 W7 (part missing: CS-NT1 part 3): firm A's case timeline never shows firm B's note, and firm A reading case B1's timeline is 404 (its own is 200) — [200,404]
+PASS  J-76 W8: case A1's page opens for firm A's Owner (the case page, merged)
+FAIL  J-76 W8 (part missing: CS-NT1 part 4, the notes and timeline panel on the case page): the Owner adds a note on the case page and it shows on the case's timeline, stored in case_note — {"panel":false,"shown":false}
+PASS  J-76 W8 (part missing: FO-4 part 2b, the prospect page's notes and timeline): the prospect page shows its timeline with the note, and never firm B's — {"page":true,"note":true}
+PASS  J-76: no page error during the walk — []
+
+25/27 passed
