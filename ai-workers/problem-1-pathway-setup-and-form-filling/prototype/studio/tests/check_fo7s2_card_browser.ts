@@ -142,15 +142,18 @@ try {
   // ---------------------------------------------------------------------------------------------- S4 M1: Cancel drops it
   // Break M1: "Sign in again" slowed by 2.5 s, Cancel pressed meanwhile: when the sign-in lands, no Connect is sent.
   calls = 0; answer = "https://connect.fake-rail.example/setup/acct_fo7s2sample/2";
-  await ps.route("**/api/platform/session/local", async (r) => { await new Promise((ok2) => setTimeout(ok2, 2500)); await r.continue(); });
+  // Round 2: both of the dialog's calls are slowed (its /platform/me read comes before it keeps the change), so Cancel lands
+  // before the change is kept as well as after.
   await open(ps); await ps.locator("[data-card-step]").click(); await dialog.waitFor({ timeout: 20_000 });
+  for (const path of ["**/api/platform/me", "**/api/platform/session/local"]) await ps.route(path, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2500)); await r.continue(); });
   await dialog.getByRole("button", { name: "Sign in again" }).click(); await ps.waitForTimeout(300);
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await ps.waitForTimeout(5000);
-  ok("FO-7s2 S4 M1 fail: Cancel during a slow sign-in again sends no Connect afterwards; the browser stays here", calls === 1 && ps.url().startsWith(BASE), { calls, url: ps.url() });
+  ok("FO-7s2 S4 M1 fail: Cancel during the dialog's slow first read sends no Connect afterwards; the browser stays here", calls === 1 && ps.url().startsWith(BASE), { calls, url: ps.url() });
   if (!ps.url().startsWith(BASE)) await open(ps);
   await ps.locator("[data-card-words]").waitFor({ timeout: 30_000 });
-  await ps.unroute("**/api/platform/session/local");
+  await ps.unroute("**/api/platform/me"); await ps.unroute("**/api/platform/session/local");
+  await ps.waitForTimeout(3000);   // the slowed sign-in lands
   TOWNER = await ps.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session") ?? "{}").token as string);
 
   // ---------------------------------------------------------------------------------------------- S5: back from Stripe

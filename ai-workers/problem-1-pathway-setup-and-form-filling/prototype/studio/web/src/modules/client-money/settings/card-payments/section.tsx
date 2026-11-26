@@ -13,6 +13,10 @@ import { ConfirmItsYou, staffChange, takeWaiting } from "@/modules/platform/staf
 import { Account, ACCOUNT_PATH, backWords, CONNECT_KEY, Onboarding, ONBOARDING_PATH, READ_FAILED, refusalWords, safeStripeUrl, said } from "./contract";
 
 const WAIT_ID = "card-payments";   // the change kept across "Confirm it's you" (one per page, never a person's id)
+/** Review round 2 (break M1): the shared dialog keeps the change only after its own first read, so a Cancel pressed before
+ *  that finds nothing to drop. The cancel is remembered here instead (module state survives the remount after the new
+ *  sign-in), set by Cancel or Escape and cleared only when a new "Confirm it's you" opens. */
+let cancelled = false;
 
 export function CardPaymentsSection({ go = (u: string) => window.location.assign(u) }: { /** test seam: where the browser goes */ go?: (url: string) => void }) {
   const me = usePlatformStaff(), token = useStaffToken(), owner = me.keys.includes(CONNECT_KEY);
@@ -32,7 +36,7 @@ export function CardPaymentsSection({ go = (u: string) => window.location.assign
       const r = Onboarding.parse(await staffChange(ONBOARDING_PATH, {}));
       if (safeStripeUrl(r.url)) { left = true; go(r.url); } else said = "Stripe's set-up page could not be opened. Nothing was changed. Please try again.";
     } catch (e) {
-      if (e instanceof StaffApiError && e.problem.code === "STEP_UP_REQUIRED") { setAsk({ staffId: WAIT_ID, path: ONBOARDING_PATH, json: {}, method: "POST", what: "", need: "connect card payments", detail: "Stripe's set-up page opens after you sign in." }); return; }
+      if (e instanceof StaffApiError && e.problem.code === "STEP_UP_REQUIRED") { cancelled = false; setAsk({ staffId: WAIT_ID, path: ONBOARDING_PATH, json: {}, method: "POST", what: "", need: "connect card payments", detail: "Stripe's set-up page opens after you sign in." }); return; }
       said = e instanceof StaffApiError ? refusalWords(e.status, e.problem.code) : "Could not reach Stripe now. Nothing was changed. Please try again.";
     } finally {
       inFlight.current = false; setBusy(false);
@@ -41,9 +45,9 @@ export function CardPaymentsSection({ go = (u: string) => window.location.assign
     }
   };
   // Back from "Confirm it's you": the kept Connect is sent once more under the new sign-in, only on this page.
-  React.useEffect(() => { if (owner && takeWaiting(WAIT_ID)) void connect(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on opening
+  React.useEffect(() => { if (takeWaiting(WAIT_ID) && owner && !cancelled) void connect(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on opening
   /** Cancel or Escape drops the kept Connect, even while the sign-in again is still on its way (break M1). */
-  const closeAsk = () => { takeWaiting(WAIT_ID); setAsk(null); requestAnimationFrame(() => button.current?.focus()); };
+  const closeAsk = () => { cancelled = true; takeWaiting(WAIT_ID); setAsk(null); requestAnimationFrame(() => button.current?.focus()); };
 
   const head = <h2 id="card-payments" className="text-lg font-semibold">Card payments</h2>;
   if (!owner) return (
