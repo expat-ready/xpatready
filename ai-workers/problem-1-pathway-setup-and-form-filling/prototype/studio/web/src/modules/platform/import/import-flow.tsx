@@ -5,7 +5,7 @@
 // queues the run (a background job); the page reads the batch every 2 s, offers Continue import after 60 s without a new
 // row (each row is written once), then the result. Every rule is the server's; a refusal is shown with its words.
 import * as React from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -47,7 +47,7 @@ function FileStep() {
     setBusy(true);
     try {
       const b = await staffApi<{ id: string; mappingFrom?: string }>(`/platform/imports?target=${encodeURIComponent(people.key)}&source=${encodeURIComponent(source.trim())}`, { method: "POST", csv: file! });
-      navigate(`/platform/import/${b.id}`, { state: { mappingFrom: b.mappingFrom } });
+      navigate(`/platform/import/${b.id}${b.mappingFrom === "saved" ? "?mapping=saved" : ""}`);   // in the address: the workspace tabs keep their own history state
     } catch (x) {
       const field = x instanceof StaffApiError ? x.field("source") : null;
       setErr(field ? { source: field } : { file: errorOf(x, "The file could not be uploaded. Try again.") });
@@ -112,7 +112,7 @@ function AttestationBox({ onDone }: { onDone: () => void }) {
   const att = useQuery({ queryKey: ["pf", "imports", "attestation"], queryFn: async () => Attestation.parse(await staffApi("/platform/imports/attestation")) });
   const [tick, setTick] = React.useState(false), [busy, setBusy] = React.useState(false), [err, setErr] = React.useState<string | null>(null);
   if (!att.data || att.data.current) return null;
-  if (!att.data.canAttest) return <Notice tone="warn" data-attest-wait>{COPY.adminWait}</Notice>;
+  if (!att.data.canAttest) return <div data-attest-wait><Notice tone="warn">{COPY.adminWait}</Notice></div>;
   const confirm = async () => {
     if (!tick) { setErr("Tick the box to confirm."); return; }
     setBusy(true); setErr(null);
@@ -130,7 +130,7 @@ function AttestationBox({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ColumnsStep({ b, columns, setColumns, declared, setDeclared, onPreviewed, savedFrom }: { b: Batch; columns: Columns; setColumns: (c: Columns) => void; declared: boolean; setDeclared: (d: boolean) => void; onPreviewed: () => void; savedFrom: boolean }) {
+function ColumnsStep({ b, columns, setColumns, declared, setDeclared, onPreviewed, savedFrom }: { b: Batch; columns: Columns; setColumns: (c: Columns) => void; declared: boolean; setDeclared: (d: boolean) => void; /** Back to the preview step (after a fresh preview, or to look at the last one: BR-2 then shows why Import waits). */ onPreviewed: () => void; savedFrom: boolean }) {
   const targets = useTargets(true), qc = useQueryClient();
   const t = targets.data?.targets.find((x) => x.key === b.target);
   const [busy, setBusy] = React.useState(false), [err, setErr] = React.useState<string | null>(null), [declErr, setDeclErr] = React.useState<string | null>(null);
@@ -150,7 +150,7 @@ function ColumnsStep({ b, columns, setColumns, declared, setDeclared, onPreviewe
   };
   return (
     <div className="flex flex-col gap-4" data-step="columns">
-      {savedFrom ? <Notice tone="info" data-saved-mapping>Mapping from your last import from {b.sourceName}.</Notice> : null}
+      {savedFrom ? <div data-saved-mapping><Notice tone="info">Mapping from your last import from {b.sourceName}.</Notice></div> : null}
       <p className="text-sm text-text-muted">{b.rows} row{b.rows === 1 ? "" : "s"} in the file. Choose what each column is; one column per field.</p>
       <Table label="Columns of the file" head={["Column", "First values", "Import as"]}>
         {b.header.map((h, i) => {
@@ -178,7 +178,10 @@ function ColumnsStep({ b, columns, setColumns, declared, setDeclared, onPreviewe
       ) : null}
       {t.personalData ? <AttestationBox onDone={() => void qc.invalidateQueries({ queryKey: ["pf", "imports", b.id] })} /> : null}
       {err ? <p role="alert" className="text-sm text-text-danger">{err}</p> : null}
-      <div><Button busy={busy} onClick={() => void preview()} data-preview>Preview</Button></div>
+      <div className="flex flex-wrap gap-3">
+        <Button busy={busy} onClick={() => void preview()} data-preview>{b.dryRunHash ? "Preview again" : "Preview"}</Button>
+        {b.dryRunHash ? <Button variant="outline" onClick={onPreviewed} data-to-preview>Back to the last preview</Button> : null}
+      </div>
     </div>
   );
 }
@@ -240,7 +243,7 @@ function Result({ b }: { b: Batch }) {
 }
 
 function BatchBody({ id }: { id: string }) {
-  const me = usePlatformStaff(), loc = useLocation();
+  const me = usePlatformStaff(), [params] = useSearchParams();
   const runs = me.keys.includes(KEY.run);
   const batch = useQuery({ queryKey: ["pf", "imports", id, "view"], queryFn: async () => Batch.parse(await staffApi(`/platform/imports/${id}`)),
     refetchInterval: (q) => (q.state.data?.state === "RUNNING" ? 2_000 : false) });
@@ -259,7 +262,7 @@ function BatchBody({ id }: { id: string }) {
         {step === "columns" || step === "preview" ? <Steps at={at as 1 | 2} /> : <p className="text-sm text-text-muted"><Pill tone={stateWords(b.state, b.counts).tone}>{stateWords(b.state, b.counts).text}</Pill></p>}
       </header>
       {viewOnly ? <RowsTable b={b} phase="DRY_RUN" />
-        : at === 1 ? <ColumnsStep b={b} columns={columns} setColumns={setColumns} declared={declared} setDeclared={setDeclared} onPreviewed={() => setOnColumns(false)} savedFrom={(loc.state as { mappingFrom?: string } | null)?.mappingFrom === "saved"} />
+        : at === 1 ? <ColumnsStep b={b} columns={columns} setColumns={setColumns} declared={declared} setDeclared={setDeclared} onPreviewed={() => setOnColumns(false)} savedFrom={params.get("mapping") === "saved"} />
           : at === 2 ? <PreviewStep b={b} columns={columns} declared={declared} back={() => setOnColumns(true)} />
             : step === "running" ? <Running b={b} /> : <Result b={b} />}
     </div>
@@ -287,7 +290,7 @@ function NewBody() {
 export function ImportPage() {
   const { id = "" } = useParams();
   return (
-    <PlatformFrame crumbs={[{ label: COPY.title, to: "/platform/import" }, { label: "Import" }]}>
+    <PlatformFrame crumbs={[{ label: COPY.title, to: "/platform/import" }, { label: "This import" }]}>
       <Gate><BatchBody id={id} /></Gate>
     </PlatformFrame>
   );
