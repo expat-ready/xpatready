@@ -164,6 +164,12 @@ try {
     select gen_random_uuid(), workspace_id, now(), actor_type, '${A}', 'seed:pf21d-fo', 'fo.lead.created', 'fo_lead', '${B1.lead}', 'Sample line', '{"email":"b1.pf21dfo@example.com"}'::jsonb from audit_event where firm_id = '${A}' limit 1`);
   const b1 = await erase({ requestId: uuid(), firmId: A, personId: B1.p });
   ok("PF-21d 2b fail (break B1): an activity line keyed on the person's lead (their email in its detail) keeps the answer KEPT activity_log, never ERASED", b1.outcome === "KEPT" && /activity log lines \(7 years\) 1/.test(b1.note), b1);
+  // R2-m1: an email with a quote, held in an activity line keyed on nothing of theirs (jsonb escapes it), still counts.
+  const Q1 = one(`insert into fo_person (firm_id, given_names, family_name, email, phone_readable, created_by, updated_at) values ('${A}', 'Quote', 'Sample', 'quo"te.pf21dfo@example.com', false, 'seed:pf21d-fo', now()) returning id`);
+  sql(`insert into audit_event (id, workspace_id, at, actor_type, firm_id, actor, action, entity, entity_key, summary, detail)
+    select gen_random_uuid(), workspace_id, now(), actor_type, '${A}', 'seed:pf21d-fo', 'fo.other', 'fo_other', 'elsewhere', 'Sample line', jsonb_build_object('email', 'quo"te.pf21dfo@example.com') from audit_event where firm_id = '${A}' limit 1`);
+  const q1 = await erase({ requestId: uuid(), firmId: A, personId: Q1 });
+  ok("PF-21d 2b fail (R2-m1): an email with a quote, escaped in an activity line's detail, still keeps the answer KEPT activity_log", q1.outcome === "KEPT" && /activity log lines/.test(q1.note), q1);
   // B2: a row another module's eraser answers for (the case side's client) keeps the answer KEPT until that eraser exists.
   const B2 = seed(A, "b2.pf21dfo@example.com", false);
   sql(`insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, created_by, firm_id, fo_person_id)
@@ -236,6 +242,94 @@ try {
   ok("PF-21d 2b pass: through the daily job, anything kept ends the request HELD (partial) with the front office's KEPT step", run.partial.includes(rKeeps) && statusOf(rKeeps) === "HELD"
     && /front-office: KEPT/.test(sql(`select string_agg(note, ' | ') from plat_data_request_event where request_id = '${rKeeps}'`)) && words(A, KEEPS.p).startsWith("Erased person"), { run, s: statusOf(rKeeps) });
   ok("PF-21d 2b fail: nothing kept ends COMPLETED, never HELD", run.erased.includes(rClean) && statusOf(rClean) === "COMPLETED", { run, s: statusOf(rClean) });
+  // ------------------------------------------------------------------------------------------------ part 2b-2: the exception
+  const NEW = "20261126105200_shared__pf21d_fo_erasure_exception", allMig = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
+  ok(`PF-21d 2b-2: its migration has its own stamp, after every one before it (newest before: ${allMig.filter((d) => d < NEW).at(-1)})`, allMig.includes(NEW) && allMig.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && allMig.at(-1) === NEW);
+  ok("PF-21d 2b-2: the definer and the three trigger functions are the wall reader's, security definer, search_path pinned; the definer is not executable by the app",
+    sql(`select count(*) from pg_proc where proname in ('fo_compliance_erasure_names', 'fo_sales_insert_only', 'fo_dup_merge_write', 'msg_write_once') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader' and proconfig::text like '%search_path%'`) === "4"
+      && sql(`select has_function_privilege('xr_app', 'fo_compliance_erasure_names(uuid, uuid)', 'execute')`) === "f");
+  const X = seed(A, "x.pf21dfo@example.com"), XL = seed(A, "xl.pf21dfo@example.com", false);
+  sql(`insert into fo_lead_attribution (firm_id, lead_id, utm_source, click_id, landing_page, referrer_url) values ('${A}', '${X.lead}', 'Sample-utm', 'Sample-click', 'https://example.com/landing?who=x', 'https://example.com/ref')`);
+  // Review M2: the merged-away record holds its own note, attribution and message event, which the job must clear too.
+  sql(`insert into fo_note (id, firm_id, person_id, lead_id, visibility, by_actor, text) values (gen_random_uuid(), '${A}', '${XL.p}', '${XL.lead}', 'INTERNAL', 'seed', 'Sample loser note')`);
+  sql(`insert into fo_lead_attribution (firm_id, lead_id, click_id) values ('${A}', '${XL.lead}', 'Sample-loser-click')`);
+  sql(`update fo_person set merged_into_id = '${X.p}', merged_at = now() where id = '${XL.p}'`);   // merged after its own rows exist (a merged-away record takes no new rows)
+  // R2-m2: the merged-away record's own identity-check-like kept row: a suppression of its old address counts for the survivor.
+  sql(`insert into msg_suppression (id, firm_id, channel, reason, address, created_by) values (gen_random_uuid(), '${A}', 'EMAIL', 'UNSUBSCRIBE', 'xl.pf21dfo@example.com', 'seed:pf21d-fo')`);
+  const mergeId = one(`insert into fo_dup_merge (id, firm_id, kind, survivor_id, loser_id, loser_snapshot, survivor_before, choices, automatic, at, by)
+    values (gen_random_uuid(), '${A}', 'PERSON', '${X.p}', '${XL.p}', '{"loser": {"email": "xl.pf21dfo@example.com"}}', '{"email": "x.pf21dfo@example.com"}', '{}', false, now(), 'seed:pf21d-fo') returning id`);
+  const outbox = one(`insert into msg_outbox (id, audience, firm_id, subject_kind, subject_id, channel, class, state, address, rendered_hash, created_at, updated_at)
+    values (gen_random_uuid(), 'FIRM', '${A}', 'FO_PERSON', '${X.p}', 'EMAIL', 'TRANSACTIONAL', 'SENT', 'x.pf21dfo@example.com', repeat('b', 64), now(), now()) returning id`);
+  const evKind = one(`select udt_name from information_schema.columns where table_name = 'msg_event' and column_name = 'kind'`);
+  sql(`insert into msg_event (id, firm_id, outbox_id, kind, occurred_at, detail) values (gen_random_uuid(), '${A}', '${outbox}', enum_first(null::"${evKind}"), now(), '{"to": "x.pf21dfo@example.com"}')`);
+  const outboxL = one(`insert into msg_outbox (id, audience, firm_id, subject_kind, subject_id, channel, class, state, address, rendered_hash, created_at, updated_at)
+    values (gen_random_uuid(), 'FIRM', '${A}', 'FO_PERSON', '${XL.p}', 'EMAIL', 'TRANSACTIONAL', 'SENT', 'xl.pf21dfo@example.com', repeat('c', 64), now(), now()) returning id`);
+  sql(`insert into msg_event (id, firm_id, outbox_id, kind, occurred_at, detail) values (gen_random_uuid(), '${A}', '${outboxL}', enum_first(null::"${evKind}"), now(), '{"to": "xl.pf21dfo@example.com"}')`);
+  // The exception's refusals, as the app (xr_app) in firm A: no claim, a forged claim, another person's or firm's claim, another column.
+  const asApp = (firm: string, set: string, q: string) => { try { sql(`begin; set local role xr_app; select set_config('app.firm_id', '${firm}', true); ${set} ${q}; commit`); return "changed"; } catch (e) { return String((e as { stderr?: string }).stderr ?? e).split("\n")[0]; } };
+  const noteSql = `update fo_note set text = 'Erased.' where person_id = '${X.p}'`;
+  const O2 = seed(A, "o2.pf21dfo@example.com", false), rX = request(X.p), rOther = request(O2.p);
+  const claimOf = (r: string) => one(`select to_char(erasing_since at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') from plat_data_request where id = '${r}'`);
+  sql(`update plat_data_request set erasing_since = date_trunc('milliseconds', now()) where id in ('${rX}', '${rOther}')`);   // as the job's claim does
+  const flags = (r: string, at: string) => `select set_config('pf21d.erasing', '${r}', true), set_config('pf21d.claim', '${at}', true);`;
+  const refusals = {
+    none: asApp(A, "", noteSql),
+    forged: asApp(A, flags(uuid(), claimOf(rX)), noteSql),
+    wrongClaim: asApp(A, flags(rX, "2026-01-01T00:00:00.000Z"), noteSql),
+    otherPerson: asApp(A, flags(rOther, claimOf(rOther)), noteSql),
+    otherColumn: asApp(A, flags(rX, claimOf(rX)), `update fo_note set text = 'Erased.', visibility = 'CLIENT_VISIBLE' where person_id = '${X.p}'`),
+    otherWords: asApp(A, flags(rX, claimOf(rX)), `update fo_note set text = 'Something else' where person_id = '${X.p}'`),
+    mergeOther: asApp(A, flags(rX, claimOf(rX)), `update fo_dup_merge set loser_snapshot = '{"erased": true}', survivor_before = '{"erased": true}', reason = 'x' where id = '${mergeId}'`),
+    delete: asApp(A, flags(rX, claimOf(rX)), `delete from fo_note where person_id = '${X.p}'`),
+    oneMsOff: asApp(A, flags(rX, new Date(Date.parse(claimOf(rX)) + 1).toISOString()), noteSql),   // review m6
+    duringMerge: asApp(A, `${flags(rX, claimOf(rX))} select set_config('fo_dup.merging', 'on', true);`, noteSql),   // break m3
+  };
+  // Review M2: the same refusal set on the other three insert-only tables.
+  const attrSql = `update fo_lead_attribution set click_id = null, landing_page = null, referrer_url = null, platform_lead_id = null, utm_source = null, utm_medium = null, utm_campaign = null, utm_term = null, utm_content = null where lead_id = '${X.lead}'`;
+  const mergeSql = `update fo_dup_merge set loser_snapshot = '{"erased": true}', survivor_before = '{"erased": true}' where id = '${mergeId}'`;
+  const eventSql = `update msg_event set detail = null where outbox_id = '${outbox}'`;
+  const others: Record<string, string> = {};
+  for (const [t, q] of [["attribution", attrSql], ["merge", mergeSql], ["event", eventSql]] as const) {
+    others[`${t}:none`] = asApp(A, "", q); others[`${t}:forged`] = asApp(A, flags(uuid(), claimOf(rX)), q);
+    others[`${t}:wrongClaim`] = asApp(A, flags(rX, "2026-01-01T00:00:00.000Z"), q); others[`${t}:otherPerson`] = asApp(A, flags(rOther, claimOf(rOther)), q);
+  }
+  others["attribution:otherColumn"] = asApp(A, flags(rX, claimOf(rX)), attrSql.replace("set click_id = null", "set click_id = null, ad_id = 'x'"));
+  others["event:otherColumn"] = asApp(A, flags(rX, claimOf(rX)), eventSql.replace("set detail = null", "set detail = null, provider_event_id = 'x'"));
+  const untouched = () => one(`select concat_ws('|', (select click_id from fo_lead_attribution where lead_id = '${X.lead}'), (select loser_snapshot::text from fo_dup_merge where id = '${mergeId}'), (select detail::text from msg_event where outbox_id = '${outbox}'))`);
+  ok("PF-21d 2b-2 fail (review M2): attribution, merge snapshots and message events refuse the same updates without a claim, with a forged request, a wrong claim time, another person's claim or another column; nothing changed",
+    Object.values(others).every((r) => r !== "changed") && untouched() === `Sample-click|{"loser": {"email": "xl.pf21dfo@example.com"}}|{"to": "x.pf21dfo@example.com"}`, others);
+  // Review M1: the other tables sharing msg_write_once keep their own refusal and error code (restrict_violation).
+  const wording = asApp(A, "", `update msg_consent_wording set id = id where false or true`);
+  ok("PF-21d 2b-2 fail (review M1): msg_consent_wording still refuses with its own words (write-once), never a missing-field error", /is write-once/.test(wording) && !/has no field/.test(wording), wording);
+  ok("PF-21d 2b-2 fail: the insert-only rows refuse the eraser's update without a claim, with a forged request, a wrong claim time or 1 ms off, another person's claim, another column or other words, during a merge, and a delete; nothing changed",
+    Object.values(refusals).every((r) => r !== "changed") && one(`select text from fo_note where person_id = '${X.p}'`) === "Sample note", refusals);
+  asApp(B, flags(rX, claimOf(rX)), noteSql);
+  ok("PF-21d 2b-2 fail: another firm's session with this claim changes nothing (the firm wall hides the rows; the definer also asks the session's firm)", one(`select text from fo_note where person_id = '${X.p}'`) === "Sample note");
+  ok("PF-21d 2b-2 pass: with this person's claim, the same update of the note's words alone goes through (rolled back here)",
+    asApp(A, flags(rX, claimOf(rX)), `${noteSql}; rollback; begin`) === "changed" && one(`select text from fo_note where person_id = '${X.p}'`) === "Sample note");
+  sql(`update plat_data_request set erasing_since = null where id in ('${rX}', '${rOther}')`);
+  // Through the job: the four insert-only tables cleared for the person and the record merged into them.
+  const run2 = await job.run();
+  const cleared = sql(`select concat_ws('|', (select string_agg(distinct text, ',') from fo_note where person_id = '${X.p}'),
+      (select num_nonnulls(utm_source, click_id, landing_page, referrer_url) from fo_lead_attribution where lead_id = '${X.lead}'),
+      (select loser_snapshot::text || survivor_before::text from fo_dup_merge where id = '${mergeId}'),
+      (select coalesce(detail::text, 'null') from msg_event where outbox_id = '${outbox}'),
+      (select coalesce(email, '-') from fo_person where id = '${XL.p}'))`);
+  const xSteps = sql(`select string_agg(note, ' | ') from plat_data_request_event where request_id = '${rX}'`);
+  ok("PF-21d 2b-2 pass: through the daily job, the person's notes read \"Erased.\", their lead's attribution words are null, the merge's snapshots are erased, their message's event detail is null, the merged-away record is anonymised",
+    run2.partial.includes(rX) && cleared === `Erased.|0|{"erased": true}{"erased": true}|null|-` && /notes 2/.test(xSteps) && /lead attribution 2/.test(xSteps) && /merge recor/.test(xSteps), { cleared, run2, xSteps: xSteps.slice(0, 400) });   // the 300-character note may cut the end of the cleared list (R2-m3); the rows above are the proof
+  ok("PF-21d 2b-2 pass: what stays kept is said (the messages' addresses, not yet erasable), and the insert-only rows are no longer counted as not yet erasable",
+    /Kept \(not yet erasable\): message addresses \(whom each was sent to\) 2/.test(xSteps) && !/notes, attribution, merge and message records/.test(xSteps), xSteps.slice(0, 400));
+  const loserRows = one(`select concat_ws('|', (select text from fo_note where person_id = '${XL.p}'), (select coalesce(click_id, 'null') from fo_lead_attribution where lead_id = '${XL.lead}'), (select coalesce(detail::text, 'null') from msg_event where outbox_id = '${outboxL}'))`);
+  ok("PF-21d 2b-2 pass (review M2): the merged-away record's own note, attribution and message event are cleared too (the definer follows the merge)", loserRows === "Erased.|null|null", loserRows);
+  ok("PF-21d 2b-2 pass (R2-m2): a kept row of the merged-away record (a suppression of its old address) is counted for the person", /do-not-contact address 2/.test(xSteps), xSteps.slice(0, 400));
+  ok("PF-21d 2b-2 fail: another family member's notes in the same firm keep their words", one(`select text from fo_note where person_id = '${FAM.p}'`) === "Sample note");
+  // The rollback, then the migration again (both apply cleanly; the definer goes and comes back).
+  execFileSync(join(BIN, "psql"), [URL_, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "rollback.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  const gone = sql(`select count(*) from pg_proc where proname = 'fo_compliance_erasure_names'`), refusedAgain = asApp(A, "", `update fo_note set text = 'x' where person_id = '${FAM.p}'`) !== "changed";
+  execFileSync(join(BIN, "psql"), [URL_, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  ok("PF-21d 2b-2 pass: the rollback removes the definer and keeps the rows insert-only; the migration applies again after it",
+    gone === "0" && refusedAgain && sql(`select count(*) from pg_proc where proname = 'fo_compliance_erasure_names'`) === "1");
 } catch (e) {
   ok("PF-21d 2b: the check ran to the end", false, String((e as { stderr?: unknown }).stderr ?? e).slice(0, 800));
 } finally {
