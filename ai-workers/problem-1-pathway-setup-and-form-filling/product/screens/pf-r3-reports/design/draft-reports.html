@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports (PF-R3 draft board)</title>
+<!-- PF-R3 concept draft board: the Owner's dashboard, November 2026, Sample data (the figures the PF-R2cm and CS-R1 tests
+     seed). Self-contained, no script, no external file. Team tokens: Blue #0862C5, Inter 14 px UI text, 12/14/16/18/24
+     steps, white cards on light grey, 44 px table rows. Not for porting: the board's notes column. -->
+<style>
+:root{--blue:#0862C5;--ink:#1d2433;--muted:#5b6475;--line:#e2e6ee;--bg:#f4f6f9;--card:#fff;--warn:#9a4b00}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+header{background:#fff;border-bottom:1px solid var(--line);padding:12px 24px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+h1{font-size:24px;margin:0}.sub{color:var(--muted);margin:2px 0 0}.grow{flex:1;min-width:200px}
+.badge{border:1px solid var(--blue);color:var(--blue);border-radius:12px;padding:2px 10px;font-size:12px}
+select,button,input{font:inherit;border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:#fff;min-height:36px}
+button.secondary{color:var(--blue);border-color:var(--blue)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px;background:#fff;border-bottom:1px solid var(--line)}
+main{padding:16px 24px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.card h2{font-size:14px;margin:0 0 6px;font-weight:600;display:flex;gap:6px;align-items:center}
+.i{display:inline-block;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:12px;line-height:14px;text-align:center}
+.v{font-size:24px;font-weight:600}.cur{color:var(--muted);font-size:14px;margin-right:4px}
+.note{color:var(--muted);font-size:12px;margin-top:6px}.wide{grid-column:span 2}.full{grid-column:1/-1}
+.muted{opacity:.6}.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:460px}th,td{text-align:left;padding:0 8px;height:44px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600}td.n{text-align:right;font-variant-numeric:tabular-nums}
+.rowh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.barrow{display:grid;grid-template-columns:140px 1fr 40px;gap:8px;align-items:center;height:28px}
+.track{background:#e9eef7;height:10px;border-radius:5px}.fill{background:var(--blue);height:10px;border-radius:5px}
+.aging{display:grid;grid-template-columns:60px repeat(6,minmax(0,1fr));gap:6px;font-variant-numeric:tabular-nums}
+.aging div{padding:6px 4px;border-bottom:1px solid var(--line)}.aging .h{font-size:12px;color:var(--muted)}
+aside{grid-column:1/-1;background:#fffbe6;border:1px dashed #d9b600;border-radius:8px;padding:12px 16px;font-size:12px}
+@media (max-width:1100px){main{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){main{grid-template-columns:1fr;padding:12px}.wide,.full{grid-column:auto}header,.bar{padding:12px}}
+</style></head><body>
+<header><div class="grow"><h1>Reports</h1><p class="sub">How the firm is doing, counted from your records</p></div>
+<label>Dashboard <select><option>Owner</option><option>Case Manager</option><option>Billing / Finance</option><option>Case Officer</option></select></label>
+<span class="badge" title="You see the whole firm, money included (Financial reports permission)">Whole firm, money</span></header>
+<div class="bar" role="group" aria-label="Filters">
+<label>Month <select><option>November 2026</option><option>October 2026</option><option>Custom dates…</option></select></label>
+<label>Person <select><option>Everyone</option><option>Case Officer (Sample)</option></select></label>
+<label>Client type <select><option>All</option><option>Individual</option><option>Corporate</option></select></label></div>
+<main>
+<section class="card"><h2>Leads added <span class="i" title="What this counts: leads that arrived in the period, closed ones included…">i</span></h2><div class="v">14</div><div class="note">Whole firm</div></section>
+<section class="card"><h2>Win rate <span class="i" title="What this counts: …">i</span></h2><div class="v">33.3%</div><div class="note">Whole firm</div></section>
+<section class="card"><h2>Fees billed <span class="i" title="What this counts: issued invoices' totals (tax and government fees included) on their issue day, less credit notes on theirs, in the period.">i</span></h2><div class="v"><span class="cur">CAD</span>2,840.00</div><div class="v"><span class="cur">USD</span>210.00</div></section>
+<section class="card"><h2>Fees collected <span class="i" title="What this counts: money paid on invoices in the period…">i</span></h2><div class="v"><span class="cur">CAD</span>1,100.00</div><div class="v"><span class="cur">USD</span>50.00</div></section>
+<section class="card wide"><div class="rowh"><h2>Open cases by stage <span class="i" title="What this counts: open cases, counted by the stage each is in now…">i</span></h2></div>
+<div class="barrow"><span>Document collection</span><div class="track"><div class="fill" style="width:80%"></div></div><span>8</span></div>
+<div class="barrow"><span>Forms</span><div class="track"><div class="fill" style="width:50%"></div></div><span>5</span></div>
+<div class="barrow"><span>No stage yet</span><div class="track"><div class="fill" style="width:20%"></div></div><span>2</span></div></section>
+<section class="card wide"><div class="rowh"><h2>Overdue ageing <span class="i" title="What this counts: what is still owed on issued invoices, not written off, by days past the due date today…">i</span></h2><button class="secondary">Export CSV</button></div>
+<div class="aging" role="table" aria-label="Overdue ageing"><div class="h"></div><div class="h">Current</div><div class="h">1-30</div><div class="h">31-60</div><div class="h">61-90</div><div class="h">90+</div><div class="h">Overdue</div>
+<div>CAD</div><div>640.00</div><div>1,100.00</div><div>0.00</div><div>0.00</div><div>0.00</div><div><b>1,100.00</b></div>
+<div>USD</div><div>0.00</div><div>0.00</div><div>160.00</div><div>0.00</div><div>0.00</div><div><b>160.00</b></div></div>
+<div class="note">The date range does not apply: this is today's book.</div></section>
+<section class="card full"><div class="rowh"><h2>Time spent in each stage <span class="i" title="What this counts: …">i</span></h2><button class="secondary">Export CSV</button></div>
+<div class="scroll"><table><thead><tr><th>Stage</th><th>Ended</th><th>Average days</th><th>Median days</th><th></th></tr></thead><tbody>
+<tr><td>Document collection</td><td class="n">6</td><td class="n">12.5</td><td class="n">10.0</td><td>Slowest</td></tr>
+<tr><td>Forms</td><td class="n">4</td><td class="n">6.0</td><td class="n">5.5</td><td></td></tr></tbody></table></div></section>
+<section class="card full muted"><h2>Overdue tasks by person <span class="i" title="This figure comes in a later release.">i</span></h2><div class="note">Not counted yet</div></section>
+<aside><b>Board notes (not for porting):</b> one filter bar narrows every card. Money is one value per currency, never added. A figure outside your access reads "Not in your access", never 0. An empty table says why ("No invoices in this period"). "Export CSV" shows only with the Export permission and writes one audit line. No figure links to a list yet (Q1). At 375 px the cards stack, the filters wrap and tables scroll inside their card. The page itself never scrolls sideways.</aside>
+</main></body></html>
