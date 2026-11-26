@@ -93,6 +93,11 @@ model Case {
   assessmentsFirm         Assessment[]         @relation("AssessmentCaseFirm")
   filingChangesFirm       FilingChange[]       @relation("FilingChangeCaseFirm")
   filingFormAdditionsFirm FilingFormAddition[] @relation("FilingFormAdditionCaseFirm")
+  reviewFindingsFirm      ReviewFinding[]      @relation("ReviewFindingCaseFirm")
+  reviewRoundsFirm        ReviewRound[]        @relation("ReviewRoundCaseFirm")
+  reviewRoundFilingsFirm  ReviewRoundFiling[]  @relation("ReviewRoundFilingCaseFirm")
+  reviewRoundFormsFirm    ReviewRoundForm[]    @relation("ReviewRoundFormCaseFirm")
+  reviewChecksFirm        ReviewCheck[]        @relation("ReviewCheckCaseFirm")
 
   @@unique([id, firmId])
   @@unique([workspaceId, firmKey, idempotencyKey])

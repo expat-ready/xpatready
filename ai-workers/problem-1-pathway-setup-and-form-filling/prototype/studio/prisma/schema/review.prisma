@@ -7,6 +7,9 @@
 /// not-resolved row per case and fingerprint (partial unique index "review_finding_one_live_rule", in the migration).
 model ReviewFinding {
   id          String    @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String    @map("workspace_id") @db.Uuid
   caseId      String    @map("case_id") @db.Uuid
   filingId    String?   @map("filing_id") @db.Uuid
@@ -41,9 +44,12 @@ model ReviewFinding {
   stage  CaseStage @relation(fields: [stageId], references: [id], onDelete: NoAction)
   filing Filing? @relation(fields: [filingId], references: [id], onDelete: SetNull)
 
+  caseFirm Case? @relation("ReviewFindingCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@unique([caseId, idempotencyKey])
   @@index([caseId])
   @@index([stageId])
+  @@index([firmId, caseId])
   @@map("review_finding")
 }
 
@@ -51,6 +57,9 @@ model ReviewFinding {
 /// one person, with the licence number. Append-only (trigger); the newest row counts.
 model FilingReview {
   id            String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId   String   @map("workspace_id") @db.Uuid
   filingId      String   @map("filing_id") @db.Uuid
   reviewedBy    String   @map("reviewed_by")
@@ -65,7 +74,12 @@ model FilingReview {
   filing Filing @relation(fields: [filingId], references: [id], onDelete: Cascade)
   rounds ReviewRoundFiling[] // C8.3: the approval that wrote it
 
+  filingFirm Filing? @relation("FilingReviewFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  roundFilingsFirm ReviewRoundFiling[] @relation("ReviewRoundFilingReviewFirm")
+
   @@index([filingId])
+  @@unique([id, firmId])
+  @@index([firmId, filingId])
   @@map("filing_review")
 }
 
@@ -73,6 +87,9 @@ model FilingReview {
 /// it covered when written (engine/runtime/readiness.ts passKeys). Never the barcode block (a check). Append-only.
 model ReadinessPass {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   filingId    String   @map("filing_id") @db.Uuid
   code        String
@@ -85,7 +102,10 @@ model ReadinessPass {
 
   filing Filing @relation(fields: [filingId], references: [id], onDelete: Cascade)
 
+  filingFirm Filing? @relation("ReadinessPassFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([filingId])
+  @@index([firmId, filingId])
   @@map("readiness_pass")
 }
 
@@ -94,6 +114,9 @@ model ReadinessPass {
 /// one-click re-approve of the forms a fact change withdrew). Append-only (trigger).
 model ReviewRound {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   caseId      String   @map("case_id") @db.Uuid
   /// Counts per case (1, 2, …).
@@ -106,7 +129,13 @@ model ReviewRound {
   filings ReviewRoundFiling[]
   forms   ReviewRoundForm[]
 
+  caseFirm Case? @relation("ReviewRoundCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingsFirm ReviewRoundFiling[] @relation("ReviewRoundFilingRoundFirm")
+  formsFirm ReviewRoundForm[] @relation("ReviewRoundFormRoundFirm")
+
   @@unique([caseId, number])
+  @@unique([id, firmId])
+  @@index([firmId, caseId])
   @@map("review_round")
 }
 
@@ -114,6 +143,9 @@ model ReviewRound {
 /// its own round number. At most one open row per filing (partial unique index). Moves guarded by a trigger.
 model ReviewRoundFiling {
   id                String    @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId       String    @map("workspace_id") @db.Uuid
   caseId            String    @map("case_id") @db.Uuid
   roundId           String    @map("round_id") @db.Uuid
@@ -143,9 +175,18 @@ model ReviewRoundFiling {
   forms  ReviewRoundForm[]
   checks ReviewCheck[]
 
+  caseFirm Case? @relation("ReviewRoundFilingCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  roundFirm ReviewRound? @relation("ReviewRoundFilingRoundFirm", fields: [roundId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingFirm Filing? @relation("ReviewRoundFilingFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  reviewFirm FilingReview? @relation("ReviewRoundFilingReviewFirm", fields: [filingReviewId, firmId], references: [id, firmId], onDelete: NoAction, onUpdate: Restrict)
+  formsFirm ReviewRoundForm[] @relation("ReviewRoundFormRowFirm")
+  checksFirm ReviewCheck[] @relation("ReviewCheckRowFirm")
+
   @@unique([roundId, filingId])
   @@unique([filingId, filingRound])
   @@index([caseId])
+  @@unique([id, firmId])
+  @@index([firmId, caseId])
   @@map("review_round_filing")
 }
 
@@ -153,6 +194,9 @@ model ReviewRoundFiling {
 /// validated copy · generated copy matching the facts · none · waits) and stamped once on approval.
 model ReviewRoundForm {
   id              String    @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId     String    @map("workspace_id") @db.Uuid
   caseId          String    @map("case_id") @db.Uuid
   roundId         String    @map("round_id") @db.Uuid
@@ -182,14 +226,24 @@ model ReviewRoundForm {
   snapshot      AnswerSnapshot?   @relation("ReviewFrozen", fields: [snapshotId], references: [id], onDelete: Cascade)
   stampSnapshot AnswerSnapshot?   @relation("ReviewStamp", fields: [stampSnapshotId], references: [id], onDelete: Cascade)
 
+  caseFirm Case? @relation("ReviewRoundFormCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  roundFirm ReviewRound? @relation("ReviewRoundFormRoundFirm", fields: [roundId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingFirm Filing? @relation("ReviewRoundFormFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  rowFirm ReviewRoundFiling? @relation("ReviewRoundFormRowFirm", fields: [roundFilingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  itemFirm FilingItem? @relation("ReviewRoundFormItemFirm", fields: [itemId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@unique([roundFilingId, itemId])
   @@index([itemId])
+  @@index([firmId, caseId])
   @@map("review_round_form")
 }
 
 /// C8.3 (BR-2): one checklist item of a filing in a round (default · program · confirmations · form), copied when sent.
 model ReviewCheck {
   id            String    @id @default(uuid()) @db.Uuid
+  /// CS-W2 part review (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_review_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId   String    @map("workspace_id") @db.Uuid
   caseId        String    @map("case_id") @db.Uuid
   roundFilingId String    @map("round_filing_id") @db.Uuid
@@ -204,6 +258,10 @@ model ReviewCheck {
   case Case              @relation(fields: [caseId], references: [id], onDelete: Cascade)
   row  ReviewRoundFiling @relation(fields: [roundFilingId], references: [id], onDelete: Cascade)
 
+  caseFirm Case? @relation("ReviewCheckCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  rowFirm ReviewRoundFiling? @relation("ReviewCheckRowFirm", fields: [roundFilingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@unique([roundFilingId, itemKey])
+  @@index([firmId, caseId])
   @@map("review_check")
 }
