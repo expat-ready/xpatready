@@ -200,3 +200,22 @@ Reviewer: Approve 041947a3853ab2afbc21dbbb6e3769fab4adde15
 **Verdict: Approve**
 * Blockers: none. Majors: none. Minors: none.
 * Nits (optional, carried from round 3): n1, n2.
+
+## Round 5 (diff-only, P-293)
+Head `b736f58eeee1f9b5b524562744d631fd60262b35`. Scope: `git diff -M 5b3a2a67d b736f58ee` limited to the PR's own files (`git diff -M origin/main...HEAD --stat`). That covers 4aa59afd1 (re-stamp 130000 to 140100), the merge of origin/main 7040918c8, and b736f58ee (re-stamp to 20261126063100, because main's newest migration is now 20261125150000). Not re-run: the screen walk and the journey test, because nothing on screen or in behaviour changed. Round 3's records stand.
+
+### What I checked
+* **migration.sql is unchanged.** The blob is `8e399d712267` at 5b3a2a67d (`20261125130000_shared__pf22a_custom_fields/`) and the same blob at b736f58ee (`20261126063100_shared__pf22a_custom_fields/`). Only the folder name changed.
+* **Every reference names the new folder.** rollback.sql changed in exactly two places, the `psql -f` path and the `_prisma_migrations` delete, and both now say `20261126063100_shared__pf22a_custom_fields`. The new name is also in the platform-custom.prisma header (line 8), MODULE.rows/PF-22a.md, and `NEW` in tests/check_pf22a_custom_schema.ts (line 21). Nothing else changed in those files.
+* **No stale stamp is left.** `git grep -E '2026112513|20261125140100|130000_shared|140100_shared'` over the PR's files finds only the dated records: break-report.md line 100, and review.md lines 135 and 184 (rounds 2 and 4). Records keep their facts (P-188), so these stay as they are. No other file in the tree names a different stamp for `pf22a_custom_fields`.
+* **The merge brought no conflict into the PR's files.** No conflict markers. The PR's own diff against origin/main is still only its additions: `.mergify.yml` adds the 6-line `mig-platform-custom` scope plus its capacity of 1, and platform.prisma adds the two PF-22a back-relation slots. Between 5b3a2a67d and b736f58ee, the changes in these two files come from main: the `mig-platform-files` scope, P-827's queue order, and PF-19m's `msgMailboxes` line. Each sits next to the PR's lines, and neither side's lines were altered. `check-mergify-scopes.sh`: PASS (312 checks). `migration-slots.py mergify --check`: exit 0.
+* **Migration slots, run again by me:** `migration-slots.py check origin/main..HEAD` gave **PASS**: 1 new migration against main's newest, 20261125150000 (`20261126063100_shared__pf22a_custom_fields`). I fetched origin/main first, and main's newest is still 20261125150000.
+* Taken from the builder, not re-run: `check_pf22a_custom_schema.ts` 86/86 and `check_prisma_schema.ts` 8/8.
+
+### Findings
+None new. Round 3's nits n1 and n2 are still open and still optional.
+
+Reviewer: Approve b736f58eeee1f9b5b524562744d631fd60262b35
+
+**Verdict: Approve**
+* Blockers: none. Majors: none. Minors: none.
