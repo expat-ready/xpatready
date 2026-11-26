@@ -48,7 +48,7 @@ export const ERASE_SQL: ReadonlyArray<readonly [string, string]> = [
      WHERE r.firm_id = $1::uuid AND b.firm_id = $1::uuid AND b.id = r.booking_id AND b.person_id = $2::uuid AND (r.notes IS NOT NULL OR cardinality(r.recommended) > 0)`],
 ];
 
-/** Part 2b-2: the four insert-only tables, cleared only under the job's exception (the migration's fo_erasure_names opens
+/** Part 2b-2: the four insert-only tables, cleared only under the job's exception (the migration's fo_compliance_erasure_names opens
  *  them while the request's claim is set); over the person and every record merged into them ($1 firm, $2 their ids). */
 export const INSERT_ONLY_SQL: ReadonlyArray<readonly [string, string]> = [
   ["notes", `UPDATE fo_note SET text = 'Erased.' WHERE firm_id = $1::uuid AND person_id = ANY($2::uuid[]) AND text <> 'Erased.'`],

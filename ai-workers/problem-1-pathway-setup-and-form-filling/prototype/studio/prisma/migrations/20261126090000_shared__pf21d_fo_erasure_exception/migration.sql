@@ -3,7 +3,7 @@
 -- else, only while that person's erasure is really running.
 --   * The erasure job (api/src/platform/erasure/service.ts) sets two transaction-local settings inside the erasers' firm
 --     transaction: pf21d.erasing (the request id) and pf21d.claim (its claim time).
---   * fo_erasure_names(firm, person) is true only when those settings name a request claimed at exactly that time, of
+--   * fo_compliance_erasure_names(firm, person) is true only when those settings name a request claimed at exactly that time, of
 --     the session's own firm (platform_session_firm()), about this person or a record merged into them (followed in a
 --     chain). A firm's session can read neither the request id nor its claim time, so it cannot forge the pair; and the
 --     pair only ever opens rows of the person already being erased.
@@ -14,7 +14,7 @@
 --     is kept as it was.
 -- PF-12: a trigger function on a firm table runs as xr_wall_reader (CREATE OR REPLACE resets SECURITY DEFINER and
 -- search_path, so both are set again). Rollback: rollback.sql in this folder.
-CREATE FUNCTION fo_erasure_names(p_firm uuid, p_person uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+CREATE FUNCTION fo_compliance_erasure_names(p_firm uuid, p_person uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
   SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE req uuid; at timestamptz; who uuid;
 BEGIN
@@ -42,7 +42,7 @@ BEGIN
            IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."lead_id", OLD."prospect_id", OLD."visibility", OLD."text", OLD."by_actor", OLD."created_at") THEN
       RETURN NEW;   -- FO-9b: a merge (or its Undo) moves a note to the other person record, nothing else
     END IF;
-    IF NEW."text" = 'Erased.' AND fo_erasure_names(OLD."firm_id", OLD."person_id")
+    IF NEW."text" = 'Erased.' AND fo_compliance_erasure_names(OLD."firm_id", OLD."person_id")
        AND (NEW."id", NEW."firm_id", NEW."person_id", NEW."lead_id", NEW."prospect_id", NEW."visibility", NEW."by_actor", NEW."created_at")
            IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."person_id", OLD."lead_id", OLD."prospect_id", OLD."visibility", OLD."by_actor", OLD."created_at") THEN
       RETURN NEW;   -- PF-21d 2b-2: the person's erasure clears the note's words, nothing else
@@ -50,7 +50,7 @@ BEGIN
   END IF;
   IF TG_TABLE_NAME = 'fo_lead_attribution' AND TG_OP = 'UPDATE' THEN
     IF num_nonnulls(NEW."click_id", NEW."landing_page", NEW."referrer_url", NEW."platform_lead_id", NEW."utm_source", NEW."utm_medium", NEW."utm_campaign", NEW."utm_term", NEW."utm_content") = 0
-       AND fo_erasure_names(OLD."firm_id", (SELECT l."person_id" FROM "fo_lead" l WHERE l."firm_id" = OLD."firm_id" AND l."id" = OLD."lead_id"))
+       AND fo_compliance_erasure_names(OLD."firm_id", (SELECT l."person_id" FROM "fo_lead" l WHERE l."firm_id" = OLD."firm_id" AND l."id" = OLD."lead_id"))
        AND (NEW."firm_id", NEW."lead_id", NEW."click_id_kind", NEW."created_at", NEW."campaign_id", NEW."platform", NEW."platform_form_id", NEW."platform_page_id", NEW."ad_id", NEW."ad_set_id")
            IS NOT DISTINCT FROM (OLD."firm_id", OLD."lead_id", OLD."click_id_kind", OLD."created_at", OLD."campaign_id", OLD."platform", OLD."platform_form_id", OLD."platform_page_id", OLD."ad_id", OLD."ad_set_id") THEN
       RETURN NEW;   -- PF-21d 2b-2: the person's erasure clears what identifies them on the lead's attribution
@@ -64,7 +64,7 @@ CREATE OR REPLACE FUNCTION fo_dup_merge_write() RETURNS trigger LANGUAGE plpgsql
 BEGIN
   -- PF-21d 2b-2: the erasure of a person the merge names blanks both snapshots, nothing else (its Undo then refuses).
   IF OLD."kind" = 'PERSON' AND NEW."loser_snapshot" = '{"erased": true}'::jsonb AND NEW."survivor_before" = '{"erased": true}'::jsonb
-     AND (fo_erasure_names(OLD."firm_id", OLD."survivor_id") OR fo_erasure_names(OLD."firm_id", OLD."loser_id"))
+     AND (fo_compliance_erasure_names(OLD."firm_id", OLD."survivor_id") OR fo_compliance_erasure_names(OLD."firm_id", OLD."loser_id"))
      AND (NEW."id", NEW."firm_id", NEW."kind", NEW."survivor_id", NEW."loser_id", NEW."choices", NEW."automatic", NEW."reason", NEW."by", NEW."at", NEW."undone_at", NEW."undone_by")
          IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."kind", OLD."survivor_id", OLD."loser_id", OLD."choices", OLD."automatic", OLD."reason", OLD."by", OLD."at", OLD."undone_at", OLD."undone_by") THEN
     RETURN NEW;
@@ -92,7 +92,7 @@ BEGIN
     IF NEW."detail" IS NULL
        AND (NEW."id", NEW."firm_id", NEW."outbox_id", NEW."kind", NEW."created_at", NEW."occurred_at", NEW."provider_event_id")
            IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."outbox_id", OLD."kind", OLD."created_at", OLD."occurred_at", OLD."provider_event_id")
-       AND fo_erasure_names(OLD."firm_id", (SELECT o."subject_id" FROM "msg_outbox" o WHERE o."id" = OLD."outbox_id" AND o."firm_id" = OLD."firm_id" AND o."subject_kind" = 'FO_PERSON')) THEN
+       AND fo_compliance_erasure_names(OLD."firm_id", (SELECT o."subject_id" FROM "msg_outbox" o WHERE o."id" = OLD."outbox_id" AND o."firm_id" = OLD."firm_id" AND o."subject_kind" = 'FO_PERSON')) THEN
       RETURN NEW;
     END IF;
   END IF;
@@ -105,11 +105,11 @@ GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $own$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['fo_erasure_names(uuid, uuid)', 'fo_sales_insert_only()', 'fo_dup_merge_write()', 'msg_write_once()'] LOOP
+  FOREACH f IN ARRAY ARRAY['fo_compliance_erasure_names(uuid, uuid)', 'fo_sales_insert_only()', 'fo_dup_merge_write()', 'msg_write_once()'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;
 END
 $own$;
 REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
-REVOKE ALL ON FUNCTION fo_erasure_names(uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION fo_erasure_names(uuid, uuid) TO xr_wall_reader;
+REVOKE ALL ON FUNCTION fo_compliance_erasure_names(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fo_compliance_erasure_names(uuid, uuid) TO xr_wall_reader;

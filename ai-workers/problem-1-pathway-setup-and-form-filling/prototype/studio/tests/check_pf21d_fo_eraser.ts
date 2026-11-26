@@ -246,8 +246,8 @@ try {
   const NEW = "20261126090000_shared__pf21d_fo_erasure_exception", allMig = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
   ok(`PF-21d 2b-2: its migration has its own stamp, after every one before it (newest before: ${allMig.filter((d) => d < NEW).at(-1)})`, allMig.includes(NEW) && allMig.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && allMig.at(-1) === NEW);
   ok("PF-21d 2b-2: the definer and the three trigger functions are the wall reader's, security definer, search_path pinned; the definer is not executable by the app",
-    sql(`select count(*) from pg_proc where proname in ('fo_erasure_names', 'fo_sales_insert_only', 'fo_dup_merge_write', 'msg_write_once') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader' and proconfig::text like '%search_path%'`) === "4"
-      && sql(`select has_function_privilege('xr_app', 'fo_erasure_names(uuid, uuid)', 'execute')`) === "f");
+    sql(`select count(*) from pg_proc where proname in ('fo_compliance_erasure_names', 'fo_sales_insert_only', 'fo_dup_merge_write', 'msg_write_once') and prosecdef and pg_get_userbyid(proowner) = 'xr_wall_reader' and proconfig::text like '%search_path%'`) === "4"
+      && sql(`select has_function_privilege('xr_app', 'fo_compliance_erasure_names(uuid, uuid)', 'execute')`) === "f");
   const X = seed(A, "x.pf21dfo@example.com"), XL = seed(A, "xl.pf21dfo@example.com", false);
   sql(`insert into fo_lead_attribution (firm_id, lead_id, utm_source, click_id, landing_page, referrer_url) values ('${A}', '${X.lead}', 'Sample-utm', 'Sample-click', 'https://example.com/landing?who=x', 'https://example.com/ref')`);
   // Review M2: the merged-away record holds its own note, attribution and message event, which the job must clear too.
@@ -326,10 +326,10 @@ try {
   ok("PF-21d 2b-2 fail: another family member's notes in the same firm keep their words", one(`select text from fo_note where person_id = '${FAM.p}'`) === "Sample note");
   // The rollback, then the migration again (both apply cleanly; the definer goes and comes back).
   execFileSync(join(BIN, "psql"), [URL_, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "rollback.sql")], { stdio: ["ignore", "ignore", "pipe"] });
-  const gone = sql(`select count(*) from pg_proc where proname = 'fo_erasure_names'`), refusedAgain = asApp(A, "", `update fo_note set text = 'x' where person_id = '${FAM.p}'`) !== "changed";
+  const gone = sql(`select count(*) from pg_proc where proname = 'fo_compliance_erasure_names'`), refusedAgain = asApp(A, "", `update fo_note set text = 'x' where person_id = '${FAM.p}'`) !== "changed";
   execFileSync(join(BIN, "psql"), [URL_, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
   ok("PF-21d 2b-2 pass: the rollback removes the definer and keeps the rows insert-only; the migration applies again after it",
-    gone === "0" && refusedAgain && sql(`select count(*) from pg_proc where proname = 'fo_erasure_names'`) === "1");
+    gone === "0" && refusedAgain && sql(`select count(*) from pg_proc where proname = 'fo_compliance_erasure_names'`) === "1");
 } catch (e) {
   ok("PF-21d 2b: the check ran to the end", false, String((e as { stderr?: unknown }).stderr ?? e).slice(0, 800));
 } finally {
