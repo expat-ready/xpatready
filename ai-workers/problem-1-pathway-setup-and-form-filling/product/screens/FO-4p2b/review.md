@@ -128,3 +128,25 @@ This round also re-checks the breaker's round-1 Majors (`break-report.md`), so o
 * Minor (Should): r1-r3; review m2, m3, m9, m10; break m4; S1-S3 (follow-up row).
 
 Reviewer: Approve 9afa4cc56993bd44f325c17b7ab345995db603a4
+
+## Round 3 (diff only): `git diff 9afa4cc56..b629572fcff8008ac14011d98ddc41df625fb181`, the PR's own paths only, reviewer, 26 Nov 2026
+The scope is `web/src/modules/front-office` and `tests/check_fo4p2b_prospect_activity_browser.ts`; everything else in the range is main's. That leaves two changes:
+* **e4474c596:** `<FoldArrow open={…} />` inside "Show all of it" (BK-2).
+* **0ece1563b:** the suite's arguments and usage line in run-suites.sh's form: `<port> <database>`, no `--ttl`, plain `tsx`. The line matches run-suites.sh's usage pattern (`run-suites.sh:407`), and the `:4400` refusal is kept.
+
+No other line in the front-office folder changes in this range, so the merge of main touches neither `prospect-activity.tsx` nor `prospect-page.tsx`.
+
+**Ran** (isolated copy `rv_fo4p2b` on :4435, started and stopped without `--ttl`, so it ran as run-suites.sh starts it):
+* `check_fo4p2b_prospect_activity_browser.ts 4435 xr_studio_rv_fo4p2b`: **30/30**.
+* `check_bk2_fold_outs.ts`: **16/16**.
+* A browser look at 1440 and 375 px:
+  * The arrow is `aria-hidden`, so the button's name stays "Show all of it" / "Show less".
+  * It points right when closed and turns down on Enter (`rotate-90`), and `aria-expanded` follows.
+  * No sideways scroll, axe clean when expanded, no page errors.
+
+**Findings:** none new. Round 2's open Minors stand as listed (r1-r3; review m2, m3, m9, m10; break m4; S1-S3 to a follow-up row).
+
+**Verdict: Approve b629572fcff8008ac14011d98ddc41df625fb181**
+* No open Blocker or Major.
+
+Reviewer: Approve b629572fcff8008ac14011d98ddc41df625fb181
