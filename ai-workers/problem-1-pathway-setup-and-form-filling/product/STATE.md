@@ -17,12 +17,11 @@ updated: 2026-11-26 13:4x IST (clock): **Lead 2 (check 0ba55641, cron 3,33) work
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A402 | 26 Nov ~14:5x (typed) | provisioning so an account switch loses no work, state or context (research the harness/mobile features, no over-engineering); control room kept consistent and updated by every Lead, who finds how to unblock, improve and recover; think ahead where things go wrong and run the factory in that order; **Lead scorecard below 8 → find why and fix it, at each check**. Open: research running, risk register on the page |
 | A401 | 26 Nov ~14:0x (typed) | Lead decides the lanes/waste question (decided: both: OS-85 hot-spot fix + lead-watch pruning to OS-PM 4; wind down to ~12 lanes, no new starts while WIP over cap); best-in-class speed; ONE maintained format (the control room page + Start here fixed order, never a new one); OS items not live: manual enforcement each check until live, prioritised; capacity math for 15/day; one diagram of what is where and how it is monitored; Lead scorecard with dimensions; lessons pushed into the OS. Done 14:3x: control room v3 (same URL) is the ONE format; P-731 ruled (auto-requeue once the full run on the exact head is green, every failed suite named; Lead writes the line until OS-05 is built); OS-85 sent; DECISIONS rows owed |
 | A400 | 26 Nov ~12:2x | watchers inside the pipeline, not one-off: word for word in the A391-A394 history file | OS-82, OS-83 with OS-PM 4 |
 | A399 | 26 Nov ~12:0x (typed) | standing approvals until he says stop (see hand-over block) | in force |
-| A396-A398 | 26 Nov 11:0x-11:4x | resume, full plan, 15 a day, heal: word for word in the A391-A394 history file | answered |
-| A395 | 26 Nov ~00:2x IST (spoken) | founder's co-founder ask (learnings from the team's work): open; word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
-| A242-A394 | 21-25 Nov | answered or in force; rows word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
+| A242-A398 | 21-26 Nov | answered or in force (A395 co-founder learnings still open); rows word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
 
 ## Start here (next Lead)
 🧭 **A401 (in force): every check does the manual step of each P1 OS item (`design/os-manual-enforcement-2026-11-26.md`: OS-01 green pr-suites before a label, OS-11 tools from main, OS-02 reads ≤30 min, OS-05 covered line, OS-78a one comment batch per PR) and refreshes the control room v3 sections in their order; the Lead scorecard is repeated in every full report.**
