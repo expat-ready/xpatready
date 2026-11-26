@@ -1,0 +1,2 @@
+Entry points: PF-10t: the `person` import target (`import-targets/person.ts` `PersonImportTarget`, registered on `IMPORT_TARGETS` by `api/src/features/front-office-import-targets.ts`): fo_person names, email, phone (E.164), language; natural key email else phone; a merge fills only empty fields; email marketing consent IMPORT_DECLARED with the importer's declaration, never over a withdrawal; quiet (no message, no lead).
+Tests: tests/check_pf10t_targets.ts
