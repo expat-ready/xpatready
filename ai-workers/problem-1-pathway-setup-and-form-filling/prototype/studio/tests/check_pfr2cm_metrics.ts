@@ -244,6 +244,13 @@ try {
     eq(decC, { CAD: "240.00" }) && eq(decB, { CAD: "480.00" }), { decC, decB });
   ok("PF-R2cm DW3 fail (review M3): the payment into trust on the invoice is counted once, as its withdrawal (never also as a payment: 540.00); trust received is its 300.00 less the 40.00 refunded out of trust",
     !JSON.stringify(decC).includes("540.00") && eq(decT, { CAD: "260.00" }), { decC, decT });
+  // review r2 n1: a trust payment recorded for 30 Nov (stored at 00:00 UTC) whose deposit entry is written on 10 Dec is November's
+  const PN = sql(`${R} insert into money_payment (firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${A}', 'E_TRANSFER', 7000, 'CAD', 'TRUST', '2026-11-30T00:00:00Z', 'r2cm-${randomUUID()}', 'seed') returning id`);
+  const novT0 = figs(await one(OWNER, K("trust_received"), NOV));
+  trustEntry("DEPOSIT", 7000, "2026-12-10T15:00:00Z", `payment_id=${PN}`);
+  const novT1 = figs(await one(OWNER, K("trust_received"), NOV)), decT1 = figs(await one(OWNER, K("trust_received"), DEC));
+  ok("PF-R2cm DW3 pass (review r2 n1): a deposit takes its payment's day: recorded for 30 Nov, written 10 Dec, it is November's (+70.00), December stays 260.00",
+    eq(decT1, { CAD: "260.00" }) && (novT1 as Record<string, string>).CAD === major(Math.round(Number((novT0 as Record<string, string>).CAD) * 100) + 7000), { novT0, novT1, decT1 });
   const early = figs(await one(OWNER, K("fees_collected"), { from: "2026-12-01", to: "2026-12-04" }));
   ok("PF-R2cm DW2 fail (review minor): a payment recorded for a day before its invoice's issue counts from the issue day (nothing 1-4 Dec)", eq(early, {}), early);
 

@@ -175,7 +175,7 @@ export function moneyMetrics(db: Reader, now: () => Date = () => new Date(), vis
   });
   return [
     money("fees_billed", "Fees billed", "Issued invoices' totals (tax and government fees included) on their issue day, less credit notes on theirs, in the period. One total per currency, never added.", billedSql),
-    money("fees_collected", "Fees collected", "Money paid on invoices in the period: paid into operating less its refunds, plus money paid from trust to an invoice less its corrections. Money paid into trust is never fees. One total per currency.", collectedSql),
+    money("fees_collected", "Fees collected", "Money paid on invoices in the period: paid into operating less its refunds, plus money paid from trust to an invoice less its corrections. Money paid beyond the bill counts until it is refunded. Money paid into trust is never fees. One total per currency.", collectedSql),
     money("trust_received", "Trust received", "Money clients paid into trust in the period, less corrections of a deposit and refunds out of trust. Client money, apart from fees and never added to them. Only while the firm holds trust money.", trustSql,
       (ctx) => trustShows(db as Prisma.TransactionClient, ctx.firmId)),
     {

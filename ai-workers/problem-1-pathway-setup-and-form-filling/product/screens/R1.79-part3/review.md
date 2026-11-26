@@ -1,86 +1,85 @@
-# R1.79 part 3 (PF-R2cm): review, round 1
+# R1.79 part 3 (PF-R2cm): review
 
-PR #3812 (draft) · branch `claude/runtime-pfr2cm` · head `801724efd603ce791a996ab6ad8b4e55e76e2d4b`. The reviewer did not build it. API only, no screen.
+PR #3812 · branch `claude/runtime-pfr2cm`. The reviewer did not build it. API only, no screen.
 
-**Verdict: Rework → Block.** Three Majors are open. Each fix stays inside `metrics.ts` and its test; nothing needs a redesign. Journey score **7.9/10, fail** (correct data scores 0): `journey-test-reviewer-2026-11-26.md`.
+## Round 2: diff `801724e..f72f041` (head `f72f041c75edd5b3d3ffce821e9c111446897ae4`)
 
-## What I ran (all on the exact commit, extracted with `git archive` into the scratchpad; the shared working tree carries a builder's uncommitted edits)
-* **The PR's test:** 34 passed, 0 failed (on the repo files and on the extract). `check_pfr1_reports.ts`: 72 passed. `tsc`: no error in the new files. `graph.mjs`: G1 0, G2 0, G4 0, G5 0; nothing named for this row.
-* **The live door:** I started the commit's API on :4437 (runtime range), with its own database, which I dropped afterwards.
-  * Owner: all 7 figures come back OK in 45 ms. `billing-finance` shows 5/5 widgets as registered.
-  * Case Officer with a forged `scope:"financial"`: `WITHHELD`.
-  * `from: 2026-13-01`: 422, with the field named.
-* **Repro scripts and mutations:** run on the extract only. The scratch databases were dropped.
+**Verdict: Ship → Approve.** No Blocker or Major is open. Round 1's four Majors are fixed, and each fix has a test line that fails when the fix is removed. Journey score **9.3/10, pass**: `journey-test-reviewer-2026-11-26-r2.md`.
 
-## Issues (ranked)
-**M1, Major, Must: a payment back-dated to the 1st counts in the month before (AG-14-13 "by period"; the row says "collected counts payment dates").**
-* `invoices/money.ts:123` stores a `receivedOn` that is not today as `${receivedOn}T00:00:00Z`. `metrics.ts:105` then cuts the period on that timestamp in the firm's zone (America/Toronto by default). 00:00 UTC is 19:00 or 20:00 on the day before in Toronto, so every back-dated payment moves one day earlier.
-* **Live:** I recorded a payment with `POST …/invoices/:id/payments {receivedOn:"2026-11-01"}`. The answer said `receivedOn 2026-11-01`, receipt R-0001. Fees collected for October shows **CAD 400.00**; November shows `[]`. Scratch repro: 1 Dec goes into November.
-* The test's payments are all at 15:00Z, so it cannot see this. Mutation (e), the firm's zone replaced by UTC, also passes 34/34: the firm's zone is never tested (CS-R1 added a Kolkata line for the same gap).
-* **Fix:** cut a payment by its received-on day as the app records it and shows it (`dayOf`, `reads/payments.ts`), not by the timestamp in the firm's zone. Add a back-dated payment on the 1st, and a zone line.
+### What I ran (on the exact head: the working tree was clean at f72f041, plus a `git archive` extract for mutations)
+* **Tests:**
+  * `check_pfr2cm_metrics.ts`: 45 passed, 0 failed.
+  * `check_pfr1_reports.ts`: 72 passed.
+  * `check_csw3_firm_scope.ts`: the census passes with 57 files, and the planted-file fail line passes.
+  * `tsc`: no error in the changed files.
+* **Round 1's repro, run again on f72f041:**
+  * The payment recorded for 1 Dec now counts in December (CAD 400.00); November is empty.
+  * For a holder of the seeded BILLING_FINANCE keys, and for a holder of `view-financial` alone, the hidden client is now `"1 client you cannot open"`, CAD 600.00. No name is shown, and the rows still add up.
+* **My mutations (scratch copy only, restored after each):**
 
-**M2, Major, Must: overdue by client names clients the viewer cannot open in client money (AG-14-19, §3.6: "List rows and drill-through never show, count or link to a record the viewer could not open from its own module"; ports/metrics.ts `MetricReadContext`: "the read counts only records the viewer may open … break M1").**
-* `frameOf`/`who` (`metrics.ts:71-86`) never read `ctx.keys`. Client money's own rule (C5, `PgMoneyVisibility`; "no role sees money firm-wide by its role") is not applied. The statement and summary in FO-7r do apply it.
-* **Repro:** an invoice with no case for a person. A staff member holding the seeded **BILLING_FINANCE** keys has money visibility `{"cases":[],"parties":[]}`, yet `overdue_by_client` answers `{"client":"Hidden Client","overdue":"600.00",…}`. The same happens with `view-financial` alone, and for a firm that makes Billing case-`view.own`.
-* CS-R1 bounds every number by the viewer's own keys (`case-reports.ts:4-6, 50-52`).
-* **Fix:** bound the rows by the caller's `PgMoneyVisibility` scope (`scopeSql`), as FO-7r does, and add a pass/fail line.
-* Whether the tiles (totals) should be bounded the same way, or are firm-wide by `view-financial` (AG-14 §2, §3.6 "firm-wide financial reports"), is **Q6 for the tech lead**.
+| Mutation | Result |
+|---|---|
+| paidDay reads the firm's day for a 00:00 UTC payment | 43/45 (both M1 lines fail) |
+| The firm's zone replaced by UTC | 43/45 (the Toronto pair fails) |
+| C5 bound off (`seenOf` always true) | 42/45 (M2 lines fail) |
+| Hidden-clients row dropped | 42/45 |
+| `received_into = 'OPERATING'` dropped | 43/45 (M3 lines fail) |
+| MOVE_TO_CASE dropped from trust received | 43/45 (break M1 lines fail) |
+| Refunds out of trust not subtracted | 42/45 |
+| A deposit takes its entry's day, not its payment's day | **45/45 (survives: n1)** |
 
-**M3, Major, Must: the row's first "Done when" test ("a trust deposit never counts as fees collected") does not catch the rule being removed.**
-* I deleted `and p.received_into = 'OPERATING'` (`metrics.ts:105`): still 34/34.
-* The fixture's deposit is a payment with no invoice (`test:90-92`), and `ON_INVOICE` drops that whatever the rule says.
-* In the real flow, a payment into trust on an invoice (`money.ts:123-128`) is a `money_payment` row with `invoice_id`, plus a DEPOSIT and a WITHDRAWAL_TO_INVOICE. Without the filter, that money would be counted twice.
-* **Fix:** add a fixture written as money.ts writes it, and assert it is counted once (the withdrawal only).
+The builder's own mutations, which I did not re-run: the issue-day clamp, the credit-note trust refund and the withdrawal correction each fail 1-3 lines.
 
-**M4, Major, Must (the breaker's M1, confirmed by reading the code): with a person filter, trust received leaves out money moved onto the case and can go negative.**
-* `trustSql` (`metrics.ts:112-116`) never counts MOVE_TO_CASE, and `who("e")` filters by `e.case_id`.
-* Repro (break-report.md): `{"CAD":"-300.00"}` for user-O. DW6 never tests trust under a person filter.
+### Round 1 issues
+| # | Status | Evidence |
+|---|---|---|
+| M1 period | **Fixed** | Periods now compare firm days. A payment stored at exactly 00:00 UTC takes that UTC date, which is the day the app shows (`paidDay`, `metrics.ts`). A Toronto-zone pair is in the solo firm (DW2) |
+| M2 C5 rows | **Fixed** | `overdue_by_client` names only clients that pass `PgMoneyVisibility` (`seenOf` is scopeSql's rule). The rest is one row per currency. The cap counts the hidden rows (at most 200 in all) |
+| M3 headline test | **Fixed** | A payment into trust on the invoice, written as money.ts writes it (payment, deposit and withdrawal), is counted once (DW3 fail line) |
+| M4 trust under a person filter | **Fixed** | MOVE_TO_CASE is counted: it nets to zero firm-wide, and under a person filter only its + half on that person's case is in |
+| n1 (round 1) untested branches | **Fixed** | December fixtures; each branch's removal fails a line |
+| n2 extra paid beyond the bill | **Fixed** | Stated in the code. The figure's own words (`source`) still do not say it (see n4) |
+| n3 credit REFUNDED | Open, accepted | No writer on main; noted as a known limit in the PR |
+| n4, n5 (breaker m1-m3) | **Fixed** | Ranking within each currency; reversals grouped once (DW8 now has 15,000 credit applications and passes); "1 more client" |
 
-**Minor, Should:**
-* **n1: four other rules pass with their test removed (each mutation still 34/34).** Add a line for each:
-  * (b) the RETURNED_FROM_TRUST branch;
-  * (c) a correction of a withdrawal;
-  * (d) refunds out of trust (MS-D24);
-  * (f) the "counts from the issue" clamp.
-* **n2: extra paid beyond the bill counts in Fees collected on the payment day,** whether it is kept as credit or still waiting for a choice. The figure's words do not say so. Either take KEPT off and count APPLIED, or state it in the words.
-* **n3: credit `REFUNDED` exists in the schema, but no code writes it on main.** When that writer comes, collected would never take it off. Note it in the module row.
-* **n4 (the breaker's m1, m3; confirmed by reading):** overdue by client ranks CAD against USD before the 200-row cut (`:188`), and the "1 more clients" plural (`:193`).
-* **n5 (the breaker's m2; not re-measured):** the overdue figures go over 200 ms at about 22,000 credit applications in one firm. DW8's bulk has none.
+### New issues (all Minor; none blocks)
+* **n1, Minor, Should: "a deposit takes its payment's day" (`trustSql`, the `coalesce(paidDay(p.received_at), …)` term) is untested.** Replacing it with the entry's own day still passes 45/45. The rule matters for a payment into trust recorded for an earlier date (`money.ts:123`).
+  * Fix: one line with a deposit of a back-dated trust payment on the 1st.
+* **n2, Minor, Should: one client can be both named and counted in "N clients you cannot open".** This happens for a party with an invoice on a case the viewer can open and another on a case they cannot (`count(distinct …)` sits inside the hidden group). The figures are right; only the count's word "clients" can overstate.
+  * Fix: say "N invoices' clients", or leave it as a known limit.
+* **n3, Note, no action:** `paidDay` treats a payment recorded "today" at exactly 00:00:00.000000 UTC as a back-dated one. That is one microsecond a day, and in Toronto that day is the same either way.
+* **n4, Minor, Could:** the Fees collected `source` text does not yet say that money paid beyond the bill counts until it is refunded. The code comment says so. The PR says "the words now say": they do for the code, not for the card line PF-R3 will show.
 
-## The PR's questions (my view)
-1. Keep the port's rule. The seeds give Owner and Admin `view-financial`, so the effect is the same. Correct the row's wording.
-2. The billed party: agree.
-3. Issue date, credit notes not taken off: agree as the Sample choice, stated in the words.
-4. "Disputed": agree, not on main.
-5. By service/program/office and trended: a later row.
+### Still for the tech lead (not blocking)
+* **Q6:** the tile totals (fees billed and collected, trust, overdue, ageing, tax) stay firm-wide under `view-financial` (AG-14 §2, §3.6 "firm-wide financial reports"). Only the named rows are C5-bounded.
+* **Q1-Q5:** as in round 1 (keep the port's rule; billed party; Sample tax choice; no "Disputed"; by service later).
+* Also outside the row's list (P-26, not a finding): AG-14-36's "Written off" figure.
 
-Also outside the row's list (P-26, so not a finding): AG-14-36's "Written off" figure.
-
-## D1-D20 (API row; the screen dimensions go to PF-R3)
+### D1-D20 (round 2; screen dimensions go to PF-R3)
 | D | Score | Evidence |
 |---|---|---|
-| D1 | 3 | US-14's three money cases hold. M1 (period) and M2 (AG-14-19) do not |
-| D2 | 4 | Reads only; nothing is written |
-| D3 | 3 | Reuses FO-7r's terms, caseScope and the cited tax table; skips PgMoneyVisibility (M2) |
-| D4 | 3 | Ageing parity with DUE_SQL holds. Trust under a person filter goes negative (M4) |
-| D5 | 4 | A failing read is UNAVAILABLE, there is a timeout, and the registration test catches a duplicate |
-| D6, D7 | N/A | No content, no AI |
-| D8-D14 | N/A | No screen (PF-R3) |
-| D15 | 4 | 45 ms live, and DW8 passes; n5 |
-| D16 | 2 | Six rule removals survive, including the row's headline rule (M3, n1, M1(e)) |
-| D17, D20 | simulated only | No intended user walked it |
-| D18 | 4 | Each figure gives its source in words; the tax choice is marked Sample and "Unconfirmed: no accountant" |
-| D19 | 3 | Feeds the Owner and Billing dashboards (keys registered); the figures are not yet right |
+| D1 | 4 | US-14's money cases, the periods, and AG-14-19 rows all hold; Q6 is open |
+| D2 | 4 | Reads only |
+| D3 | 4 | Uses FO-7r's terms, caseScope, PgMoneyVisibility and the cited tax table |
+| D4 | 4 | Parity with DUE_SQL holds; trust no longer goes negative under a person filter |
+| D5 | 4 | A failing read is UNAVAILABLE; there is a timeout |
+| D6, D7, D8-D14 | N/A | No content, no AI, no screen |
+| D15 | 4 | DW8 passes with 15,000 credit applications |
+| D16 | 4 | Every rule removal I tried fails a line, except n1 |
+| D17, D20 | simulated only | |
+| D18 | 4 | Source words per figure; Sample tax choice; "Unconfirmed: no accountant" |
+| D19 | 4 | Feeds the Owner and Billing / Finance dashboards with correct figures |
 
 **BIC-01 to BIC-20:** N/A (not a case-side screen).
 
-## What I could not check
-* A Billing / Finance user on a screen: there is no screen until PF-R3.
-* CI: on the draft, only the guard runs.
-* The breaker's timing (n5): not re-measured.
+**What I could not check:**
+* CI: the draft runs only the guard.
+* A screen: PF-R3.
+* The live :4437 server was not restarted for round 2. Round 1 showed the door's wiring live, and round 2 does not change the registration.
 
-**To fix before Approve:** M1, M2 (the rows; plus Q6's answer for the totals), M3, M4, each with a pass/fail line that fails when its rule is removed.
+**Verdict: Approve.** n1, n2 and n4 can go in a later push or PF-R3.
 
-**Verdict: Block** (M1, M2, M3, M4).
+Reviewer: Approve f72f041c75edd5b3d3ffce821e9c111446897ae4
 
-Reviewer: Block 801724efd603ce791a996ab6ad8b4e55e76e2d4b
+## Round 1 (head `801724e`), summary
+Verdict: Block. M1 (back-dated payments in the wrong period, shown live on :4437), M2 (`overdue_by_client` named clients outside C5), M3 (the headline trust test did not bite), M4 (the breaker's M1, trust negative under a person filter); minors n1-n5. Journey score 7.9/10 (fail). The full text is in git history: `git show f72f041:ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/R1.79-part3/review.md`.
