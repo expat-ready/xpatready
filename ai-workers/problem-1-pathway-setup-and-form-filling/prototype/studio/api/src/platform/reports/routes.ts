@@ -86,6 +86,7 @@ export class ReportsController {
     if (a.status === "WITHHELD") forbidden("This table is not in your access, so it cannot be exported.", "WITHHELD");
     if (a.status !== "OK" || a.reading?.kind !== "LIST") problem(503, "Try again", "This table could not be counted just now, so nothing was exported. Try again.", { code: "UNAVAILABLE" });
     const rows = a.reading.rows;
+    if (!rows.length) problem(422, "Nothing to export", "This table has no rows for these filters, so nothing was exported.", { code: "NOTHING_TO_EXPORT" });
     // the line first, committed on its own; a line that cannot be written means no file (P-607 (3))
     await this.database().$transaction((tx) => auditEvent.record(tx, exportLine(firmScope(ctx.firmId).firmId, actorWord(ctx.staffId), a, filters, rows.length)));
     res.status(200).setHeader("Content-Type", "text/csv; charset=utf-8");

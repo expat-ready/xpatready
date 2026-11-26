@@ -6,8 +6,11 @@
 //  * the CSV of one table (a LIST metric) read exactly as `query` reads it: same filters, same server-worked scope. A
 //    WITHHELD table is 403 and an UNAVAILABLE one 503, both with no audit line. Otherwise one `report.exported` line is
 //    committed first (metric, filters, scope, row count; never a figure), and only then is the file made (challenge M4;
-//    AUD-4's "line before the data", P-607 (3)). Header words are the table's own column names; a per-currency table
-//    has `currency` first; amounts as answered; no total row; the audit trail's one CSV writer (formula-safe).
+//    AUD-4's "line before the data", P-607 (3)). A table with no rows is refused (422), with no line (break m3). Header
+//    words are the table's own column headings, as the page shows them; a per-currency table has `currency` first;
+//    amounts as answered, written as numbers (a negative one is never turned into text: break m4); no total row; the
+//    audit trail's one CSV writer (formula-safe) for every other cell. Not masked: AG-14-26 ("not masked (governed only
+//    by agent/report:export)", AG7-D10; agent/report:reveal-pii withdrawn).
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { MetricFilters, MetricKey, REPORT_KEYS, type MetricAnswer } from "../../../../ports/metrics.ts";
@@ -37,10 +40,14 @@ export function columnsOf(rows: Record<string, unknown>[]): string[] {
   return seen.includes("currency") ? ["currency", ...seen.filter((k) => k !== "currency")] : seen;
 }
 
-/** The CSV of a LIST answer (UTF-8 with its mark, a header row, CRLF rows). */
+/** A column's heading as the page shows it ("average_days" → "Average days"; web/src/modules/platform/reports/contract.ts heading). */
+export const headingOf = (k: string) => { const t = k.replace(/_/g, " ").replace(/\bdays (\d+) (\d+)\b/, "$1-$2 days").replace(/\bdays 90 plus\b/, "90+ days"); return t.charAt(0).toUpperCase() + t.slice(1); };
+const AMOUNT = /^-?\d{1,13}\.\d{2}$/;
+/** The CSV of a LIST answer (UTF-8 with its mark, a header row, CRLF rows). An amount is written as it is (a number). */
 export function csvOf(rows: Record<string, unknown>[]): string {
   const cols = columnsOf(rows);
-  return `﻿${csvRow(cols)}${rows.map((r) => csvRow(cols.map((c) => r[c] ?? null))).join("")}`;
+  const cell = (v: unknown) => (typeof v === "string" && AMOUNT.test(v) ? v : csvRow([v ?? null]).slice(0, -2));
+  return `\uFEFF${csvRow(cols.map(headingOf))}${rows.map((r) => `${cols.map((c) => cell(r[c])).join(",")}\r\n`).join("")}`;
 }
 
 /** The file's name: reports-<metric's last part, dashed>-<from>[-to-<to>].csv. */

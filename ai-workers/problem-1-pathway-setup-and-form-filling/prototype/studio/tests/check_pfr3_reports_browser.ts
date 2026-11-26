@@ -39,6 +39,8 @@ let failed = 0;
 
 await seedSampleFirms(db);
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
+// a fresh copy only: a second run would count the first run's invoices too (review minor)
+if (sql(`select count(*) from money_invoice where number like 'PFR3-%'`) !== "0") { console.log("STOP  this copy already holds PF-R3's rows: start a fresh copy"); process.exit(2); }
 const signIn = async (firmKey: string, who: { actorId?: string; email?: string }): Promise<string> => {
   const r = await api(null, "POST", "/platform/session/local", { firmKey, ...who, secondStep: true });
   if (r.body?.token) return r.body.token as string;
@@ -49,6 +51,10 @@ const TR = await signIn("sample-firm", { actorId: "user-R" }), TO = await signIn
 const cm = await db.platformStaff.create({ data: { firmId: A, actorId: `pfr3-cm-${run}`, email: `pfr3-cm-${run}@sample.invalid`, displayName: "Sample case manager" } });
 await db.platformRoleGrant.create({ data: { firmId: A, staffId: cm.id, role: "CASE_MANAGER", grantedBy: "seed:pfr3" } });
 const TM = await signIn("sample-firm", { actorId: cm.actorId! });
+// Read-only and Billing / Finance colleagues (BR-2's fallback, BR-3's no-person rule for view-financial without view.all)
+const role = async (r: string) => { const x = await db.platformStaff.create({ data: { firmId: A, actorId: `pfr3-${r.toLowerCase()}-${run}`, email: `pfr3-${r.toLowerCase()}-${run}@sample.invalid`, displayName: `Sample ${r.toLowerCase()}` } });
+  await db.platformRoleGrant.create({ data: { firmId: A, staffId: x.id, role: r as never, grantedBy: "seed:pfr3" } }); return signIn("sample-firm", { actorId: x.actorId! }); };
+const TRO = await role("READ_ONLY"), TBF = await role("BILLING_FINANCE");
 
 // ------------------------------------------------------------------------------- money this month (Sample, replica role)
 const R = "set session_replication_role = replica;";
@@ -73,14 +79,15 @@ try {
   const ex = await api(TR, "POST", "/platform/reports/export", { metric: "reports.money.tax_collected", filters });
   const line = sql(`select detail::text from audit_event where firm_id = '${A}' and action = 'report.exported' order by at desc limit 1`);
   ok("PF-R3 BR7 pass (API): the Owner's export is a CSV of the table (currency first, amounts as answered) and writes one audit line with scope and rows",
-    ex.status === 200 && ex.text.replace(/^﻿/, "").startsWith("currency,tax_name,tax\r\n") && ex.text.includes("CAD,HST,130.00") && ex.text.includes("USD,GST,10.00") && lines() === before + 1
+    ex.status === 200 && ex.text.replace(/^﻿/, "").startsWith("Currency,Tax name,Tax\r\n") && ex.text.includes("CAD,HST,130.00") && ex.text.includes("USD,GST,10.00") && lines() === before + 1
       && /"scope": ?"financial"/.test(line) && /"rows": ?2/.test(line) && !line.includes("130.00") && (ex.headers.get("content-disposition") ?? "").includes(`reports-tax-collected-${month}.csv`), { status: ex.status, text: ex.text.slice(0, 200), line });
   const noKey = await api(TO, "POST", "/platform/reports/export", { metric: "reports.money.tax_collected", filters });
   const withheld = await api(TM, "POST", "/platform/reports/export", { metric: "reports.money.tax_collected", filters });
   const tile = await api(TR, "POST", "/platform/reports/export", { metric: "reports.money.fees_billed", filters });
   const bad = await api(TR, "POST", "/platform/reports/export", { metric: "reports.money.tax_collected", filters: { from: "2026-02-30" } });
-  ok("PF-R3 BR7 fail (API; challenge M4): no export key → 403; a WITHHELD table (Case Manager, no money access) → 403; a single figure → 400; a bad date → 422; none writes a line",
-    noKey.status === 403 && withheld.status === 403 && withheld.body?.code === "WITHHELD" && tile.status === 400 && tile.body?.code === "NOT_A_TABLE" && bad.status === 422 && lines() === before + 1,
+  const none = await api(TR, "POST", "/platform/reports/export", { metric: "reports.money.tax_collected", filters: { from: "2020-01-01", to: "2020-01-31" } });
+  ok("PF-R3 BR7 fail (API; challenge M4, break m3): no export key → 403; a WITHHELD table (Case Manager, no money access) → 403; a single figure → 400; a bad date → 422; an empty table → 422; none writes a line",
+    noKey.status === 403 && withheld.status === 403 && withheld.body?.code === "WITHHELD" && tile.status === 400 && tile.body?.code === "NOT_A_TABLE" && bad.status === 422 && none.status === 422 && none.body?.code === "NOTHING_TO_EXPORT" && lines() === before + 1,
     { noKey: noKey.status, withheld: [withheld.status, withheld.body?.code], tile: [tile.status, tile.body?.code], bad: bad.status });
 
   // ----------------------------------------------------------------------------------------------------------- the browser
@@ -156,6 +163,42 @@ try {
       && (await card(pm, "reports.money.tax_collected").locator("[data-report-scope], [data-report-export]").count()) === 0);
     await pm.context().close();
 
+    // review M1: "What this counts" opens by keyboard (Enter) and shows its words in the page, Escape hides them
+    const pk = await tab(TR); await open(pk);
+    const tipBtn = card(pk, "reports.money.fees_billed").locator("[data-report-tip]").first();
+    await tipBtn.focus(); await pk.keyboard.press("Enter");
+    const tipText = await card(pk, "reports.money.fees_billed").locator("[data-report-tip-text]").innerText().catch(() => "");
+    await pk.keyboard.press("Escape");
+    ok("PF-R3 BR5 pass (review M1): Enter on (i) shows \"What this counts\" in the page, and Escape hides it", tipText === src && (await pk.locator("[data-report-tip-text]").count()) === 0, { tipText });
+    // review M3: the month picker, and a custom range with the end before the start says so on the field and asks nothing
+    ok("PF-R3 BR3 pass (review M3): a Month picker opens on the firm's current month", (await pk.locator("[data-report-month]").inputValue()) === `${month}-01`);
+    const asked: string[] = []; pk.on("request", (r) => { if (r.url().endsWith("/api/platform/reports/query")) asked.push(r.postData() ?? ""); });
+    await pk.goto(`${BASE}/platform/reports?from=${month}-20&to=${month}-10`); await pk.locator("[data-report-card]").first().waitFor({ timeout: 60_000 }); await pk.waitForLoadState("networkidle");
+    ok("PF-R3 BR3 fail (review M3, break m6): From after To keeps both dates, says so on the To field, and no figure is asked for", (await pk.locator("[data-report-to]").inputValue()) === `${month}-10`
+      && (await pk.getByText("The end date is before the start date").count()) === 1 && asked.length === 0, { asked: asked.length });
+    // break M1: a person who is not the firm's staff is dropped: "Everyone", no staffId sent
+    asked.length = 0; await open(pk, "?person=00000000-0000-4000-8000-000000000000");
+    ok("PF-R3 BR3 fail (break M1): an outside person id is dropped: the picker says Everyone and no query sends a staffId", (await pk.locator("[data-report-person]").inputValue()) === "" && asked.length > 0 && asked.every((b) => !b.includes("staffId")), asked);
+    // review M4 and M2: BR-1's "<Name>'s work", with the person's own (empty) figures, never the firm's under the new words
+    const officer = dO.body.people.find((x: { id: string; name: string }) => x.id === sql(`select id from platform_staff where actor_id = 'user-O'`));
+    await open(pk, `?person=${officer.id}`);
+    ok("PF-R3 BR1 pass (review M2, M4): with a person picked, a card says \"<Name>'s work\" over that person's own figures (no invoices on their cases)", (await card(pk, "reports.money.fees_billed").locator("[data-report-scope]").innerText()) === `${officer.name}'s work`
+      && (await card(pk, "reports.money.fees_billed").locator("[data-report-state=empty]").innerText()) === "No invoices in this period");
+    // review M4: BR-6's empty words per metric
+    await open(pk, "?clientType=CORPORATE");
+    ok("PF-R3 BR6 pass (review M4, break m8): empty figures say why in their own words: \"No payments in this period\", \"No invoices in this period\"", (await card(pk, "reports.money.fees_collected").locator("[data-report-state=empty]").innerText()) === "No payments in this period"
+      && (await card(pk, "reports.money.fees_billed").locator("[data-report-state=empty]").innerText()) === "No invoices in this period");
+    await pk.context().close();
+    // review M4: BR-2's Read-only fallback; BR-3's Billing / Finance never sends a person and opens on All
+    const pro = await tab(TRO); await open(pro);
+    ok("PF-R3 BR2 pass (review M4): Read-only lands on the Case Officer dashboard", (await pro.locator("[data-report-dashboard]").inputValue()) === "case-officer");
+    await pro.context().close();
+    const pbf = await tab(TBF), bfSent: string[] = []; pbf.on("request", (r) => { if (r.url().endsWith("/api/platform/reports/query")) bfSent.push(r.postData() ?? ""); });
+    await open(pbf, `?person=${officer.id}`);
+    ok("PF-R3 BR3 pass (review M4, break m11): Billing / Finance lands on its dashboard on All clients, shows \"You\", and never sends a staffId", (await pbf.locator("[data-report-dashboard]").inputValue()) === "billing-finance"
+      && (await pbf.locator("[data-report-client-type]").inputValue()) === "ALL" && (await pbf.locator("[data-report-person-you]").count()) === 1 && bfSent.length > 0 && bfSent.every((b) => !b.includes("staffId")), bfSent);
+    await pbf.context().close();
+
     // keyboard and widths: axe 0 serious, no sideways scroll at 375, 1024 and 1440; the filter bar by keyboard alone
     for (const w of [375, 1024, 1440]) {
       const p = await tab(TR, w); await open(p);
@@ -164,7 +207,7 @@ try {
       if (w === 375) await p.screenshot({ path: join(SHOTS, "owner-375.png"), fullPage: true });
       if (w === 1440) {
         await p.locator("[data-report-dashboard]").focus(); await p.keyboard.press("Tab");
-        const next = await p.evaluate(() => document.activeElement?.getAttribute("data-report-from") !== null);
+        const next = await p.evaluate(() => document.activeElement?.getAttribute("data-report-month") !== null);
         await p.locator("[data-report-client-type]").focus(); await p.keyboard.press("ArrowDown"); await p.waitForURL(/clientType=/);
         ok("PF-R3 row: keyboard only: Tab moves from the Dashboard picker to the filters, and the arrow keys change a filter", next);
       }

@@ -34,32 +34,48 @@ export const Answer = z.object({ metrics: z.array(z.object({ key: z.string(), la
 export type Metric = z.infer<typeof Answer>["metrics"][number];
 
 /** The filter bar, read from and written to the address (BR-3). A viewer without view.all never carries a person. */
-export type Filters = { dashboard: DashboardRole; from: string; to: string; staffId?: string; clientType?: "INDIVIDUAL" | "CORPORATE" };
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-export function readFilters(p: URLSearchParams, o: { roles: readonly string[]; keys: readonly string[]; period: { from: string; to: string } | null }): Filters {
+export type Filters = { dashboard: DashboardRole; from: string; to: string; staffId?: string; clientType?: "INDIVIDUAL" | "CORPORATE";
+  /** Set when the address's dates cannot be read together (the end before the start): no figure is asked for until fixed (review M3). */
+  rangeProblem?: string };
+/** A real calendar day (2026-02-30 is not one: break m5). */
+export const isDay = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function readFilters(p: URLSearchParams, o: { roles: readonly string[]; keys: readonly string[]; period: { from: string; to: string } | null; people?: readonly { id: string }[] }): Filters {
   const d = p.get("dashboard"), from = p.get("from"), to = p.get("to"), staffId = p.get("person"), ct = p.get("clientType");
   const seesAll = o.keys.includes(REPORT.all);
   const out: Filters = { dashboard: (ROLES as readonly string[]).includes(d ?? "") ? (d as DashboardRole) : defaultDashboard(o.roles),
-    from: from && DAY.test(from) ? from : o.period?.from ?? "", to: to && DAY.test(to) ? to : o.period?.to ?? "" };
-  if (out.from && out.to && out.from > out.to) { out.from = o.period?.from ?? ""; out.to = o.period?.to ?? ""; }
-  if (seesAll && staffId && /^[0-9a-f-]{36}$/i.test(staffId)) out.staffId = staffId;
-  // AG-14-32 (departure recorded in the concept, BR-3): All for view.all holders by default, Individual for others; anyone may pick
-  const type = ct === "INDIVIDUAL" || ct === "CORPORATE" || ct === "ALL" ? ct : seesAll ? "ALL" : "INDIVIDUAL";
+    from: isDay(from) ? from : o.period?.from ?? "", to: isDay(to) ? to : o.period?.to ?? "" };
+  if (out.from && out.to && out.from > out.to) out.rangeProblem = "The end date is before the start date. Change one of them.";
+  // only someone the firm's people list holds (break M1: an outside id would count nothing under "Whole firm")
+  if (seesAll && staffId && UUID.test(staffId) && o.people?.some((x) => x.id.toLowerCase() === staffId.toLowerCase())) out.staffId = staffId;
+  // AG-14-32 (departure recorded in the concept, BR-3): All for view.all and money holders by default (break m11), Individual for others
+  const type = ct === "INDIVIDUAL" || ct === "CORPORATE" || ct === "ALL" ? ct : seesAll || o.keys.includes(REPORT.financial) ? "ALL" : "INDIVIDUAL";
   if (type !== "ALL") out.clientType = type;
   return out;
 }
-export function writeFilters(f: Filters, period: { from: string; to: string } | null, seesAll: boolean): URLSearchParams {
+export function writeFilters(f: Filters, period: { from: string; to: string } | null, allByDefault: boolean): URLSearchParams {
   const p = new URLSearchParams();
   p.set("dashboard", f.dashboard);
   if (!period || f.from !== period.from || f.to !== period.to) { p.set("from", f.from); p.set("to", f.to); }
   if (f.staffId) p.set("person", f.staffId);
-  const dflt = seesAll ? undefined : "INDIVIDUAL";
+  const dflt = allByDefault ? undefined : "INDIVIDUAL";
   if (f.clientType !== dflt) p.set("clientType", f.clientType ?? "ALL");
   return p;
 }
 /** The query's filters (never a person for a viewer without view.all: readFilters already dropped it). */
 export const apiFilters = (f: Filters) => ({ ...(f.from ? { from: f.from } : {}), ...(f.to ? { to: f.to } : {}), ...(f.staffId ? { staffId: f.staffId } : {}), ...(f.clientType ? { clientType: f.clientType } : {}) });
 
+/** The month picker: the firm's current month and the 11 before it, newest first (row PF-R3 batch 5; review M3). */
+export function monthsBack(current: { from: string } | null, n = 12): { from: string; to: string; label: string }[] {
+  if (!current) return [];
+  let [y, m] = current.from.split("-").map(Number) as [number, number];
+  const out: { from: string; to: string; label: string }[] = [];
+  for (let i = 0; i < n; i++, m === 1 ? (y--, m = 12) : m--) {
+    const mm = String(m).padStart(2, "0"), last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    out.push({ from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2, "0")}`, label: new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }) });
+  }
+  return out;
+}
 /** BR-1: the card's scope words (none for a WITHHELD card). */
 export function scopeWords(m: Pick<Metric, "status" | "scope">, personName: string | null): string | null {
   if (m.status === "WITHHELD" || !m.scope) return null;
@@ -75,6 +91,7 @@ export function moneyWords(currency: string, amount: string): string {
 export function emptyWords(key: string): string {
   if (key.startsWith("reports.money.overdue")) return "Nothing overdue today";
   if (key === "reports.money.trust_received") return "No trust money received in this period";
+  if (key === "reports.money.fees_collected") return "No payments in this period";
   if (key === "reports.money.tax_collected" || key.startsWith("reports.money.fees")) return "No invoices in this period";
   if (key.startsWith("reports.money.")) return "No money in this period";
   if (key.endsWith("_rate")) return "No prospects closed in this period";
