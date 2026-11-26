@@ -8,8 +8,11 @@
 //       case. The case must be one of this client's cases in the caller's scope, else 404 (break M2, M3).
 //     * Over STATEMENT_LINE_MAX lines it answers 422 naming `to` ("choose a shorter period"), never a statement cut
 //       short silently.
-//   * POST …/parties/:kind/:id/statement/send { from?, to?, caseId? } (agent/invoice:issue, AG-6-28 §8).
+//   * POST …/parties/:kind/:id/statement/send { period, from?, to?, caseId? } (agent/invoice:issue, AG-6-28 §8).
 //     * Sent by a person only, with no schedule (§13: no automatic statements).
+//     * The person names the period on purpose: period "EVERYTHING" (no dates; the screen's default, AG-6-28 rule 3) or
+//       "DATES" with a from, a to or both. An email to a client is not undone, so no body sends the whole history by
+//       accident: no period is 422 naming `period`, read before the client is looked up (PF-28 (b) on #3753).
 //     * It goes to the client's own address only, with no Cc (AG-6-41): a person's email, or a company's current
 //       primary contact's. No address, or one the mail port would refuse, answers 422 naming `to`, and nothing is sent
 //       (break m2).
@@ -49,6 +52,8 @@ type Tx = Prisma.TransactionClient;
 /** The most lines one statement prints (Sample: about 80 pages of the PDF); past it, a shorter period. */
 export const STATEMENT_LINE_MAX = 5000;
 const Period = z.strictObject({ from: Day.optional(), to: Day.optional(), caseId: z.string().regex(UUID).optional() });
+/** Send statement's body: the period chosen on purpose (see the head). */
+const SendBody = Period.extend({ period: z.enum(["EVERYTHING", "DATES"]) });
 /** The address the mail port takes (MailMessage's own rule) and the message layer's channel keeps (normaliseAddress: break
  *  round 2 m1, `a@b-.example` passes the first and not the second): one the database holds but either refuses is a 422. */
 const Address = z.email();
@@ -69,7 +74,10 @@ export class StatementSend {
 
   /** POST …/statement/send. */
   async send(ctx: StaffContext, kind: string, id: string, body: unknown): Promise<SendView> {
-    const b = await this.build(ctx, kind, id, body), f = firmScope(ctx.firmId).firmId;
+    const { period, ...dates } = parseInput(SendBody, body ?? {});
+    if (period === "EVERYTHING" && (dates.from || dates.to)) badField("period", "Everything takes no dates: choose Dates to send a from and to.");
+    if (period === "DATES" && !dates.from && !dates.to) badField("from", "Choose a from date, a to date or both.");
+    const b = await this.build(ctx, kind, id, dates), f = firmScope(ctx.firmId).firmId;
     if (!b.email) return badField("to", `${b.head.billTo} has no email address on file: add one first. Nothing was sent.`);
     if (!Address.safeParse(b.email).success || !channelTakes(b.email)) return badField("to", `${b.head.billTo}'s email address on file cannot receive mail: correct it first. Nothing was sent.`);
     if (!this.mail) return { email: "NOT_SENT", to: b.email, lines: b.lines };

@@ -7,7 +7,8 @@
 //   P3 the recipient: a person's email, or a company's primary contact's; no address → 422 naming `to`, nothing sent;
 //   P4 bounded: more than 5,000 lines → 422 "choose a shorter period"; a shorter period prints;
 //   P5 who: another firm's client 404, no session 401, and a person without agent/invoice:show gets no PDF (403);
-//   P6 a person only: no schedule field is taken (422 naming it); a mail failure answers NOT_SENT and writes no line.
+//   P6 a person only: no schedule field is taken (422 naming it); a mail failure answers NOT_SENT and writes no line;
+//   P7 Send statement names its period on purpose: EVERYTHING or DATES (no period → 422 naming period, before the client).
 // A scratch database (every migration), the money features in a Nest app with PF-4's guard and PF-12's walls; fixtures
 // through FO-7b's and FO-7t's real routes. No network, no model call (US$0). Dropped at the end.
 //   tsx studio/tests/check_fo7r_statement_send.ts
@@ -119,8 +120,9 @@ try {
   ok("FO-7r P1 fail: an empty period prints \"No entries in this period\" and its opening = closing, not this period's lines", empty.includes("No entries in this period") && !empty.includes("Payment received") && empty.includes("Closing balance: CAD 0.00"), empty.slice(0, 600));
 
   // ---------------------------------------------------------------------------------------------------- P2, P6
+  const ALL = { period: "EVERYTHING" };   // P7: Send statement names its period on purpose
   const before = mail.sent.length, lines0 = Number(sql(`select count(*) from audit_event where action = 'statement.sent'`));
-  const sent = await call(tA, "POST", `${S}/statement/send`, {});
+  const sent = await call(tA, "POST", `${S}/statement/send`, ALL);
   const m = mail.sent.at(-1), audit = sql(`select actor || '|' || entity || '|' || entity_key || '|' || (detail->>'lines') from audit_event where action = 'statement.sent' order by at desc limit 1`);
   ok("FO-7r P2 pass: Send statement emails the client once, to their address, no Cc: a cover note (today's owed) and the statement as the PDF attached", sent.status === 200 && sent.body.email === "SENT" && sent.body.to === "fo7r2.a@example.org"
     && mail.sent.length === before + 1 && m?.to === "fo7r2.a@example.org" && !(m as any)?.cc && m?.text.includes("is attached as a PDF") && m?.text.includes(`Owed: ${printed("CAD", 165550)}`)   // eslint-disable-line @typescript-eslint/no-explicit-any -- an absent field
@@ -130,24 +132,35 @@ try {
   // review M4: a Case Officer as seeded holds agent/invoice:show but not agent/invoice:issue: the PDF answers, Send is 403
   const keysO = sql(`select string_agg(permission_key, ',') from platform_role_permission where role = 'CASE_OFFICER' and permission_key in ('agent/invoice:show', 'agent/invoice:issue')`);
   const tO = await signIn("user-O", "sample-firm"), n1 = mail.sent.length, l1 = Number(sql(`select count(*) from audit_event where action = 'statement.sent'`));
-  const showOk = await call(tO, "GET", `${S}/statement.pdf`), noKey = await call(tO, "POST", `${S}/statement/send`, {});
+  const showOk = await call(tO, "GET", `${S}/statement.pdf`), noKey = await call(tO, "POST", `${S}/statement/send`, ALL);
   ok(`FO-7r P2 fail: a Case Officer with agent/invoice:show only (${keysO}) gets the PDF (200) but Send is 403, nothing sent, no line`, keysO === "agent/invoice:show" && showOk.status === 200 && noKey.status === 403 && mail.sent.length === n1
     && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l1, { keysO, showOk: showOk.status, noKey: noKey.status });
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/invoice:show'`);   // this scratch database only
   const noShow = await call(await signIn("user-O", "sample-firm"), "GET", `${S}/statement.pdf`);
   ok("FO-7r P5 fail: without agent/invoice:show, no PDF (403)", noShow.status === 403, noShow.status);
-  const sched = await call(tA, "POST", `${S}/statement/send`, { every: "month" });
+  const sched = await call(tA, "POST", `${S}/statement/send`, { ...ALL, every: "month" });
   ok("FO-7r P6 fail: a schedule field is no field of Send statement (422 naming it): a person sends, never a schedule", sched.status === 422 && JSON.stringify(sched.body).includes("every") && mail.sent.length === n1, sched.body);
-  const failed = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, {});
-  ok("FO-7r P6 fail: a mail failure answers NOT_SENT and writes no audit line", failed.status === 200 && failed.body.email === "NOT_SENT" && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l1, failed.body);
+  // P7 (PF-28 (b) on #3753): the period is chosen on purpose; no period, or a period that contradicts its dates, sends nothing
+  const l7 = Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)), named = (r: { body: unknown }, k: string) => Object.hasOwn(((r.body as { fields?: object })?.fields) ?? {}, k);
+  const noPeriod = await call(tA, "POST", `${S}/statement/send`, {}), noPeriodOther = await call(tA, "POST", `/front-office/money/parties/logo/${sql(`select gen_random_uuid()`)}/statement/send`, {});
+  const allDated = await call(tA, "POST", `${S}/statement/send`, { period: "EVERYTHING", from: "2020-01-01" }), datesNone = await call(tA, "POST", `${S}/statement/send`, { period: "DATES" });
+  ok("FO-7r P7 fail: no period → 422 naming period, read before the client (an unknown path too); Everything with a date → 422 naming period; Dates with none → 422 naming from; nothing sent, no line",
+    noPeriod.status === 422 && named(noPeriod, "period") && noPeriodOther.status === 422 && named(noPeriodOther, "period") && allDated.status === 422 && named(allDated, "period") && datesNone.status === 422 && named(datesNone, "from")
+    && mail.sent.length === n1 && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l7, [noPeriod.body, noPeriodOther.status, allDated.body, datesNone.body]);
+  const dated = await call(tA, "POST", `${S}/statement/send`, { period: "DATES", from: "2020-01-01", to: "2020-01-31" }), dm = mail.sent.at(-1);
+  ok("FO-7r P7 pass: Dates with a from and a to sends that period's statement (its PDF is the period's download), with its line",
+    dated.status === 200 && dated.body.email === "SENT" && mail.sent.length === n1 + 1 && pdfText(Buffer.from(dm!.attachments![0]!.bytes)) === empty
+    && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l7 + 1, dated.body);
+  const failed = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, ALL);
+  ok("FO-7r P6 fail: a mail failure answers NOT_SENT and writes no audit line", failed.status === 200 && failed.body.email === "NOT_SENT" && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l7 + 1, failed.body);
 
   // ---------------------------------------------------------------------------------------------------- P3
-  const co = await call(tA, "POST", `/front-office/money/parties/company/${CO}/statement/send`, {}), noMail = await call(tA, "POST", `/front-office/money/parties/person/${PN}/statement/send`, {});
+  const co = await call(tA, "POST", `/front-office/money/parties/company/${CO}/statement/send`, ALL), noMail = await call(tA, "POST", `/front-office/money/parties/person/${PN}/statement/send`, ALL);
   ok("FO-7r P3 pass: a company's statement goes to its primary contact", co.status === 200 && co.body.email === "SENT" && co.body.to === "fo7r2.contact@example.org" && mail.inbox("fo7r2.contact@example.org").length === 1, co.body);
   ok("FO-7r P3 fail: a client with no email address → 422 naming to, nothing sent", noMail.status === 422 && JSON.stringify(noMail.body).includes('"to"') && JSON.stringify(noMail.body).includes("no email address"), noMail.body);
 
   // ---------------------------------------------------------------------------------------------------- P5
-  const other = await call(tA, "GET", `/front-office/money/parties/person/${PB}/statement.pdf`), otherSend = await call(tA, "POST", `/front-office/money/parties/person/${PB}/statement/send`, {}), anon = await call(undefined, "GET", `${S}/statement.pdf`);
+  const other = await call(tA, "GET", `/front-office/money/parties/person/${PB}/statement.pdf`), otherSend = await call(tA, "POST", `/front-office/money/parties/person/${PB}/statement/send`, ALL), anon = await call(undefined, "GET", `${S}/statement.pdf`);
   ok("FO-7r P5 fail: another firm's client → 404 (PDF and send), no session → 401", other.status === 404 && otherSend.status === 404 && anon.status === 401, { other: other.status, otherSend: otherSend.status, anon: anon.status });
 
   // ---------------------------------------------------------------------------------------------------- break round 1
@@ -161,21 +174,21 @@ try {
     update money_invoice set case_id = '${K1}' where id = '${i1}'`);
   const onCase = pdfText((await call(tA, "GET", `${S}/statement.pdf?caseId=${K1}`)).bytes);
   ok("FO-7r break M2 pass: a case's statement says \"case C-2026-97001 only\" and shows that case's owed alone (CAD 1,655.50), not the client's USD", onCase.includes("case C-2026-97001 only") && onCase.includes("Owed: CAD 1,655.50") && !onCase.includes("USD"), onCase.slice(0, 900));
-  const notHers = await call(tA, "GET", `${S}/statement.pdf?caseId=${K2}`), n2 = mail.sent.length, notHersSend = await call(tA, "POST", `${S}/statement/send`, { caseId: K2 }), random = await call(tA, "GET", `${S}/statement.pdf?caseId=${sql(`select gen_random_uuid()`)}`);
+  const notHers = await call(tA, "GET", `${S}/statement.pdf?caseId=${K2}`), n2 = mail.sent.length, notHersSend = await call(tA, "POST", `${S}/statement/send`, { ...ALL, caseId: K2 }), random = await call(tA, "GET", `${S}/statement.pdf?caseId=${sql(`select gen_random_uuid()`)}`);
   ok("FO-7r break M3 fail: another client's case, or an unknown case, → 404, nothing sent", notHers.status === 404 && notHersSend.status === 404 && random.status === 404 && mail.sent.length === n2, { notHers: notHers.status, notHersSend: notHersSend.status, random: random.status });
   const past = pdfText((await call(tA, "GET", `${S}/statement.pdf?to=2020-01-31`)).bytes);
   ok("FO-7r break M2 pass: today's figures on a past period's statement are headed \"As of <today>\"", past.includes(`As of ${new Date().toISOString().slice(0, 10)}:`) && past.includes("Closing balance: CAD 0.00"), past.slice(-500));
   // M1: an audit failure sends nothing (the line and the email are one step); a mail failure rolls the line back (P6)
   sql(`create function fo7r2_refuse() returns trigger language plpgsql as $$ begin if new.action = 'statement.sent' then raise exception 'refused for the check'; end if; return new; end $$;
     create trigger fo7r2_refuse before insert on audit_event for each row execute function fo7r2_refuse()`);
-  const n3 = mail.sent.length, refused = await call(tA, "POST", `${S}/statement/send`, {});
+  const n3 = mail.sent.length, refused = await call(tA, "POST", `${S}/statement/send`, ALL);
   sql(`drop trigger fo7r2_refuse on audit_event; drop function fo7r2_refuse()`);
   ok("FO-7r break M1 fail: when the audit line cannot be written, no email is sent (and the caller is told it failed)", refused.status >= 500 && mail.sent.length === n3, { status: refused.status, sent: mail.sent.length - n3 });
-  const again = await call(tA, "POST", `${S}/statement/send`, {});
+  const again = await call(tA, "POST", `${S}/statement/send`, ALL);
   ok("FO-7r break M1 pass: with the audit working again, the send goes and writes its line", again.status === 200 && again.body.email === "SENT" && mail.sent.length === n3 + 1, again.body);
   // m2: an address the database holds but the mail port refuses is 422, not NOT_SENT
   sql(`update fo_person set email = 'a@@example.org' where id = '${PF}'`);
-  const badAddr = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, {});
+  const badAddr = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, ALL);
   ok("FO-7r break m2 fail: an email the mail port refuses (a@@example.org) → 422 naming to, nothing sent", badAddr.status === 422 && JSON.stringify(badAddr.body).includes('"to"'), badAddr.body);
   // m3: a merged-away person is not found (the survivor holds the money)
   sql(`set session_replication_role = replica; update fo_person set merged_into_id = '${PA}', merged_at = now() where id = '${PF}'`);
@@ -188,7 +201,7 @@ try {
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PBULK}', 'BULK2-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, ${n}) g;
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PBULK}';
     insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 1000, 'CAD', 'OPERATING', now(), 'bulk2-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PBULK}'; analyze`);   // statistics first (review: a 5,000-line read before them took minutes)
-  const big = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement.pdf`), bigSend = await call(tA, "POST", `/front-office/money/parties/person/${PBULK}/statement/send`, {});
+  const big = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement.pdf`), bigSend = await call(tA, "POST", `/front-office/money/parties/person/${PBULK}/statement/send`, ALL);
   const short = await call(tA, "GET", `/front-office/money/parties/person/${PBULK}/statement.pdf?to=2026-01-01`);
   ok(`FO-7r P4 fail: ${n * 2} lines (more than ${STATEMENT_LINE_MAX}) → 422 naming to, "choose a shorter period", nothing sent`, big.status === 422 && bigSend.status === 422 && JSON.stringify(big.body).includes("shorter period") && JSON.stringify(big.body).includes('"to"')
     && mail.inbox("fo7r2.bulk@example.org").length === 0, { big: big.body, bigSend: bigSend.status });
@@ -199,7 +212,7 @@ try {
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PLONG}', 'LONG-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 2000) g;
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PLONG}';
     insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'long-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PLONG}'; analyze`);
-  const long = await call(tA, "POST", `/front-office/money/parties/person/${PLONG}/statement/send`, {}), lm = mail.inbox("fo7r2.long@example.org").at(-1);
+  const long = await call(tA, "POST", `/front-office/money/parties/person/${PLONG}/statement/send`, ALL), lm = mail.inbox("fo7r2.long@example.org").at(-1);
   const lText = lm?.attachments?.[0] ? pdfText(Buffer.from(lm.attachments[0].bytes)) : "";
   ok(`FO-7r review M1 pass: a 4,000-line statement is sent (${long.body?.lines} lines): the cover note is ${lm?.text.length ?? 0} characters, the PDF holds every line`, long.status === 200 && long.body?.email === "SENT" && long.body?.lines === 4000
     && (lm?.text.length ?? TEXT_MAX) < 2_000 && lText.split("\n").filter((l) => l.includes("  balance CAD")).length === 4000, { long: long.body, len: lm?.text.length });
@@ -222,7 +235,7 @@ try {
   ok("FO-7r break R2-M1 fail: a time past 3 s fails the same comparison", !(3001 < 3000));
   // break round 2 m1: an address MailPort's own schema takes but the message layer's channel refuses (a@b-.example) is 422
   sql(`update fo_person set email = 'a@b-.example', merged_into_id = null, merged_at = null where id = '${PF}'`);
-  const dash = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, {});
+  const dash = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, ALL);
   ok("FO-7r break R2-m1 fail: a@b-.example → 422 naming to, nothing sent", dash.status === 422 && JSON.stringify(dash.body).includes('"to"'), dash.body);
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${(e as Error).stack ?? e}`);
