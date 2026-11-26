@@ -35,12 +35,14 @@ on:
 permissions: {}
 jobs:
   gate:
+    # OS-87: a pr-suites run the gate started (workflow_dispatch on main, "pr-suites PR #<n> <head>") wakes it as a full run does.
     # A comment only when it is a reviewer's Approve on a PR; a label only when it is `review: approved`; ci runs of PRs.
     if: >-
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && (contains(github.event.comment.body, 'Approve') || contains(github.event.comment.body, 'Batch failures covered:')) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'pull_request' ||
-       (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && startsWith(github.event.workflow_run.display_title, 'full-run PR #')))) ||
+       (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && startsWith(github.event.workflow_run.display_title, 'full-run PR #')) ||
+       (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && startsWith(github.event.workflow_run.display_title, 'pr-suites PR #')))) ||
       (github.event_name == 'pull_request_target' && (github.event.label.name == 'review: approved' || (github.event.action == 'labeled' && github.event.label.name == 'dequeued'))) ||
       github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     # The Mac's own runner (xr-mac), not GitHub's hosted pool (Lead 81; founder "Yes, build it", 21:2x IST 18 Nov). Measured

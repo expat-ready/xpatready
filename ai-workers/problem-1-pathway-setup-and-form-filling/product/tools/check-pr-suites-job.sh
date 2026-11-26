@@ -45,9 +45,12 @@ ok "a renamed file gives the picker both paths (no rename detection)" "$(grep -q
 W="$TOOLS/../../../../.github/workflows"; Y="$W/pr-suites.yml"; M="$TOOLS/../../../../.mergify.yml"
 w=$(python3 -I - "$Y" "$W/ci.yml" <<'PY'
 import sys, yaml
-d = yaml.safe_load(open(sys.argv[1])); ci = open(sys.argv[2]).read(); j = d.get("jobs", {}); out = []
+d = yaml.safe_load(open(sys.argv[1])); txt = open(sys.argv[1]).read(); ci = open(sys.argv[2]).read(); j = d.get("jobs", {}); out = []
 on = d.get(True) or d.get("on") or {}
-out.append("pr-event" if set(on) == {"pull_request"} else "other-events")
+# OS-87: workflow_dispatch too, with inputs exactly pr and head (queue-gate.sh starts a missing run), named by them, no cache
+wd = on.get("workflow_dispatch") or {}
+out.append("pr-event" if set(on) == {"pull_request", "workflow_dispatch"} and set((wd.get("inputs") or {})) == {"pr", "head"}
+           and "format('pr-suites PR #{0} {1}', inputs.pr, inputs.head)" in str(d.get("run-name")) and not __import__("re").search(r"^ *cache: npm *(#.*)?$", txt, __import__("re").M) else "other-events")
 out.append("own-workflow" if "pr-suites-plan.sh" not in ci and "pr-suites" not in ci else "in-ci")
 c = d.get("concurrency") or {}
 cip = str(c.get("cancel-in-progress"))   # SPD-2 item 5: a newer push cancels the PR's older run; a batch is never cancelled
@@ -63,7 +66,7 @@ v = j.get("pr-suites", {}); vr = str((v.get("steps") or [{}])[0].get("run", ""))
 out.append("summary_job" if v.get("needs") == ["plan", "parts"] and "!cancelled()" in vc and "always()" not in vc and "draft" in vc and "mergify/" in vc and v.get("permissions") == {}
   and '"success none skipped")' in vr and '"success run success")' in vr and vr.rstrip().endswith("exit 1") and vr.count("exit 0") == 2 else "summary_job_shape")
 pl = str(ps[0].get("run", "")) if ps else ""
-out.append("plan_verdict" if pl.count("verdict=fail") == 3 and "change-kind.sh" in pl and "|| kind=unknown" not in pl and "verdict=none" in pl and "verdict=%s" in pl and p.get("outputs", {}).get("verdict") else "plan_verdict_missing")
+out.append("plan_verdict" if pl.count("verdict=fail") == 4 and "^[0-9a-f]{40}$" in pl and "change-kind.sh" in pl and "|| kind=unknown" not in pl and "verdict=none" in pl and "verdict=%s" in pl and p.get("outputs", {}).get("verdict") else "plan_verdict_missing")
 out.append("quarantine_read" if "pr-suites-quarantine.txt" in str(run[0]["run"] if (run := [x for x in ss if "run-suites.sh" in str(x.get("run", ""))]) else "") and "SUITES_QUARANTINE_AUTO" in str(run[0]["run"]) else "quarantine_missing")
 run = [x for x in ss if "run-suites.sh" in str(x.get("run", ""))]
 out.append("changed" if run and "--changed" in run[0]["run"] and "--modules" in run[0]["run"] and run[0].get("timeout-minutes") and "setup.outcome == 'success'" in str(run[0].get("if")) else "suites-step")

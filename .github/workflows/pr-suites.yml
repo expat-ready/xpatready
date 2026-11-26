@@ -20,13 +20,22 @@
 # Drafts and Mergify's batch PRs run nothing. A newer push cancels the PR's older run (SPD-2 item 5; was: waited, P-371).
 # Read-only token: it runs the PR's code. US$0 (GitHub's machines), no model call. Test: check-pr-suites-job.sh.
 name: pr-suites
+# OS-87 (Lead 2, 26 Nov): a PR head with no pr-suites run, or only a skipped one (pushed while a draft: a re-run replays the
+# draft's payload and skips again), gets one by workflow_dispatch from queue-gate.sh (on main, the PR's number and head;
+# its name "pr-suites PR #<n> <head>" is how queue-gate.sh finds it). The PR's code runs with the same read-only tokens;
+# such a run (a run of main) saves nothing to main's npm cache.
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('pr-suites PR #{0} {1}', inputs.pr, inputs.head) || '' }}"
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr: { description: "pull request number", required: true, type: string }
+      head: { description: "that pull request's head, 40 hex characters", required: true, type: string }
 concurrency:
   # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
   # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
-  group: pr-suites-${{ github.event.pull_request.number }}
+  group: pr-suites-${{ github.event.pull_request.number || format('dispatch-{0}', inputs.head) }}
   cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 permissions: {}
 jobs:
@@ -49,8 +58,10 @@ jobs:
       - id: p
         name: which suites can this change affect? (pr-suites-plan.sh; a failed plan runs nothing, says so, and turns job pr-suites red, P-822)
         continue-on-error: true
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", PRN: "${{ github.event.pull_request.number || inputs.pr }}" }
         run: |
+          # OS-87: a dispatched run's inputs are a number and 40 hex characters, or nothing runs (red: verdict fail)
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ && "$PRN" =~ ^[1-9][0-9]{0,6}$ ]]; then echo "::warning title=pr-suites::not a PR number and head: no suite ran"; echo verdict=fail >> "$GITHUB_OUTPUT"; exit 0; fi
           main=$(git rev-parse origin/main)
           st=0; out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$main") || st=$?
           if [ "$st" != 0 ]; then echo "::warning title=pr-suites::pr-base.sh merge exit $st (1: does not merge onto main $main or refused; 2: could not run): no suite ran"; echo verdict=fail >> "$GITHUB_OUTPUT"; exit 0; fi
@@ -85,13 +96,13 @@ jobs:
         continue-on-error: true
         with:
           node-version-file: .nvmrc
-          cache: npm   # pull_request only: never a run of main, so it never saves to main's cache from main's side
+          cache: ${{ github.event_name == 'pull_request' && 'npm' || '' }}   # OS-87: a dispatched run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - id: setup
         name: the test merge on the plan's main, the packages, the web app, Chromium (cloud-setup.sh)
         continue-on-error: true
         timeout-minutes: 20
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", MAIN: "${{ needs.plan.outputs.base }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", MAIN: "${{ needs.plan.outputs.base }}" }
         run: |
           out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$MAIN"); range=$(tail -1 <<< "$out")
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
