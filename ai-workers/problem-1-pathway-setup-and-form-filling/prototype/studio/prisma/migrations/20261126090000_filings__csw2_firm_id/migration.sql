@@ -17,7 +17,9 @@
 --     filing_applicant, filing_item and filing_form_addition → filing, override and review → assessment. ON UPDATE
 --     RESTRICT: a parent's firm cannot move while a child names it. Left for part "keys": submission_group → case_stage
 --     and filing → case_stage (CS-W1's case_stage has firm_id but no (id, firm_id) unique yet).
---   * the follow: AFTER UPDATE OF firm_id on runtime_case, submission_group, filing and assessment, case_filings_firm_follow
+--   * the keep: BEFORE UPDATE OF firm_id, case_filings_firm_keep refuses a firm emptied or changed once set (the keys
+--     skip a null firm, breaker M1); only the fill from empty passes.
+--   * the follow: AFTER UPDATE OF firm_id on runtime_case, filing and assessment, case_filings_firm_follow
 --     fills the children still empty (a case whose key gets its platform firm after this migration: CS-W1's backfill runs
 --     again after each seed). The fill is checked by the composite keys, so it can only ever be the parent's firm.
 --   * the three write-once guards (assessment_frozen, c613_no_update, filing_form_addition_mark_only) and C6.17's two stage
@@ -25,7 +27,8 @@
 --     case_filings_firm_fill_only: firm_id from empty to a value, every other column unchanged (the backfill and the
 --     follow); any other update is refused as before.
 -- Rollback (in this order): DROP TRIGGER case_filings_firm_fill ON each of the nine tables; DROP TRIGGER
---   case_filings_firm_follow ON runtime_case, submission_group, filing, assessment; DROP FUNCTION case_filings_firm_follow(),
+--   case_filings_firm_follow ON runtime_case, filing, assessment; DROP TRIGGER case_filings_firm_keep
+--   ON each of the nine tables; DROP FUNCTION case_filings_firm_keep(); DROP FUNCTION case_filings_firm_follow(),
 --   case_filings_firm_backfill(); restore the five guards from their latest migrations (c69_eligibility, c613_filing_change,
 --   c78_filing_form_addition, and the stage guards' latest CREATE OR REPLACE); DROP FUNCTION case_filings_firm_fill_only(jsonb, jsonb); DROP each *_firm_id_fkey constraint below; DROP INDEX each index below; ALTER TABLE each of
 --   the nine DROP COLUMN firm_id; then delete this folder's row from _prisma_migrations. Nothing is lost: firm_id is derived.
@@ -98,24 +101,25 @@ CREATE UNIQUE INDEX "submission_group_id_firm_id_key" ON "submission_group"("id"
 
 -- The one update the guards let through: firm_id from empty to a value, every other column unchanged. It can only be the
 -- parent's firm (the composite keys below check it), so no write-once rule is weakened. Shared by the five guards here;
--- later CS-W2 parts call it for their own tables. IMMUTABLE: it reads only its arguments.
+-- later CS-W2 parts call it for their own tables. IMMUTABLE: it reads only its arguments. Compared as text, not as jsonb
+-- values: jsonb calls 1 and 1.000 equal, and a frozen run's stored text must not change (breaker m2).
 CREATE FUNCTION case_filings_firm_fill_only(o jsonb, n jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SECURITY INVOKER
   SET search_path = pg_catalog, pg_temp
-  AS $fn$ SELECT o ? 'firm_id' AND o ->> 'firm_id' IS NULL AND n ->> 'firm_id' IS NOT NULL AND (o - 'firm_id') = (n - 'firm_id') $fn$;
+  AS $fn$ SELECT o ? 'firm_id' AND o ->> 'firm_id' IS NULL AND n ->> 'firm_id' IS NOT NULL AND (o - 'firm_id')::text = (n - 'firm_id')::text $fn$;
 
 -- The write-once guards and the two stage guards (C6.17; their tables' firm fill runs on ended stages too).
 CREATE OR REPLACE FUNCTION assessment_frozen() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-  IF case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
+  IF public.case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
   RAISE EXCEPTION 'assessment_frozen: an eligibility run is never changed; review and override are rows of their own'; END $fn$;
 CREATE OR REPLACE FUNCTION c613_no_update() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-  IF case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
+  IF public.case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
   RAISE EXCEPTION 'filing_change is append-only: add a new row instead';
 END $fn$;
 CREATE OR REPLACE FUNCTION filing_form_addition_mark_only() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-  IF case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
+  IF public.case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
   IF OLD."removed_at" IS NOT NULL THEN
     RAISE EXCEPTION 'filing_form_addition: a removed addition is kept as it is';
   END IF;
@@ -127,7 +131,7 @@ END $fn$;
 CREATE OR REPLACE FUNCTION runtime_stage_row_current() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE st text; sc uuid; r record;
 BEGIN
-  IF TG_OP = 'UPDATE' AND case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND public.case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
   -- Lead 38's schema read (1): a delete is guarded too; a cascade (from a deleted case: a reset) is a nested trigger.
   IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
   IF pg_trigger_depth() > 1 THEN RETURN r; END IF;
@@ -142,7 +146,7 @@ END $fn$;
 CREATE OR REPLACE FUNCTION runtime_stage_row_via_filing() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE fid uuid; k uuid; st text; r record;
 BEGIN
-  IF TG_OP = 'UPDATE' AND case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND public.case_filings_firm_fill_only(to_jsonb(OLD), to_jsonb(NEW)) THEN RETURN NEW; END IF;
   IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
   IF pg_trigger_depth() > 1 THEN RETURN r; END IF;
   IF TG_TABLE_NAME IN ('sign_step', 'entered_section', 'signed_scan') THEN
@@ -180,14 +184,14 @@ REVOKE ALL ON FUNCTION case_filings_firm_backfill() FROM PUBLIC;
 SELECT case_filings_firm_backfill();
 
 -- Rows whose two parents disagree (a filing of one case under another case's group, an item whose filing is another
--- case's) would make a composite key below fail with Postgres's words; stop first with ours, naming the table and row.
+-- case's, or a parent with no firm under a filled row: breaker m5) would make a composite key below fail with Postgres's words; stop first with ours, naming the table and row.
 DO $chk$
 DECLARE bad text;
 BEGIN
   SELECT string_agg(x, ', ') INTO bad FROM (
-    SELECT 'filing ' || f.id || ' (its group is another firm''s)' x FROM filing f JOIN submission_group g ON g.id = f.submission_group_id WHERE f.firm_id IS DISTINCT FROM g.firm_id AND f.firm_id IS NOT NULL AND g.firm_id IS NOT NULL
-    UNION ALL SELECT 'filing_item ' || i.id FROM filing_item i JOIN filing f ON f.id = i.filing_id WHERE i.firm_id IS DISTINCT FROM f.firm_id AND i.firm_id IS NOT NULL AND f.firm_id IS NOT NULL
-    UNION ALL SELECT 'filing_form_addition ' || a.id FROM filing_form_addition a JOIN filing f ON f.id = a.filing_id WHERE a.firm_id IS DISTINCT FROM f.firm_id AND a.firm_id IS NOT NULL AND f.firm_id IS NOT NULL
+    SELECT 'filing ' || f.id || ' (its group is another firm''s)' x FROM filing f JOIN submission_group g ON g.id = f.submission_group_id WHERE f.firm_id IS NOT NULL AND f.firm_id IS DISTINCT FROM g.firm_id
+    UNION ALL SELECT 'filing_item ' || i.id FROM filing_item i JOIN filing f ON f.id = i.filing_id WHERE i.firm_id IS NOT NULL AND i.firm_id IS DISTINCT FROM f.firm_id
+    UNION ALL SELECT 'filing_form_addition ' || a.id FROM filing_form_addition a JOIN filing f ON f.id = a.filing_id WHERE a.firm_id IS NOT NULL AND a.firm_id IS DISTINCT FROM f.firm_id
     LIMIT 20) q;
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION 'CS-W2 filings stopped: these rows sit under parents of two different firms: %', bad USING ERRCODE = '23514';
@@ -204,6 +208,27 @@ CREATE TRIGGER case_filings_firm_fill BEFORE INSERT ON "filing_form_addition" FO
 CREATE TRIGGER case_filings_firm_fill BEFORE INSERT ON "filing_applicant" FOR EACH ROW EXECUTE FUNCTION case_firm_fill('filing', 'filing_id');
 CREATE TRIGGER case_filings_firm_fill BEFORE INSERT ON "assessment_override" FOR EACH ROW EXECUTE FUNCTION case_firm_fill('assessment', 'assessment_id');
 CREATE TRIGGER case_filings_firm_fill BEFORE INSERT ON "assessment_review" FOR EACH ROW EXECUTE FUNCTION case_firm_fill('assessment', 'assessment_id');
+
+-- A firm once set stays (breaker M1): the composite keys skip a row whose firm_id is null (MATCH SIMPLE), so emptying it
+-- would let one statement move a row under another firm's parent; changing it to another firm is refused too. The one
+-- change allowed is the fill from empty. (CS-W1 part 2's NOT NULL makes the first rule structural.)
+CREATE FUNCTION case_filings_firm_keep() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+  SET search_path = pg_catalog, public, pg_temp AS $fn$
+BEGIN
+  IF OLD.firm_id IS NOT NULL AND NEW.firm_id IS DISTINCT FROM OLD.firm_id THEN
+    RAISE EXCEPTION 'case_filings_firm_keep: a % row keeps its firm', TG_TABLE_NAME USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "submission_group" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "filing" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "filing_applicant" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "filing_item" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "assessment" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "assessment_override" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "assessment_review" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "filing_change" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
+CREATE TRIGGER case_filings_firm_keep BEFORE UPDATE OF firm_id ON "filing_form_addition" FOR EACH ROW EXECUTE FUNCTION case_filings_firm_keep();
 
 -- The follow: when a parent's firm is filled later, its still-empty children take it (TG_ARGV: child table, its column, …).
 CREATE FUNCTION case_filings_firm_follow() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER

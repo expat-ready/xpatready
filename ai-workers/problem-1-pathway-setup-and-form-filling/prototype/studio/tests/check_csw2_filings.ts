@@ -7,10 +7,10 @@
 //      another firm's group stops the migration with words (DW1.1 fail).
 //   2. the isolated copy this suite runs on: W1, a case opened and prepared through the API; every filings row it made
 //      carries the case's firm.
-// Needs Visitor visa released on the copy (tests/runtime/setup_visitor_visa.ts, then acceptance/lib/setup_vv_m3.ts).
+// Releases Visitor visa on the copy when missing (tests/runtime/setup_visitor_visa.ts, then acceptance/lib/setup_vv_m3.ts).
 // `migrate diff` empty is check_prisma_schema.ts's (M). No model call (US$0).
 //   zsh studio/tools/isolated.sh rt_csw2f 4497 start && tsx studio/tests/check_csw2_filings.ts 4497 xr_studio_rt_csw2f
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { needVisitorVisa, openCase, prepare, sql as copySql } from "../acceptance/lib/m3.ts";
@@ -138,12 +138,24 @@ try {
     A.err(`begin; alter table filing_item disable trigger case_filings_firm_fill; insert into filing_item (id, workspace_id, case_id, filing_id, kind, item_key, subject_id, firm_id) values ('${u(421)}', '${W}', '${K2}', '${FL2}', 'form', 'X', '${PRI2}', '${F2}'); rollback;`) === "");
   const moveItem = A.err(`update filing_item set filing_id = '${FL2}' where id = '${u(81)}'`);
   ok("CS-W2 DW1.3 fail: moving a firm A item under firm B's filing is refused by its key (an update, not only an insert)", /violates foreign key constraint "filing_item_filing_id_firm_id_fkey"/.test(moveItem), moveItem.slice(0, 200));
+  // Breaker M1: emptying firm_id would skip the keys (MATCH SIMPLE); the keep refuses it, and a change to another firm.
+  const emptied = [
+    A.err(`update filing_applicant set firm_id = null, filing_id = '${FL2}' where id = '${u(71)}'`),
+    A.err(`update assessment_override set firm_id = null, assessment_id = '${AS2}' where id = '${u(91)}'`),
+    A.err(`update assessment_review set firm_id = null where assessment_id = '${AS1}'`),
+    A.err(`update filing_item set firm_id = null, filing_id = '${FL2}' where id = '${u(81)}'`),
+    A.err(`update submission_group set firm_id = null where id = '${u(200)}'`),
+    A.err(`update filing set firm_id = '${F2}' where id = '${u(201)}'`),
+  ];
+  ok("CS-W2 DW1.3 fail (breaker M1): a firm once set cannot be emptied (which would skip the keys and let a row move under firm B) nor changed, as the table owner and as xr_app",
+    emptied.every((e) => /case_filings_firm_keep: a \w+ row keeps its firm/.test(e))
+    && /case_filings_firm_keep/.test(A.err(`update filing_applicant set firm_id = null, filing_id = '${FL2}' where id = '${u(71)}'`, "xr_app")), emptied.map((e) => e.slice(0, 100)));
   const moveFirm = A.err(`update runtime_case set firm_id = '${F2}' where id = '${K1}'`);
-  ok("CS-W2 DW1.3 fail: a case's firm cannot move while its filings name it (ON UPDATE RESTRICT)", /foreign key|violates|case_firm|refused/i.test(moveFirm), moveFirm.slice(0, 200));
+  ok("CS-W2 DW1.3 fail: a case's firm cannot move while its filings name it (ON UPDATE RESTRICT on a composite key)", /violates RESTRICT setting of foreign key constraint "(submission_group|filing|filing_item|assessment|filing_change|filing_form_addition)_case_id_firm_id_fkey"/.test(moveFirm), moveFirm.slice(0, 200));
 
   // ---------------------------------------------------------------- DW1.4: names, rights, and the follow
   const ours = added.sort().join(",");
-  ok("CS-W2 DW1.4 pass: the migration adds exactly three functions, all case_filings_*", ours === "case_filings_firm_backfill,case_filings_firm_fill_only,case_filings_firm_follow", ours);
+  ok("CS-W2 DW1.4 pass: the migration adds exactly four functions, all case_filings_*", ours === "case_filings_firm_backfill,case_filings_firm_fill_only,case_filings_firm_follow,case_filings_firm_keep", ours);
   const defs = A.sql(`select string_agg(proname || ':' || prosecdef || ':' || coalesce(array_to_string(proconfig, ';'), ''), ' | ' order by proname) from pg_proc where proname like 'case_filings_%'`);
   ok("CS-W2 DW1.4 fail: none is SECURITY DEFINER, each pins its search_path with pg_temp last", !defs.includes(":true:") && defs.split(" | ").every((d) => /search_path=pg_catalog.*pg_temp$/.test(d)), defs);
   const trig = A.sql(`select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = 'case_filings_firm_fill' and c.relname in (${TABLES.map((t) => `'${t}'`).join(",")})`);
@@ -162,8 +174,14 @@ try {
     A.err(`update filing_change set firm_id = '${F2}', kind = 'add_back' where id = '${u(102)}'`), A.err(`update filing set mode = 'x' where id = '${u(45)}'`),
   ];
   ok("CS-W2 DW1.4 fail: the write-once and ended-stage guards still refuse every other update (a column change, a firm emptied, a firm with another change, an ended stage's filing)",
-    /assessment_frozen/.test(guards[0]) && /append-only/.test(guards[1]) && /only the removed mark/.test(guards[2]) && /assessment_frozen/.test(guards[3]) && /append-only/.test(guards[4]) && /case_stage_ended/.test(guards[5]),
+    /assessment_frozen/.test(guards[0]) && /append-only/.test(guards[1]) && /only the removed mark/.test(guards[2]) && /assessment_frozen|case_filings_firm_keep/.test(guards[3]) && /append-only|case_filings_firm_keep/.test(guards[4]) && /case_stage_ended/.test(guards[5]),
     guards.map((g) => g.slice(0, 90)));
+  // Breaker m2: the fill exception compares the other columns as text, so a numerically equal but different JSON is refused.
+  A.sql(`set session_replication_role = replica; insert into assessment (id, workspace_id, case_id, subject_id, config_release_id, result_json, run_type, created_by) values ('${u(203)}', '${W}', '${u(13)}', '${u(531)}', '${REL}', '{"score": 1}', 'MANUAL', 'x')`);
+  const m2 = A.err(`update assessment set firm_id = '${F3}', result_json = '{"score": 1.000}' where id = '${u(203)}'`);
+  ok("CS-W2 DW1.4 fail (breaker m2): a firm fill carrying a numerically equal but different JSON (1 → 1.000) is refused by the frozen guard", /assessment_frozen/.test(m2), m2.slice(0, 120));
+  ok("CS-W2 DW1.4 pass: the same fill with the text unchanged goes through", A.err(`begin; update assessment set firm_id = '${F3}' where id = '${u(203)}'; rollback;`) === "");
+  A.sql(`delete from assessment where id = '${u(203)}'`);
   ok("CS-W2 DW1.4 pass: a second backfill run changes nothing", A.sql(`select case_filings_firm_backfill()`) === "0");
 } finally { A.drop(); }
 
@@ -178,6 +196,11 @@ try {
 } finally { B.drop(); }
 
 // ------------------------------------------------------------------------------------------ 2. W1 on the copy (API)
+if (!copySql(`select 1 from combination c join config_release r on r.combination_id = c.id where c.combination_key = 'vv.single' limit 1`)) {
+  const tsx = join(STUDIO, "node_modules", ".bin", "tsx"), ts = ["--tsconfig", join(STUDIO, "api", "tsconfig.json")], args = [process.argv[2] ?? "4440", process.argv[3] ?? "xr_studio_accept"];
+  // Their own checks may report a known failure (exit 1); the release they make is what this suite needs, checked below.
+  for (const f of ["tests/runtime/setup_visitor_visa.ts", "acceptance/lib/setup_vv_m3.ts"]) spawnSync(tsx, [...ts, join(STUDIO, f), ...args], { stdio: ["ignore", "ignore", "inherit"], timeout: 900_000 });
+}
 const vv = needVisitorVisa();
 const c = await openCase(vv);
 const p = await prepare(c.id);
