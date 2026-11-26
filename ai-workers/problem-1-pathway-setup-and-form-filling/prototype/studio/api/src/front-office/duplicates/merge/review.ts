@@ -34,7 +34,7 @@ export const SYSTEM_ACTOR = "system:fo-duplicates";
 export const STALE_LINE = "One of these records was changed after you opened the merge. Nothing was merged. Open it again to see the changes.";
 export const MONEY_LINE = "This person has invoices, payments, trust money or a tax setting; their records cannot be merged here yet. Nothing was merged.";
 export const CASE_SIDE_LINE = "This person has a case; merge them from the client record.";
-export type Unsafe = "NOT_EXACT" | "CASE" | "CASE_UNKNOWN" | "DOCUMENT" | "MONEY" | "KEPT_SEPARATE";
+export type Unsafe = "NOT_EXACT" | "CASE" | "CASE_UNKNOWN" | "DOCUMENT" | "MONEY" | "KEPT_SEPARATE" | "CONTACT_CONFLICT" | "NEW_CONTACT" | "CONSENT";
 export const MERGED_AWAY_LINE = "One of these people was merged into another record after this pair was listed. Nothing was changed.";
 export const KEPT_LINE = "These people were kept separate (a decision between their records). Nothing was merged.";
 export const NOT_LISTED_LINE = "This pair is no longer on the list (the merge that found it was undone, and these people no longer match). Nothing was changed.";
@@ -186,8 +186,13 @@ async function anyMoney(tx: Tx, firmId: string, ids: string[]): Promise<boolean>
 
 const systemCtx = (firmId: string, firmKey = ""): StaffContext => ({ staffId: "00000000-0000-0000-0000-000000000000", firmId, firmKey, roles: [], keys: [MERGE_KEY], duties: [], authTime: 0, via: "local" });
 
-/** P-574 (2): merges an OPEN pair by itself when it is safe (the newer record into the older), once. */
-export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports: MergePorts): Promise<{ mergeRef: string } | { refused: Unsafe[] }> {
+/** P-574 (2): merges an OPEN pair by itself when it is safe (the newer record into the older), once. `arrival`
+ *  (part 2b, the arrival job, the one production caller; break B1 and M1 on #3527): the newer record is an unchecked
+ *  arrival, so the record on file keeps its values (the newcomer fills only an empty language or zone), a second
+ *  contact key that differs refuses (CONTACT_CONFLICT), a newcomer's email or phone the record lacks refuses
+ *  (NEW_CONTACT), and a
+ *  merge that would copy a live consent refuses (CONSENT). Without it, part 2's model (pair-model.md) as it was. */
+export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports: MergePorts, opts: { arrival?: boolean } = {}): Promise<{ mergeRef: string } | { refused: Unsafe[] }> {
   const h = await pairRow(tx, firmId, pairId, false);
   if (!h) return { refused: [] };
   await lockPeople(tx, h.low_id, h.high_id);   // pair-model.md §2: the people first, then the pair row
@@ -200,17 +205,41 @@ export async function mergeIfSafe(tx: Tx, firmId: string, pairId: string, ports:
   // under the people's locks: no decision on either record and no merge into either can commit until this one ends.
   const why = await whyNotSafe(tx, firmId, ids, await liveReasons(tx, firmId, ids));
   if (why.length) return { refused: why };
-  const people = await tx.foPerson.findMany({ where: firmScope(firmId, { id: { in: ids } }), select: { id: true, createdAt: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const people = await tx.foPerson.findMany({ where: firmScope(firmId, { id: { in: ids } }), orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   if (people.length !== 2) return { refused: [] };
+  // Part 2b (break B1 on #3527): one key matches, but the other differs on both records (two emails on one phone, two
+  // phones on one email): not shown to be one person, so a person decides (To review).
+  const [S, L] = people;
+  // Two phones differ by E.164 when both are readable, else by their typed digits (part 2b follow-ups, review m-r3-4,
+  // break R3-m2: an unreadable phone never escapes the check).
+  // A phone with no digits at all ("ring the bell") is compared by its text (review m1 on #3710).
+  const digits = (v: string | null) => (v ?? "").replace(/\D/g, "") || (v ?? "").trim().toLowerCase();
+  const phonesDiffer = S.phoneE164 && L.phoneE164 ? S.phoneE164 !== L.phoneE164 : !!(S.phone && L.phone) && digits(S.phone) !== digits(L.phone);
+  if (opts.arrival && ((S.email && L.email && S.email.toLowerCase() !== L.email.toLowerCase()) || phonesDiffer)) return { refused: ["CONTACT_CONFLICT"] };
+  // Round 2 (break R2-B1, review B1-r on #3527): an unchecked arrival never adds an email or phone to the record on file
+  // (a stranger's address would get the person's mail); a newcomer that brings one waits on To review for a person.
+  if (opts.arrival && ((L.email && !S.email) || (L.phoneE164 && !S.phoneE164) || (L.phone && !S.phone))) return { refused: ["NEW_CONTACT"] };
+  // The record on file keeps its values; the newcomer's fill only its empty fields (break B1: an arrival is unchecked,
+  // so it never overwrites a person's name, email or phone by itself).
+  const val = (r: typeof S, f: string) => (r as unknown as Record<string, unknown>)[f];
+  const empty = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+  // An unchecked arrival never sets a name either, not even an empty one (part 2b follow-ups, review m-r3-3, break R3-m1:
+  // a stranger's last name on the person's record); only an empty language or time zone is filled.
+  const NAMES: readonly string[] = ["givenNames", "familyName"];
+  const choices = opts.arrival ? Object.fromEntries(MERGE_FIELDS.PERSON.map((f) => [f, !NAMES.includes(f) && empty(val(S, f)) && !empty(val(L, f)) ? "LOSER" : "SURVIVOR"])) as Record<string, FieldPick> : undefined;
   await tx.$executeRaw`savepoint fo_dup_auto`;
-  const { merge_ref } = await mergeRecords(tx, systemCtx(firmId), { kind: "PERSON", survivor_fo_id: people[0].id, loser_fo_id: people[1].id, reason: "Merged by itself: exact match, no case, document or money (P-574 (2))." }, ports, { automatic: true });
+  const { merge_ref } = await mergeRecords(tx, systemCtx(firmId), { kind: "PERSON", survivor_fo_id: S.id, loser_fo_id: L.id, ...(choices ? { choices } : {}), reason: "Merged by itself: exact match, no case, document or money (P-574 (2))." }, ports, { automatic: true });
+  // A merge that copies a live consent cannot be undone (part 1: consent rows are never removed), and an arrival's
+  // consent is unchecked: never by itself; the pair waits for a person (break M1 on #3527).
+  const snap = !opts.arrival ? null : (await tx.foDupMerge.findFirst({ where: firmScope(firmId, { id: merge_ref }), select: { loserSnapshot: true } }))?.loserSnapshot as { copied?: { consents?: string[] } } | null;
+  if (opts.arrival && snap?.copied?.consents?.length) { await tx.$executeRaw`rollback to savepoint fo_dup_auto`; return { refused: ["CONSENT"] }; }
   // Checked again once the merge holds both records' locks (break F2, F3): a case, document or money row committed while
   // the merge ran is seen now (read committed), and the merge is rolled back. A writer that starts after these locks
   // waits on them; that it then writes on the merged-away record is the money side's check (Question for the tech lead).
   const after = await whyNotSafe(tx, firmId, ids, await lockedReasons(tx, firmId, merge_ref), { kept: false });   // the keys as locked (break R2-2, R3-3)
   if (after.length) { await tx.$executeRaw`rollback to savepoint fo_dup_auto`; return { refused: after }; }
   await tx.$executeRaw`release savepoint fo_dup_auto`;
-  await notePairs(tx, firmId, people[0].id, null, merge_ref);   // the loser's other matches now meet the survivor (review m7)
+  await notePairs(tx, firmId, S.id, null, merge_ref);   // the loser's other matches now meet the survivor (review m7)
   await tx.foDupReview.updateMany({ where: firmScope(firmId, { id: pairId }), data: { status: "MERGED", mergeId: merge_ref, decidedBy: SYSTEM_ACTOR, decidedAt: new Date() } });
   return { mergeRef: merge_ref };
 }
