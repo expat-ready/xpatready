@@ -108,3 +108,43 @@ Verdict: Changes 5455a704dc5c039c6a4de43a516b3bf9fd709291
 Reviewer: Approve c04861ed9d21301cbb1eedb2eb81922b06e10557
 
 Verdict: Approve c04861ed9d21301cbb1eedb2eb81922b06e10557
+
+## Round 3 (diff-only, the main merge a54244d0)
+
+**Scope (Lead allowed round 3, 26 Nov, P-277):** only the merge `a54244d03fd8d36a5e2ef3c8fab70565fdbdcaa6`. Its parents are `38ddab45` (part 1c) and `4c21eb97` (main after #3277). The code at `38ddab45` was approved by #3698's round-2 reviewer and breaker: `CS-D1u/review.md` on `claude/runtime-csd1u-staff-door`, "#3640, commit 38ddab45 … Approve", and the PR comment of 25 Nov 09:32 UTC. Until now this file's last verdict was on `c04861ed`; this round records the link. Reviewer: a fresh session that did not build it.
+
+**No hand resolution:**
+- `git show --remerge-diff a54244d03` and `git diff-tree --cc a54244d03` both print only the commit id: there are no conflict hunks and no edited lines.
+- `a54244d03` merges cleanly with today's `origin/main` (`354161db`, 81 commits later): `git merge-tree` reports no conflict.
+
+**The PR's diff is unchanged by the merge:**
+- I compared `git diff e94227bf 38ddab45` (the merge base before) with `git diff 4c21eb97 a54244d03`. The studio part is byte-identical (287 lines each, `index` lines included), and so is the whole diff.
+- It covers six files: `rail.ts`, `doors.ts`, `check_pff2_uploads.ts`, `platform/MODULE.rows/PF-F2.md`, `review-part1b.md` and `journey-test-reviewer-2026-11-25-part1b.md`.
+- `rail.ts`, `doors.ts` and the suite are also identical to #3698's head `0338bd41`, so the approved read still applies.
+
+**Nothing main brought conflicts with the rail's behaviour.** I checked `e94227bf..4c21eb97`, 156 studio files:
+- **The rail's dependencies:** no change to `platform/files/**` (this includes `file-type.ts` and `uploads/routes.ts`), `ports/files.ts`, `ports/jobs.ts`, `ports/legal-hold.ts`, `firm-scope.ts`, `identity/keys.ts`, `observability/log.ts`, `features/platform-files.ts`, `platform/jobs/**` or `package.json`. The same holds from `4c21eb97` to today's main.
+- **Doors and FilesPort:** nothing new imports `files/uploads` or calls `UploadDoors.register`. The one new FilesPort mention is a schema comment (filed messages keep FilesPort keys).
+- **Jobs:** one new job, `front-office-auto-merge.ts`, is registered on `PlatformJobs`. It has its own queue, and `platform.files.upload_cleanup` is still defined only in `rail.ts:43`.
+- **HEAD:** the new HEAD refusals are route-local, in `audit/access/search.ts:91` (`SEARCH_HEAD_REFUSED`) and `@Head("cases/:id/prepare")`. There is no global middleware, so tus HEAD on `/api/platform/files/uploads` is untouched.
+- **Validation:** `http/input.ts` only adds `plainIssue`. `case-checklist.ts` adds one line, and the case doors' `checkedCaseFile` (CS-D1t) is off the rail.
+- **Erasure:** PF-21d's erasure-mark changes do not touch `plat_file` or `plat_upload`.
+
+**Runs at a54244d03** (Postgres 127.0.0.1:54329; never :4400):
+
+| Run | Result |
+|---|---|
+| `npx tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pff2_uploads.ts` | **52 passed, 0 failed**, exit 0 |
+| `module-cards.py tree` (run from the repo root; from the product folder it cannot find `./.claude/rules/modules`) | PASS, 15 cards, exit 0 |
+| `typecheck.mjs` (8 GB heap; plain `tsc` ran out of memory) | exit 1 on 12 errors, none in `files/uploads/**` or the suite. 8 are round 2's missing `ajv`/`@anthropic-ai/sdk`. 4 are in `client-money/invoices/*`: the symlinked `node_modules` holds a Prisma client generated before main's `sourceFeeRowId`/`deposit` fields. This is an environment gap, not a finding. |
+
+**Findings:** none new; r2-n1 still stands as a Note.
+- **r3-n1 (Note, records):** the Approve on `38ddab45` was written only in #3698's records. If #3698 merges after this PR, `main` briefly lacks the round that read part 1c. This section now names it, so no action is needed.
+
+**Journey score:** 9.4/10 (scaled), carried, because no behaviour changed. The suite (DW0 to DW9) passes 52/52 at this head. See the round 3 note in `journey-test-reviewer-2026-11-25-part1b.md`.
+
+**Could not check:** CI on `a54244d0` (GraphQL is closed to this session); the graph tool (diff-only round, no screen); the browser walk (part 2's DW8).
+
+Reviewer: Approve a54244d03fd8d36a5e2ef3c8fab70565fdbdcaa6
+
+Verdict: Approve a54244d03fd8d36a5e2ef3c8fab70565fdbdcaa6

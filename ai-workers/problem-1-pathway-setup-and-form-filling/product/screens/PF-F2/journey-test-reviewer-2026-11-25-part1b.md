@@ -41,3 +41,8 @@
 - tus-js-client against the live rail.
 - A buffering proxy and two processes.
 - D17 and D20 stay with the founder.
+
+## Round 3 (26 Nov, the main merge a54244d0)
+- **Nothing to walk again:** the merge changes none of the PR's lines. Its diff against main is byte-identical to `38ddab45`'s, and main touched none of the rail's dependencies (`review-part1b.md`, round 3).
+- **Proof at this head:** `check_pff2_uploads` passes 52/52 (DW0 to DW9).
+- **Score:** round 2's table stands: 7.5 of 8 applicable, **9.4/10 (scaled)**, no criterion at 0, pass. "Next step obvious" stays at ½ (n2, part 2). Part 1c's door `check()` and `maxBytes` (no bytes without a row) keep "correct data" at 1.
