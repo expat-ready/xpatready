@@ -496,6 +496,11 @@ model MoneyTrustRequest {
   retainerVersionId String?    @map("retainer_version_id") @db.Uuid
   /// As on an invoice; unused in R1: no pay link on a trust request (P-567 (3)).
   payLinkTokenHash  String?    @map("pay_link_token_hash")
+  /// R1.60: when a signed retainer version prepared this deposit request (the database's clock; AG-6-61 §6 PREPARED).
+  /// PREPARED = this set, sentAt and cancelledAt null; never #3033's unsent (rules.md B6).
+  preparedAt        DateTime?  @map("prepared_at") @db.Timestamptz
+  /// R1.60: the estimated tax on the deposit row, apart from amountMinor (AG-6-61 §5.3); a prepared request only.
+  estimatedTaxMinor Int?       @map("estimated_tax_minor")
 
   settings     MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   payments     MoneyPayment[]
