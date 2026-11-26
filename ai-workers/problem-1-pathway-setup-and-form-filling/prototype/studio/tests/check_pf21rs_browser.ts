@@ -278,6 +278,21 @@ try {
   await st.getByRole("button", { name: "Cancel" }).click(); await st.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
   ok("PF-21rs A2 fail (break M1, round 2): a breach changed elsewhere while Edit is open → nothing saved, Edit closes and the page says so; Edit opens again on the latest words",
     other.status === 200 && closed && staleSaid === COPY.stale && fresh === "Sample: changed in another tab" && sql(`select root_cause from plat_breach where id = '${w4.body?.id}'`) === "Sample: changed in another tab", { status: other.status, closed, staleSaid, fresh });
+  // Break B1 on #3818: a decision a colleague changed after this page loaded is what "Change the decision" opens on.
+  const nn = await api(tOwner, BREACHES, "POST", { reason: "Sample: decide-stale seed", discoveredAt: ago(2), description: `Sample: a report went to the wrong team (PF-21rs decide ${run}).` }, { "idempotency-key": `pf21rs-ds-${run}` });
+  await api(tOwner, `${BREACHES}/${nn.body?.id}`, "PATCH", { reason: "Sample: first decision", decision: "NO_NOTICE", decisionReason: "Sample: nothing left our systems." });
+  await p1.goto(`${BASE}/system/privacy/breaches/${nn.body?.id}`); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 });
+  await api(tOwner, `${BREACHES}/${nn.body?.id}`, "PATCH", { reason: "Sample: a colleague's decision", decision: "NOTIFY_FIRMS", decisionReason: "Sample: contact details may have been read." });
+  await p1.getByRole("button", { name: "Change the decision" }).click();
+  const cdlg = p1.getByRole("dialog").filter({ has: p1.locator("[data-decision]") }); await cdlg.waitFor();
+  const opensOn = await cdlg.locator("[data-decision]:checked").getAttribute("data-decision").catch(() => null);
+  await cdlg.getByLabel("Reason for the audit line").fill("Sample: re-saving"); await cdlg.locator("[data-decision=NO_NOTICE]").check(); await cdlg.getByLabel("Why").fill("Sample: this tab's view");
+  // the colleague changes it again while this dialog is open: nothing is saved over it
+  await api(tOwner, `${BREACHES}/${nn.body?.id}`, "PATCH", { reason: "Sample: colleague again", rootCause: "Sample: changed while the dialog was open" });
+  await cdlg.locator("button[type=submit]").click(); await cdlg.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs A2 fail (break B1 on #3818): \"Change the decision\" opens on a colleague's newer decision, and a save after a further change elsewhere stores nothing (stale said)",
+    opensOn === "NOTIFY_FIRMS" && sql(`select decision from plat_breach where id = '${nn.body?.id}'`) === "NOTIFY_FIRMS" && (await p1.locator("[data-done]").innerText().catch(() => "")) === COPY.stale, { opensOn, stored: sql(`select decision from plat_breach where id = '${nn.body?.id}'`) });
+  await p1.goto(`${BASE}/system/privacy/breaches/${w4.body?.id}`); await p1.locator("[data-breach-status]").waitFor({ timeout: 15_000 });   // back to row W4's breach
   // Edit the record: a change of containment is stored and listed; a notified firm cannot be removed.
   await p1.getByRole("button", { name: "Edit the record" }).click();
   const ed = p1.getByRole("dialog", { name: "Edit the record" }); await ed.waitFor();
@@ -336,6 +351,15 @@ try {
   const invalid = await ld.locator("[aria-invalid=true]").evaluateAll((xs) => xs.map((x) => x.getAttribute("data-field")));
   ok("PF-21rs B1 W1 fail: no name and a bad email → each refusal under its field (the API's words), nothing stored",
     invalid.includes("requester") && invalid.includes("requesterEmail") && (await ld.locator("[role=alert]").count()) >= 2 && reqCount() === r0, invalid);
+  // Review M1: the firm is picked from our firm list; a person id that is not one is said in plain words, nothing sent.
+  await ld.getByLabel("Requester's name").fill(`Typo ${run}`); await ld.getByLabel("Requester's email").fill(`typo.${run}@example.com`);
+  await ld.locator("[data-firm-search]").fill(nameA); await ld.locator(`[data-add-firm="${A}"]`).click({ timeout: 10_000 });
+  const picked = (await ld.locator(`[data-chosen-firm="${A}"]`).innerText().catch(() => "")).includes(nameA);
+  await ld.getByLabel("Person record id").fill(nameA); await ld.getByRole("button", { name: "Log the request" }).click();
+  const idWords = await ld.getByText(REQUEST_COPY.personIdWords).count();
+  ok("PF-21rs B1 W1 fail (review M1): the firm is picked by name, never typed; a person id that is not one is refused in plain words, nothing stored",
+    picked && idWords === 1 && (await ld.getByLabel("Firm id").count()) === 0 && reqCount() === r0, { picked, idWords });
+  await ld.getByRole("button", { name: /^Change the firm/ }).click(); await ld.getByLabel("Person record id").fill("");
   const who = `Requester ${run} Sample`;
   await ld.getByLabel("Type").selectOption("ACCESS"); await ld.getByLabel("Requester's name").fill(who); await ld.getByLabel("Requester's email").fill(`req.${run}@example.com`);
   await ld.getByLabel("Received on").fill(minus(2));
@@ -349,6 +373,9 @@ try {
   await p1.getByRole("button", { name: "Start work" }).click();
   const mv = p1.getByRole("dialog", { name: "Start work?" }); await mv.waitFor(); await mv.getByRole("button", { name: "Start work" }).click(); await mv.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
   await p1.locator('[data-request-status="IN_PROGRESS"]').waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await p1.waitForTimeout(300);
+  const focusAfter = await p1.evaluate(() => (document.activeElement?.hasAttribute("data-done") ? document.activeElement.textContent : document.activeElement?.tagName) ?? "");
+  ok("PF-21rs B1 W6 pass (review M2, WCAG 2.4.3): after a move the focus is on the \"Moved to …\" line, never lost to the page", focusAfter === "Moved to In progress.", focusAfter);
   await p1.getByRole("button", { name: "Mark completed" }).click();
   const cm = p1.getByRole("dialog", { name: "Mark completed?" }); await cm.waitFor(); await cm.getByRole("button", { name: "Mark completed" }).click();
   const actErr = await cm.locator("[data-field=actionsTaken][aria-invalid=true]").waitFor({ timeout: 5000 }).then(() => true, () => false);
@@ -369,16 +396,26 @@ try {
     late.status === 201 && (await p1.locator('[data-request-status="OVERDUE"]').innerText().catch(() => "")).includes("10 days late") && lateSteps === 1, { status: late.status, lateSteps });
   ok("PF-21rs B1 W2 fail (BR-5): no \"Overdue\" move is offered, and the API refuses one by hand (422)",
     (await p1.locator("[data-request-moves]").getByRole("button", { name: /overdue/i }).count()) === 0 && (await api(tOwner, `${REQUESTS}/${reqId}/status`, "POST", { status: "OVERDUE" })).status === 422);
+  // Break M1 on #3818: a request moved elsewhere since this page loaded is never moved over: nothing sent, the page reloads.
+  await p1.getByRole("button", { name: "Mark completed" }).click();
+  const sm = p1.getByRole("dialog", { name: "Mark completed?" }); await sm.waitFor();
+  const heldElsewhere = await api(tOwner, `${REQUESTS}/${late.body?.id}/status`, "POST", { status: "HELD", note: "Sample: a colleague's hold" });
+  await sm.getByLabel("What was done").fill("Sample: stale tab"); await sm.getByRole("button", { name: "Mark completed" }).click();
+  await sm.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  await p1.locator('[data-request-status="HELD"]').waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("PF-21rs B1 fail (break M1 on #3818): a request a colleague marked held meanwhile is not completed from the stale page; the page says so and shows Held with \"Resume work\"",
+    heldElsewhere.status === 200 && sql(`select status from plat_data_request where id = '${late.body?.id}'`) === "HELD" && (await p1.locator("[data-done]").innerText().catch(() => "")).includes(REQUEST_COPY.stale)
+      && (await p1.getByRole("button", { name: "Resume work" }).count()) === 1, { stored: sql(`select status from plat_data_request where id = '${late.body?.id}'`) });
   await p1.goto(`${BASE}/system/privacy/requests`); await p1.locator(`[data-request-row="${late.body?.id}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
   await p1.locator('[data-status-chip="OVERDUE"]').click(); await p1.waitForTimeout(500);
   const overdueRows = await p1.locator("[data-request-row]").evaluateAll((rs) => rs.map((r) => r.getAttribute("data-status")));
-  ok("PF-21rs B1 W2 pass: the Overdue chip lists only Overdue requests, the late one among them", overdueRows.length > 0 && overdueRows.every((x) => x === "OVERDUE") && (await p1.locator(`[data-request-row="${late.body?.id}"]`).count()) === 1, overdueRows);
+  ok("PF-21rs B1 W2 pass: the Overdue chip lists only Overdue requests (the late one, since marked held, no longer among them)", overdueRows.every((x) => x === "OVERDUE") && (await p1.locator(`[data-request-row="${late.body?.id}"]`).count()) === 0, overdueRows);
   // W5 on these pages: a firm's token is refused on every route and nothing is written; the Auditor (no request key) reads the API's 403 words.
   const firmEmailB = sql(`select email from platform_staff where actor_id = 'user-R'`);
   const tFirmB = (await api(null, "/platform/session/local", "POST", { firmKey: "sample-firm", email: firmEmailB, secondStep: true })).body?.token as string;
   const r1 = reqCount();
   const reqTries = [await api(tFirmB, REQUESTS), await api(tFirmB, `${REQUESTS}/${reqId}`), await api(tFirmB, REQUESTS, "POST", { type: "ACCESS", requester: "x", requesterEmail: "x@example.com", receivedOn: tday }), await api(tFirmB, `${REQUESTS}/${late.body?.id}/status`, "POST", { status: "IN_PROGRESS" })];
-  ok("PF-21rs B1 W5 fail (a): a firm Owner's token → 403 on the request list, one request, log and move; nothing written", reqTries.every((r) => r.status === 403) && reqCount() === r1 && sql(`select status from plat_data_request where id = '${late.body?.id}'`) === "OVERDUE", reqTries.map((r) => r.status));
+  ok("PF-21rs B1 W5 fail (a): a firm Owner's token → 403 on the request list, one request, log and move; nothing written", reqTries.every((r) => r.status === 403) && reqCount() === r1 && sql(`select status from plat_data_request where id = '${late.body?.id}'`) === "HELD", reqTries.map((r) => r.status));
   const pr = await signedIn(await ourToken(AUDITOR)); await pr.goto(`${BASE}/system/privacy/requests`);
   const audWords = await pr.locator("[data-requests-error]").innerText({ timeout: 15_000 }).catch(() => "");
   ok("PF-21rs B1 W5 fail (c, BR-8): our Auditor on Requests reads the API's 403 words: no table, no \"Log a request\", no Requests link",
