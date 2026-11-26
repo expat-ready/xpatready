@@ -85,3 +85,95 @@ Reviewed **e21943b7a02bda29cd2a0444113383a567f157a0**. The diff is `case-access.
 **Verdict: Approve**: no open Blocker or Major. R2-m1, R2-m2 and breaker m1's title stay as Minors, with relative times and the bell's {name} left to the tech lead.
 
 Verdict: Approve e21943b7a02bda29cd2a0444113383a567f157a0
+
+## Round 3 (diff only, ece71d926..139a34847): reviewer, 26 Nov
+Reviewed **139a348470cca9a302af979c77905276a4046752**.
+* **e21943b7a..ece71d926** is records only: the round 2 review and journey notes.
+* **ece71d926..8bab60324** (BK-2) touches only `case-notes.tsx`, +5/-4:
+  * `<FoldArrow open>` on Mention (`open`), History (`history`) and the note's Show all / Show less (`long`). Show all also gains `aria-expanded={long}`.
+  * The timeline's `<details>` becomes `<FoldOut summary="Details">`. It is still native `<details>`/`<summary>`, so Tab, Enter and Space and the expanded/collapsed announcement are unchanged, and the content is unchanged.
+  * `FoldArrow` is `aria-hidden`, so Mention, History and Show all keep their accessible names, and every `data-*` hook the tests use is unchanged.
+  * This follows `components/fold-out.tsx`'s own rule: a button that opens a fold-out keeps its button and `aria-expanded` and shows the arrow. Correct, and nothing else changed.
+* **8bab60324..139a34847 is only the merge of #3649's head.**
+  * Second parent: 311001283, the code head approved in #3649's round 7. #3649 is merged on GitHub; its final head 9f256d850 is 311001283 plus one records commit.
+  * The diff over `case-notes.tsx`, `api/src/case-notes/` and `case-access.ts` is **empty**. It is also empty for this PR's other files: `cases.tsx`, `contracts/runtime.ts`, `check_csnt1d_panel_browser.cjs`, `j_76.ts`, `notifications/contract.ts`.
+  * `git diff 311001283 139a34847` lists only this PR's 28 files (802 lines added, 12 removed), so the merge resolved nothing by hand in this PR's files.
+
+**Ran at 139a34847:**
+* `check_bk2_fold_outs` **16/16**.
+* Web `tsc --noEmit`: 0 errors.
+* **Not re-run:** `check_csnt1d_panel_browser`, because the demo Postgres on :54329 is not answering (`pg_isready`: no response). `isolated.sh` refuses to start without it. I did not start the shared database, and I did not run prisma generate. The builder reports 54/54 at this head (`run-suites.sh --only`). The change is markup only, and the test's hooks are intact.
+
+**Issues:** none new. Open Minors as in round 2: R2-m1, R2-m2, the breaker's m1 notice title, the DP9 draft-kept test; relative times and the bell's {name} are for the tech lead. Scores and journey: unchanged (9/10, pass). The fold arrows add a cue and remove none.
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 139a348470cca9a302af979c77905276a4046752
+
+## Round 4 (diff only, a0bbd3adf..4e8d59b69): reviewer, 26 Nov
+Reviewed **4e8d59b6969aa8ee2769d84283c5a97b075ee4a6**. a0bbd3adf is 139a34847 plus the round 3 records only. The range touches 4 code and test files: `status.tsx`, `filing-changes.tsx`, `check_csw3_firm_scope.ts` and the panel test. The screenshots: 411d59b77 rewrote 17 of them and ed07578ae puts all 17 back, so the **net change in `A24-3/` and `B145/` across a0bbd3adf..4e8d59b69 is empty** (`git diff --stat` shows nothing).
+
+**Ran at 4e8d59b69** (fresh isolated copies on :4434, stopped after each run; no prisma generate, since the client was newer than every schema file; wt4 clean before and after):
+* `check_csnt1d_panel_browser` **56/56**, including both round 4 checks;
+* `check_csw3_firm_scope` **48/48** on its own fresh copy (census 59, and the planted-file check still fails as it should);
+* `check_bk2_fold_outs` **16/16**;
+* web `tsc` 0 errors.
+
+Not re-run: c95 and A24-3; their suites write screenshots into the tree. The builder reports 36/36 and 41/41.
+
+**Lead condition (1): the census entry is truly firm-scoped, not merely allow-listed. Confirmed.**
+* **Code.** Every table `staffWhoMaySee` reads is tied to one firm:
+  * `platform_staff s` is limited to `s.firm_id = firmScope(firmId)`, and `firmScope` throws on a non-UUID.
+  * `runtime_case c` is joined `on c.id = $case and c.firm_id = s.firm_id`.
+  * `case_client` is reached only through `c.client_id`, and `case_team_member` only through `t.case_id = c.id`.
+  * Role grants are read with `g.firm_id = s.firm_id`.
+  * Its one caller, `peopleOf`, passes `subjectOf`'s firm. That firm is the session's, and the case is already in it and in the reader's caseScope.
+* **Probe** (a reviewer script calling `staffWhoMaySee` straight against the copy's database, not committed):
+  * firm A's case with firm A: 3 people, all firm A staff;
+  * **the same case with firm B's id: 0 people**, although firm B has 1 active staff member;
+  * a malformed firm id throws.
+* `caseScope`, `caseScopeWhere` and `caseVisibleSql` in the same file were already firm-bound: each filters on `firmId`, or names the caller's firm-scoped `c`.
+
+**Lead condition (2): the Escape behaviour is accepted.**
+* **Escape closes the tip at once.** The trigger's `onKeyDown` clears the 600 ms guard and sets `open=false`. Radix's own Escape (a capture listener on the document) can arrive inside the guard and be ignored, but the trigger handler closes the tip anyway. Focus stays on the trigger. The panel test checks that the tip is hidden within 1 s, inside the 600 ms window, and that focus has not moved.
+* **WCAG 1.4.13 is met:**
+  * *dismissible*: Escape, without moving the pointer or focus;
+  * *hoverable*: Radix's content is unchanged;
+  * *persistent*: better than before, because the scroll that focus causes no longer closes a tip the person never saw.
+* **WCAG 2.1.2 is met:** nothing traps focus. Tab or blur closes the tip as before, because the guard holds only while the trigger keeps focus. Escape still reaches only the topmost Radix layer, so it does not also close an enclosing dialog.
+* **Residual (Minor, not blocking):** a pointer user who clicks a focusable trigger and moves away within 600 ms keeps the tip until blur, Escape or the next hover. Content that persists longer is allowed under 1.4.13.
+
+**The other changes:**
+* `Tip` is the shared tooltip, used 105 times in 35 files. The change is contained:
+  * it is controlled with the same delay (TipProvider 250 ms);
+  * the trigger's own `onFocus` and `onKeyDown` are still called;
+  * `tabIndex` is set only when `focusable` is given;
+  * the props are typed, with no `any` (415 against a base of 416).
+* `filing-changes.tsx`'s Principal applicant tip now goes through `Tip`/`TipProvider` (200 → 250 ms delay; `TooltipContent`'s default `max-w-xs` replaces the inline class). It looks and reads the same.
+* The census comment gives the reason with the row number, and the count moves 58 → 59.
+
+**Issues:** none new beyond the residual above. The open Minors are unchanged: R2-m1, R2-m2, the breaker's m1 title, and DP9's draft-kept test; relative times and the bell's {name} stay with the tech lead. Scores and journey are unchanged (9/10, pass).
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 4e8d59b6969aa8ee2769d84283c5a97b075ee4a6
+
+## Merge check (4804d5ef7): reviewer, 26 Nov
+**4804d5ef7402611631c1e273a18041a7817cc7c6** merges main (f63c2b321) into 0b369fefe. 4e8d59b69..0b369fefe adds only records: `review.md` round 4 and `break-report-round4.md`.
+* **`git show --cc 4804d5ef7` is empty:** no hunk in the merge result differs from both parents, so nothing was resolved by hand.
+* **`git diff 0b369fefe 4804d5ef7` = main's files only:** 201 files. These are exactly the 201 files main changed since the two branches' merge base, and none comes from elsewhere.
+* **Two of those files are also this PR's:** `check_csnt1_notes.ts` and `check_csnt1_timeline.ts`. Main's hunks there are CS-W1 part 2's `firm_id` on *other* fixture inserts (the `SAMPLE_FIRMS_SQL` import). This PR's own hunks, `firm_id` on `newCase` and on the firm-B case, are byte-identical before and after the merge (`git diff f63c2b321 4804d5ef7` on both files shows only part 4's 3 lines).
+* **`git diff origin/main...4804d5ef7` lists 32 files, all part 4's** (985 lines added, 18 removed):
+  * the CS-NT1d records and walk shots;
+  * `case-access.ts`, `case-notes/{routes,service,timeline}.ts` and `contracts/runtime.ts`;
+  * `case-notes.tsx`, `cases.tsx`, `status.tsx`, `filing-changes.tsx` and the notifications words;
+  * the tests: the panel test, CS-W3, `j_76`, and the notes/timeline fixture lines;
+  * the two MODULE rows.
+  * **No #3649 file is listed** (no CS-NT1c migration, records, ports or case-client routes).
+* **Not re-run:** the two shared suites. The demo Postgres on :54329 stopped answering during this check (`pg_isready`: no response). Also, the shared Prisma client is now older than main's merged schema files, and I did not run prisma generate. The hunks are disjoint and this PR's lines are unchanged, so I expect no difference; CI's pr-suites will confirm.
+
+**Issues:** none. The open Minors are as in round 4.
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 4804d5ef7402611631c1e273a18041a7817cc7c6

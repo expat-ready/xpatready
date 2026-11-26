@@ -137,3 +137,30 @@ Reviewed: 075bde483 is the merge commit (parents f9a8eb281 and main 791c6f82f). 
 **Verdict: Approve**: no open Blocker or Major.
 
 Verdict: Approve 075bde483ef269a8e48bbb659240d4d6f6603edf
+
+## Round 7 (diff only, merge of main, 1069eaef3..3110012836): reviewer, 26 Nov
+Reviewed: 3110012836 is a merge commit. Its parents are 1069eaef3 (the round 6 Approve 075bde483 plus the records commit) and main a298969ac (#3811, CS-W2 filings). It was made because GitHub showed a conflict. The reviewer did not build this item.
+
+**What the merge changed in the PR's own files.** I took the PR's own file list from `git diff --name-only 9f6a44ad5...1069eaef3` (196 paths) and ran `git diff 1069eaef3 3110012836` over those paths. That touches 15 of them (+374/-44). Almost all of it is main's work arriving in files this PR shares with main: `.mergify.yml` (FO-3v scope), the queue-gate and guard tools, PF-F2 uploads, PF-R2cm client-money routes, and the prisma schemas for FO-3v, PF-20 and CS-W2. `git show --remerge-diff 3110012836` shows the merge kept git's automatic result everywhere except the two conflicted hunks below. No hand edits were hidden elsewhere.
+* **`ports/notifications.ts`.** `NOTIFICATION_ITEM_KIND` now ends `…, "lead", "retainer", "booking", "case-client"`: main's FO-3v `"booking"` comes first, then this PR's `"case-client"`, and the comment names both. Nothing was dropped, renamed or reordered, so the port's "only ADD lines" rule holds. No other file reads the list exhaustively. `labels.ts` uses a Map with a run-time membership check. The two tests that read the list use `slice(0, 6)` and `includes("lead")`, so neither depends on its length or last entry. No migration has a database check that lists item kinds, so the union is the only shared point.
+* **`tests/check_csw3_firm_scope.ts`.** The census `ALLOW` list keeps main's `client-money/reports/metrics` (PF-R2cm) and this PR's `case-notes/timeline`. The count is now `ALLOW.length === 58`, and the message ends "57 with PF-R2cm, 58 with CS-NT1 part 3". The CS-NT1 part 3 comment block stays above the list.
+
+**Migration.** `git diff 1069eaef3 3110012836 -- prisma/migrations/20261126100000_shared__csnt1c_case_client_note` is empty, so the folder is unchanged. It still sorts last, after main's newest, `20261126090000_shared__csw2_firm_id`. `migration-slots.py check a298969ac..3110012836` returned **PASS**, exit 0: one new migration against main's newest, 20261126090000. `mergify --check .mergify.yml` returned **PASS** (35 area scopes). Main's csw2 migration does not overlap with this PR's:
+* csw2 never names `case_note` or `case_client` (grep: 0 lines).
+* csw2 alters 9 tables: assessment, assessment_override, assessment_review, filing, filing_applicant, filing_change, filing_form_addition, filing_item and submission_group. Its functions and triggers are all `case_filings_firm_*`, `case_firm_fill`, `assessment_frozen`, `filing_form_addition_mark_only` and `runtime_stage_row_*`.
+* This PR's migration touches only `case_note`: a new column, a relaxed NOT NULL, two indexes, the subject check and its three `case_note_*` functions. It adds one trigger, `case_note_follow_client`, on `case_client`.
+* The only csw2 change to a table this PR reads is `cases.prisma`'s new `@@unique([id, firmId])` on runtime_case, plus back-relations to the filing tables. That adds a unique index and does not affect case_note's foreign keys.
+
+**What I ran at 3110012836.** Postgres :54329 scratch databases. The in-process suites listen on port 0. The one served copy ran on **:4434**, never :4400. No prisma generate. The working tree stayed clean.
+* `check_csnt1_timeline` **36/36**, `check_csnt1_notes` **56/56**, `check_fo3v_video` **33/33**: main's `"booking"` notification works next to this PR's `"case-client"`.
+* `check_csw3_firm_scope`: I ran it in a git-archive copy of 3110012836 under the scratchpad, served by `isolated.sh rt_csnt1r7 4434`. **29 passed, 0 failed**, including "census pass … 58 with CS-NT1 part 3" and the planted-file census fail. The suite then stopped in its API section: `setup_visitor_visa.ts` 4.2 (the replay draft) returned no job in that copy, because the copy lacks material that is not in git. That is my environment, not this diff. The builder's isolated run reports 48/48.
+* CI's type check (`product/tools/typecheck.mjs`, `NODE_OPTIONS=--max-old-space-size=12288`): **PASS, no new type errors** (api 15 known, web 0).
+
+**Issues:** none new. No Blocker or Major. The open Minors are unchanged from rounds 2 and 3: m1, m4, m5-m9, m10 and m11.
+**Process note (not a finding):** this is a new head, so the `review: approved` label and the Lead's P-423 read have to be redone on 3110012836.
+**Scores:** unchanged from round 6. BIC: unchanged (API only). Journey: **8/10, pass**, unchanged. No step a person takes changed in this merge, so I did not add a journey round.
+**Could not check:** the PR's CI on 3110012836 (not looked up); `check_csw3_firm_scope` sections 3 and later in my own copy (see above). D17 and D20 stay with the founder.
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 3110012836709e64fe86014299a4a3aace2cecfa

@@ -16,6 +16,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { SAMPLE_FIRM_ID, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261122110000_csnt1a_case_note";
@@ -49,7 +50,8 @@ ok(`CS-NT1 DW7 pass: the migration has its own stamp, later than every one befor
   all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before >= "20261119051500_pf15_limit_changes");
 for (const d of all.filter((x) => x < NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
 const W0 = randomUUID(), K0 = randomUUID();
-sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id) values ('${K0}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001', '${randomUUID()}')`, DEMO);
+// CS-W1 part 2 needs the case's firm; it is written with it, as its client row is not (no later backfill update to check it).
+sql(`${SAMPLE_FIRMS_SQL} set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id, firm_id) values ('${K0}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001', '${randomUUID()}', '${SAMPLE_FIRM_ID["sample-firm"]}')`, DEMO);
 psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]);
 ok("CS-NT1 DW7 pass: right after its own migration, on a copy with an existing case, the table is empty and the case untouched",
   sql(`select count(*) from case_note`, DEMO) === "0" && sql(`select count(*) from runtime_case where id = '${K0}'`, DEMO) === "1");
