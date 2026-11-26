@@ -70,3 +70,29 @@ Scope: `person-timeline.ts`, `case-notes.tsx`, `contracts/runtime.ts` (additive:
 Graph and kill checks: removing the key check, sending the summaries again, or removing the fold each makes a named PT fail. Journey score this round: 9/10 (plain words ½ for m-b and the inherited case words, visual quality ½ for the inherited grey tiles; the rest 1). Screenshots are in the reviewer's scratch folder and not committed.
 
 **Verdict: Approve 79676e3ccb7897639c094b711ad4f25b8bf15166.** No Blocker or Major is open from the review or the break report. m-a and m-b are Minors to fix or give a follow-up row.
+
+## Round 3 (diff only): 65b6c5f69..a51c9763b703525aa81d997518c249ffb5d8473f
+Scope (Lead 5's diff-only round): 919c84fab (merges #3822's BK-2 fold-out fix 8bab60324; adds FoldArrow to "Show all of it") and 53af9ede6 + a51c9763b (merge #3822's head 139a34847, and the check's usage line).
+
+**The merges.** I compared this PR's own code diff at round 2 (`ece71d926..79676e3cc`) with its diff now (`139a34847..a51c9763b`). Only two lines differ: `<FoldArrow open={long.has(id)} />` inside the `data-timeline-show-more` button (`case-notes.tsx:275`), and the usage line of `check_csnt1t_person_timeline.ts` (no `--ttl`, plain `tsx`). `person-timeline.ts`, `timeline.ts`, `routes.ts`, the contract, `clients.tsx`, j_76 and the rest of the test are byte-for-byte what I approved in round 2.
+
+`git show --remerge-diff` findings:
+* **919c84fab** hit one conflict, in this PR's `case-notes.tsx`. The resolution is right: it keeps this PR's lines (`ownWords`, the fold, the case and prospect label), adds FoldArrow, and takes #3822's `FoldOut` for the audit Details, dropping #3822's older clamped note line. Nothing else was changed by hand.
+* **53af9ede6**: its add/add conflicts are all outside this PR's files (`.github/workflows/pipeline-heartbeat.yml`, `.mergify.yml` and others). Each was resolved to #3822's side: `git diff 139a34847 53af9ede6` lists only this PR's 16 files. None of this PR's files conflicted there.
+
+**Re-run at a51c9763b** on :4434 only (copy stopped afterwards, no `prisma generate`). I ran each suite by hand on 4434 rather than through `run-suites.sh`, whose usage lines start copies on 4432 and 4438:
+* `check_bk2_fold_outs.ts` 16/16;
+* `check_csnt1t_person_timeline.ts` 33/33;
+* `check_csnt1d_panel_browser.cjs` 53/53 (the same count as in my earlier rounds; the builder reports 54);
+* my round-2 browser walk.
+
+The walk at 1440 and 375 px:
+* "Show all of it" now shows a FoldArrow; Enter unfolds it, `aria-expanded` turns true and the 2 px focus outline is kept.
+* Details is the shared fold-out with its arrow (`r3b/r2-first-1440.png`).
+* axe 0 on the whole page, no sideways scroll, no console error.
+* 628 lines to the end; the capped end line shows.
+* Try again recovers; the client 404 and offline words are right.
+
+**Still open, unchanged (Minor, Should; not blocking):** m-a (an empty first page with more lines shows the false empty on screen) and m-b (the cap words point to a prospect page that has no timeline). Both need a fix or a follow-up row.
+
+**Verdict: Approve a51c9763b703525aa81d997518c249ffb5d8473f.** No Blocker or Major is open.
