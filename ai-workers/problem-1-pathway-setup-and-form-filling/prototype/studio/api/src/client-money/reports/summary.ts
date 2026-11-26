@@ -21,7 +21,7 @@ import { dayOf } from "../invoices/facts.ts";
 import { trustShows } from "../reads/common.ts";
 import { failClosed, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { labelsOf } from "../reads/parties.ts";
-import { ledgerCtes } from "./statement.ts";
+import { invoiceIdsOf, ledgerCtes } from "./statement.ts";
 import { kindOf, partyCol, partyFor, seenSql, sortMemory, type Party } from "./common.ts";
 
 export type Figures = { currency: "CAD" | "USD"; billedMinor: number; paidMinor: number; paidFromTrustMinor: number; creditedMinor: number; writtenOffMinor: number;
@@ -42,15 +42,20 @@ function add(a: Figures, b: Figures): Figures {
 }
 
 /** The per-case, per-currency invoice figures' SQL (exported for the plan check). */
-export function summarySql(f: string, party: Party, scope: MoneyScope, today: string): Prisma.Sql {
-  return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false)},
-        per as (select inv.id, inv.case_id, inv.currency, inv.due_date, inv.total,
+export function summarySql(f: string, party: Party, scope: MoneyScope, today: string, invoiceIds: string | null): Prisma.Sql {
+  return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false, invoiceIds)},
+        -- each invoice's facts summed once from the lines (materialized), then joined to the invoices by id: a join of the
+        -- invoices straight onto the lines' union re-ran the union per invoice when statistics lagged (break round 2 M1)
+        agg as materialized (select l.inv,
             coalesce(-sum(l.amount) filter (where l.kind = 'CREDIT_NOTE'), 0) as credited, coalesce(-sum(l.amount) filter (where l.kind = 'WRITE_OFF'), 0) as written,
             coalesce(-sum(l.amount) filter (where l.kind = 'PAYMENT'), 0) as operating, coalesce(sum(l.amount) filter (where l.kind = 'REFUND'), 0) as refunded,
             greatest(coalesce(-sum(l.amount) filter (where l.kind in ('PAID_FROM_TRUST', 'PAID_FROM_TRUST_CORRECTED', 'RETURNED_FROM_TRUST')), 0), 0) as trust,
             coalesce(-sum(l.amount) filter (where l.kind in ('CREDIT_APPLIED', 'CREDIT_APPLIED_REVERSED')), 0) as applied,
             coalesce(sum(l.amount) filter (where l.kind in ('KEPT_AS_CREDIT', 'KEPT_AS_CREDIT_REVERSED')), 0) as kept
-          from inv left join l on l.inv = inv.id and l.acct = 0 group by inv.id, inv.case_id, inv.currency, inv.due_date, inv.total),
+          from l where l.acct = 0 group by l.inv),
+        per as (select inv.id, inv.case_id, inv.currency, inv.due_date, inv.total, coalesce(a.credited, 0) as credited, coalesce(a.written, 0) as written,
+            coalesce(a.operating, 0) as operating, coalesce(a.refunded, 0) as refunded, coalesce(a.trust, 0) as trust, coalesce(a.applied, 0) as applied, coalesce(a.kept, 0) as kept
+          from inv left join agg a on a.inv = inv.id),
         -- FACTS_LATERAL's paid (with credit applied) for due and extra, as facts.ts: due = open − paid, extra = paid − open − kept
         net as (select per.*, per.total - per.credited - per.written - (per.operating - per.refunded + per.trust + per.applied) as open_left from per),
         due as (select net.*, greatest(0, net.open_left) as owed, greatest(0, -net.open_left - net.kept) as waiting from net)
@@ -71,10 +76,18 @@ export class MoneySummary {
     const kind = kindOf(kindRaw), f = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx), today = dayOf(this.clock.now());
     return this.db.$transaction(async (tx) => {
       await sortMemory(tx);
-      const party = await partyFor(tx, f, kind, id, scope), showTrust = await trustShows(tx, f);
+      const party = await partyFor(tx, f, kind, id, scope);
+      return summaryIn(tx, f, party, scope, today, await trustShows(tx, f));
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+}
+
+/** The summary of a party already found, inside the caller's transaction (part 2 reads it with the statement's lines in
+ *  one snapshot: break M4 on #3753). */
+export async function summaryIn(tx: Prisma.TransactionClient, f: string, party: Party, scope: MoneyScope, today: string, showTrust: boolean): Promise<Summary> {
       // per invoice from the statement's own lines (ledgerCtes, the INVOICES account: one source for both reads), as
       // FACTS_LATERAL's terms: trust paid is never below zero per invoice (its greatest(…, 0)), and due never below zero
-      const inv = await tx.$queryRaw<Row[]>(summarySql(f, party, scope, today));
+      const inv = await tx.$queryRaw<Row[]>(summarySql(f, party, scope, today, await invoiceIdsOf(tx, f, party, scope, undefined)));
       const held = showTrust ? await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
         from money_trust_entry e where e.firm_id = ${f}::uuid and ${partyCol(party, "e")} = ${party.id}::uuid and ${seenSql(scope, "e")} group by e.case_id, e.currency` : [];
       const credit = await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
@@ -94,6 +107,4 @@ export class MoneySummary {
         .sort((a, b) => (a.caseId === null ? -1 : b.caseId === null ? 1 : (a.caseLabel ?? a.caseId).localeCompare(b.caseLabel ?? b.caseId)) || a.currency.localeCompare(b.currency));
       const totals = (["CAD", "USD"] as const).flatMap((cur) => { const mine = cases.filter((c) => c.currency === cur); return mine.length ? [mine.map(({ caseId: _c, caseLabel: _l, ...x }) => x).reduce(add, zero(cur, showTrust))] : []; });
       return { party, today, trustShows: showTrust, totals, cases };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-  }
 }
