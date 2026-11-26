@@ -114,3 +114,26 @@ Also seen, not this diff: when a request has two problems at once (an unknown ke
 **Verdict: Block** for the `review: approved` label until M2 is fixed (Reviewer: Changes 7669263d8b4ada9c1431853d5edf9cc34d8b214b). Fix list: M2 (Must). m10 and m11 are optional, and m1, m4 and m5-m9 stay open as listed in round 2. After the fix, a round 4 on the one-line diff and a green `types` job will be enough.
 
 Verdict: Changes 7669263d8b4ada9c1431853d5edf9cc34d8b214b
+
+## Round 6 (diff only, f9a8eb281..075bde483): reviewer, 26 Nov
+The request named this "Round 3 (diff only, 075bde483)". It is filed as round 6 because this file already has a Round 3 (7669263d8, Block on M2). Rounds 4 (Approve ca7a3e0ea, M2 closed) and 5 (Approve f9a8eb281, the first merge of main) were posted only as PR comments. The reviewer did not build this item.
+
+Reviewed: 075bde483 is the merge commit (parents f9a8eb281 and main 791c6f82f). PR #3649's head on GitHub is 075bde483 and its base is 791c6f82f. I compared the PR's own diff before and after the merge: `git diff -M 9f6a44ad5 f9a8eb281` (the old merge-base) against `git diff -M 791c6f82f 075bde483`. Both have the same 15 files and the same +985/-59, apart from the migration folder's new name. With index lines and hunk offsets removed, the only differences are:
+* **The re-stamp.** The folder `20261125140100_shared__csnt1c_case_client_note` is now `20261126100000_shared__csnt1c_case_client_note`, and `git diff -M` reports **100% similarity**, so the SQL is unchanged. Its 3 references were updated: `CS-NT1c.md:2`, the `case-notes.prisma:8` comment and `check_csnt1_timeline.ts:29` (`NEW`). `git grep` finds no code or schema reference to the old name. Only earlier review and break records still name old stamps, as history.
+* **The stamp is unique and comes after main's newest.** Main's newest is `20261125150000_front-office-signing__fo5d_decline_reason` (origin/main was fetched again and is still 791c6f82f). No other folder starts with `20261126100000`. The re-stamp was needed: main's `20261125140100_client-money__r196_payment_plans` now takes the old stamp. `migration-slots.py check 791c6f82f..075bde483` returned **PASS**, exit 0.
+* **`ports/notifications.ts`.** Against main the PR adds 3 things: `NOTE_MENTION` after main's `RETAINER_DECLINED`, its group `MENTIONS` after `[RETAINER_DECLINED]: "NEEDS_YOU"`, and `"case-client"` after main's `"retainer"` in `NOTIFICATION_ITEM_KIND`, with the comment covering both. Against f9a8eb281 the merge adds only main's 3 FO-5d entries. Nothing was dropped or reordered (`LEAD_ASSIGNED`, `KEEP_PERIOD_PASSED`, `TRUST_TO_MOVE_WAITING` and their groups are kept), so the port's "only ADD lines" rule holds. Every kind has a group (`Record<NotificationKind, …>`). The only code that reads item kinds, `labels.ts`, uses a Map with a run-time membership check and nothing exhaustive, so adding `"retainer"` breaks nothing in this PR.
+* **Nothing else of the PR changed.** The other files (`service.ts`, `timeline.ts`, routes, the census allow-list, tests) are identical in both diffs. The other 11 prisma files in the commit-to-commit diff come from main (PF-19m, PF-F2, R1.96, FO-5d), not from this PR.
+
+**What I ran at 075bde483**, in my own detached worktree (`git worktree add`), Postgres :54329 scratch databases, no server, never :4400:
+* `check_csnt1_timeline` **36/36**, `check_csnt1_notes` **56/56**. I re-ran both after the builder's note that the shared tree, whose node_modules and Prisma client the worktree borrows, was on main for a few minutes. Both results stand.
+* `check_pf18np_port` **11/11** and `check_fo5d_decline_withdraw` **41/41**: main's FO-5d notification still works next to `NOTE_MENTION`.
+* CI's type check (`product/tools/typecheck.mjs`, `NODE_OPTIONS=--max-old-space-size=12288` as in ci.yml): **PASS, no new type errors** (api 15 known, web 0).
+
+**Issues:** none new. No Blocker or Major. Open Minors as listed in rounds 2 and 3: m1, m4, m5-m9, m10, m11.
+**Process note (not a finding):** the migration path changed again, so the Lead's P-423 read and the label have to be redone on 075bde483. The queue gate asks for this by itself.
+**Scores:** unchanged from round 5. BIC: unchanged (API only). Journey: **8/10, pass**, unchanged (no step a person takes changed; see Round 6 in `journey-test-reviewer-2026-11-25.md`).
+**Could not check:** the PR's CI and full run on 075bde483 (not looked up). D17 and D20 stay with the founder.
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 075bde483ef269a8e48bbb659240d4d6f6603edf
