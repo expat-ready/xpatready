@@ -94,17 +94,30 @@ try {
   const t3 = await call("GET", `/runtime/clients/${P}/timeline`, undefined, { token: tA });
   const pl: { summary: string; source: string }[] = t3.body?.lines ?? [];
   ok("PT3 pass: the won prospect's lines show, its note exactly once", !!prospectId && pnote.status === 201 && pl.filter((l) => l.summary === `Prospect note ${run}`).length === 1 && pl.some((l) => l.source === "prospect"), { prospectId, note: pnote.status, n: pl.filter((l) => l.summary === `Prospect note ${run}`).length });
+  const pAll: { summary: string; source: string; type: string }[] = pl.filter((l) => l.source === "prospect") as never;
+  ok("PT3 pass (review M1): the prospect's lines carry their type (lead.engaged) for words, and only a note's or a call's words are sent", pAll.some((l) => l.type === "lead.engaged") && pAll.every((l) => l.type === "note" || l.type === "call" || l.summary === ""));
+  ok("PT3 fail (break S3 on this route): no staff id in any prospect line", !pAll.some((l) => /[0-9a-f]{8}-[0-9a-f]{4}-/.test(l.summary)));
+  sql("with d as (delete from platform_role_permission where role = 'CASE_MANAGER' and permission_key = 'agent/prospect:show' returning 1) select count(*) from d") !== "0" && removed.push(["CASE_MANAGER", "agent/prospect:show"]);
+  const noKey = await call("GET", `/runtime/clients/${P}/timeline`, undefined, { token: tT });
+  ok("PT3 fail (break M1): without agent/prospect:show the person's timeline shows no prospect line", noKey.status === 200 && !(noKey.body?.lines ?? []).some((l: { source: string }) => l.source === "prospect") && has(noKey.body, `Person note ${run}`), noKey.status);
+  putBack();
   // ---- PT4: paging -----------------------------------------------------------------------------------------------
   sql(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, case_id) select gen_random_uuid(), '${ws}', now() - interval '1 hour', 'staff:x', 'uploaded', 'case document', gen_random_uuid()::text, 'Paged upload ${run} ' || g, (case when g % 2 = 0 then '${A1}' else '${A2}' end)::uuid from generate_series(1, 120) g`);
-  const seen: string[] = [];
+  const seen: string[] = [], all: string[] = [];
   let cursor: string | null = null, pages = 0, okCursor = true;
   do {
     const r: Res = await call("GET", `/runtime/clients/${P}/timeline${cursor ? `?cursor=${cursor}` : ""}`, undefined, { token: tA });
     if (r.status !== 200) { okCursor = false; break; }
-    for (const l of r.body.lines as { summary: string }[]) { const m = /^Paged upload \S+ (\d+)$/.exec(l.summary); if (m) seen.push(m[1]); }
+    for (const l of r.body.lines as { summary: string; source: string; refId: string }[]) { all.push(`${l.source}:${l.refId}`); const m = /^Paged upload \S+ (\d+)$/.exec(l.summary); if (m) seen.push(m[1]); }
     cursor = r.body.nextCursor; pages++;
   } while (cursor && pages < 10);
   ok("PT4 pass: page by page, each of the 120 lines exactly once, over at least 3 pages", okCursor && seen.length === 120 && new Set(seen).size === 120 && pages >= 3, { n: seen.length, distinct: new Set(seen).size, pages });
+  ok("PT4 pass (review 5): across all pages no line of any source repeats (notes and prospect lines included)", all.length > 120 && new Set(all).size === all.length, { n: all.length, distinct: new Set(all).size });
+  // Break M2: a prospect with more than 500 lines: the end says the older ones are on the prospect's own page.
+  sql(`insert into fo_note (id, firm_id, person_id, prospect_id, visibility, text, by_actor, created_at) select gen_random_uuid(), n.firm_id, n.person_id, n.prospect_id, 'INTERNAL', 'Bulk prospect note ${run} ' || g, n.by_actor, now() - interval '2 hours' - (g || ' seconds')::interval from fo_note n, generate_series(1, 600) g where n.prospect_id = '${prospectId}' and n.text = 'Prospect note ${run}'`);
+  let c2: string | null = null, endFlag = false, n2 = 0;
+  do { const r: Res = await call("GET", `/runtime/clients/${P}/timeline${c2 ? `?cursor=${c2}` : ""}`, undefined, { token: tA }); if (r.status !== 200) break; if (!r.body.more) endFlag = !!r.body.prospectOlderHidden; c2 = r.body.nextCursor; n2++; } while (c2 && n2 < 40);
+  ok("PT4 fail (break M2): over 500 prospect lines, the last page says older prospect lines are hidden (never a silent \"everything\")", endFlag, { pages: n2 });
   const forged = await call("GET", `/runtime/clients/${P}/timeline?cursor=${Buffer.from('["1","x","y"]').toString("base64url")}`, undefined, { token: tA });
   ok("PT4 fail: a forged cursor → 400 INVALID on cursor", forged.status === 400 && forged.body?.fields?.cursor, forged.status);
   // ---- PT5 -------------------------------------------------------------------------------------------------------
@@ -118,6 +131,8 @@ try {
   const t6 = await call("GET", `/runtime/clients/${P}/timeline`, undefined, { token: tT });
   ok("PT6 fail: a Case manager who cannot open the cases sees the person's own note but none of the cases' lines", t6.status === 200 && has(t6.body, `Person note ${run}`) && !(t6.body?.lines ?? []).some((l: { caseId: string | null }) => l.caseId), t6.status);
   putBack();
+  const longNote = Array.from({ length: 8 }, (_, i) => `Long person note ${run} line ${i + 1}`).join("\n");
+  await add(`/runtime/clients/${P}/notes`, longNote);
   // ---- PT7 by screens ------------------------------------------------------------------------------------------------
   const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
   try {
@@ -134,8 +149,14 @@ try {
         await pg.waitForFunction(([n]) => document.querySelectorAll("[data-client-timeline] [data-timeline-line]").length > n, [before], { timeout: 30000 });
       }
       const text = await tl.innerText();
+      ok(`PT7 pass at ${width} (review M1, m3): prospect lines read in words (\"Engaged as a prospect\"), case lines name their case`, /Engaged as a prospect/.test(text) && (await tl.locator("[data-timeline-case]").count()) > 0 && !/Other change/.test(text.split("Engaged as a prospect")[0] ?? ""));
       ok(`PT7 pass at ${width}: the client page's Timeline shows the person's note, both cases' notes and the prospect's note (Show older as needed)`, [`Person note ${run}`, `Case one note ${run}`, `Case two note ${run}`, `Prospect note ${run}`].every((s) => text.includes(s)), text.slice(0, 300));
       const axe = await new AxeBuilder({ page: pg }).include("[data-client-timeline]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+      const longLine = tl.locator("[data-timeline-line]").filter({ hasText: `Long person note ${run} line 1` }).first();
+      const folded = async () => longLine.locator("[data-timeline-note]").evaluate((e) => e.scrollHeight > e.clientHeight + 2);
+      const wasFolded = await folded();
+      await longLine.locator("[data-timeline-show-more]").click();
+      ok(`PT7 (review M2) at ${width}: a long note starts folded and reads in full after \"Show all of it\"`, wasFolded && !(await folded()));
       ok(`PT7 axe (WCAG 2.2 AA) at ${width}: the client page's Timeline`, axe.violations.length === 0, axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`));
       ok(`PT7 at ${width}: no sideways scroll, no page error`, !(await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) && errors.length === 0, errors.slice(0, 3));
       if (process.env.SHOTS) await tl.screenshot({ path: `${process.env.SHOTS}/client-timeline-${width}.png` });

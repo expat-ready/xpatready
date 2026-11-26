@@ -19,18 +19,23 @@ const KINDS = [["", "All"], ["NOTE", "Notes"], ["DOCUMENT", "Documents"], ["DECI
 const LINE_WORDS: Record<string, string> = {
   uploaded: "Document uploaded", "case.decision.recorded": "Decision recorded", "case.withdrawn": "Case withdrawn", "case.closed": "Case closed", "case.reopened": "Case reopened",
   "case.note.edited": "Note edited", "case.note.pinned": "Note pinned", "case.note.unpinned": "Note unpinned", "case.note.marked-client-visible": "Note shown to the client", "case.note.marked-internal": "Note made internal",
+  // CS-NT1t (review M1): a won prospect's lines on a person's timeline, by FO-2 part 4's names (ports/events/sales.ts).
+  "lead.created": "Lead arrived", "lead.taken": "Lead taken", "lead.engaged": "Engaged as a prospect", "lead.closed": "Lead closed", "lead.reopened": "Lead reopened",
+  "prospect.stage_moved": "Prospect moved to another stage", "prospect.lost": "Prospect marked lost", "prospect.won": "Prospect won", "prospect.unconverted": "Convert undone", "prospect.type_changed": "Prospect type changed",
 };
 const KIND_WORD: Record<string, string> = { NOTE: "Notes", DOCUMENT: "Documents", DECISION: "Decisions", ACTIVITY: "Other" };
-const lineWords = (l: { type: string; kind: string }) => LINE_WORDS[l.type] ?? `${KIND_WORD[l.kind] ?? "Other"} change`;
+const lineWords = (l: { type: string; kind: string; source?: string }) => LINE_WORDS[l.type] ?? (l.source === "prospect" ? (l.type.startsWith("person.") ? "Contact details changed" : "Prospect updated") : `${KIND_WORD[l.kind] ?? "Other"} change`);
+/** Lines whose words are written for people: a note, and a prospect's call (its summary is built from its fields). */
+const ownWords = (l: { source: string; type: string }) => l.source === "note" || (l.source === "prospect" && (l.type === "note" || l.type === "call"));
 const when = (at: string) => new Date(at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const who = (n: string | null) => n ?? "Someone at the firm";
 const len = (s: string) => [...s.trim()].length;
 const newKey = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9._:-]/g, "");
 /** A refusal in the screen's words (break m1, m2): the 403 names the act; a 404 covers another firm and a case outside the
  *  person's scope alike (the API answers both the same way, BR-20). */
-const errWords = (e: unknown, what: string, act: "add" | "change" | "read" = "add") => !(e instanceof StaffApiError) ? "Could not reach the server. Your words are kept; try again."
+const errWords = (e: unknown, what: string, act: "add" | "change" | "read" = "add", subject: "case" | "client" = "case") => !(e instanceof StaffApiError) ? (act === "read" ? "Could not reach the server. Try again." : "Could not reach the server. Your words are kept; try again.")
   : e.status === 403 ? (act === "add" ? "Your role can read notes but not add them." : act === "change" ? "Your role does not allow this change now." : "Your role cannot read this.")
-    : e.status === 404 ? "This case is not in the firm you are signed in to, or your role cannot open it."
+    : e.status === 404 ? `This ${subject} is not in the firm you are signed in to, or your role cannot open it.`
       : e.field("text") ?? e.field("mentions") ?? e.message ?? `The ${what} was not saved.`;
 type Draft = { text: string; picked: { staffId: string; name: string }[]; forClient: boolean };
 /** Review M2 (concept §4): the panel keeps one height while it loads and after, so nothing below it moves: the writer
@@ -247,6 +252,8 @@ export function Timeline({ path, chips = false, heading = 3 }: { path: string; c
     getNextPageParam: (p) => (p.more ? p.nextCursor : null),
   });
   const lines = (q.data?.pages ?? []).flatMap((p) => p.lines);   // access lines are left out by the API (ruling 2)
+  const [long, setLong] = React.useState<Set<string>>(new Set());
+  const capped = (q.data?.pages ?? []).some((p) => p.prospectOlderHidden);
   const shown = lines.slice(0, limit);
   const older = async () => { if (lines.length <= limit && q.hasNextPage) await q.fetchNextPage(); setLimit(limit + 50); };
   return (
@@ -257,19 +264,21 @@ export function Timeline({ path, chips = false, heading = 3 }: { path: string; c
           className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium focus-visible:ring-[3px] focus-visible:ring-ring/50 ${kind === k ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface-raised"}`} data-timeline-kind={k || "ALL"}>{label}</button>)}
       </div> : null}
       <div role="region" aria-label="Timeline lines" tabIndex={0} className={`${LINES_H} space-y-3 ${BOX}`}>
-      {q.isLoading ? <Skeleton className={`${LINES_H} w-full`} /> : q.isError ? <Notice tone="danger" title="The timeline could not be loaded">{errWords(q.error, "timeline", "read")}</Notice>
-        : !shown.length ? <p className="text-sm text-text-muted" data-timeline-empty>{chips ? "Nothing has happened on this case yet." : "Nothing has happened for this client yet."}</p>
-          : <ol className="space-y-2" data-timeline-lines>{shown.map((l) => (
-              <li key={`${l.source}:${l.refId}`} className="flex gap-2 text-sm" data-timeline-line={l.kind} data-timeline-type={l.type}>
+      {q.isLoading ? <Skeleton className={`${LINES_H} w-full`} /> : q.isError ? <Notice tone="danger" title="The timeline could not be loaded" action={<Button size="sm" variant="secondary" busy={q.isFetching} onClick={() => void q.refetch()}>Try again</Button>}>{errWords(q.error, "timeline", "read", chips ? "case" : "client")}</Notice>
+        : !shown.length ? <p className="text-sm text-text-muted" data-timeline-empty>{chips ? "Nothing has happened on this case yet." : "Nothing has happened for this client yet. Notes on this client, what happens on their cases and their prospect's history will show here."}</p>
+          : <ol className="space-y-2" data-timeline-lines>{shown.map((l) => { const id = `${l.source}:${l.refId}`, cut = ownWords(l) && (l.summary.split("\n").length > 2 || l.summary.length > 200); return (
+              <li key={id} className="flex gap-2 text-sm" data-timeline-line={l.kind} data-timeline-type={l.type}>
                 <Pill className="mt-0.5 w-20 self-start justify-center">{KIND_WORD[l.kind]}</Pill>
                 <div className="min-w-0 flex-1">
-                  {l.source === "note" || (l.source === "prospect" && l.kind === "NOTE") ? <p className="line-clamp-2 whitespace-pre-wrap [overflow-wrap:anywhere]" data-timeline-note><bdi>{l.summary}</bdi></p> : <p>{lineWords(l)}</p>}
-                  <p className="text-xs text-text-muted">{who(l.actorName)} · <time dateTime={l.at} title={new Date(l.at).toString()}>{when(l.at)}</time></p>
-                  {l.source === "audit" || (l.source === "prospect" && l.kind !== "NOTE") ? <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary><span className="[overflow-wrap:anywhere]">{l.summary}</span></details> : null}
+                  {ownWords(l) ? <><p className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${cut && !long.has(id) ? "line-clamp-2" : ""}`} data-timeline-note><bdi>{l.summary}</bdi></p>
+                    {cut ? <button type="button" className="text-xs font-medium text-text-link underline" aria-expanded={long.has(id)} onClick={() => setLong((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; })} data-timeline-show-more>{long.has(id) ? "Show less" : "Show all of it"}</button> : null}</>
+                    : <p>{lineWords(l)}</p>}
+                  <p className="text-xs text-text-muted">{who(l.actorName)} · <time dateTime={l.at} title={new Date(l.at).toString()}>{when(l.at)}</time>{l.caseNumber ? <> · <span data-timeline-case>{l.caseNumber}</span></> : l.source === "prospect" ? " · Prospect" : null}</p>
+                  {l.source === "audit" ? <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary><span className="[overflow-wrap:anywhere]">{l.summary}</span></details> : null}
                 </div>
-              </li>))}</ol>}
+              </li>); })}</ol>}
       {shown.length && (lines.length > limit || q.hasNextPage) ? <Button size="sm" variant="secondary" busy={q.isFetchingNextPage} onClick={() => void older()} data-timeline-older>Show older</Button>
-        : shown.length ? <p className="text-xs text-text-muted" data-timeline-end>{chips ? "That is everything on this case." : "That is everything for this client."}</p> : null}
+        : shown.length ? <p className="text-xs text-text-muted" data-timeline-end>{capped ? "Older lines of the prospect are on the prospect's own page (only its newest 500 are shown here)." : chips ? "That is everything on this case." : "That is everything for this client."}</p> : null}
       </div>
     </div>
   );

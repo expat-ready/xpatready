@@ -18,7 +18,11 @@ import { CaseTimeline, cmp, TIMELINE_PAGE, type CaseTimelineLine, type Key } fro
 import { Timeline as ProspectTimeline } from "../front-office/sales/timeline.ts";
 
 type Source = "audit" | "note" | "prospect";
-export type PersonTimelineLine = Omit<CaseTimelineLine, "source"> & { source: Source; caseId: string | null };
+export type PersonTimelineLine = Omit<CaseTimelineLine, "source"> & { source: Source; caseId: string | null; caseNumber: string | null };
+/** The front office's key for reading a prospect (its route's, routes.ts): checked here too, since the service is called
+ *  directly (break M1). */
+const PROSPECT_SHOW = "agent/prospect:show";
+const statusOf = (e: unknown) => (e as { getStatus?: () => number })?.getStatus?.() ?? (e as { status?: number })?.status;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BIGINT_MAX = 9223372036854775807n;
 const invalid = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
@@ -53,33 +57,43 @@ export class PersonTimeline {
     // 1. The person's own notes.
     const own = await this.notes.list(ctx, s.id, "client");
     const noteLines = own.notes.map((n) => ({ k: { us: BigInt(Date.parse(n.writtenAt)) * 1000n, source: "note", id: n.id } as Key, line: {
-      at: n.writtenAt, kind: "NOTE" as const, type: "note", actor: `staff:${n.author.staffId}`, actorName: n.author.name, summary: n.text, refId: n.id, source: "note" as const, caseId: null, visibility: n.visibility, pinned: n.pinned } }));
+      at: n.writtenAt, kind: "NOTE" as const, type: "note", actor: `staff:${n.author.staffId}`, actorName: n.author.name, summary: n.text, refId: n.id, source: "note" as const, caseId: null, caseNumber: null, visibility: n.visibility, pinned: n.pinned } }));
     items.push(...noteLines.filter((x) => older(x.k)));
 
     // 2. Each case they are the client of, as its own timeline reads it (outside the reader's caseScope: left out).
-    const caseIds = (await this.db.case.findMany({ where: { clientId: s.id }, select: { id: true }, orderBy: { id: "asc" } })).map((c) => c.id);
-    for (const caseId of caseIds) {
-      const page = await this.cases.pageAfter(ctx, caseId, cursor).catch((e: unknown) => { if ((e as { status?: number })?.status === 404 || (e as { getStatus?: () => number })?.getStatus?.() === 404) return null; throw e; });
-      if (!page) continue;
-      items.push(...page.lines.map(({ line, k }) => ({ k, line: { ...line, caseId } })));
-      if (page.more) lift(page.last);
+    // Break m3: read in parallel, eight cases at a time (each is one case's own timeline read).
+    const cases = await this.db.case.findMany({ where: { clientId: s.id }, select: { id: true, caseNumber: true }, orderBy: { id: "asc" } });
+    for (let i = 0; i < cases.length; i += 8) {
+      const pages = await Promise.all(cases.slice(i, i + 8).map((c) => this.cases.pageAfter(ctx, c.id, cursor).then((page) => ({ c, page }), (e: unknown) => { if (statusOf(e) === 404) return { c, page: null }; throw e; })));
+      for (const { c, page } of pages) {
+        if (!page) continue;
+        items.push(...page.lines.map(({ line, k }) => ({ k, line: { ...line, caseId: c.id, caseNumber: c.caseNumber } })));
+        if (page.more) lift(page.last);
+      }
     }
 
     // 3. Their won prospect's lines, once (FO-8's link).
     const prospectId = (await this.db.caseClient.findUnique({ where: { id: s.id }, select: { prospectId: true } }))?.prospectId ?? null;
-    if (prospectId && this.prospects) {
-      const p = await this.prospects.prospect(ctx, prospectId).catch(() => null);   // 404 for this reader: left out
+    let oldestProspect: Key | null = null, prospectCapped = false;
+    if (prospectId && this.prospects && ctx.keys.includes(PROSPECT_SHOW)) {
+      // Not this reader's to see (404/403): left out; any other failure is a failure (break m1, review 6).
+      const p = await this.prospects.prospect(ctx, prospectId).catch((e: unknown) => { const st = statusOf(e); if (st === 404 || st === 403) return null; throw e; });
       for (const l of p?.lines ?? []) {
         const k: Key = { us: BigInt(Date.parse(l.at)) * 1000n, source: "prospect", id: l.refId && UUID.test(l.refId) ? l.refId.toLowerCase() : createHash("sha256").update(`${l.kind}|${l.type}|${l.at}|${l.refId ?? ""}`).digest("hex").slice(0, 32) };
-        if (older(k)) items.push({ k, line: { at: l.at, kind: KIND[l.kind] ?? "ACTIVITY", type: l.type, actor: l.actor ?? "system:front-office", actorName: l.actorName, summary: l.summary, refId: k.id, source: "prospect", caseId: null } });
+        if (!oldestProspect || cmp(k, oldestProspect) < 0) oldestProspect = k;
+        // A call's and a note's words are written for people; an audit or event summary names staff ids and is never sent.
+        if (older(k)) items.push({ k, line: { at: l.at, kind: KIND[l.kind] ?? "ACTIVITY", type: l.kind === "CALL" ? "call" : l.kind === "NOTE" ? "note" : l.type, actor: l.actor ?? "system:front-office", actorName: l.actorName, summary: l.kind === "CALL" || l.kind === "NOTE" ? l.summary : "", refId: k.id, source: "prospect", caseId: null, caseNumber: null } });
       }
+      prospectCapped = !!p?.more;
       if (p?.more) lift(items.filter((x) => x.k.source === "prospect").sort((a, b) => cmp(a.k, b.k))[0]?.k ?? null);
     }
 
     const merged = items.filter((x) => !floor || cmp(x.k, floor) >= 0).sort((a, b) => cmp(b.k, a.k));
     const page = merged.slice(0, TIMELINE_PAGE);
     const more = merged.length > TIMELINE_PAGE || floor !== null;
-    const last = page.at(-1)?.k ?? null;
-    return { lines: page.map((x) => x.line), more, nextCursor: more && last ? encode(last) : null, pageSize: TIMELINE_PAGE };
+    const last = page.at(-1)?.k ?? floor;   // break m2: an empty page that still has older lines carries on from the floor
+    // Break M2: the prospect's own read keeps its newest 500 lines; once the pages pass the oldest of them, say so.
+    const prospectOlderHidden = prospectCapped && !!oldestProspect && (!more || (!!last && cmp(last, oldestProspect) <= 0));
+    return { lines: page.map((x) => x.line), more, nextCursor: more && last ? encode(last) : null, pageSize: TIMELINE_PAGE, ...(prospectOlderHidden ? { prospectOlderHidden: true } : {}) };
   }
 }
