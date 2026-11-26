@@ -22,10 +22,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A399 | 26 Nov ~12:0x (typed) | standing approvals until he says stop (see hand-over block) | in force |
 | A396-A398 | 26 Nov 11:0x-11:4x | resume, full plan, 15 a day, heal: word for word in the A391-A394 history file | answered |
 | A395 | 26 Nov ~00:2x IST (spoken) | founder's co-founder ask (learnings from the team's work): open; word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
-| A391-A394 | 25 Nov | front door and production path (P-839..P-841), concept #3758 rulings, A393 enforcement: word for word in `history/STATE-2026-11-26-1140-lead1-founder-ask-rows-A391-A394.md`; owed P-841 + FD/IJ/Showcase rows |
-| A380-A390 | 25 Nov 07:4x-16:2x | answered or in force (A386 the plan, A388 self-checking builders, A389 Partial %), word for word: `history/STATE-2026-11-25-2340-lead10-founder-ask-rows-A380-A390.md` |
-| A371-A378 | 24 Nov | answered or in force; word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
-| A242-A370 | 21-24 Nov | older rows (A359, A370, A369, A363, A362, A361, A356, A353-A354, A352, A351, A350, A348, A346, A342-A347, A331-A345, A337-A340, A318, A308-A329, A242-A305), word for word: `history/STATE-2026-11-24-2240-lead1-founder-ask-rows-A242-A370.md` |
+| A242-A394 | 21-25 Nov | answered or in force; rows word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
 
 ## Start here (next Lead)
 🧭 **A401 (in force): every check does the manual step of each P1 OS item (`design/os-manual-enforcement-2026-11-26.md`: OS-01 green pr-suites before a label, OS-11 tools from main, OS-02 reads ≤30 min, OS-05 covered line, OS-78a one comment batch per PR) and refreshes the control room v3 sections in their order; the Lead scorecard is repeated in every full report.**
