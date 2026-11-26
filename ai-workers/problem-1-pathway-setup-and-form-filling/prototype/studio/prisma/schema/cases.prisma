@@ -98,6 +98,10 @@ model Case {
   reviewRoundFilingsFirm  ReviewRoundFiling[]  @relation("ReviewRoundFilingCaseFirm")
   reviewRoundFormsFirm    ReviewRoundForm[]    @relation("ReviewRoundFormCaseFirm")
   reviewChecksFirm        ReviewCheck[]        @relation("ReviewCheckCaseFirm")
+  signStepsFirm           SignStep[]           @relation("SignStepCaseFirm")
+  signedScansFirm         SignedScan[]         @relation("SignedScanCaseFirm")
+  filingRecordsFirm       FilingRecord[]       @relation("FilingRecordCaseFirm")
+  feeReceiptFilesFirm     FeeReceiptFile[]     @relation("FeeReceiptFileCaseFirm")
 
   @@unique([id, firmId])
   @@unique([workspaceId, firmKey, idempotencyKey])
