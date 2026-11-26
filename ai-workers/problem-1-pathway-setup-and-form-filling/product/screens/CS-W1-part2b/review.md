@@ -79,6 +79,20 @@ All N/A. The PR changes no case-side screen and nothing visible on the demo, whi
 * The graph step (`graph.mjs`) was not run, because it writes `qa/GRAPH.md` and this check may write only this file and the journey report. No route or page was added.
 * I did not re-run the brief's breaker items: odd keys to the lookup, a seed-off copy with both migrations.
 
-Reviewer: Approve 207402be591c14c125117892e33a33c2476dff55
+Round 1: Reviewer: Approve 207402be591c14c125117892e33a33c2476dff55
 
-Verdict: Approve 207402be591c14c125117892e33a33c2476dff55
+## Round 2 (diff 207402be..ebefc4c4; e0e5e17a adds only the round-1 reports; remote head 678fffc1 merges main and touches none of this PR's files)
+* m1 closed: `case-notes/service.ts:126-133` finds a case by `firmId: ctx.firmId` and compares the case's `firmId`. A case client still goes by key plus the platform lookup, which is fine because its `firm_id` is not required yet.
+* m3 closed: the list line now asserts 200. The other firm's next number must equal that firm's own counter row (`check_csw1_part2b.ts:64-68`).
+* m4 closed: "…so it has no case numbers." (`runtime.ts:1067`).
+* The nit is closed: the function now raises with code `P0001`.
+* Breaker m1:
+  * `case-close.ts:55` now locks `firm_id = ctx.firmId::uuid` and `:100` reads by `firmId`. `ctx.firmId` is the session's platform uuid.
+  * The csc1s fixture now moves `firm_id` and leaves the key, so its 404 line still tests the new comparison.
+* Breaker m2: a `DO $chk$` check runs before any `DROP` / `ADD`. It groups by the new keys `(ws, firm_id, …)` for the three case rules and the counter, and stops with code 23505, naming the rows and the `migrate resolve` step.
+* Still open (Minor, listed in the PR): m2, a test of the API 409. It does not block.
+* I re-ran on 678fffc1 (the part 2b code is identical to ebefc4c4): check_csw1_part2b 14/14, check_csc1s_view 26/0, check_csnt1_notes 56/0, check_csc1_close 55/0. The typecheck has no new errors.
+
+Reviewer: Approve e0e5e17a449d545daae811e48babb87023ceb75b
+
+Verdict: Approve e0e5e17a449d545daae811e48babb87023ceb75b

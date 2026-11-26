@@ -86,4 +86,44 @@ PLATFORM_SAMPLE_SEED=off` so the cache starts empty.
   counter row given another firm's id is refused by case_firm_from_key. The rollback steps in the header work as written
   (applied with `psql -1`, after which numbering works on firm_key again).
 
-Verdict: Approve 207402be591c14c125117892e33a33c2476dff55
+Round 1 verdict: Approve 207402be591c14c125117892e33a33c2476dff55
+
+## Round 2: diff 207402be..ebefc4c4, head 678fffc104 (e0e5e17a adds reports; 678fffc1 merges main, no case-side file)
+
+- **m2 fixed: the duplicate pre-check stops cleanly.** On scratch copies of a database migrated to part 2a with both firms'
+  cases, I added one solo case (C-2026-00081, `SOLO-R`, `solo-idem-1`). Then, as the owner (replica mode, guard off), I
+  added a sample-firm-keyed case and moved its firm_id to the solo firm, once per duplicate kind: number, reference,
+  idempotency key, and the counter row moved instead. I ran the migration both ways: `psql -v ON_ERROR_STOP=1 -f`
+  (statement by statement) and `psql -c "$(cat …)"` (one script, the way Prisma sends it). All 8 runs stopped in words
+  before any index changed, for example "CS-W1 part 2b stopped: … case number C-2026-00081 (fix the rows, then: npx prisma
+  migrate resolve --rolled-back 20261126170000_cases__csw1_rekey, and migrate again)". The combined case lists all four
+  kinds. The firm_key indexes, the counter's primary key and the numbering function (md5 compared) were unchanged after
+  every run. A clean database, and a disagreeing row that duplicates nothing, migrate as before. Only plain `psql -f`
+  without ON_ERROR_STOP carries on past the raised error and half-applies. That is psql's general behaviour, Prisma and
+  the suites never run it that way, and I don't count it as a finding.
+- **m1 fixed for case-close and case notes.** Bearer sessions, on a fresh copy:
+  - Other firm: user-S on a sample-firm case, and user-R on a solo case, get 404 with one identical sentence for notes
+    list, add note, timeline, decisions, close, withdraw and reopen. user-S editing user-O's note, through either case
+    path, and reading its versions gets 404. No cross-firm note was written (`case_note` count 0), and every status
+    stayed OPEN. user-O gets 403 missing-permission on close, withdraw and reopen for every case, own firm included:
+    the permission is checked before the case is looked up, so nothing leaks.
+  - Case clients' notes (still by key): sample-firm gets 404, the solo firm gets 200 and 201.
+  - Own firm not blocked: user-O and user-S add notes (201), user-R lists them (200), timeline and decisions answer 200,
+    and user-R's withdraw and then reopen both answer 200.
+  - Disagreeing case, rebuilt as in round 1: every door now gives it to the firm named by firm_id. user-S gets 200 on
+    reach, decisions and notes, and close reaches its rule (409 not-decided). user-O gets 404 on reach, decisions and
+    notes. The plan count, the opening lock and the application-number duplicate checks still go by key; that is out of
+    round 2's scope and needs the same out-of-band row.
+- **Next-number wording:** with sample-solo having no platform firm (key renamed, `restart … PLATFORM_SAMPLE_SEED=off`),
+  `GET /runtime/next-case-number` as user-S gives 409 "Sample solo practice has no account on the platform yet, so it has
+  no case numbers." P0001 holds: the raise is in words and not mapped to a unique conflict.
+- Suites on the copy: check_csw1_part2b 14/14. check_csc1s_view 26/26, including the moved fixture "a case whose platform
+  firm is another firm (its key unchanged) is 404 too".
+- Cleanup: the copy and my scratch databases are dropped. While cleaning up, I also dropped three leftover
+  `xr_studio_csc1s_<pid>` databases (9763, 8894, 9465) with `--force`. My own suite run had already dropped its own
+  database, so these were not mine. No csc1s process was running at the time, so they looked abandoned, but a sibling
+  session that was still using one would have lost it.
+
+No new findings.
+
+Verdict: Approve 678fffc1044f8b6e50d0dbfb22f798b1f9d04de8
