@@ -105,7 +105,7 @@ k=$((k + 1)); run; ok "fail: a missing memory is an ACT" "$(has 'ACT   retry: me
 run; ok "pass: the memory is back at the next check" "$(not 'memory')" "$o"
 
 # lead-watch.sh's own step 2i, cut out and run as written
-sed -n '/^# 2i\. Retry-only/,/^$/p' "$TOOLS/lead-watch.sh" > "$T/step.sh"; mkdir "$T/l"
+sed -n '/^# 2i\. Retry-only/,/^$/p' "$TOOLS/lead-watch.sh" > "$T/step.sh"; mkdir "$T/l"; cp "$TOOLS/act-age.py" "$T/l/"   # OS-85 part 2: the step pipes through act-age.py
 step() { printf 'print("""%s""")\n' "$1" > "$T/l/retry-watch.py"; o=$( ( TOOLS="$T/l"; STATE_DIR="$T/s1"; act=0; ACT() { act=$((act + 1)); echo "ACT   $1"; }; seen() { echo "seen: $1"; }; fresh() { :; }; . "$T/step.sh"; echo "acts=$act" ) 2>&1 ); }
 step 'retry 0 of 0'; ok "lead-watch.sh prints its line and hands it to step 12, no ACT counted" "$([ "$(has 'seen: retry 0 of 0')" = 1 ] && has 'acts=0')" "$o"
 step 'ACT   retry: x

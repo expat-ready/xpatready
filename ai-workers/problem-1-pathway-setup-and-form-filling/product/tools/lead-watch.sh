@@ -159,7 +159,8 @@ fresh "flow-buffer.py: design/board-lead-a-*.md and board-lead-b-*.md (newest by
 sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&1); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
 fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
 # 2i. Retry-only passes (A348, founder 24 Nov): one ACT per suite that passed only on retry until a PR names its fix.
-rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1); echo "$rw"; act=$((act + $(grep -c '^ACT' <<<"$rw"))); seen "$rw"
+# OS-85 part 2: an ACT about a pass over 72 h old goes to a weekly stale line (act-age.py); a new pass shows at once.
+rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1 | python3 -I "$TOOLS/act-age.py" --name retry --state "$STATE_DIR"); echo "$rw"; act=$((act + $(grep -c '^ACT' <<<"$rw"))); seen "$rw"
 grep -qE '^(retry |ACT   retry)' <<<"$rw" || ACT "retry: retry-watch.py did not run ($(head -1 <<<"$rw"))"
 fresh "retry-watch.py: CI's retry comments and the PRs naming a fix (gh.sh), what earlier checks found in $STATE_DIR"
 
@@ -313,7 +314,7 @@ cf=$(python3 -I "$TOOLS/conformance-check.py" --quiet 2>&1); nf=$?
 if [ "$nf" -gt 100 ] || ! grep -q '^enforced:' <<<"$cf"; then ACT "set-up check did not run (exit $nf): $(tail -1 <<<"$cf")"
 else while IFS= read -r l; do ACT "set-up: ${l#FAIL }"; done < <(grep '^FAIL' <<<"$cf"); say "set-up $(tail -1 <<<"$cf")"; fi
 fresh "conformance-check.py: origin/main against design/engineering-approved-setup.json"
-od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
+od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1 | python3 -I "$TOOLS/act-age.py" --name outside --state "$STATE_DIR"); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
 seen "$od"
 fresh "outside-deps-watch.py"
 
