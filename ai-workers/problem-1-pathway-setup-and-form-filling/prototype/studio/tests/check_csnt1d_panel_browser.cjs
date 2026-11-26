@@ -241,6 +241,24 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
       ok(`DP9 fail at ${width}: another firm's Owner sees "This case is not in the firm you are signed in to." and no note`, /This case is not in the firm you are signed in to, or your role cannot open it\./.test(await panel.innerText()) && (await panel.locator("[data-note]").count()) === 0);
       await ctx.close();
     }
+    // Round 4 (pr-suites: c95 BIC-14, A24-3 m3): the panel puts the case page's tips below the fold. Focusing one scrolls
+    // the page; the shared Tip keeps it open through that scroll, and Escape still closes it at once (WCAG 1.4.13).
+    {
+      const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
+      const p = await ctx.newPage();
+      await p.goto(BASE); await p.evaluate(() => localStorage.setItem("xr-actor", "user-O"));
+      await p.goto(`${BASE}/cases/${A}`);
+      const tip = p.locator("[data-applicant-tip]").first();
+      await tip.waitFor({ timeout: 60000 });
+      const below = await tip.evaluate((e) => e.getBoundingClientRect().top > window.innerHeight);
+      await tip.focus();
+      const shown = await p.getByRole("tooltip").first().waitFor({ timeout: 5000 }).then(() => true, () => false);
+      ok("round 4 pass: a tip below the panel (below the fold) opens on keyboard focus and stays open through the scroll", below && shown, { below, shown });
+      await p.keyboard.press("Escape");
+      const gone = await p.getByRole("tooltip").first().waitFor({ state: "hidden", timeout: 1000 }).then(() => true, () => false);
+      ok("round 4 fail: Escape closes that tip at once, even within 600 ms of the focus", gone && await tip.evaluate((e) => e === document.activeElement));
+      await ctx.close();
+    }
     ok("no page error during the walk", errors.length === 0, errors.slice(0, 5));
   } finally {
     putBack();
