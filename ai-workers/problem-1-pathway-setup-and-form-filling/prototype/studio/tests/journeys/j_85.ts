@@ -184,8 +184,11 @@ try {
     const at = Date.parse(`${day}T15:00:00Z`), noAudit = { audit: async () => undefined };   // 10:00 Toronto; approve and cancel write the audit lines, a run writes steps
     const clock = new (class extends PlatformClock { override now() { return at; } })();
     const registry = new regM.ErasureRegistry(); for (const e of erasers) registry.register(e);
-    const svc = new erM.Erasure(db, noAudit, clock, new swM.PlatSwitches(db, noAudit), registry, new PgLegalHolds());
-    try { return { result: await svc.run(), error: "" }; } catch (e) { return { result: null, error: String(e).slice(0, 200) }; }
+    // Review M1 on #3713: the job runs as the app does, on the walled client (xr_app in each order's firm), never the owner's.
+    const { walledPool } = await import("../../api/src/platform/firm-scope.ts");
+    const appDb = new PrismaClient({ adapter: new PrismaPg(walledPool(`postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`), { disposeExternalPool: true }) });
+    const svc = new erM.Erasure(appDb, noAudit, clock, new swM.PlatSwitches(appDb, noAudit), registry, new PgLegalHolds());
+    try { return { result: await svc.run(), error: "" }; } catch (e) { return { result: null, error: String(e).slice(0, 200) }; } finally { await appDb.$disconnect().catch(() => undefined); }
   };
   let standInCalls = 0;
   const day7 = await runOn(plus7, [{ module: "qa.stand-in", erase: async () => { standInCalls++; return { outcome: "NOTHING", note: "J-85 stand-in eraser" }; } }]);
@@ -203,10 +206,10 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- present only once PF-21d part 2b-1 merges
   const foM: any = await import("../../api/src/front-office/erase/eraser.ts").catch(() => null);
   const day7b = await runOn(plus7, foM ? [foM.frontOfficeEraser] : []);
-  const other2 = sql(`select coalesce((select given_names from fo_person where id = '${otherPerson}'), 'gone')`);
+  const other2 = sql(`select coalesce((select family_name from fo_person where id = '${otherPerson}'), 'gone')`);   // review M1: the name is replaced, the given names emptied
   ok("J-85 W5 (part missing: PF-21d part 2, the platform and front-office erasers): an approved DELETION for a person with no hold is carried out on day 7: the request Completed and the person's record anonymised in place",
-    approved2.status === 200 && !!day7b.result && day7b.result.erased.includes(del2Id) && sql(`select status::text from plat_data_request where id = '${del2Id ?? "00000000-0000-0000-0000-000000000000"}'`) === "COMPLETED" && other2 !== "gone" && other2 !== `Other${run}`,   // the row stays, its name replaced (reviewer m3, #3533)
-    { approved: approved2.status, error: day7b.error, erased: day7b.result?.erased, skipped: day7b.result?.skipped, givenNames: other2 });
+    approved2.status === 200 && !!day7b.result && day7b.result.erased.includes(del2Id) && sql(`select status::text from plat_data_request where id = '${del2Id ?? "00000000-0000-0000-0000-000000000000"}'`) === "COMPLETED" && other2 !== "gone" && /^Erased person \d+$/.test(other2),   // the row stays, its name replaced (reviewer m3, #3533)
+    { approved: approved2.status, error: day7b.error, erased: day7b.result?.erased, skipped: day7b.result?.skipped, familyName: other2 });
 
   // ---------------------------------------------------------------------------------------------- W6 roles
   const firmReg = await j("GET", "/api/system/register/requests", undefined, firmTok), firmHold = await j("POST", "/api/system/register/holds", { firmId, scope: { kind: "FIRM" }, reason: "x" }, firmTok);
