@@ -62,4 +62,38 @@ How I tested: scratch scripts `/tmp/claude-0/pf22a-break/break{,2,3}.mts`, model
 - **Audit:** the summary never holds a value. Values sit in `detail` as `<key>_before/_after`, the platform's R1.8 shape, not a leak.
 - **Budgets:** 50 fields × 400 records (20,000 values): GET list 45–67 ms, PATCH 54–99 ms, reorder 78–161 ms, one record's values 12–16 ms.
 
-Verdict: Changes 614a425d9
+Round 1 verdict: Changes 614a425d9
+
+## Round 2 (diff `614a425d9..80ff11890`, head 80ff11890)
+
+How I tested: the same harness. I re-ran all round 1 scripts against the new head, then added `/tmp/claude-0/pf22a-break/break4.mts` and `break5.mts`. These register PF-31's `IfMatchVersion` as a global interceptor. All databases are dropped.
+
+**R2-M1 (Major, new): reordering fields deadlocks with value saves, and the save fails with a 500 after a 1-second stall.**
+- Cause: the m3 fix made `put()` lock every field of the kind with `SELECT … FOR SHARE` and no ORDER BY (`service.ts:269`). `change()` locks the moved field `FOR UPDATE` (`:173`) and then `place()` updates the *other* fields' positions (`:208`). So the PUT holds a share lock on field Y and waits for field X, while the PATCH holds X and waits to update Y. Postgres detects the deadlock (40P01) after `deadlock_timeout`. `dbRefusal` does not map 40P01, so the answer is a 500.
+- Repro (`break5.mts`): 20 TEXT fields on fo_company; in each round, `PATCH /<field> {position: 0|19}` and `PUT /values/fo_company/<id>` together. Result: **PUT 500 in 23 of 40 rounds**, logged as "Raw query failed. Code: 40P01 deadlock detected".
+- With two PUTs and two reorders per round (`break4.mts`), 50 of 160 calls were 500, and 40 rounds took 29.7 s.
+- Any admin dragging fields while staff save values will hit this. Expected: no deadlock, or at least a 409 the client can retry.
+- One way to fix it: lock in a single order. For example, `put()` takes the kind's advisory lock in shared mode (`pg_advisory_xact_lock_shared`), while `change()` and `add()` keep it exclusive. Or `change()` locks all of the kind's fields `FOR UPDATE ORDER BY id` and `put()` uses `FOR SHARE ORDER BY id`.
+
+**R2-m1 (Minor, M2 not fully fixed): any character outside the BMP (emoji, CJK Extension B) can still break the audit cap, giving a 500.**
+- Cause: `audited()` counts code points (`[...v].length > 4000`, cut to 3,990 code points; `service.ts:59`), but `AuditValues`' `z.string().max(4000)` counts UTF-16 units.
+- Repro: LONG_TEXT `"😀".repeat(2001)` gives 500. So do `"x".repeat(3950)+"😀".repeat(30)` (3,980 code points, so never cut) and `"𠀀".repeat(4500)`.
+- ASCII 4,001 and 5,000 now save (200). Fix: measure and cut in UTF-16 units, without splitting a pair.
+
+**R2-n1 (Minor): the `__proto__` refusal answers with an empty `fields`.**
+`fieldsError({ __proto__: "…" })` (`service.ts:258`) is an object literal, so `__proto__` sets the prototype (ignored for a string) and adds no key. The answer is 422 with `fields: {}` and detail "0 fields need a change:  Nothing was saved." Fix: use `Object.defineProperty`, or build the object with a computed `["__proto__"]` key.
+
+**Round 1 fixes re-checked**
+- **M1 held:** all eight secret-looking labels ("Educational credential assessment", "Salt Lake office", …) now save with 200. Audit keys are `cf_<hex>`, and `detail.fieldIds` holds no values.
+- **M2:** held for ASCII and BMP text. The residue above remains.
+- **m1 held:** NUL or lone surrogates in a value, label, option or help text are now 422 at the named field. **m2 held:** `0000-01-01` gives 422.
+- **m3 held:** archive-without-confirm vs first value gave 0 confirm bypasses in 40 jittered rounds (`200/409 FIELD_IN_USE` or `422/200`). Type change and option removal vs PUT now give a clean 422, and no row fails `pf_custom_value_ok`.
+- **m4 held:** an Agent's list has no counts; managers still get them.
+- **m5 held:** nested `__proto__` gives 422 (wording issue above); 101 keys give 422 "At most 100 fields"; 9,000 keys give a 260-byte 422.
+- **m7 held:** a position change on an archived field writes no audit line. **m6:** not changed, as agreed.
+
+**What held in the new code**
+- **Raw `::jsonb` writes:** hostile choices (`a"b\c`, `'); drop table x; --`, `$1`, `::jsonb`) are stored exactly. **Numbers:** 0.1+0.2 → 0.30000000000000004, 123456789012345.67, 1e-7 and 1/3 all come back identical. 2^52+0.5 is refused (422).
+- **Field version:** a version read before another field's reorder gives 409 STALE_VERSION with `current`; of two PATCHes on one version, one gets 200 and the other 409. If-Match: a fresh tag gives 200 with an ETag, replaying it gives 409. Walls, own-vs-all and roles unchanged.
+
+Verdict: Changes 80ff11890a475870eb49be1aedb5ab78e91c8856

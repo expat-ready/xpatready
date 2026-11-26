@@ -230,6 +230,18 @@ try {
   const proto = await call("PUT", path, agent.token, { version: nums.body.version, values: JSON.parse('{"__proto__": "x"}') });
   ok("PF-22a C7 pass (round 3: extra_float_digits): 0.1+0.2 is stored and read back exactly", numField.status === 201 && nums.status === 200 && nums.body.values.ratio === 0.1 + 0.2, [numField.status, numField.body.key, nums.status, nums.body.values, sql(`select value::text from plat_custom_value where value::text like '0.3%'`)]);
   ok("PF-22a C7 fail (break m1, m2, m5): year 0000, a NUL and a __proto__ key are refused 422, never a 500 or a silent 200", zero.status === 422 && nul.status === 422 && proto.status === 422, [zero.status, nul.status, proto.status]);
+  const v4 = await call("GET", path, agent.token);
+  const emoji = await call("PUT", path, agent.token, { version: v4.body.version, values: { case_notes: "😀".repeat(2001) } });
+  ok("PF-22a C7 pass (break R2-m1): 2,001 emoji (4,002 UTF-16 units) save; the audit line is cut", emoji.status === 200, emoji.status);
+  ok("PF-22a C7 fail (break R2-n1): the __proto__ refusal names it", proto.body.fields?.["__proto__"] === "This is not a field.", proto.body);
+  const order = (await call("GET", "?kind=fo_prospect", owner.token)).body.fields as { id: string }[];
+  const statuses: number[] = [];
+  for (let i = 0; i < 12; i++) {
+    const cur = await call("GET", path, agent.token);
+    const [moved, saved] = await Promise.all([call("PATCH", `/${order[i % order.length].id}`, owner.token, { position: (i * 3) % order.length }), call("PUT", path, agent.token, { version: cur.body.version, values: { case_notes: `round ${i}` } })]);
+    statuses.push(moved.status, saved.status);
+  }
+  ok("PF-22a C7 pass (break R2-M1): a reorder and a save together never deadlock (no 500 in 12 rounds)", statuses.every((x) => x === 200), statuses);
   // review m2: the person seen through a prospect the Agent owns, though the lead is another Agent's
   const lead2 = await leads.add(other.ctx as never, { requestId: randomUUID(), givenNames: "Bo", familyName: "Sample", email: "bo.pf22a@example.com", source: "Phone call" }) as { id: string; person: { id: string } };
   const p2 = (await pros.engage(other.ctx as never, lead2.id)) as { id: string };
