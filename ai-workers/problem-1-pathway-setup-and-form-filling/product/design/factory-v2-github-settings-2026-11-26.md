@@ -4,6 +4,23 @@ Decisions A409 and A410 (use what Claude Code and GitHub ship; build no framewor
 
 Sources: code.claude.com/docs/en/approvals-setup, approvals-policy, approvals-github-rules, code-review-setup, code-review-customize, pr-steward-setup (read 26 Nov 2026); `.mergify.yml` and `.github/workflows/*.yml` on origin/main (065fe8c28); the ruleset as recorded in `design/org-move-checklist-enterprise-2026-11-17.md`. **The rulesets could not be read today** (the sandbox refused the API call): read them in the browser at switch time (https://github.com/expat-ready/xpatready/settings/rules) before step 3 and note what you see here.
 
+## 0. Security basics, first (Factory v3 review)
+
+The repository is **public**, and the Mac's self-hosted runners take jobs from it: `queue-gate.yml` runs on `xr-mac` (`runs-on: ${{ fromJSON(vars.GATE_RUNNER || '["self-hosted", "macOS", "xr-mac"]') }}`, line 51) and `demo-update.yml` on `xr-mac-light` (`runs-on: [self-hosted, macOS, xr-mac-light]`, line 16; the brief named xr-mac for both, the file says xr-mac-light, so step 2 covers both runners). `nightly.yml` mentions xr-mac only in a comment and runs on `ubuntu-latest`. GitHub's advice is that self-hosted runners should not take jobs from a public repository's untrusted code. Do these before anything else:
+
+1. **Fork pull request workflows:** Settings → Actions → General → "Approval for running fork pull request workflows from contributors" → **Require approval for all outside collaborators**.
+2. **Runner group:** Org → Settings → Actions → Runner groups → new group (for example "mac-runners") holding `xr-mac` and `xr-mac-light`. Repository access: `xpatready` only. Workflow access: **selected workflows only**, `expat-ready/xpatready/.github/workflows/queue-gate.yml@refs/heads/main` and `expat-ready/xpatready/.github/workflows/demo-update.yml@refs/heads/main`. Any other workflow, or any branch's copy of these, then cannot reach the Mac. Before you move the runners, check that both runners are registered at org level: a runner registered on the repository alone has to be registered again under the org first (read in the browser at switch time).
+3. **Fallback** (if the group cannot be set up, or the Mac is down): repository variable **`GATE_RUNNER` = `["ubuntu-latest"]`** (Settings → Secrets and variables → Actions → Variables). `queue-gate.yml` then runs on GitHub's hosted machines with no PR. `demo-update.yml` has no such switch: if its runner must go, disable that workflow (Actions → demo-update → Disable workflow) until a PR moves it.
+
+Four swaps from the Factory v3 review: set them, or confirm they are on (several may already be on: see section 2 and read in the browser):
+
+| Swap | Where | Value |
+|---|---|---|
+| Lock main: no direct pushes | ruleset on `main` ("main: PR + ci required") | "Require a pull request before merging" **on**; the bypass list holds only what must merge (Mergify), never the Claude app (1236702) |
+| Block force pushes | ruleset on `main` ("main: no force push or delete (A)") | "Block force pushes" and "Restrict deletions" **on** |
+| `ci` as a required status check | ruleset on `main` | "Require status checks to pass" with **`ci`**, source GitHub Actions |
+| Dependabot alerts | Settings → Code security | **Dependabot alerts on** (the push on 26 Nov reported 30 open vulnerabilities on main: 9 high, 18 moderate, 3 low) |
+
 ## 1. Open question (Factory v3 review): approvals on main
 
 Builders and the tech lead all push as the same GitHub account, and GitHub never counts an author's approval of their own pull request. So "require 1 approval" would block every pull request until a second account approves. **Nothing in this switch depends on the answer:** no approver set-up, no ruleset step that assumes one. Three things wait for it:
@@ -65,6 +82,7 @@ Before it can go live: Claude Approvals is enforced (in observe mode its check d
 ## 6. Order of the switch
 
 1. The founder says yes. Read both rulesets and the bypass list in the browser; write what you see in section 2.
+   Then section 0 (security basics), before any other step.
 2. The founder's clicks from `factory-v2-step1-founder-links-2026-11-26.md` steps 1–6, with Review runs set to **Manual**.
 3. This pull request merges through Mergify as today (it touches `.github/` and `.claude/`, so it keeps the tech lead's read). From then on `.claude/approvals.yml` (observe) and `REVIEW.md` are read from main.
 4. Code Review → Review runs: **"Once after PR creation"**.
