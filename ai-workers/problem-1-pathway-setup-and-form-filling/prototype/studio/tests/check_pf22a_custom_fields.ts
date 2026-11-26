@@ -210,7 +210,7 @@ try {
     cred.status === 201 && credSave.status === 200 && credSave.body.values.credential_assessment === true && credSave.body.values.case_notes.length === 4500
       && sql(`select count(*) from audit_event where action = 'custom_field.values_set' and detail::text like '%credential%'`) === "0" && sql(`select count(*) from audit_event where action = 'custom_field.values_set' and detail::text like '%(cut)%'`) === "1", credSave.body);
   const staleBody = await call("PUT", path, agent.token, { version: v1.body.version, values: { case_notes: "mine" } });
-  ok("PF-22a C7 fail (review M3): a stale save answers 409 with the values as they are now and the keys that differ", staleBody.status === 409 && staleBody.body.current?.values?.credential_assessment === true && staleBody.body.changed?.includes("case_notes"), staleBody.body);
+  ok("PF-22a C7 fail (review M3): a stale save answers 409 with the values as they are now and their version", staleBody.status === 409 && staleBody.body.current?.values?.credential_assessment === true && staleBody.body.current?.version !== v1.body.version, staleBody.body);
   const fv = (await call("GET", "?kind=fo_prospect", owner.token)).body.fields.find((f: { key: string }) => f.key === "case_notes");
   await call("PATCH", `/${notes.body.id}`, owner.token, { helpText: "First admin", version: fv.version });
   const fieldStale = await call("PATCH", `/${notes.body.id}`, owner.token, { helpText: "Second admin", version: fv.version });

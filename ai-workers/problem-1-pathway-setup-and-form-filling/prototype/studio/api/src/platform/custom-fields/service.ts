@@ -75,8 +75,6 @@ function dbRefusal(e: unknown): never {
   throw e;
 }
 
-const byKeyOf = (fields: PlatCustomField[]) => new Map(fields.map((f) => [f.key, f]));
-
 export class CustomFieldsService {
   constructor(private readonly d: CustomFieldDeps) {}
 
@@ -272,7 +270,7 @@ export class CustomFieldsService {
         const rows = await tx.platCustomValue.findMany({ where: firmScope(firmId, { entityKind: kind, entityId: id }) });
         if (this.version(rows) !== b.version) {
           const now = await this.read(tx, firmId, kind, id, true);
-          conflict("Someone changed these fields after you opened them. Their change is shown; save again to keep yours.", "STALE_VERSION", { current: now, changed: Object.keys(b.values).filter((k) => byKeyOf(fields).has(k) && JSON.stringify(now.values[k] ?? null) !== JSON.stringify(b.values[k] ?? null)) });
+          conflict("Someone changed these fields after you opened them. Their change is shown; save again to keep yours.", "STALE_VERSION", { current: now });   // the screen compares with current (the house shape; review r2-1)
         }
         const byKey = new Map(fields.map((f) => [f.key, f]));
         const errors: Record<string, string> = {}, next = new Map<string, Value | null>();

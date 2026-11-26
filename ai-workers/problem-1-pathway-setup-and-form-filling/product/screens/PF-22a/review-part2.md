@@ -58,3 +58,56 @@ Details: `journey-test-reviewer-part2-2026-11-26.md`. Task ½ (M1, M2) · next s
 * No screen, so no walk, axe or widths. D17 and D20 stay with the founder. M6 "required" is still a founder question: the build follows the recommended "refuse on Save fields only".
 
 Reviewer: Changes 614a425d935902897d5c31e343d664384055f289
+
+## Round 2 (diff-only): `614a425d9..80ff11890a475870eb49be1aedb5ab78e91c8856`
+**Verdict at 80ff11890: Ship after fixes (Changes).** Each round-1 item is fixed, but the fixes opened two new 500s (R2-M1, R2-M2). The head moved to **71ce172e3** while I was checking. That commit fixes both, and I re-checked it (end of this section).
+
+**Round-1 items at 80ff11890**
+* **M1: fixed.** Before/after are keyed `cf_<32 hex>`. Hex has none of the letters `SECRET_FIELD` needs (s, r, t, o, h, l, …), so no field id can trip it. Detail lists `fieldIds`. The suite's C7 test saves "Credential assessment" (200).
+* **M2: not fixed for all text.** See R2-M1.
+* **M3: fixed.**
+  * The 409 carries `current`. With PF-31's `IfMatchVersion` added to my probe app as an app-wide interceptor, a PUT with only If-Match gives 200 plus an ETag, and a stale If-Match gives 409 `STALE_VERSION`.
+  * A field PATCH takes `version` and answers a stale one with 409 and `current` (C7).
+  * One weakness in `changed`: see r2-1.
+* **m1 to m6: fixed.**
+  * m1: counts are null without the key.
+  * m2: three of the four round-1 mutations now fail the suite every time. The fourth (the record lock) is timing-dependent: see r2-3.
+  * m3: the wording is fixed.
+  * m4: no audit line for a place on an archived field.
+  * m5: the fix brought in R2-M2.
+  * m6: the hash includes the value.
+* **Breaker items: sound.**
+  * NUL, a lone surrogate and year 0000 are refused with 422.
+  * `__proto__` in `values` is refused with 422.
+  * A save holds at most 100 keys.
+  * Values are now written as raw `::jsonb` (Prisma's Json write rounded 0.1+0.2). That keeps the wall: the suite and the walls hold.
+
+**R2-M1 (Major, Must; fixed at 71ce172e3): long text with emoji is still a 500.**
+* `audited` at 80ff11890 counts code points (`[...v].length > 4000`, cut at 3,990 code points), but `AuditValues` counts UTF-16 units (`z.string().max(4000)`).
+* Probe: a LONG_TEXT of 2,100 emoji (2,100 code points, 4,200 units) is not cut and returns **500**. 5,000 emoji, cut to 3,990 code points (7,980 units), also returns 500.
+
+**R2-M2 (Major, Must; fixed at 71ce172e3): reordering while Agents save causes deadlocks (500).**
+* m5's `select … for share` on every field of the kind (`service.ts:269` at 80ff11890) takes field rows in scan order. `place()` updates rows in position order while holding the moved field FOR UPDATE.
+* Probe: 25 rounds of 2 reorder PATCHes plus 6 PUTs on different prospects gave **20 × 500**. Postgres reported `40P01 deadlock detected` at `service.ts:269` and at the raw value write (`:298`).
+* With one reorder per round: 0 in 25 rounds. The window is real but needs overlap.
+
+**Minors (Should), open at both heads**
+* **r2-1: `changed` names the caller's own edits, not what the other person changed.** It lists keys the caller sent whose current value differs from the value sent. Probe Q3b: the Owner changes `ratio`; the Agent, on the old version, sends only `case_notes`. The 409 says `changed: ["case_notes"]` and never names `ratio`. A screen that highlights `changed` would point at the wrong field.
+  Fix: drop `changed` and let the screen diff its loaded values against `current` (the house shape is `current` only, `people/edit.ts:80`). Or rename it to what it is.
+* **r2-2: the firm's Activity log will show `cf_41154cae…: 0.30000000000000004 → 7`.** `changesOf` (`firm-read/render.ts:12`) prints the key as it is, and P-687 shows these lines in full. An id where the field's name should be fails D10 ("no hashes, IDs").
+  Fix: have AUD-4's render map `cf_<id>` to the field's label. That needs AUD-4's owner, so record it in the PR as a known gap with a row. Don't go back to the key.
+* **r2-3: the two race tests depend on timing.**
+  * With the record lock removed (on 71ce172e3), the parallel-PUT test passed one run in three (`[200,200]` was caught twice).
+  * The new 12-round reorder test sends one PATCH with one PUT. My one-reorder pattern found no deadlock on 80ff11890 in 25 rounds, so this test would probably not have caught R2-M2.
+  * Fix: force the interleaving. For example, hold the kind or record lock open in a second session (`psql`, `pg_advisory_xact_lock`), start the request, then release.
+
+**71ce172e3 (checked after the head moved, `80ff11890..71ce172e3`)**
+* `put` now takes `pg_advisory_xact_lock_shared` on the kind key that `add` and `change` hold exclusively. Every writer takes locks in one order (record, then kind) and touches field rows only under that lock, so there is no cycle. My R2-M2 probe: 200/200 responses were 200, no deadlock.
+* `audited` cuts by UTF-16 units and never leaves half a surrogate pair. Probe: 2,100 and 5,000 emoji both give 200.
+* The `__proto__` error now names its key.
+* Suite at 71ce172e3: **50/50**.
+* No new Blocker or Major in that delta. Only r2-1 to r2-3 stay open.
+
+**Journey score, round 2:** 6.5/8 = 8.1 at 80ff11890 (task ½ and feedback ½ for the two 500s; trust ½ for r2-2). 7/8 = 8.75 at 71ce172e3. The pass needs 8; with r2-2 open, trust stays at ½.
+
+Reviewer: Changes 80ff11890a475870eb49be1aedb5ab78e91c8856

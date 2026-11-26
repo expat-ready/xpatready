@@ -40,3 +40,6 @@ Duplicate label (any case) gives 422. The 51st field gives 422. Parallel saves a
 3. m3: the wording.
 
 Not tested: a real screen reader, an intended user's unaided walk (D17 and D20 stay with the founder), and the full app's If-Match interceptor.
+
+## Round 2 (80ff11890, then 71ce172e3)
+Journeys 3 and 4 now hold for plain text. At 80ff11890, a note of 2,100 emoji got 500, and a reorder during saves gave 20 × 500 in 200 calls (deadlock). Both hold at 71ce172e3. Journey 5: the 409 now carries `current`, but `changed` names the wrong keys (review r2-1). Score: 6.5/8 = 8.1 at 80ff11890; 7/8 = 8.75 at 71ce172e3. Trust stays at ½: the Activity log shows `cf_<id>` where the field's name should be (r2-2).
