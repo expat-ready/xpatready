@@ -561,11 +561,11 @@ oldrun() {  # oldrun <head> <run conclusion> <parts conclusion> [plan annotation
   echo '{"check_runs": []}' > "$T/fx/suites-$1.json"
   jq -n --arg h "${SR_HEAD:-$1}" --arg co "$2" --argjson n "${SR_PRS:-[7]}" --arg b "${SR_BASE:-main}" --arg st "${SR_STATUS:-completed}" '{workflow_runs: [{id: 99,
     path: ".github/workflows/pr-suites.yml", event: "pull_request", head_sha: $h, status: $st, conclusion: (if $co == "" then null else $co end),
-    run_started_at: "2026-11-25T16:48:17Z", pull_requests: ($n | map({number: ., base: {ref: $b}}))}]}' > "$T/fx/suiteruns.json"
+    run_started_at: "2026-11-25T16:48:17Z", created_at: (env.SR_CREATED // "2026-11-25T16:48:15Z"), pull_requests: ($n | map({number: ., base: {ref: $b}}))}]}' > "$T/fx/suiteruns.json"
   jq -n --arg pc "$3" --arg x "${5:-}" '{jobs: ([{id: 990, name: "plan", conclusion: "success"},
     {id: 991, name: (if $pc == "skipped" then "parts" else "parts (1)" end), conclusion: $pc}]
     + (if $x == "" then [] else [{id: 992, name: "pr-suites", conclusion: $x}] end))}' > "$T/fx/jobs-99.json"
-  jq -n --arg t "${4:-}" 'if $t == "" then [] else [{title: $t, annotation_level: "warning"}] end' > "$T/fx/annot-990.json"; }
+  jq -n --arg t "${4:-}" --arg lv "${SR_LEVEL:-warning}" 'if $t == "" then [] elif $t == "-" then [{title: "", annotation_level: $lv}] else [{title: $t, annotation_level: $lv}] end' > "$T/fx/annot-990.json"; }
 TOOLF=ai-workers/x/product/tools/records-pr.sh
 prj 7 $HEAD1 false "review: approved"; files 7 "$TOOLF"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; NOSUITES=1 cirun $HEAD1 completed success 2026-11-15T13:00:00Z
 oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
@@ -584,6 +584,20 @@ for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "
   ( export "${c%%:*}"; oldrun $HEAD1 success skipped ); SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
   ok "OS-82: ${c#*:}: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 done
+oldrun $HEAD1 success skipped -; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): the old plan step died before its warning (an untitled warning): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=failure oldrun $HEAD1 success skipped -; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): a failure annotation on plan (\"Process completed with exit code 1\"): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=notice oldrun $HEAD1 success skipped "pr-suites (report only)"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a pr-suites-titled annotation at any level: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=notice oldrun $HEAD1 success skipped "Some notice"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a notice annotation on plan is no failure: kept" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF" "$S/api/src/form.ts"; oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): the PR changes app code (change-kind.sh may have crashed into \"no suite\"): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF" "$S/README.md" "ai-workers/x/product/STATE.md"; oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a doc under prototype/ is not app code: kept" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF"; SR_CREATED=2026-11-25T19:16:45Z oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review m1): a run created when #3632 merged or later (it should have the job pr-suites): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 oldrun $HEAD1 success skipped; rm -f "$T/fx/jobs-99.json"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "OS-82: the run's jobs cannot be read: proof exit 2 (the guard fails closed, never a silent keep)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 oldrun $HEAD1 success skipped; rm -f "$T/fx/annot-990.json"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7

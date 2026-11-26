@@ -105,16 +105,22 @@ suites() {  # a commit → suites_state (success | missing | pending | <the conc
     [ "$st" = completed ] && suites_state=$co || suites_state=pending; suites_why="$suites_state on ${s:0:9} ($url)"; return   # the newest decides (breaker m2)
   done < <(jq -r '[.check_runs[]? | select(.app.slug == "github-actions")] | sort_by(.started_at) | reverse | .[] | [.status, (.conclusion // "none"), (.details_url // ""), (.check_suite.id // "" | tostring)] | @tsv' <<< "$c")
   [ "$suites_state" = missing ] && noparts "$s"; return 0; }
+NOPARTS_BEFORE="2026-11-25T19:16:45Z"   # #3632 (the job "pr-suites" in pr-suites.yml) merged into main
 noparts() {  # OS-82 (OS-PM 4, 26 Nov; #3693 lost its label at 05:43 UTC): a commit with no "pr-suites" check run → success
   # when its newest pr-suites.yml run is this PR's own pull_request run into main on this very commit, ended success, and
   # holds no job "pr-suites" (the run predates #3632, which added that job), its job "plan" succeeded with no "pr-suites"
   # warning (the old plan's only way to say it failed), and every job "parts" was skipped: the change reaches no suite.
   # A run with a job "pr-suites", parts that ran, a red or unfinished run, another PR or head: stays missing (fails closed).
+  # Review round 1 (#3810): the old plan could also end green with parts skipped when change-kind.sh crashed (it read
+  # "unknown" as no suite) or the step died before its warning, so: no changed app file (under prototype/ or packages/,
+  # not a doc), no warning or failure annotation of any title on plan, and only a run created before #3632 merged
+  # (NOPARTS_BEFORE): every later run has the job "pr-suites", so this fallback retires itself.
   local s=$1 rs rid j pid a
+  [ -z "$(grep -E '/prototype/|^packages/' <<< "${files:-}" | grep -viE "$DOCS"; true)" ] || return 0
   rs=$(api "$API/repos/$REPO/actions/workflows/pr-suites.yml/runs?event=pull_request&head_sha=$s&per_page=100") || { suites_state=unread; suites_why="its pr-suites runs cannot be read"; return; }
   rid=$(jq -r --arg s "$s" --argjson n "$PR" '[.workflow_runs[]? | select(((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml" and .event == "pull_request"
     and .head_sha == $s and any(.pull_requests[]?; .number == $n and .base.ref == "main"))] | sort_by(.run_started_at // .created_at // "") | last
-    | select(.status == "completed" and .conclusion == "success") | .id // empty' <<< "$rs" 2>/dev/null)
+    | select(.status == "completed" and .conclusion == "success" and (.created_at // "9") < $before) | .id // empty' --arg before "$NOPARTS_BEFORE" <<< "$rs" 2>/dev/null)
   [[ "$rid" =~ ^[0-9]+$ ]] || return 0
   j=$(api "$API/repos/$REPO/actions/runs/$rid/jobs?filter=latest&per_page=100") || { suites_state=unread; suites_why="the jobs of pr-suites run $rid cannot be read"; return; }
   pid=$(jq -r '[.jobs[]?] as $j | if ($j | any(.name == "pr-suites")) then empty
@@ -122,7 +128,7 @@ noparts() {  # OS-82 (OS-PM 4, 26 Nov; #3693 lost its label at 05:43 UTC): a com
     else ([$j[] | select(.name == "plan" and .conclusion == "success")] | first | .id // empty) end' <<< "$j" 2>/dev/null)
   [[ "$pid" =~ ^[0-9]+$ ]] || return 0
   a=$(api "$API/repos/$REPO/check-runs/$pid/annotations?per_page=100") || { suites_state=unread; suites_why="the plan of pr-suites run $rid cannot be read"; return; }
-  jq -e 'type == "array" and (any(.[]; (.title // "") | startswith("pr-suites")) | not)' <<< "$a" >/dev/null 2>&1 || return 0
+  jq -e 'type == "array" and (any(.[]; ((.title // "") | startswith("pr-suites")) or .annotation_level == "warning" or .annotation_level == "failure") | not)' <<< "$a" >/dev/null 2>&1 || return 0
   suites_state=success; suites_why="green on ${s:0:9}: its pr-suites run $rid picked no suite (job parts skipped, OS-82)"; }
 suitesok() {  # a commit → 0 when pr-suites is green on it, or SUITES_GATE=warn (suites_warn says why); 1 with why.
   # suites_retry=1 (eligible exits 3: the sweep keeps the label, tries again) only when this refusal is an unreadable or
