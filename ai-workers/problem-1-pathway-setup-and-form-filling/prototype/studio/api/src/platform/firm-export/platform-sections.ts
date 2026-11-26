@@ -41,10 +41,12 @@ export async function tableSection(tx: Tx, firmId: string, [key, title, model, o
   const m = (Prisma.dmmf.datamodel.models as readonly Model[]).find((x) => x.name === model);
   if (!m) throw new Error(`firm export: no model ${model}`);
   const fields = m.fields.filter((f) => (f.kind === "scalar" || f.kind === "enum") && !SECRET_FIELD.test(f.dbName ?? f.name) && !held?.includes(f.dbName ?? f.name));
-  // An amount in minor units beside its table's own `currency` column is a minor column naming it (AG-16-22, port check).
-  const hasCurrency = fields.some((f) => (f.dbName ?? f.name) === "currency");
-  const columns: ExportColumn[] = fields.map((f) => { const k = f.dbName ?? f.name;
-    return f.kind === "enum" ? { key: k, kind: "text" } : hasCurrency && /_minor$/.test(k) && NUMBER.has(f.type) ? { key: k, kind: "minor", currency: "currency" } : { key: k, kind: kindOf(f.type) }; });
+  // An amount in minor units (`<x>_minor` or `<x>_cents`) is a minor column naming its currency column: its own
+  // `<x>_currency` when the table has one, else the table's `currency` (AG-16-22, port check; round 2 Minor 3).
+  const names = new Set(fields.map((f) => f.dbName ?? f.name));
+  const currencyOf = (k: string) => { const x = k.replace(/_(minor|cents)$/, ""); return x === k ? undefined : names.has(`${x}_currency`) ? `${x}_currency` : names.has("currency") ? "currency" : undefined; };
+  const columns: ExportColumn[] = fields.map((f) => { const k = f.dbName ?? f.name, cur = NUMBER.has(f.type) ? currencyOf(k) : undefined;
+    return f.kind === "enum" ? { key: k, kind: "text" } : cur ? { key: k, kind: "minor", currency: cur } : { key: k, kind: kindOf(f.type) }; });
   const where = model === "PlatformFirm" ? { id: firmId } : { firmId };
   const rows = await (tx as unknown as Record<string, { findMany(a: unknown): Promise<Record<string, unknown>[]> }>)[model[0].toLowerCase() + model.slice(1)].findMany({ where, orderBy: m.fields.some((f) => f.name === "id") ? { id: "asc" } : (order ?? ["key"]).map((k) => ({ [k]: "asc" })) });
   return { key, title, columns, rows: rows.map((r) => fields.map((f, i) => valueOf(r[f.name], columns[i].kind === "minor" ? "number" : columns[i].kind))) };

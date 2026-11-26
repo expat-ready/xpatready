@@ -269,6 +269,11 @@ try {
   const signerHead = foCsv("front-office/signers.csv").split("\r\n")[0].split(",");
   ok("PF-11 DW9 fail (review Major 2): a signer's one-time code and session sha256 are not in the zip; the stored files' sha256 are", !signerHead.includes("code_sha256") && !signerHead.includes("session_sha256") && foCsv("front-office/signing-documents.csv").split("\r\n")[0].split(",").includes("sha256"), signerHead);
   ok("PF-11 DW9 pass: a fee row's amount is a minor column naming its own currency column (AG-16-22)", (await withFirm(FIRM_A, () => theClient.$transaction((tx) => frontOfficeSections(FIRM_A, tx)))).sections.find((x) => x.key === "retainer-fee-rows")!.columns.some((c) => c.key === "amount_minor" && c.kind === "minor" && c.currency === "currency"));
+  const foMinor = (await withFirm(FIRM_A, () => theClient.$transaction((tx) => frontOfficeSections(FIRM_A, tx)))).sections;
+  const colOf = (sec: string, key: string) => foMinor.find((x) => x.key === sec)!.columns.find((c) => c.key === key);
+  ok("PF-11 DW9 fail (round 2 Minor 3): an amount beside its own <x>_currency names that column; a _cents amount names the table's currency",
+    colOf("consultation-records", "quoted_fee_minor")?.kind === "minor" && colOf("consultation-records", "quoted_fee_minor")?.currency === "quoted_fee_currency" && colOf("prospects", "value_cents")?.kind === "minor" && colOf("prospects", "value_cents")?.currency === "currency",
+    [colOf("consultation-records", "quoted_fee_minor"), colOf("prospects", "value_cents")]);
   // Each kind of stored file, on a stand-in reader: one row per file-bearing table, every other read empty.
   const sha = (n: number) => String(n).repeat(64).slice(0, 64), fakeRows: Record<string, unknown[]> = {
     foSigningDocument: [{ id: "d1", fileKey: "k/doc.pdf", sha256: sha(1) }], foSigningEvidence: [{ requestId: "q1", sealedFileKey: "k/sealed.pdf", sealedSha256: sha(2), auditFileKey: "k/audit.pdf", auditSha256: sha(3) }],
@@ -283,8 +288,8 @@ try {
   const lostId = op(); sql(`insert into platform_firm_export (id, firm_id, operation_id, requested_by, updated_at) values ('${lostId}', '${FIRM_A}', '${lostId}', '${R}', now())`);
   await withFirm(FIRM_A, () => foSvc.build(lostId, FIRM_A));
   const lostZip = sql(`select state from platform_firm_export where id = '${lostId}'`) === "READY" ? new PizZip((await files.get(FIRM_A, sql(`select file_key from platform_firm_export where id = '${lostId}'`)))!.bytes) : null;
-  ok("PF-11 DW9 fail (review Major 4): one listed file missing from the store does not fail the download: READY, the README names it, the other files are there",
-    !!lostZip && new RegExp(`signing-document-${lostDoc}-agreement\\.pdf: listed, but missing`).test(lostZip.file("README.txt")!.asText()) && !!lostZip.file(`front-office/files/signing-document-${docA}-agreement.pdf`), sql(`select state || '|' || coalesce(failed_reason, '') from platform_firm_export where id = '${lostId}'`));
+  ok("PF-11 DW9 fail (review Major 4, round 2 Minor 1): one listed file missing from the store does not fail the download: READY, the README names it once as missing (not also as stored), the other files are there",
+    !!lostZip && new RegExp(`signing-document-${lostDoc}-agreement\\.pdf: listed, but missing`).test(lostZip.file("README.txt")!.asText()) && !new RegExp(`signing-document-${lostDoc}-agreement\\.pdf: a stored file`).test(lostZip.file("README.txt")!.asText()) && !!lostZip.file(`front-office/files/signing-document-${docA}-agreement.pdf`), sql(`select state || '|' || coalesce(failed_reason, '') from platform_firm_export where id = '${lostId}'`));
 } catch (e) { ok("no unexpected error", false, String((e as Error)?.stack ?? e)); } finally {
   await app?.close();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
