@@ -85,3 +85,27 @@ Reviewed **e21943b7a02bda29cd2a0444113383a567f157a0**. The diff is `case-access.
 **Verdict: Approve**: no open Blocker or Major. R2-m1, R2-m2 and breaker m1's title stay as Minors, with relative times and the bell's {name} left to the tech lead.
 
 Verdict: Approve e21943b7a02bda29cd2a0444113383a567f157a0
+
+## Round 3 (diff only, ece71d926..139a34847): reviewer, 26 Nov
+Reviewed **139a348470cca9a302af979c77905276a4046752**.
+* **e21943b7a..ece71d926** is records only: the round 2 review and journey notes.
+* **ece71d926..8bab60324** (BK-2) touches only `case-notes.tsx`, +5/-4:
+  * `<FoldArrow open>` on Mention (`open`), History (`history`) and the note's Show all / Show less (`long`). Show all also gains `aria-expanded={long}`.
+  * The timeline's `<details>` becomes `<FoldOut summary="Details">`. It is still native `<details>`/`<summary>`, so Tab, Enter and Space and the expanded/collapsed announcement are unchanged, and the content is unchanged.
+  * `FoldArrow` is `aria-hidden`, so Mention, History and Show all keep their accessible names, and every `data-*` hook the tests use is unchanged.
+  * This follows `components/fold-out.tsx`'s own rule: a button that opens a fold-out keeps its button and `aria-expanded` and shows the arrow. Correct, and nothing else changed.
+* **8bab60324..139a34847 is only the merge of #3649's head.**
+  * Second parent: 311001283, the code head approved in #3649's round 7. #3649 is merged on GitHub; its final head 9f256d850 is 311001283 plus one records commit.
+  * The diff over `case-notes.tsx`, `api/src/case-notes/` and `case-access.ts` is **empty**. It is also empty for this PR's other files: `cases.tsx`, `contracts/runtime.ts`, `check_csnt1d_panel_browser.cjs`, `j_76.ts`, `notifications/contract.ts`.
+  * `git diff 311001283 139a34847` lists only this PR's 28 files (802 lines added, 12 removed), so the merge resolved nothing by hand in this PR's files.
+
+**Ran at 139a34847:**
+* `check_bk2_fold_outs` **16/16**.
+* Web `tsc --noEmit`: 0 errors.
+* **Not re-run:** `check_csnt1d_panel_browser`, because the demo Postgres on :54329 is not answering (`pg_isready`: no response). `isolated.sh` refuses to start without it. I did not start the shared database, and I did not run prisma generate. The builder reports 54/54 at this head (`run-suites.sh --only`). The change is markup only, and the test's hooks are intact.
+
+**Issues:** none new. Open Minors as in round 2: R2-m1, R2-m2, the breaker's m1 notice title, the DP9 draft-kept test; relative times and the bell's {name} are for the tech lead. Scores and journey: unchanged (9/10, pass). The fold arrows add a cue and remove none.
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 139a348470cca9a302af979c77905276a4046752
