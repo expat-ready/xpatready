@@ -90,7 +90,9 @@ try {
     await ctx.addInitScript((x) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })); }, token);
     const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(e.message)); return p;
   };
-  const open = async (p: Page, search = "") => { await p.goto(`${BASE}/platform/reports${search}`); await p.locator("[data-report-card]").first().waitFor({ timeout: 60_000 }); await p.waitForLoadState("networkidle"); };
+  // ready when the first card is drawn and no card is still loading (its answer may come after the layout's)
+  const open = async (p: Page, search = "") => { await p.goto(`${BASE}/platform/reports${search}`); await p.locator("[data-report-card]").first().waitFor({ timeout: 60_000 }); await p.waitForLoadState("networkidle");
+    await p.waitForFunction(() => !document.querySelector("[data-report-state=loading]"), undefined, { timeout: 30_000 }); };
   const card = (p: Page, key: string) => p.locator(`[data-report-card="${key}"]`);
   const axe = async (p: Page) => (await new AxeBuilder({ page: p }).include("main").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   try {
