@@ -192,10 +192,18 @@ try {
   ok(`PF-4bs DW3 fail (review M2 scenario C, break m2): 20 parallel wrong codes on one attempt with a 50 ms provider — at most ${SI.LIMITS.codesPerAttempt} reach it`, codesAsked <= SI.LIMITS.codesPerAttempt && par.every((r) => r.status === 401), { codesAsked, statuses: par.map((r) => r.status).join() });
   // The limiter's memory (review m1, break m5).
   const tries = new SI.Tries(2, 1000, 3);
-  tries.take("victim", 0); tries.take("victim", 0); tries.take("a", 0); const full = tries.take("b", 0), floodIn = tries.take("c", 1), stillBlocked = tries.over("victim", 1);
-  const sizeLater = (tries.over("victim", 5000), tries.over("a", 5000), tries.size);
-  ok("PF-4bs DW3 pass (review m1): at the cap a new key is refused rather than evicting a blocked one; keys with no try left in the window are dropped",
-    full && floodIn === false && stillBlocked && sizeLater <= 1, { full, floodIn, stillBlocked, sizeLater });
+  tries.take("victim", 0); tries.take("victim", 0); tries.take("a", 0); tries.take("b", 0);
+  const refusedAgain = tries.take("victim", 1), newcomer = tries.take("c", 2);   // the victim, tried again, moves to the back; "a" is the oldest
+  ok("PF-4bs DW3 pass (break R2-M1, review m1): at the cap the key tried longest ago goes, so a newcomer is counted (never refused because the map is full), and a blocked key still being tried stays blocked",
+    !refusedAgain && newcomer && tries.over("victim", 3) && !tries.over("a", 3) && tries.size === 3, { refusedAgain, newcomer, size: tries.size });
+  tries.take("d", 5000);
+  ok("PF-4bs DW3 pass: keys whose window has passed are swept", tries.size === 1, tries.size);
+  const big = new SI.Tries(5, SI.WINDOW_MS);
+  for (let i = 0; i < 50_000; i++) big.take(`fill${i}`, 0);
+  const t0 = performance.now(); let admitted = 0;
+  for (let i = 0; i < 2000; i++) if (big.take(`staff${i}`, 1)) admitted++;
+  const perCall = (performance.now() - t0) / 2000;
+  ok("PF-4bs DW3 fail (break R2-M1): with the map full of live keys (50,000), new people are still counted and admitted, each call well under 1 ms (no scan of the map)", admitted === 2000 && perCall < 1 && big.size === 50_000, { admitted, perCall });
   nextWindow();
 
   // ----------------------------------------------------------------- DW4: not active; refusal lines (audit)

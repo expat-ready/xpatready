@@ -98,3 +98,60 @@ How I tested:
 * **Not a finding (same as the old local door):** a person in a `SECURITY_LOCK` firm still gets a token (200), as `/session/local` gives one today.
 
 Verdict: Changes
+
+# Round 2 (diff-only, 14754519)
+
+The breaker (Opus), 26 Nov 2026, on `git diff 6ab56db7c 14754519` (`session/sign-in.ts`, `session/routes.ts`, the check). Harness as in round 1 (scratch databases on :54329, all dropped), plus a `Tries` micro-run. The PR's suite: 37 passed, 0 failed. Nothing committed.
+
+## Round 1, re-run
+* **M1 fixed.** 12 calls per path, a fresh window each: unknown email 252.1 ms, known email 252.4, empty password (known 252.4, unknown 252.0), over the per-pair limit (known 252.2, unknown 252.0), 429 at 251.9. Under parallel bursts of 40 and 120 (half known, half unknown), the medians were 343.7 against 341.6 and 379.6 against 374.9, with as many of each over 300 ms (40 and 40).
+  Paths that skip the floor give nothing away: 422 `EMAIL_INVALID` (1 ms) depends only on the text, and `STAFF_NOT_ACTIVE` (8.6 ms) comes only after the right password.
+* **M2 fixed.** 25 refusals from 25 different X-Forwarded-For addresses, then a 26th address with the right password: 200. Changing the first hop while the last stays the same: 429 from the 26th try. 200 parallel calls from one address: exactly 25 × 401 and 175 × 429.
+  In the deployed stack, the tasks accept traffic only from the load balancer (`deploy/cdk/lib/service.ts:232`), and the load balancer uses IPv4 with append mode, so the last hop cannot be forged there. Run locally without a proxy, the client writes the header itself (stand-in only).
+* **M3 fixed.** One person, 6 new attempts, 5 wrong codes each, from different addresses: 10 wrong codes answered, then 429. Six attempts with 8 parallel wrong codes each, against a 50 ms provider: the provider was asked 10 times.
+  No laundering: 4 wrong codes and then 1 right one, repeated four times in one window, still allowed only 10 wrong codes in total.
+* **M4 mitigated.** 5 guesses from one address no longer block the victim, who signs in from another address (200). The remaining cost is m6 below.
+* **m1 half-fixed** (see m9). **m2 fixed:** 31 parallel codes on one attempt reached the provider 5 times. **m3 fixed:** no refusal line is written over a limit. **m4 unchanged,** and moot now that codes are counted per person. **m5 replaced** by R2-M1.
+* **Give-back on success does not launder tries.** From one address, 40 rounds of (a guess at a stranger's email, then the attacker's own right password): exactly 25 guesses answered 401, then 429 for both.
+  The 45 code-door posts a stranger can make without a password (made-up, used or expired attempts) are all refused before the per-person count. The real person's right code afterwards: 200. So a stranger cannot trigger the code limit.
+
+## Majors
+
+**R2-M1. At the limiter's cap, sign-in fails closed for everyone, silently, and every new key scans the whole map on the event loop.** `sign-in.ts:108`, `:175`; asserted as intended at `tests/check_pf4bs_sign_in.ts:197`.
+* Cause: once a map holds 50,000 keys that are all inside the window, `take` sweeps every key, finds none to drop, and returns `false`.
+  * For the per-pair and per-email maps, `false` sets `limited`, so the answer is the plain 401 "That email and password don't match."
+  * A real staff member's key is deleted at each success (`give`), so at the next sign-in every staff member is a new key and is refused.
+* Repro (harness, real clock for the floor, test clock for windows):
+  1. Send 2,000 addresses × 25 calls `POST /api/platform/session/sign-in {email:"fillA.I@example.com", password:""}`, with `X-Forwarded-For: 172.16.x.y`. That is 50,000 calls in 22 s. Empty passwords never touch the database, and each address stays under its own limit of 25.
+  2. Then the seeded staff sign in with the Sample password from new addresses: **4/4 answer 401 `SIGN_IN_REFUSED`**.
+  3. 15 minutes later: 200.
+* CPU: in the `Tries` micro-run, with 50k keys still in their window, a new key costs a median of **14.8 ms (max 39.7)** of synchronous work.
+  During 300 such calls, an unrelated `GET /api/platform/me` waited up to **5,847 ms** (idle: 0.6 ms). So about 60 calls per second at the cap block every route of a task.
+* Impact: with about 2,000 IPv4 addresses per 15 minutes (a rented proxy pool), every staff member of every firm is kept out, and they see a wrong-password message.
+  This is per task. Two tasks behind the load balancer need roughly twice that, which the same addresses can supply because each address gets 25 tries per task.
+  Memory held: three full maps take about 33 MB. Before this fix, the cap evicted the oldest key (round 1 m5). Choosing between that and failing closed is the tech lead's call. As it stands, the cap is a global switch an outsider can turn off.
+
+## Minors
+* **m6. The backstop is still a cheap way to keep one named person out.** `sign-in.ts:117`, `:175`
+  * Repro: 5 addresses × 5 wrong passwords for the victim. The victim then gets 401 `SIGN_IN_REFUSED` from any new address.
+  * Keeping the victim out costs about 25 calls per 15 minutes per task, and the victim cannot tell a lockout from a typo. This is the round-1 trade-off, made smaller; the tech lead's call.
+* **m7. Someone who has the password can keep the real person out of the code step.** `sign-in.ts:202`
+  * Repro: 10 wrong codes over any attempts and addresses. The real person's right password, then the right code, from another address: **429 `TOO_MANY_TRIES`** for 15 minutes, and renewable.
+  * Strangers cannot trigger this (see above). On the stand-in, though, the password is the Sample password, so anyone can.
+* **m8. Tries still in flight count against the per-address limit, successes included.** `sign-in.ts:174`, `:182`
+  * Repro: 60 parallel calls from one address, 30 with the right password and 30 wrong: **7 × 200, 21 × 401, 32 × 429**.
+  * A firm behind one NAT address signing in at the same moment can see 429 with no wrong password.
+  * Related, on the code door: a right code sent in parallel with wrong ones on the same attempt reaches the provider, is used up there, and comes back `ATTEMPT_EXPIRED` (`:208`, `:211`).
+* **m9. The in-memory enrolled set on the stand-in.** `sign-in.ts:79`, `:84`
+  * After a restart, a person who already enrolled is shown the set-up step and their same key again, to anyone with the password. On the stand-in that is anyone.
+  * Repro: a new `LocalSignIn` on the same key, then `password(P)` gives `{step:"set-up", key: P's key}`.
+  * The Owner's "reset two-step" changes only `LocalIdentityAdmin.reset` (`provider.ts:57`), never this set. So a reset person still gets `step:"code"` with the old key (from reading the code; my reset call got a 403 for the actor I picked).
+  * Stand-in only: Cognito keeps enrolment itself.
+
+## What held (new code)
+* The refusal floor holds on every refusal path, sequential and in bursts. The 422 for a malformed body is not floored and needs no floor.
+* The checks and counts run before any await on both doors, so parallel bursts held: 25/200 on the password door, ≤5 per attempt and ≤10 per person on the code door.
+* Address handling: `signInAddressOf` takes the last non-empty hop from a string or an array, skips empty entries, falls back to the socket, and cuts the value to 64 characters.
+* The password appears nowhere in the harness output.
+
+Verdict: Changes

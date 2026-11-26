@@ -95,19 +95,23 @@ export class LocalSignIn implements SignInPort {
 }
 
 /** A sliding window of tries per key, in this task's memory (Sample limits; see the header). `take` checks and counts in
- *  one step (no await between); `give` hands a try back (a success). A key with no try in its window is removed, and at the
- *  cap expired keys go first, so a fresh flood cannot reset a blocked key's count (review m1, break m5). */
+ *  one step (no await between); `give` hands a try back (a success). Keys are kept in the order they were last tried, so
+ *  keys whose window has passed are swept from the front (constant work per call, never a scan of the map), and at the
+ *  cap the key tried longest ago goes. A blocked key that is tried again moves to the back, so a flood of fresh keys does
+ *  not reset it, and a full map never refuses everyone (break R2-M1; review m1, break m5). */
 export class Tries {
   private readonly seen = new Map<string, number[]>();
   constructor(private readonly max: number, private readonly windowMs: number, private readonly cap = 50_000) {}
-  private live(k: string, now: number) { const t = (this.seen.get(k) ?? []).filter((x) => x > now - this.windowMs); if (t.length) this.seen.set(k, t); else this.seen.delete(k); return t; }
-  over(k: string, now: number) { return this.live(k, now).length >= this.max; }
+  private sweep(now: number) { for (const [k, t] of this.seen) { if (t[t.length - 1] > now - this.windowMs) break; this.seen.delete(k); } }
+  private live(k: string, now: number) { const t = (this.seen.get(k) ?? []).filter((x) => x > now - this.windowMs); this.seen.delete(k); return t; }
+  over(k: string, now: number) { const t = this.seen.get(k)?.filter((x) => x > now - this.windowMs) ?? []; return t.length >= this.max; }
   take(k: string, now: number) {
-    const t = this.live(k, now);
-    if (t.length >= this.max) return false;
-    if (!t.length && this.seen.size >= this.cap) { for (const key of [...this.seen.keys()]) this.live(key, now); if (this.seen.size >= this.cap) return false; }
-    this.seen.set(k, [...t, now]);
-    return true;
+    this.sweep(now);
+    const t = this.live(k, now), ok = t.length < this.max;
+    if (ok) t.push(now);
+    if (t.length) this.seen.set(k, t);   // to the back: tried just now
+    while (this.seen.size > this.cap) this.seen.delete(this.seen.keys().next().value!);
+    return ok;
   }
   give(k: string) { const t = this.seen.get(k); if (t?.length) { t.pop(); if (!t.length) this.seen.delete(k); } }
   get size() { return this.seen.size; }
