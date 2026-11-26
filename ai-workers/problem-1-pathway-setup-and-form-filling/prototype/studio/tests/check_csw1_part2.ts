@@ -51,11 +51,22 @@ try {
   let stop = "";
   try { S.file(join(MIG, NEW, "migration.sql")); } catch (e) { stop = String((e as { stderr?: string }).stderr ?? e); }
   ok("CS-W1 DW8 fail: a key with no platform firm stops the migration, naming the key in each table and telling what to do",
-    /CS-W1 part 2 stopped: these firm keys have no platform firm yet: .*runtime_case "ghost-firm".*\(run the Sample seed, then migrate again\)/.test(stop)
-    && /case_stage "ghost-firm"/.test(stop) && /firm_case_counter "ghost-firm"/.test(stop) && !/sample-firm/.test(stop), stop.slice(0, 400));
+    /CS-W1 part 2 stopped: .*runtime_case "ghost-firm" \(no platform firm\).*npx prisma migrate resolve --rolled-back 20261126160000_cases__csw1_firm_required, and migrate again/.test(stop)
+    && /case_stage of case key "ghost-firm"/.test(stop) && /firm_case_counter "ghost-firm" \(no platform firm\)/.test(stop) && !/sample-firm/.test(stop), stop.slice(0, 400));
   ok("CS-W1 DW8 fail: nothing of the migration is left behind (the columns stay nullable)",
     S.sql(`select count(*) from information_schema.columns where column_name = 'firm_id' and is_nullable = 'YES' and table_name in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "3");
 } finally { S.drop(); }
+
+// Breaker B2/B3: a case whose firm id is not its key's, and a stage whose firm is not its case's, stop it too.
+const M = scratch("mismatch");
+try {
+  M.sql(`set session_replication_role = replica; ${SAMPLE_FIRMS_SQL} ${base} ${caseRows(1, "sample-firm")} ${caseRows(2, "sample-solo")}
+    update runtime_case set firm_id = '${F2}' where id = '${u(11)}'; update case_stage set firm_id = '${F1}' where id = '${u(22)}'; update firm_case_counter set firm_id = '${F1}', firm_key = 'sample-firm' where firm_key = 'sample-firm'; update case_stage set firm_id = '${F2}' where id = '${u(21)}'`);
+  let stop = "";
+  try { M.file(join(MIG, NEW, "migration.sql")); } catch (e) { stop = String((e as { stderr?: string }).stderr ?? e); }
+  ok("CS-W1 DW8 fail (breaker B2): a case whose firm id is not its key's firm, and a stage whose firm is not its case's, stop the migration in words",
+    /runtime_case "sample-firm" \(firm id is not the key's\)/.test(stop) && /case_stage of case key "sample-solo" \(not its case's firm\)/.test(stop), stop.slice(0, 400));
+} finally { M.drop(); }
 
 const A = scratch("mig");
 try {
