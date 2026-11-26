@@ -323,7 +323,7 @@ q = {
  "runs": any("product/tools/lead-read-gate.sh event" in str(s.get("run", "")) or "product/tools/lead-read-gate.sh sweep" in str(s.get("run", "")) for s in steps),
  "keep": (j.get("concurrency") or {}).get("cancel-in-progress") is False,
  "switch": any("vars.LEAD_READ_GATE" in str((s.get("env") or {}).get("LEAD_READ_GATE", "")) and "vars.LEAD_LOGINS" in str((s.get("env") or {}).get("LEAD_LOGINS", "")) for s in steps),
- "rejudge": "github.event.action != 'created'" in str(j.get("if", "")),
+ "rejudge": "contains(github.event.changes.body.from, 'Lead read')" in str(j.get("if", "")),   # OS-78c: an edit is judged on its old body too
 }
 print(1 if q[sys.argv[2]] else 0)
 PY
@@ -336,5 +336,5 @@ ok "... holds one write scope, statuses" "$(wf token)"
 ok "... runs lead-read-gate.sh" "$(wf runs)"
 ok "... never cancels a run in progress (the newest verdict must land)" "$(wf keep)"
 ok "... passes the kill switch vars.LEAD_READ_GATE and vars.LEAD_LOGINS" "$(wf switch)"
-ok "... judges again on any edited or deleted writer comment (a read taken back)" "$(wf rejudge)"
+ok "... judges again on an edited or deleted writer comment whose old or new body names the read (a read taken back; OS-78c, check-comment-words.sh)" "$(wf rejudge)"
 finish
