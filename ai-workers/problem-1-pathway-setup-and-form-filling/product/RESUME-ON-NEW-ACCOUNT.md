@@ -4,6 +4,22 @@
 
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
+## Switch of 27 Nov morning (Lead 7 → the new account's Lead), written 01:3x IST 27 Nov by Lead 7: READ THIS BLOCK FIRST
+**Founder, typed 00:4x IST 27 Nov (Remote Control):** "we will do all of these tomorrow. I will do the account change ... work whole night so that we ... achieve the same state which this account has ... what is our first step, whether we are going to do the factory work first ... You are going to do everything. I'm just going to do the payment or authorization ... by the morning 7-8 o'clock." Morning plan page: https://claude.ai/artifact/G7rHHAZQhi2ZRHaJDCoXQa (file `design/morning-plan-2026-11-27.html`). Recommendation in it: builders first in the first hour; Factory v3 step 0 + Claude Team sign-up + the Lead's GitHub machine user in one 40-min sitting with the founder at 08:00; baseline, security basics and records move by the Lead the rest of the day.
+**Truth:** `STATE.md` on `lead/2026-11-07-lead31` (Lead 7's lines are the newest). 66/110 Works on main (qa/CAPABILITIES.md: 66 Works, 16 Partial, 28 Not built). Weekly 83% at 00:30 IST, resets 28 Nov 20:30 IST.
+**Why proven was flat on 26 Nov:** 38 PRs merged, +2 proven. claude.ai signed out 23:3x in Chrome and the built-in pane: idle cloud lanes cannot be woken (they ignore PR comments when idle). lead-watch flagged 17 "unanswered" questions; 12 were already answered (the script does not see a later Lead line).
+**Done overnight by Lead 7 (posted on the PRs):** #3822 Lead read 0b369fefe (permissions: staffWhoMaySee) → label on green pr-suites; #3633 round 6 + Lead read 5c30fd4d6 (pure merge) → lane needs a merge-only Approve, then #3692; #3639 rounds 5-6 + Lead read 60989a80f (same SQL blob 8e399d712) → label on green full run; #3647 round 7 + Lead read 6ca165664, but it conflicts with main again.
+**Open, ranked for the first 12 lanes (nearest to Works first):** qa proofs R1.85 (#3841), R1.96 (#3792), R1.35 (#3824), R1.111 (#3753); R1.76 #3822 then #3829; R1.3 #3870 (queued), #3831 (label on `Reviewer: Approve f399dd85` + green pr-suites), #3840; R1.57 #3633 then #3692; R1.95 #3639, #3860/#3861 (add `Size exception: P-844` to bodies); R1.79 #3849 build (concept approved 15:46Z); conflicts to merge main: #3647 #3701 #3681 #3635 #3814 #3825; #3872 needs a `Checks changed:` body line (classifier refused the Lead's edit; founder OK or browser).
+**Prompt for the founder to paste (Code tab, this folder, a new session):**
+```text
+/lead You are Lead 1 on the new account (switch of 27 Nov morning). Lead 7 (local_a579023a) has stopped; that is my answer to the two-Leads check. Mac session in the main copy, branch lead/2026-11-07-lead31. First: set current_lead in STATE to yourself and push; create your check (cron 3,33 * * * *, prompt exactly: run lead-watch; read STATE Start here); run get_usage and tell me the weekly %.
+Read product/RESUME-ON-NEW-ACCOUNT.md (the 27 Nov morning block first), STATE "Start here", RULES, and the morning plan https://claude.ai/artifact/G7rHHAZQhi2ZRHaJDCoXQa. Verify every claim against GitHub before acting.
+Order: 1. one canary cloud lane that pushes; 2. up to 12 cloud lanes ranked as in the 27 Nov block, qa first; 3. at 08:00 Factory v3 step 0, Claude Team sign-up and the Lead's GitHub machine user with me (I pay and authorize, you do the rest); 4. baseline, security basics, records move.
+MY APPROVALS, typed by me here, for this work only (lines I removed are not approved):
+- Start up to 12 cloud lanes and 2 standby Leads on the Mac (disk check permitting), Opus 5.5 medium.
+- Add the "Checks changed:" line to #3872's description.
+```
+
 ## Standing account-switch strategy (founder A403/A404, 26 Nov: "that should be our strategy"; the Lead owns it, changed only by a new founder row)
 Read before every switch, by the Lead before and the new Lead after. Docs checked 26 Nov: no session, cron or watch moves between accounts; only GitHub and the repository carry over.
 1. **Last ~35% of the weekly plan = proof first.** No new rows, no new OS parts; qa proves each row the moment its last part merges; builders finish only the last parts of near-Works rows; approved PRs are put back to green (reopen for pr-suites, `/run full`) and labelled after the Lead's read and a green pr-suites on the head (OS-01 by hand).

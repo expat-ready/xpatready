@@ -1,0 +1,123 @@
+<title>Tomorrow, 27 Nov</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one reading column; a timeline of the morning, then lanes, factory and targets as plain tables. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#17202b; --muted:#5a6676; --line:#dde2e9;
+  --accent:#1f5fbf; --you:#b4530a; --good:#1d7a46; --warn:#9a6a00;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161d; --panel:#18202a; --fg:#e6ebf1; --muted:#9aa6b5; --line:#2a3542;
+  --accent:#7aa8f0; --you:#f0a35e; --good:#5cc48a; --warn:#e2b84f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161d; --panel:#18202a; --fg:#e6ebf1; --muted:#9aa6b5; --line:#2a3542;
+  --accent:#7aa8f0; --you:#f0a35e; --good:#5cc48a; --warn:#e2b84f; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+main{max-width:46rem;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.9rem} h2{font-size:1.25rem}
+p{margin:0}
+.lede{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:12px}
+.rec{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);padding:14px 16px;border-radius:6px}
+.tl{display:flex;flex-direction:column;gap:0;border-left:2px solid var(--line);margin-left:6px}
+.step{padding:0 0 16px 18px;position:relative}
+.step::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--accent)}
+.step.you::before{background:var(--you)}
+.when{font-family:var(--display);font-weight:600;font-variant-numeric:tabular-nums}
+.who{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;font-weight:600;margin-left:6px}
+.who.you{color:var(--you)} .who.lead{color:var(--accent)}
+ul{margin:4px 0 0;padding-left:1.1rem} li{margin:2px 0}
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:34rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.75rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid currentColor}
+.ok{color:var(--good)} .wait{color:var(--warn)}
+a{color:var(--accent)}
+code{font-size:.85em}
+.foot{color:var(--muted);font-size:.85rem}
+</style>
+<main>
+<header style="display:flex;flex-direction:column;gap:8px">
+  <h1>Tomorrow, 27 Nov</h1>
+  <p class="lede">The morning plan from Lead 7, written overnight. All times are IST. You do the payments and authorizations; the Lead does everything else.</p>
+</header>
+
+<section>
+  <h2>My recommendation: product first, factory alongside</h2>
+  <div class="rec">
+    <p><b>Restart the builders in the first hour, and do the factory set-up in parallel.</b> The builders are what moves capabilities to Works. Last night nothing moved: 38 PRs merged on 26 Nov but only 2 capabilities were proven, because the builders were waiting on the Lead and could not be reached after claude.ai signed out. The Factory v3 plan you approved (P-845) says product work never pauses. Its first steps are mostly Lead work. The only parts that need you are about 40 minutes of clicks and payments, which we do together at 08:00.</p>
+  </div>
+</section>
+
+<section>
+  <h2>The morning, step by step</h2>
+  <div class="tl">
+    <div class="step you"><span class="when">07:30</span><span class="who you">You · 10 min</span>
+      <ul>
+        <li>Switch the Claude account (the desktop app, and claude.ai in Chrome).</li>
+        <li>Sign in to claude.ai in the Claude app's browser pane too, so the Lead can type in builder sessions.</li>
+        <li>Open a new Code tab session in this folder and paste the prompt from <code>RESUME-ON-NEW-ACCOUNT.md</code> (the 27 Nov block, at the top).</li>
+      </ul></div>
+    <div class="step"><span class="when">07:40</span><span class="who lead">New Lead · 20 min</span>
+      <ul>
+        <li>Takes over, starts the 30-minute check and the event watch, and reads the weekly usage.</li>
+        <li>Runs one test builder that must push to GitHub before any more start.</li>
+        <li>Restarts up to 12 builders, ranked by how close their capability is to Works (the table below). qa sessions go first.</li>
+      </ul></div>
+    <div class="step you"><span class="when">08:00</span><span class="who you">You + Lead · 40 min</span>
+      <ul>
+        <li><b>Security fix (Factory step 0), 5 min:</b> GitHub setting "Require approval for all external contributors" on <a href="https://github.com/expat-ready/xpatready/settings/actions">repository settings › Actions</a>. The Lead opens the page; you say yes and press Save. Then the Lead limits the Mac test runner to the one workflow that needs it.</li>
+        <li><b>Claude Team, 15 min, about US$50 a month:</b> 2 standard seats, you as Owner, usage credits on, and every spend cap set before the repository is added (Code Review capped, about US$1,000 for month one). The links are ready in <code>design/factory-v2-step1-founder-links-2026-11-26.md</code>.</li>
+        <li><b>The Lead's own GitHub account, 15 min</b> (your decision 1A): you create it and confirm the email. It becomes the second approver for money, schema and pipeline changes.</li>
+      </ul></div>
+    <div class="step"><span class="when">09:00 onward</span><span class="who lead">Lead · rest of the day</span>
+      <ul>
+        <li>Records a 7-day baseline before anything switches: approval to merge, failed batches, Lead labels a day, bugs after merge (2 h).</li>
+        <li>Security basics on <code>main</code>: lock it with a GitHub ruleset, make <code>ci</code> required, turn on Dependabot and CodeQL, add CODEOWNERS (half a day).</li>
+        <li>Moves records and the Lead's own tools to the private repository (Factory steps 1–3, about a day). None of the product's checks read these files.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>Builders to restart first</h2>
+  <p class="lede">Ranked by nearness to Works. Each has its next step written on its PR, so a fresh session can resume it.</p>
+  <div class="tbl"><table>
+    <tr><th>Capability</th><th>PRs</th><th>Waiting on</th><th>State tonight</th></tr>
+    <tr><td>qa proof: R1.85 erasure exception, R1.96 refunds, R1.35 import, R1.111 statements</td><td class="n">#3841 #3792 #3824 #3753</td><td>a qa session each (merged, not proven)</td><td><span class="pill wait">needs qa</span></td></tr>
+    <tr><td>R1.76 notes and timeline on the case page</td><td class="n">#3822, then #3829</td><td>green pr-suites, then the label</td><td><span class="pill ok">Approve and Lead read done</span></td></tr>
+    <tr><td>R1.3 review tables</td><td class="n">#3870, #3831, #3840</td><td>#3870 in the queue; #3831 needs its reviewer's Approve</td><td><span class="pill ok">moving</span></td></tr>
+    <tr><td>R1.57 pay link and pay page</td><td class="n">#3633, then #3692</td><td>a merge-only Approve on the new head</td><td><span class="pill ok">Lead read and round 6 allowed</span></td></tr>
+    <tr><td>R1.95 custom fields</td><td class="n">#3639, #3860, #3861</td><td>full run on #3639; a size-exception line on #3860 and #3861</td><td><span class="pill ok">Lead read posted</span></td></tr>
+    <tr><td>R1.79 reports, last part</td><td class="n">#3849</td><td>the build (concept approved)</td><td><span class="pill wait">builder idle</span></td></tr>
+    <tr><td>Conflicts with main</td><td class="n">#3647 #3701 #3681 #3635 #3814 #3825</td><td>each builder merges main once</td><td><span class="pill wait">needs a builder</span></td></tr>
+    <tr><td>Check fix holding the queue</td><td class="n">#3872</td><td>one "Checks changed:" line in its description</td><td><span class="pill wait">your OK or a browser edit</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Targets</h2>
+  <div class="tbl"><table>
+    <tr><th>Measure</th><th>Now</th><th>Target</th><th>How it is reached</th></tr>
+    <tr><td>Capabilities proven (Works)</td><td class="n">66 of 110</td><td class="n">72–74 by 07:00 28 Nov</td><td>The four rows waiting on qa, plus R1.76 and R1.3 once their last parts merge. The daily target stays 10; recent days gave +8, +3 and +2.</td></tr>
+    <tr><td>Builders running</td><td class="n">0 reachable</td><td class="n">12 by 09:00</td><td>The ranked list above; 3 of them qa.</td></tr>
+    <tr><td>Questions waiting on the Lead</td><td class="n">5 real (17 flagged)</td><td class="n">0, each within 30 min</td><td>The Lead answered the 5 real ones tonight; the other 12 were already answered.</td></tr>
+    <tr><td>Factory v3</td><td>approved</td><td>step 0 and sign-up done 27 Nov</td><td>Trial run 27–29 Nov, go or no-go with you 30 Nov, switch 1 Dec. One PR that can be reverted.</td></tr>
+    <tr><td>Release 1 (110 rows)</td><td class="n">44 left</td><td class="n">on track for 28 Feb 2027</td><td>At 6–7 a day, the last row lands around 6–12 Dec.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Nothing is lost in the switch</h2>
+  <p>All work lives on GitHub. Tonight the Lead keeps <code>STATE.md</code> and <code>RESUME-ON-NEW-ACCOUNT.md</code> pushed after every step, and copies the side notes to the private repository. Sessions and timers don't move between accounts, so the new Lead restarts them from those two files. Each builder's next step is written on its own PR.</p>
+</section>
+
+<p class="foot">Lead 7 · written 27 Nov, about 01:30 IST · counts from qa/CAPABILITIES.md on main and GitHub's API at 00:30 IST; weekly usage 83% at 00:30 IST.</p>
+</main>
