@@ -4,6 +4,7 @@ Every expected number below is worked by hand from the fixture snapshot tools/fi
 2026-11-20 12:00 IST = 06:30 UTC); the working is written next to each assertion.
 Run: python3 -m unittest product/tools/test_cockpit_data.py   (or: python3 product/tools/test_cockpit_data.py)"""
 import importlib.util, json, os, re, shutil, subprocess, sys, tempfile, unittest
+from unittest import mock
 from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -2343,6 +2344,12 @@ class Enforced(unittest.TestCase):
         g = self.GH(runs=[self.run_(new)], arts=[{"name": "pipeline-heartbeat", "expired": True, "archive_download_url": "u"}])
         self.assertEqual(cd.heartbeat_read(g)["artifact_error"], "the run has no pipeline-heartbeat artifact")   # expired counts as none
         self.assertEqual(cd.heartbeat_read(self.GH(runs=[self.run_("not a time")]))["run"]["id"], 9)          # odd time: no crash, no download
+        # OS-83: an event run's artifact (pipeline-heartbeat-event) is read by the board too; another name is not
+        for name, want in (("pipeline-heartbeat-event", True), ("something-else", False)):
+            g = self.GH(runs=[self.run_(new)], arts=[{"name": name, "expired": False, "archive_download_url": "u"}])
+            with mock.patch.object(cd.subprocess, "run", return_value=mock.Mock(returncode=1, stderr=b"x")):
+                out = cd.heartbeat_read(g)
+            self.assertEqual(out["artifact_error"].startswith("artifact download failed"), want, (name, out))
 
 
 class PrListCache(unittest.TestCase):
