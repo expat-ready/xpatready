@@ -13,7 +13,7 @@
 //       currency and the database's sums, and the two currencies are never added; fail: a wrong figure is caught;
 //   DW9 (C5) the Billing person opens Client H (not theirs to see) and gets "Client not found" with no figure;
 //   K keyboard, axe-core 0 serious (WCAG 2.2 A/AA) on both pages, 375/1024/1440 px no sideways scroll.
-// Sample firm and Sample figures only; re-runnable on a fresh copy (trust starts Unanswered). US$0, no model call; live AI off.
+// Sample firm and Sample figures only; re-runnable (each run makes its own clients; trust is set Unanswered for DW8 and the firm's answer put back). US$0, no model call; live AI off.
 // Screenshots (deviceScaleFactor 1) in product/screens/fo-7s-money/build/. Run from prototype/:
 //   zsh studio/tools/isolated.sh fo7s3b 4753 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_fo7s3b_ledger_browser.ts 4753 xr_studio_fo7s3b
 import { existsSync, mkdirSync } from "node:fs";
@@ -54,8 +54,12 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgre
 await seedSampleFirmsFrontOffice(db); await db.$disconnect();
 const A = sql(`select id from platform_firm where key = 'sample-firm'`), run = Date.now().toString(36).slice(-5);
 if (sql(`select count(*) from money_payment_settings where firm_id = '${A}'`) === "0") sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${A}', 'seed:FO-7s3b', now())`);
+// DW8 needs trust Unanswered (never shows, whatever is held: trustShows); a copy another check answered is set back for the
+// run and its answer restored at the end.
+const [answerBefore, byBefore, atBefore] = sql(`select trust_answer || '|' || coalesce(trust_answered_by, '') || '|' || coalesce(trust_answered_at::text, '') from money_payment_settings where firm_id = '${A}'`).split("|");
+// the database refuses a move back to Unanswered (AG-6-59 §6); a fixture's reset, outside the product, skips its trigger
+sql(`set session_replication_role = replica; update money_payment_settings set trust_answer = 'UNANSWERED', trust_answered_by = null, trust_answered_at = null where firm_id = '${A}'`);
 const trustAtStart = sql(`select trust_answer from money_payment_settings where firm_id = '${A}'`);
-if (trustAtStart !== "UNANSWERED") { console.error(`STOP  trust is ${trustAtStart}: run on a fresh isolated copy (DW8 needs trust Unanswered)`); process.exit(2); }
 const TOWNER = await signIn("sample-firm", "user-R");
 const staffOf = (actor: string) => sql(`select id from platform_staff where actor_id = '${actor}' and firm_id = '${A}'`);
 const role = await api(TOWNER, "PATCH", `/platform/staff/${staffOf("user-T")}/roles`, { roles: ["BILLING_FINANCE"], reason: "FO-7s3b check: a Billing person" });
@@ -205,6 +209,6 @@ try {
   ok("FO-7s3b K: axe-core finds 0 serious or critical issues (WCAG 2.2 A/AA) on both pages", !axeAll.length, axeAll);
   ok("FO-7s3b K: no page error in the browser", !errs.length, errs);
 } catch (e) { failed++; console.log(`FAIL  FO-7s3b: the walk stopped: ${(e as Error).message}`); }
-finally { restoreSeesAll?.(); await browser.close(); }
+finally { restoreSeesAll?.(); if (answerBefore !== "UNANSWERED") sql(`set session_replication_role = replica; update money_payment_settings set trust_answer = '${answerBefore}', trust_answered_by = '${byBefore.replace(/'/g, "''")}', trust_answered_at = '${atBefore}' where firm_id = '${A}'`); await browser.close(); }
 
 process.exit(summary() || failed ? 1 : 0);

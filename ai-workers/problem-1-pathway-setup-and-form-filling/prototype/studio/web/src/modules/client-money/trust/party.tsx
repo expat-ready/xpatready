@@ -85,7 +85,7 @@ function Body() {
         <h2 id="summary" className="text-lg font-semibold">Summary</h2>
         {!cols.length ? <p data-summary-empty className="text-sm text-text-muted">No issued invoices{s.trustShows ? " or trust money" : ""} for this client yet.</p> : (
           <Table label="Money summary" head={["", ...cols.map((f) => f.currency)]}>
-            {rows.map((r) => <tr key={r.label} data-summary-row={r.label}><th scope="row" className="text-left font-medium">{r.label}</th>{cols.map((f) => <td key={f.currency} className="whitespace-nowrap tabular-nums">{r.of(f)}</td>)}</tr>)}
+            {rows.map((r) => <tr key={r.label} data-summary-row={r.label}><th scope="row" className="border-b border-border px-3 py-2 text-left align-top font-medium">{r.label}</th>{cols.map((f) => <td key={f.currency} className="whitespace-nowrap tabular-nums">{r.of(f)}</td>)}</tr>)}
           </Table>
         )}
       </section>
