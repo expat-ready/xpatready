@@ -131,3 +131,34 @@ None in this PR's diff.
 - **Gate races:** abort then release in the same tick → the waiter gets false and held=0. Release then abort → the waiter gets true, releases, and held=0. A signal already aborted gives false (R1). A fuzz of 20 000 acquires with random aborts never had more than 4 inside, and ended with held=0, waiting=0 (R2). After 1000 mixed reads the Gate is empty, and the next 4 reads answer in 21 ms (G6). Two firms' lists together (40 + 10 rows, 100 ms): 1316 ms, 0 unknown (G5).
 
 Verdict: Approve 8d6af7978f6a47bd13e0a6fa0fc046f8b6e79277
+
+## Round 4 (diff-only, b78fbee32)
+Head `b78fbee32ba169643c08334114a48c451777db5b` is a merge of origin/main (`7a7740278` → `b78fbee32`). `git diff 8d6af7978 b78fbee32` is empty on every PR file: session/, provider.ts, firm-lock.ts, the contract, the fake, the test, and the platform guard and keys.ts. So I attacked only what main changed that reaches the port. That is: the app's pool (firm-scope.ts `WalledPool`, now with the P1 fix and the M1 "nothing after COMMIT/ROLLBACK" guard), the 4 new tables with a foreign key to `platform_staff`, and the seat and staff-read changes. Main adds no new caller of `IdentityAdminPort`, and system-identity does not use it. I ran the real `PlatformSession` and `StaffReads` over HTTP in an in-process Nest app, with `Db` (the app's own `WalledPool`) and `CognitoIdentityAdmin` on the PR's fake. All migrations ran on a scratch database `xr_studio_brk3217_r4_*` on :54329, since dropped. No AWS, no network, no model call. I did not start an isolated copy, so :4400 was not touched. Script: `r4/b9.mts` in the session scratchpad. Test runs on the merged head: the PR's test gave 46 passed, 0 failed; check_pf4b_session_reads 55/0; main's check_pool_tx_return 16/0; check_tx_end_guard 21/0.
+
+**Attacks on the merged head (attack → result):**
+- **Mismatch through HTTP:** a stale `sub` (user re-created), a `local-…` subject and another person's `sub`. Reset and sign-out everywhere → 409 SIGN_IN_ACCOUNT_MISMATCH. The live user's app stays on with 0 sign-outs, and no revocation row is written (C2). Nothing in main reaches the port without going through `who()`. **Held.**
+- **Provider text:** a forced `InvalidParameterException` whose message holds a key-like string gives 502 SIGN_IN_PROVIDER_ERROR in our own words. The log line is `refused (InvalidParameterException 400)`. A scan of every log line finds neither the secret nor the message (C3). **Held.**
+- **One-time code:** accept → hand-off → three parallel callbacks, with Cognito at 0.5 s → one 200 and two 401 SIGN_IN_CODE_REFUSED. A later fourth call also gets 401. The code is never in a log line (C8). Two parallel accepts of one invitation give one 200 and one 410, with one Cognito user and one staff row. **Held.**
+- **3 s deadline inside FIRM_TX, through WalledPool:**
+  - With Cognito answering in 0.9 s, the reset completes in 2786 ms (C1).
+  - With Cognito hung, the reset returns 503 at 3034 ms and accept returns 503 at 3028 ms. Nothing is committed and no connection is left `idle in transaction` (C4, C8).
+  - Two resets in one firm: 200 at 2734 ms and 409 FIRM_BUSY at 1546 ms. Cognito and our records agree (C6).
+  - A disabled Cognito user at accept → 409 SIGN_IN_ACCOUNT_DISABLED, with no staff row and the invitation not used.
+  - **Held.**
+- **Round 3's P1 (outside this PR) is fixed by main.** A connection that comes back inside a transaction is now destroyed (`check_pool_tx_return` 16/0). After C5's failed transaction, a firm-B list on the same pool answers firm B only, with nothing from firm A. My pool-full try (C7) did not reach FIRM_TX's maxWait. `mailReady` runs outside the transaction and waited about 3 s for a free connection, then the reset completed at 3627 ms. That wait comes before any provider call, so it does no harm.
+- **Main's M1 guard against lockFirm:** `set local lock_timeout …` and `… to default` are not read as the end of a transaction (`endsTransaction`). FIRM_BUSY rolls back cleanly and the connection goes back idle (C6). **Held.**
+
+### Majors
+None. Main changed no PR file and no path that calls the port, and every attack above held.
+
+### Minors (carried forward; not new in this diff)
+- **R3-m1 is still open, and main makes it slightly more likely.**
+  - Repro (C5): a reset while another connection holds `for key share` on the target's `platform_staff` row for 6.0 s.
+  - Actual: 500 "Internal server error" at 8417 ms. The authenticator app is off at Cognito, and no audit row was added (`auditAdded: 0`).
+  - What main changes: the connection now comes back clean and the next request runs in the right firm. But the outcome is still "provider changed, our records rolled back".
+  - Why it is more likely: main adds four tables with a foreign key to `platform_staff` (msg_mailbox, plat_import_batch, plat_import_mapping, plat_import_attestation; 19 → 23 tables). Any insert into them takes the key share that `endSessions`' unbounded `for update` waits on (session/service.ts:66, after firm-lock.ts:20 puts the default lock_timeout back).
+  - Fix as in round 3: check the time left in the transaction before the provider call, or keep a bounded `lock_timeout` for the whole of FIRM_TX.
+- **R3-m3 is unchanged:** an expired or unstarted FIRM_TX still answers a bare 500 (C5), not a 503 "try again".
+- R2-m1, R2-m2, R2-m4, R3-m2 and R3-m4 are not touched by the merge.
+
+Verdict: Approve b78fbee32ba169643c08334114a48c451777db5b

@@ -211,3 +211,65 @@ Reviewer: independent session, 24 Nov 2026. Read `git diff fa8aefc67..8d6af7978`
 Details are in `screens/PF-4bc/journey-test-reviewer-2026-11-24.md`.
 
 Verdict: Approve 8d6af7978f6a47bd13e0a6fa0fc046f8b6e79277
+
+## Round 4 (diff-only, b78fbee32)
+
+Reviewer: independent session, 26 Nov 2026. Head b78fbee32ba169643c08334114a48c451777db5b, a pure merge of origin/main (791c6f82f) into 7a7740278.
+
+**Scope:** whether main's changes since 7a7740278 break or interact with the PR's code. The unchanged PR diff was not re-reviewed.
+* `git diff --stat 7a7740278 b78fbee32 -- <the PR's 15 files>` is empty: the merge touched no PR file.
+* Main's side of the merge is 1 075 commits and 1 024 files. It includes 65bbd0bcc (#3428, the pool P1 fix), which was not in 7a7740278.
+
+**Verdict: Ship (Approve).** Nothing on main breaks the PR or interacts badly with it. No new Blocker or Major. r3-m1, r3-m2 and r3-m3 stay open as Shoulds (no PR file changed).
+
+### What I ran (b78fbee32, PostgreSQL 18 on 127.0.0.1:54329, lane prefix `runtime`, slot 5)
+* `run-suites.sh --only "check_pf4bc_cognito_admin.ts check_pf4b_session_reads.ts check_pf4_identity.ts"`:
+  * pf4bc: **46/0**
+  * pf4b_session_reads: **57/0**
+  * pf4_identity: **FAIL** in part B, with "database xr_studio_pf4 does not exist". This is the harness, not the PR. With a lane prefix, run-suites starts the copy `runtime_pf4` on :18541 and maps the port in the usage line. But the suite reads the copy's database from `STUDIO_DB ?? "xr_studio_pf4"` (check_pf4_identity.ts:25), and run-suites.sh (lines 404-417) sets no STUDIO_DB for usage-line suites.
+  * Re-run with `STUDIO_DB=xr_studio_runtime_pf4`: **120/120**. CI runs with no prefix, so the default name is right there. Lead note: lanes running this suite through run-suites will see the same false failure.
+* `tsx tests/check_contract_seams.ts`: 125/0.
+* `graph.mjs --check`: exit 0.
+* deploy/cdk `sign-in-task.test.ts` cannot run here (aws-cdk-lib is not installed in deploy/cdk). I reproduced its PF-4bs grant check by hand (below).
+* **Probe** `probe_walled_lock.mts` (session scratchpad; scratch database dropped). It runs lockFirm/FIRM_TX through main's `walledPool` + `oneQueryPerCaller`, which is core.ts Db's pool. The PR's own race test uses a plain PrismaClient, so it never meets main's new pool guards.
+  * The success path commits.
+  * With the row held elsewhere: **409 FIRM_BUSY at 1535 ms**.
+  * After FIRM_BUSY, four follow-up reads on the pool see `lock_timeout` 0 (default) and a fresh transaction each time.
+  * No `platform_pool_open_transaction` warning, so no client was destroyed. The P1 release check sees the rolled-back client as idle.
+  * The M1 end guard does not misread `set local lock_timeout to default` as the end of a transaction.
+  * After release, a retry commits.
+  * The M2 array-batch refusal fires, and the PR has no `$transaction([...])` (grep).
+  * The only error in the probe was at its own teardown (`dropdb --force` with the external pool still open).
+
+### Interactions checked
+* **Callers of IDENTITY_ADMIN_PORT / PlatformSession / StaffReads:** still only session/service.ts, session/routes.ts, staff-read/service.ts, staff-read/routes.ts, and features/platform-staff-read.ts (the one factory, `adminFrom`).
+  * Main's staff-read change only rewrites `seats()` (seatLimitOf + seatsUsed, QA-774). `twoStep()` and its HttpException → null stay as before.
+  * The mentions in limits.ts and terms/service.ts are comments.
+  * No new module provides or injects the port. System-identity (PF-17, our own staff) uses no admin port.
+* **Duplicate implementations:** none. provider.ts is still the only file that imports `@aws-sdk/client-cognito-identity-provider`. OneTimeCodes and CognitoIdentityAdmin appear nowhere else.
+* **Deploy grant (main's PF-4bs, deploy/cdk/lib/service.ts:49):**
+  * The PR's provider.ts imports AdminCreateUser, AdminGetUser, AdminGetUserAuthFactors, AdminSetUserMFAPreference and AdminUserGlobalSignOut. All five are granted.
+  * Imports plus PENDING equal SIGN_IN_ACTIONS exactly (8 actions), so the test's "missing" and "extra" checks both hold.
+  * The test's PF4BC_PROVIDER_IMPORT is byte-for-byte provider.ts lines 1-7 at b78fbee32 (checked).
+  * After merge, the PENDING row for #3217 is harmless, as its own comment says.
+* **Signatures and error codes:**
+  * The PR's imports from main are unchanged: `problem` (keys.ts) and `IdentityConfig` (port.ts).
+  * Main's identity/service.ts change is the seat words only (QA-774).
+  * FIRM_BUSY, SIGN_IN_PROVIDER_BUSY, INVITATION_NOT_VALID and INVITATION_EXPIRED are unchanged. The suite's 410 checks pass.
+* **Transactions and locks:**
+  * Main changes no transaction timeout and no pool size. FIRM_TX (maxWait 2 s, timeout 8 s) stands.
+  * Main's P1 note concerns a transaction started after maxWait. Under the P1 fix such a client is now destroyed rather than reused. That only helps FIRM_TX.
+  * No new code on main locks the platform_firm row.
+  * The new foreign keys that reference platform_firm (plat_import_*, ON UPDATE RESTRICT) take FOR KEY SHARE, which does not conflict with lockFirm's FOR NO KEY UPDATE.
+* **Web:**
+  * Main's frame.tsx sign-out now calls `signOutHere()` (PF-31 drafts) before the POST. That does not change r3-m2: a 409 still ends the session in the browser only.
+  * accept-page.tsx is unchanged, so r3-m1 stands.
+
+### Open minors carried (Should; none blocks)
+r3-m1 (accept-page.tsx:75), r3-m2 (session/service.ts signOut under the 1.5 s bound) and r3-m3 (wiring not pinned) are unchanged. New, as a note only: the PR's race test still runs on a plain PrismaClient. Running it once through `walledPool` (as the probe does) would pin the pool interaction.
+
+### Dimensions and journey score
+* Dimensions: unchanged from round 3.
+* Journey score: **8.8/10, a pass** (7 of 8 applicable criteria, none at 0), unchanged. Details are in `screens/PF-4bc/journey-test-reviewer-2026-11-26.md`.
+
+Verdict: Approve b78fbee32ba169643c08334114a48c451777db5b
