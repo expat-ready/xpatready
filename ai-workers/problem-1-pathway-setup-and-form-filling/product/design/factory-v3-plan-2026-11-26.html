@@ -105,6 +105,36 @@ code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);paddin
 </section>
 
 <section>
+  <div class="eyebrow">Your six questions (A412), answered from research</div>
+  <h2>Split the factory from the product, mix plans sensibly, keep what is ours</h2>
+  <div class="board"><table>
+    <thead><tr><th>Your question</th><th>Answer</th><th>Grounding</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 · Take the factory's files out of the product pipeline?</b></td><td><span class="chip do">Yes, into your private repository</span><br>Records and decisions move first: no workflow reads them. The evidence (screenshots, qa files, about 1 GB) moves next. The tools move last, because 72 scripts are called from 20 workflows. A few files must stay in the product repository to work: workflows, CODEOWNERS, the approvals file, the review checklist (<code>REVIEW.md</code>), <code>CLAUDE.md</code> and <code>.mergify.yml</code>. Local-only is a no: the private repository keeps a backup and the history (our rule P-557).</td><td>Measured on <code>main</code>: the repository is 1.45 GB and the app is only about 164 MB of it. In the last 7 days, 261 of 651 merges touched only records or tooling. Those leave the product queue and test runs, which is the speed gain.</td></tr>
+      <tr><td><b>2 · A fresh best-in-class pipeline on what Claude ships</b></td><td>The target factory below. Claude's agents review, fix and approve. GitHub locks main and scans for problems. Mergify merges. Our qa proves "Works".</td><td>Designed from scratch, then checked rule by rule against today (question 6).</td></tr>
+      <tr><td><b>3 · Mix your Ultra with Team or API credits?</b></td><td><span class="chip do">Yes, it works</span><br>Your Ultra and a Team account can share one email, and you switch between them. Builders in the cloud always run on a subscription (Ultra or a Team seat), never on API credits. Claude's agents are paid from the Team organisation's credits. API credits fit only the GitHub Action in CI.</td><td>Claude help pages and authentication docs. Team seats belong to one named person each, and logins can't be shared.</td></tr>
+      <tr><td><b>4 · What we do today, what changes, why, industry fit</b></td><td>The "futuristic test" table below gives this per change. Industry fit: one product repository with server-side locks, required checks, code owners, dependency and secret scanning, and a merge queue is the standard setup at mature software companies.</td><td>GitHub's own guidance on rulesets, CODEOWNERS and security features.</td></tr>
+      <tr><td><b>5 · The public repository shows our way of working</b></td><td><span class="chip do">Keep the product public, move the factory private</span><br>Making the whole repository private would cost about $10,700 a month in GitHub test machines at today's load, plus $19 + $30 per active committer for secret and code scanning. All of that is free while public. Moving the factory's files private hides how we work at no cost.</td><td>GitHub billing docs: Enterprise includes $300 of compute (50,000 minutes); our load is about 1.84 million minutes a month. This is an estimate.</td></tr>
+      <tr><td><b>6 · Use built-ins where they truly cover a rule</b></td><td>We checked <b>241 rules</b>: 16 are fully covered by a built-in, 45 partly, 174 not at all. About 110 of the 174 are product or immigration decisions no tool could enforce. <b>4 new swaps</b>: lock main on GitHub, block force-pushes on GitHub, make <code>ci</code> a required check, and use Dependabot for package alerts. 4 rules are obsolete and get dropped. The rest stay ours.</td><td>Full table with citations: the shared notes file <code>rule-coverage-table-2026-11-26.md</code>.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="two">
+    <div class="card now"><h3>"The model and harness are tuned, so built-ins are better": where it holds</h3><ul>
+      <li>The locks underneath: GitHub rulesets, required checks, secret scanning, Dependabot. They are enforced on the server, so no client or token can skip them, and they are free.</li>
+      <li>Claude Code's own mechanisms: permissions, hooks, subagents, sandbox, managed settings.</li>
+      <li>Code-level review and fixing red checks, once we have a Team organisation.</li>
+    </ul></div>
+    <div class="card later"><h3>Where it doesn't hold</h3><ul>
+      <li>About 70% of our rules are product and immigration decisions ("only qa moves a row to Works", "values only from canada.ca"). No tuning covers these.</li>
+      <li>Approval flows assume separate people. Ours all run from one GitHub account, so decision 1 is the key that unlocks GitHub's native approvals and CODEOWNERS.</li>
+      <li>Public repository: GitHub's file-blocking push rules work only on private repositories, so our push guard stays.</li>
+      <li>Beta (Steward, Approvals), Team-only gates, per-use billing, and GitHub's queue missing Mergify's scopes (P-715).</li>
+    </ul><p><b>Verdict:</b> built-ins as the locks underneath, our rules as the policy on top.</p></div>
+  </div>
+  <p class="alt">Terms note: Claude's consumer terms forbid sharing a login, and limit automated use except through an API key or where Anthropic explicitly permits it. They say nothing about rotating between your own accounts. Unconfirmed: no counsel. A Team organisation avoids the question for the agents.</p>
+</section>
+
+<section>
   <div class="eyebrow">The target factory</div>
   <div class="legend"><span><i class="dot" style="background:var(--accent-soft)"></i>Claude provides</span><span><i class="dot" style="background:var(--part-soft)"></i>GitHub or Mergify provides</span><span><i class="dot" style="background:var(--yes-soft)"></i>Ours, kept because it's unique</span></div>
   <div class="lane"><div class="row">
