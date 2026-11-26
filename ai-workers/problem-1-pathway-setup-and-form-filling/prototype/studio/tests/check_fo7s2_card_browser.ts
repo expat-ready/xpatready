@@ -148,12 +148,25 @@ try {
   for (const path of ["**/api/platform/me", "**/api/platform/session/local"]) await ps.route(path, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2500)); await r.continue(); });
   await dialog.getByRole("button", { name: "Sign in again" }).click(); await ps.waitForTimeout(300);
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await ps.waitForTimeout(5000);
+  await ps.waitForTimeout(9000);   // both slowed calls (2.5 s each), the remount and any resend have landed
   ok("FO-7s2 S4 M1 fail: Cancel during the dialog's slow first read sends no Connect afterwards; the browser stays here", calls === 1 && ps.url().startsWith(BASE), { calls, url: ps.url() });
   if (!ps.url().startsWith(BASE)) await open(ps);
   await ps.locator("[data-card-words]").waitFor({ timeout: 30_000 });
   await ps.unroute("**/api/platform/me"); await ps.unroute("**/api/platform/session/local");
   await ps.waitForTimeout(3000);   // the slowed sign-in lands
+  TOWNER = await ps.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session") ?? "{}").token as string);
+  ok("FO-7s2 K pass: after a Cancel while the sign-in was slow, focus is back on the button once the page settles (break round 2 m8)", await ps.locator("[data-card-step]").evaluate((el) => el === document.activeElement));
+  // Break round 2 M1(a): Back from Getting paid while the slow sign-in runs (no Cancel): nothing is sent from the page left.
+  calls = 0;
+  await ps.goto(`${BASE}/money/invoices`); await ps.waitForLoadState("networkidle").catch(() => undefined);
+  await ps.locator('nav[aria-label="Money"] [data-money-menu="Getting paid"]').click(); await ps.locator("[data-card-step]").waitFor({ timeout: 30_000 });
+  await ps.locator("[data-card-step]").click(); await dialog.waitFor({ timeout: 20_000 });
+  for (const path of ["**/api/platform/session/local"]) await ps.route(path, async (r) => { await new Promise((ok2) => setTimeout(ok2, 2500)); await r.continue(); });
+  await dialog.getByRole("button", { name: "Sign in again" }).click(); await ps.waitForTimeout(300);
+  await ps.goBack(); await ps.waitForTimeout(9000);
+  ok("FO-7s2 S4 M1 fail: browser Back during a slow sign-in again (the change already kept) sends no Connect from the page left; the browser stays here", calls === 1 && ps.url().startsWith(`${BASE}/money/invoices`), { calls, url: ps.url() });
+  await ps.unroute("**/api/platform/session/local");
+  await ps.waitForTimeout(3000);
   TOWNER = await ps.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session") ?? "{}").token as string);
 
   // ---------------------------------------------------------------------------------------------- S5: back from Stripe

@@ -38,3 +38,27 @@ PR #3808 at `5c61983b6dfbdcbaf3094c7c2649126f0b514f0f`. Isolated copy on :4762 (
 
 ## Not counted
 The concept says every staff member can read the page. The menu entry is keyed on `agent/invoice:show` (`area.tsx:13`), so the READ_ONLY role, which lacks that key, gets no link, although the URL opens. This is noted for the other sections' parts. It does not affect the card section, because READ_ONLY sees the same read-only line either way.
+
+## Round 2 (head `fead0c6655574bfa406108be1bbdf05ac7e980f8`)
+
+Same copy on :4762, serving bundle `index-C7yl5RAT.js` with this head's words. To avoid clashing with the reviewer's user-R sessions, I used **sample-solo's Owner** (`representative@sample-solo.example.com`, another firm, no account row, NOT_CONNECTED). No database writes this round. Step-up and odd answers are stubbed as before.
+
+**Verdict on `fead0c665`: Changes.** 1 Major (M1 is not closed on two paths), 1 Minor. M2 is closed for this PR: it is recorded as build discovery FO-7s2-1 in `challenge.md:84` for the tech lead. m1-m7 are fixed.
+
+**M1 (still Major). The kept Connect still fires after the person has backed out on two paths.** `section.tsx` effect `takeWaiting(WAIT_ID)`, with `step-up.tsx:33-34`
+- **(a) Browser Back during the sign-in again, no Cancel.** Did: opened Invoices, then Money → Getting paid → Connect → (stub) 401 → **Sign in again** (local sign-in slowed by 2.5 s) → browser Back. The address went to `/money/invoices`, h1 "Invoices", no dialog visible. Then the sign-in answered, the onboarding was sent with page `/money/invoices` (calls 1 → 2), and the browser went to the Stripe page. Only Cancel and Escape call `closeAsk`. The dialog unmounting on Back clears nothing, and the section's mount effect (the same JS stack as in round 1) takes the kept change on the sign-in's remount, even though the person is on another page. Screenshot `r2-back-mid-signin.png`.
+- **(b) Cancel while the dialog is still reading `/platform/me`.** Did: Connect → 401 → slowed `/platform/me` by 2.5 s → **Sign in again** → Cancel 250 ms later. Result: calls 1 → 2, and the browser left for Stripe. `waiting = ask` is set after that read (`step-up.tsx:33-34`), so Cancel's `takeWaiting` finds nothing to drop. The reviewer found the same path, and the branch's newer WIP commit `010c14a` (not this head) adds a `cancelled` flag for it. I read that code but did not run it. It does not cover (a), because Back never calls `closeAsk`.
+- On a server with a Stripe key, either path makes the connected account and writes the audit line after the person backed out. The window is as long as the sign-in again takes.
+
+**m8 (new, Minor). Focus after Cancel is lost once the slow sign-in lands.** `closeAsk` puts focus on the button, which held when the sign-in was fast (Escape → "Connect with Stripe"). When the sign-in again was still on its way, the new session remounts the page and focus ends at the top ("sample-solo").
+
+**Held this round**
+- **M1, plain Cancel and Escape:** both pressed during the slow sign-in send nothing (calls stay 1, the page stays). Cancel then Money → Invoices sends nothing, and opening Getting paid later sends nothing either.
+- **Step-up, normal path:** one resend and then Stripe. Back from Stripe sends nothing more. Three synchronous clicks give 1 call and 1 dialog (m7 fixed).
+- **Redirect allowlist** (13 cases): only `connect.stripe.com` and `connect.fake-rail.example` on https and the default port are followed. Refused: `:8443`, `u@`, `dashboard.stripe.com`, `a.fake-rail.example`, a trailing dot, `%2F@evil.com`, `evil.com\@…`. `https://:pw@connect.stripe.com` is still followed (password with no username), but it lands on Stripe, so it is harmless.
+- **Back words (m1 fixed):** `?account=` is dropped after the first read (`?x=1` is kept). After a reload no line shows. ACTIVE, NOT_CONNECTED and DISCONNECTED show no line; refresh shows a line only when a button is offered, and return only while Pending.
+- **Pending after a break (m2 fixed):** one `role=alert` that says both "Payment account disconnected. Stripe is checking…", with the one step "Continue set-up".
+- **Fixed words (m3 and m4 fixed):** onboarding 500 and 400 give "Could not reach Stripe now…", and 429 gives "Too many tries…". GET 500, GET 403 and an unknown status give READ_FAILED with "Try again". No raw server text and no code shows.
+- **Focus (m5 fixed):** after a refusal, focus goes to the refusal's words (`tabindex=-1`). After Escape on the dialog, it returns to the button.
+- **Dialog words (m6 fixed):** "…the change is sent once more for you" plus "Stripe's set-up page opens after you sign in." No contradiction.
+- **Layout:** no sideways scroll at 375, 1024 and 720×450 (200 %).

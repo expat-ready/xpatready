@@ -10,13 +10,15 @@ import { Button, Notice } from "@/components/ui/controls";
 import { usePlatformStaff } from "@/modules/platform/frame";
 import { staffApi, StaffApiError, useStaffToken } from "@/modules/platform/session";
 import { ConfirmItsYou, staffChange, takeWaiting } from "@/modules/platform/staff/step-up";
-import { Account, ACCOUNT_PATH, backWords, CONNECT_KEY, Onboarding, ONBOARDING_PATH, READ_FAILED, refusalWords, safeStripeUrl, said } from "./contract";
+import { Account, ACCOUNT_PATH, backWords, CONNECT_KEY, GETTING_PAID_HOME, Onboarding, ONBOARDING_PATH, READ_FAILED, refusalWords, safeStripeUrl, said } from "./contract";
 
 const WAIT_ID = "card-payments";   // the change kept across "Confirm it's you" (one per page, never a person's id)
 /** Review round 2 (break M1): the shared dialog keeps the change only after its own first read, so a Cancel pressed before
  *  that finds nothing to drop. The cancel is remembered here instead (module state survives the remount after the new
  *  sign-in), set by Cancel or Escape and cleared only when a new "Confirm it's you" opens. */
 let cancelled = false;
+/** Break round 2 m8: after a Cancel while a slow sign-in still runs, the remount puts focus back on the button. */
+let refocusAt = 0;
 
 export function CardPaymentsSection({ go = (u: string) => window.location.assign(u) }: { /** test seam: where the browser goes */ go?: (url: string) => void }) {
   const me = usePlatformStaff(), token = useStaffToken(), owner = me.keys.includes(CONNECT_KEY);
@@ -36,7 +38,7 @@ export function CardPaymentsSection({ go = (u: string) => window.location.assign
       const r = Onboarding.parse(await staffChange(ONBOARDING_PATH, {}));
       if (safeStripeUrl(r.url)) { left = true; go(r.url); } else said = "Stripe's set-up page could not be opened. Nothing was changed. Please try again.";
     } catch (e) {
-      if (e instanceof StaffApiError && e.problem.code === "STEP_UP_REQUIRED") { cancelled = false; setAsk({ staffId: WAIT_ID, path: ONBOARDING_PATH, json: {}, method: "POST", what: "", need: "connect card payments", detail: "Stripe's set-up page opens after you sign in." }); return; }
+      if (e instanceof StaffApiError && e.problem.code === "STEP_UP_REQUIRED") { cancelled = false; refocusAt = 0; setAsk({ staffId: WAIT_ID, path: ONBOARDING_PATH, json: {}, method: "POST", what: "", need: "connect card payments", detail: "Stripe's set-up page opens after you sign in." }); return; }
       said = e instanceof StaffApiError ? refusalWords(e.status, e.problem.code) : "Could not reach Stripe now. Nothing was changed. Please try again.";
     } finally {
       inFlight.current = false; setBusy(false);
@@ -45,9 +47,16 @@ export function CardPaymentsSection({ go = (u: string) => window.location.assign
     }
   };
   // Back from "Confirm it's you": the kept Connect is sent once more under the new sign-in, only on this page.
-  React.useEffect(() => { if (takeWaiting(WAIT_ID) && owner && !cancelled) void connect(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on opening
+  React.useEffect(() => {
+    if (takeWaiting(WAIT_ID) && owner && !cancelled && window.location.pathname === GETTING_PAID_HOME) void connect();
+    // Break round 2 M1(a): leaving this page by any way (Back, a link) while "Confirm it's you" is open is a cancel too; the
+    // remount after the new sign-in keeps the address, so it is not.
+    return () => { if (window.location.pathname !== GETTING_PAID_HOME) { cancelled = true; takeWaiting(WAIT_ID); } };
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on opening
+  const mountedAt = React.useRef(Date.now());
+  React.useEffect(() => { if (refocusAt && mountedAt.current >= refocusAt && Date.now() - refocusAt < 60_000 && button.current) { refocusAt = 0; button.current.focus(); } });
   /** Cancel or Escape drops the kept Connect, even while the sign-in again is still on its way (break M1). */
-  const closeAsk = () => { cancelled = true; takeWaiting(WAIT_ID); setAsk(null); requestAnimationFrame(() => button.current?.focus()); };
+  const closeAsk = () => { cancelled = true; refocusAt = Date.now(); takeWaiting(WAIT_ID); setAsk(null); requestAnimationFrame(() => button.current?.focus()); };
 
   const head = <h2 id="card-payments" className="text-lg font-semibold">Card payments</h2>;
   if (!owner) return (
