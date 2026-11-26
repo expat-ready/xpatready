@@ -32,7 +32,7 @@ But until 25 Nov the PR's suites were report only (P-651 (2), E2): a red suite l
 pr-suites run 45558258285 on head caadabf (25 Nov 06:07Z) ended `success` while three of its parts ran their
 "logs (only when a suite failed)" step. P-822 made pr-suites required at the label (queue-gate.sh `suites()`, a
 check run named `pr-suites` green on the exact head), blocking from 357b3ebcf (25 Nov 06:37:58Z). The 24 Nov reds and the first csw3 run (06:11Z) came
-before the block. Unconfirmed for the reds that started after it (csw3 07:2x–07:31Z and #3649, qa53/#3647 11:33–11:59Z):
+before the block. Unconfirmed for the reds that started after it (the later csw3 runs up to 07:31Z and #3649, qa53/#3647 11:33–11:59Z):
 that their PRs were labelled before the block; the PRs' label history was not read.
 
 **Since then:** of 29 Mergify batch runs started 25 Nov 12:30Z – 26 Nov 06:19Z, 22 green, 7 red; none of the 7 has a
