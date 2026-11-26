@@ -40,7 +40,8 @@ export type DashboardAnswer = { role: string; title: string; widgets: { metricKe
 export class ReportsController {
   // db and clock are optional for the tests that build the door with a registry alone (they call `query` only)
   constructor(@Inject(MetricRegistry) private readonly registry: MetricRegistry, @Inject(Db) private readonly dbOrNone?: Db, @Inject(PlatformClock) private readonly clock: PlatformClock = new PlatformClock()) {}
-  private get db(): Db { if (!this.dbOrNone) throw new Error("ReportsController: no database"); return this.dbOrNone; }
+  // a method, not a getter: a start-up hook reads each prototype member, and a getter would run there with no instance
+  private database(): Db { if (!this.dbOrNone) throw new Error("ReportsController: no database"); return this.dbOrNone; }
 
   @Get("dashboards/:role") @AnyStaff(NEEDS)
   async dashboard(@Req() r: R, @Param("role") role: string): Promise<DashboardAnswer> {
@@ -49,8 +50,8 @@ export class ReportsController {
     if (!isDashboardRole(role)) problem(404, "Not found", "No such dashboard.", { code: "NO_DASHBOARD" });
     const d = DASHBOARDS[role];
     const labels = new Map(this.registry.definitions().map((m) => [m.key, m.label]));
-    const zone = await readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key);
-    const people = seesPeople(ctx.keys) ? (await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId), select: { id: true, displayName: true, status: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] }))
+    const zone = await readSetting<string>(this.database(), ctx.firmId, TIME_ZONE.key);
+    const people = seesPeople(ctx.keys) ? (await this.database().platformStaff.findMany({ where: firmScope(ctx.firmId), select: { id: true, displayName: true, status: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] }))
       .map((p) => ({ id: p.id, name: p.displayName, active: p.status === "ACTIVE" })) : undefined;
     return { role: d.role, title: d.title, widgets: d.widgets.map((w, position) => ({ metricKey: w.metricKey, visual: w.visual, position, registered: labels.has(w.metricKey), label: labels.get(w.metricKey) ?? null })),
       period: monthOf(zone, new Date(this.clock.now())), ...(people ? { people } : {}), canExport: mayExport(ctx.keys) };
@@ -77,7 +78,7 @@ export class ReportsController {
     if (a.status !== "OK" || a.reading?.kind !== "LIST") problem(503, "Try again", "This table could not be counted just now, so nothing was exported. Try again.", { code: "UNAVAILABLE" });
     const rows = a.reading.rows;
     // the line first, committed on its own; a line that cannot be written means no file (P-607 (3))
-    await this.db.$transaction((tx) => auditEvent.record(tx, exportLine(firmScope(ctx.firmId).firmId, actorWord(ctx.staffId), a, filters, rows.length)));
+    await this.database().$transaction((tx) => auditEvent.record(tx, exportLine(firmScope(ctx.firmId).firmId, actorWord(ctx.staffId), a, filters, rows.length)));
     res.status(200).setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${fileNameOf(metric, filters)}"`);
     res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Content-Type-Options", "nosniff"); res.setHeader("X-Export-Rows", String(rows.length));

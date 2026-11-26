@@ -15,6 +15,9 @@ import { Answer, apiFilters, Dashboard, emptyWords, heading, isEmpty, mayReport,
   type DashboardRole, type Filters, type Metric } from "./contract";
 
 type Widget = Dashboard["widgets"][number];
+const MONEY = /^-?\d+\.\d{2}$/;
+/** A table cell as shown: an amount with thousands separators ("1,130.00"), a number as is, text as is. */
+const cellWords = (v: string | number | null) => (typeof v === "string" && MONEY.test(v) ? moneyWords("", v).trim() : v ?? "");
 
 function Tip({ text, label }: { text: string; label: string }) {
   // a real button, so the words open on keyboard focus too (EXPERIENCE §2.10); the same words sit in its accessible name
@@ -42,16 +45,16 @@ function Rows({ m, visual }: { m: Metric; visual: Widget["visual"] }) {
         <span className="h-2.5 rounded-full bg-primary/10"><span className="block h-2.5 rounded-full bg-primary" style={{ width: `${(Number(r[count] ?? 0) / max) * 100}%` }} /></span>
         <span className="text-right tabular-nums">{r[count]}</span></li>))}</ul>;
   }
-  return <Table head={ordered.map(heading)} label={m.label}>{rows.map((r, i) => <tr key={i} data-report-row>{ordered.map((c) => <td key={c} className={cn(typeof r[c] === "number" || /^-?\d+\.\d{2}$/.test(String(r[c] ?? "")) ? "text-right tabular-nums" : "")}>{r[c] ?? ""}</td>)}</tr>)}</Table>;
+  return <Table head={ordered.map(heading)} label={m.label}>{rows.map((r, i) => <tr key={i} data-report-row>{ordered.map((c) => <td key={c} className={cn(typeof r[c] === "number" || MONEY.test(String(r[c] ?? "")) ? "text-right tabular-nums" : "")}>{cellWords(r[c] ?? null)}</td>)}</tr>)}</Table>;
 }
 
 function Card({ w, m, person, canExport, onExport, retry }: { w: Widget; m: Metric | undefined; person: string | null; canExport: boolean; onExport: (key: string, label: string) => void; retry: () => void }) {
   const wide = w.visual !== "TILE";
-  const label = m?.label ?? w.label ?? "A figure";
+  const label = m?.label ?? w.label ?? heading(w.metricKey.split(".").at(-1)!);   // an unregistered widget has no label yet: its key in words
   const scope = m ? scopeWords(m, person) : null;
   const exportable = canExport && wide && m?.status === "OK" && m.reading?.kind === "LIST" && m.reading.rows.length > 0;
   return (
-    <section className={cn("flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4", wide && "sm:col-span-2", !w.registered && "opacity-60")} data-report-card={w.metricKey} aria-label={label}>
+    <section className={cn("flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4", wide && "sm:col-span-2", !w.registered && "border-dashed bg-surface")} data-report-card={w.metricKey} aria-label={label}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold">{label}{m ? <Tip label="What this counts" text={m.source} /> : null}</h2>
         {exportable ? <Button variant="outline" size="sm" onClick={() => onExport(w.metricKey, label)} data-report-export={w.metricKey}>Export CSV</Button> : null}

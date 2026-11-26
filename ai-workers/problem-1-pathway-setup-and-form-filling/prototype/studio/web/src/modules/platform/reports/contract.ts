@@ -81,6 +81,7 @@ export function emptyWords(key: string): string {
   if (key.endsWith("_rate")) return "No prospects closed in this period";
   if (key.startsWith("reports.sales.")) return "No leads in this period";
   if (key === "reports.cases.new_vs_closed" || key === "reports.cases.case_load") return "No open cases in this period";
+  if (key === "reports.cases.stage_durations") return "No stages ended in this period";
   return "Nothing to count in this period";
 }
 export const withheldTip = (key: string) => key.startsWith("reports.money.") ? "This figure needs the Financial reports permission. Ask your firm's Owner." : "This figure needs a Reports permission you don't have. Ask your firm's Owner.";
