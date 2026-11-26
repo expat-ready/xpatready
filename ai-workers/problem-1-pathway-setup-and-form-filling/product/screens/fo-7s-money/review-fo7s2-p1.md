@@ -96,3 +96,35 @@ Independent reviewer (Opus 5.5, did not build it), 26 Nov 2026. Commit reviewed:
 * CI on 5c61983b6.
 
 Reviewer: Approve 5c61983b6dfbdcbaf3094c7c2649126f0b514f0f
+
+## Round 2 (26 Nov): `git diff 5c61983b6..fead0c6655574bfa406108be1bbdf05ac7e980f8`, diff only
+I used the builder's copy `fo7s2` on :4762, serving this code (the dialog shows the new words). `check_fo7s2_card_browser.ts 4762 xr_studio_fo7s2` passed **43/43 twice**. I restored the one screenshot the runs rewrote.
+
+**Verdict: Ship after fixes (Changes).** 1 Major is open: the remainder of the breaker's M1.
+
+**New Major: Cancel can still send the Connect.** `section.tsx` `closeAsk` clears the kept Connect with `takeWaiting(WAIT_ID)`. But PF-6's dialog sets `waiting = ask` only **after** its own `await staffApi("/platform/me")` (`platform/staff/step-up.tsx`, in `go()`).
+* **Effect:** a Cancel or Escape pressed while that read is in flight finds nothing to clear. The sign-in then completes, the page remounts, `takeWaiting` returns the Connect, and it is sent.
+* **Probe (my scratchpad script):** I stubbed the onboarding answers as in S4 and slowed only the dialog's `/platform/me` to 2.5 s. I clicked Sign in again, then Cancel 300 ms later, and repeated with Escape.
+* **Result, both times:** onboarding was called 2 times and the browser was at `https://connect.fake-rail.example/setup/…`. On a server with a key, that is a connected account and an audit line ("The Owner started connecting…") after the Owner said Cancel.
+* **Why S4 M1 misses it:** S4 M1 slows only `/platform/session/local`, which happens after `waiting` is set.
+* **Why it is Major:** the window is narrower than round 1's, but the outcome is the same as the breaker's M1, on a step-up guarded money action.
+* **Fix, within this touch list:** record the cancel where a remount can see it, e.g. a module-level `dropped` flag set in `closeAsk` and cleared on the next Connect click. The mount effect then resends only when `takeWaiting` returns and the cancel was not recorded. Better, for the tech lead: in `ConfirmItsYou.go()`, set `waiting` before the first await, or check after it that the dialog is still open.
+* **Fail test:** a variant of S4 M1 that delays `**/api/platform/me` only after the dialog opens. Press Cancel during that delay, then assert `calls === 1` and that the URL is still on the copy.
+
+**Round 1 findings:**
+* **m1, fixed.** The body now reads "Stripe's set-up page opens after you sign in.", which matches the shared description ("the change is sent once more for you"), and "try once more" is gone. The title and description still both say "Confirm it's you"; that is PF-6's shared text, not this PR's.
+* **m2, fixed.** Focus goes into the dialog on open, back to the button after Cancel or Escape (my probe), and to the refusal words after a refusal (new K line, which passes and would fail).
+* **m3, fixed.** `?account=` is read once and dropped with `replace`. "Reload this page in a few minutes" replaces the unkept promise, and Active shows neither line (S5, both directions).
+* **m4, fixed.** A failed read and an unknown state both show `READ_FAILED` with Try again (`q.refetch`). The server's raw text never shows: `refusalWords` no longer passes `detail` through (S6).
+* **m5, recorded** as build discovery FO-7s2-1 in `challenge.md`, with a recommendation (the `cardPayments` field on the invoice detail read, FO-7s2 part 2). Accepted. The BACKLOG check stays open until part 2.
+* **m6 and m7:** kept for the tech lead, as the PR says. They stay Minor.
+
+**Other changes (breaker's minors), held:**
+* One alert for Pending after a break: there is a single `role="alert"`, and the words say both facts.
+* `safeStripeUrl` now accepts only `connect.stripe.com` (or the fake rail) on https, with the default port and no user info. The pure line covers `:8443`, `evil.stripe.com` and `u@`.
+* `inFlight` gives one Connect at a time.
+* 429 has its own words.
+
+**Not checked in round 2:** CI on fead0c665; a real screen reader; real Stripe onboarding.
+
+Reviewer: Changes fead0c6655574bfa406108be1bbdf05ac7e980f8
