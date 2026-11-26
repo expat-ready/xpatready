@@ -9,7 +9,7 @@
 // staging folder in a scratch folder, the clock injected. No network, US$0.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pff2_uploads.ts
 import "reflect-metadata";
-import { Module } from "@nestjs/common";
+import { HttpException, Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -90,11 +90,12 @@ try {
   const doors = nest.get(UploadDoors), rail = nest.get(UploadRail);
   const completed: string[] = [];
   const P_FAILS = randomUUID();   // the test door's onComplete throws for this person (break F3)
+  const healed = new Set<string>();   // part 1b: once healed, the same person's onComplete works (a door back after a failure)
   doors.register("STAFF", {
     allowedKinds: ["pdf", "png"],
     authorize: async (_ctx, meta) => (meta.personId && /^[0-9a-f-]{36}$/.test(meta.personId) ? { personId: meta.personId } : null),
     keyOf: (t, id) => `uploads/${t.personId}/${id}`,
-    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
+    onComplete: async (_tx, f) => { if (f.target.personId === P_FAILS && !healed.has(P_FAILS)) throw new Error("door internals: /home/secret/path tx failed"); completed.push(f.id); },
   });
   ok("setup: the feature registers the route, the registry and the rail; the hourly cleanup is on PF-14's runner (UTC)",
     feature.controllers.length === 1 && jobCalls.includes(`handle:${UPLOAD_CLEANUP_QUEUE}`) && jobCalls.includes(`recurring:${UPLOAD_CLEANUP_QUEUE}:17 * * * *:UTC`), jobCalls);
@@ -218,6 +219,45 @@ try {
   const rF = await patch(tOwner, idF, 0, docF);
   ok("PF-F2 DW0 fail (break F3): a door's onComplete failing → 500 in plain words (no path, no internal message); the plat_file row rolls back",
     rF.status === 500 && /could not be finished/.test(rF.text) && !/home|secret|tx failed|Error/.test(rF.text) && fileRows() === rowsF, rF);
+  // Part 1b (review m4, the Known gap): a plain tus client asks HEAD after that 500. HEAD of an upload whose bytes are all in
+  // runs finish first: while the door still fails it answers the failure's status (a HEAD answer has no body, so the words
+  // stay the PATCH's), never 200 with the full offset, which tus-js-client reads as success with no file; once the door
+  // works, HEAD stores it once and names it.
+  const hF = await head(tOwner, idF);
+  ok("PF-F2 DW0 fail (part 1b): HEAD after a failed finish answers 500 (not complete): no offset, no file id, no row",
+    hF.status === 500 && !hF.headers.get("upload-offset") && !hF.headers.get("upload-file-id") && fileRows() === rowsF, [hF.status, hF.text]);
+  healed.add(P_FAILS);
+  const hF2 = await head(tOwner, idF), hF3 = await head(tOwner, idF), fileF = hF2.headers.get("upload-file-id");
+  ok("PF-F2 DW0 pass (part 1b): once the door works, HEAD finishes the upload: 200, offset = size, its Upload-File-Id; a second HEAD names the same file; one row, one onComplete",
+    hF2.status === 200 && Number(hF2.headers.get("upload-offset")) === docF.length && !!fileF && hF3.headers.get("upload-file-id") === fileF && fileRows() === rowsF + 1 && completed.filter((c) => c === fileF).length === 1,
+    [hF2.status, fileF, hF3.headers.get("upload-file-id"), fileRows() - rowsF]);
+  const rF2 = await patch(tOwner, idF, docF.length, new Uint8Array(0));
+  ok("PF-F2 DW0 pass (part 1b): the client's confirming empty PATCH then gets the same file", rF2.status === 204 && rF2.headers.get("upload-file-id") === fileF, [rF2.status, rF2.headers.get("upload-file-id")]);
+  // Review M1 of #3640: HEADs racing the last chunk while the door fails (a second tab, a buffering proxy). The finish runs
+  // inside tus's own locked read, so no HEAD may answer 200 at the full size with no file. A check made before tus took
+  // its lock leaked here (the reviewer: 89 of 96 HEADs).
+  healed.delete(P_FAILS);
+  let leaks = 0, patch500 = 0, heads = 0;
+  for (let n = 0; n < 4; n++) {
+    const d = pdfOf(2_000_000), idR = idOf(await create(tOwner, d.length, { personId: P_FAILS }));
+    await patch(tOwner, idR, 0, d.subarray(0, 100_000));
+    const all = await Promise.all([patch(tOwner, idR, 100_000, d.subarray(100_000)), ...Array.from({ length: 12 }, (_, k) => new Promise<R>((r) => setTimeout(() => r(head(tOwner, idR)), k * 2)))]);
+    if (all[0].status === 500) patch500++;
+    for (const h of all.slice(1)) { heads++; if (h.status === 200 && Number(h.headers.get("upload-offset")) === d.length && !h.headers.get("upload-file-id")) leaks++; }
+  }
+  healed.add(P_FAILS);
+  ok("PF-F2 DW0 fail (part 1b, review M1): HEADs racing the last chunk while the door fails never read complete with no file",
+    leaks === 0 && patch500 === 4 && fileRows() === rowsF + 1, { leaks, heads, patch500, rows: fileRows() - rowsF });
+  // Review m1 of #3640: a repeated finish names the file as the first did (the client's name corrected from the bytes).
+  const named = await create(tOwner, PNG.length, { filename: "../../scan.pdf", filetype: "application/pdf" }), idN = idOf(named);
+  await patch(tOwner, idN, 0, PNG);
+  const upN = await rail.store.getUpload(idN), n1 = await rail.finish(upN), n2 = await rail.finish(upN);
+  ok("PF-F2 DW0 pass (part 1b, review m1): a repeated finish gives the same file and the same corrected name", n1.id === n2.id && n1.name === "scan.png" && n2.name === "scan.png", [n1.name, n2.name]);
+  // Review n1 of #3640: a HEAD without Tus-Resumable (tus's 412) finishes nothing.
+  const d412 = pdfOf(4000), id412 = idOf(await create(tOwner, d412.length, { personId: P_FAILS }));
+  healed.delete(P_FAILS); await patch(tOwner, id412, 0, d412); healed.add(P_FAILS);
+  const rows412 = fileRows(), h412 = await fetch(`${base}/api/platform/files/uploads/${id412}`, { method: "HEAD", headers: { authorization: `Bearer ${tOwner}` } });
+  ok("PF-F2 DW0 pass (part 1b, review n1): a HEAD without Tus-Resumable answers 412 and finishes nothing", h412.status === 412 && !h412.headers.get("upload-file-id") && fileRows() === rows412 && !!(await head(tOwner, id412)).headers.get("upload-file-id") && fileRows() === rows412 + 1, h412.status);
 
   // ------------------------------------------------------------------------------------ DW7: the declared size
   const before7 = readdirSync(join(WORK, "staging")).length;
@@ -263,6 +303,52 @@ try {
   const featureSrc = readFileSync(join(STUDIO, "api", "src", "features", "platform-files.ts"), "utf8");
   ok("PF-F2 review M1 fail: a rail switched off (the S3 deployment, two API tasks) answers 503 in words and stages nothing; the feature switches it off by PLATFORM_FILES=s3",
     offRes.statusCode === 503 && /not switched on here yet/.test(offRes.body) && (!existsSync(join(WORK, "off")) || readdirSync(join(WORK, "off")).length === 0) && /off: process\.env\.PLATFORM_FILES\?\.trim\(\) === "s3"/.test(featureSrc), offRes);
+
+  // ------------------------------------------------ CS-D1u (review round 1 on #3698): a door's check and its size limit
+  // A rail of its own (its own registry and staging folder), whose door has a 4000-byte limit and a check, finishing
+  // uploads staged straight through its store: the finish-time rules, which tus's Upload-Length keeps HTTP from reaching.
+  const { Upload } = await import("@tus/utils");
+  const { Readable } = await import("node:stream");
+  const doors2 = new UploadDoors(), checks: string[] = [], done2: string[] = [];
+  const Q = { ok: randomUUID(), refuse: randomUUID(), later: randomUUID(), "no-row": randomUUID(), down: randomUUID() } as Record<string, string>;   // people (a hold names a uuid)
+  doors2.register("STAFF", { allowedKinds: ["pdf"], maxBytes: 4000, authorize: async () => null, keyOf: (t, id) => `checked/${t.personId}/${id}`,
+    check: async (bytes, f) => { checks.push(f.name); if (f.target.personId === Q["refuse"]) throw new HttpException({ title: "Not stored", status: 400, detail: "The door says no. Nothing was stored." }, 400); if (f.target.personId === Q["later"]) throw new HttpException({ title: "Busy", status: 503, detail: "Try again in a moment." }, 503); void bytes; },
+    onComplete: async (_tx, f) => { if (f.target.personId === Q["no-row"]) throw new HttpException({ title: "Not stored", status: 409, detail: "No. Nothing was stored." }, 409); if (f.target.personId === Q["down"]) throw new Error("the door's table is down"); done2.push(f.id); } });
+  const rail2 = new UploadRail({ db: walled, files, doors: doors2, holds: new (await import("../api/src/platform/register/holds/adapter.ts")).PgLegalHolds(), now: () => clock.t, dir: join(WORK, "checked") });
+  const stage2 = async (personId: string, bytes: Uint8Array) => {
+    const id = randomUUID().replace(/-/g, "");
+    const up = new Upload({ id, size: bytes.length, offset: 0, metadata: { filename: "letter.pdf", filetype: "application/pdf", xr_firm: A.toLowerCase(), xr_door: "STAFF", xr_actor: "STAFF:x", xr_target: JSON.stringify({ personId }), xr_born: String(clock.t) } });
+    await rail2.store.create(up); await rail2.store.write(Readable.from([Buffer.from(bytes)]), id, 0);
+    return { up: await rail2.store.getUpload(id), id };
+  };
+  const refusedBy = async (p: Promise<unknown>) => p.then(() => null, (e: { status_code?: number; body?: string; getStatus?: () => number }) => e?.status_code ?? e?.getStatus?.() ?? -1);
+  const has2 = (personId: string, id: string) => files.exists(A, `checked/${personId}/${id}`);
+  const s2a = await stage2(Q["ok"], pdfOf(3000));
+  const f2a = await rail2.finish(s2a.up).catch(() => null);
+  ok("CS-D1u rail pass: a door's check runs on the finished bytes (with PF-F4's corrected name) before they are stored; the file is stored and onComplete runs",
+    !!f2a && checks.at(-1) === "letter.pdf" && done2.length === 1 && await has2(Q["ok"], s2a.id), { f2a: !!f2a, checks });
+  const s2b = await stage2(Q["refuse"], pdfOf(3000)), rows2b = fileRows();
+  const r2b = await refusedBy(rail2.finish(s2b.up));
+  ok("CS-D1u rail fail: a door's check that refuses (4xx) → refused; no plat_file row, no stored bytes, no staging copy, no onComplete",
+    r2b === 400 && fileRows() === rows2b && !(await has2(Q["refuse"], s2b.id)) && !existsSync(join(WORK, "checked", s2b.id)) && done2.length === 1, { r2b });
+  const s2c = await stage2(Q["later"], pdfOf(3000));
+  const r2c = await refusedBy(rail2.finish(s2c.up));
+  ok("CS-D1u rail fail: a check that says try again (5xx) stores nothing and keeps the staging copy for the retry",
+    r2c === 503 && !(await has2(Q["later"], s2c.id)) && existsSync(join(WORK, "checked", s2c.id)), { r2c });
+  const s2d = await stage2(Q["ok"], pdfOf(4001)), rows2d = fileRows();
+  const r2d = await refusedBy(rail2.finish(s2d.up));
+  ok("CS-D1u rail fail: bytes over the door's own limit (maxBytes) are refused at the finish (413), nothing stored, staging removed",
+    r2d === 413 && fileRows() === rows2d && !(await has2(Q["ok"], s2d.id)) && !existsSync(join(WORK, "checked", s2d.id)), { r2d });
+
+  const s2e = await stage2(Q["no-row"], pdfOf(3000));
+  const r2e = await refusedBy(rail2.finish(s2e.up));
+  ok("CS-D1u rail fail: onComplete refusing (4xx) after the bytes were put → the key is removed with the staging copy (no bytes without a row)",
+    r2e === 409 && !(await has2(Q["no-row"], s2e.id)) && !existsSync(join(WORK, "checked", s2e.id)), { r2e });
+  const s2f = await stage2(Q["down"], pdfOf(3000));
+  const r2f = await refusedBy(rail2.finish(s2f.up)), keptForRetry = await has2(Q["down"], s2f.id) && existsSync(join(WORK, "checked", s2f.id));
+  clock.t += UPLOAD_EXPIRY_MS + 60_000; await rail2.sweep(); clock.t -= UPLOAD_EXPIRY_MS + 60_000;
+  ok("CS-D1u rail pass: a failure that is not a refusal keeps the bytes and the staging copy for a retry; the expiry cleanup then removes both (no row names them)",
+    r2f !== null && keptForRetry && !(await has2(Q["down"], s2f.id)) && !existsSync(join(WORK, "checked", `${s2f.id}.json`)) && await has2(Q["ok"], s2a.id), { r2f, keptForRetry });
 
   // ------------------------------------------------------------------------------------ DW9: the migration, right after itself
   const NEW_AT = all.indexOf(NEW), before = all.filter((d) => d < NEW);
