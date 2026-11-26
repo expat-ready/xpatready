@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reports (PF-R3 draft board)</title>
-<!-- PF-R3 concept draft board: the Owner's dashboard, November 2026, Sample data (the figures the PF-R2cm and CS-R1 tests
+<!-- PF-R3 concept draft board r2 (per-card scope badges, no header badge; challenge M2, m2, m8): the Owner's dashboard, November 2026, Sample data (the figures the PF-R2cm and CS-R1 tests
      seed). Self-contained, no script, no external file. Team tokens: Blue #0862C5, Inter 14 px UI text, 12/14/16/18/24
      steps, white cards on light grey, 44 px table rows. Not for porting: the board's notes column. -->
 <style>
@@ -33,16 +33,16 @@ aside{grid-column:1/-1;background:#fffbe6;border:1px dashed #d9b600;border-radiu
 </style></head><body>
 <header><div class="grow"><h1>Reports</h1><p class="sub">How the firm is doing, counted from your records</p></div>
 <label>Dashboard <select><option>Owner</option><option>Case Manager</option><option>Billing / Finance</option><option>Case Officer</option></select></label>
-<span class="badge" title="You see the whole firm, money included (Financial reports permission)">Whole firm, money</span></header>
+</header>
 <div class="bar" role="group" aria-label="Filters">
 <label>Month <select><option>November 2026</option><option>October 2026</option><option>Custom dates…</option></select></label>
 <label>Person <select><option>Everyone</option><option>Case Officer (Sample)</option></select></label>
 <label>Client type <select><option>All</option><option>Individual</option><option>Corporate</option></select></label></div>
 <main>
-<section class="card"><h2>Leads added <span class="i" title="What this counts: leads that arrived in the period, closed ones included…">i</span></h2><div class="v">14</div><div class="note">Whole firm</div></section>
-<section class="card"><h2>Win rate <span class="i" title="What this counts: …">i</span></h2><div class="v">33.3%</div><div class="note">Whole firm</div></section>
-<section class="card"><h2>Fees billed <span class="i" title="What this counts: issued invoices' totals (tax and government fees included) on their issue day, less credit notes on theirs, in the period.">i</span></h2><div class="v"><span class="cur">CAD</span>2,840.00</div><div class="v"><span class="cur">USD</span>210.00</div></section>
-<section class="card"><h2>Fees collected <span class="i" title="What this counts: money paid on invoices in the period…">i</span></h2><div class="v"><span class="cur">CAD</span>1,100.00</div><div class="v"><span class="cur">USD</span>50.00</div></section>
+<section class="card"><h2>Leads added <span class="i" title="What this counts: leads that arrived in the period, closed ones included…">i</span></h2><div class="v">14</div><div class="note"><span class="badge">Whole firm</span></div></section>
+<section class="card"><h2>Win rate <span class="i" title="What this counts: …">i</span></h2><div class="v">33.3%</div><div class="note"><span class="badge">Whole firm</span></div></section>
+<section class="card"><h2>Fees billed <span class="i" title="What this counts: issued invoices' totals (tax and government fees included) on their issue day, less credit notes on theirs, in the period.">i</span></h2><div class="v"><span class="cur">CAD</span>2,840.00</div><div class="v"><span class="cur">USD</span>210.00</div><div class="note"><span class="badge">Whole firm</span></div></section>
+<section class="card"><h2>Fees collected <span class="i" title="What this counts: money paid on invoices in the period…">i</span></h2><div class="v"><span class="cur">CAD</span>1,100.00</div><div class="v"><span class="cur">USD</span>50.00</div><div class="note"><span class="badge">Whole firm</span></div></section>
 <section class="card wide"><div class="rowh"><h2>Open cases by stage <span class="i" title="What this counts: open cases, counted by the stage each is in now…">i</span></h2></div>
 <div class="barrow"><span>Document collection</span><div class="track"><div class="fill" style="width:80%"></div></div><span>8</span></div>
 <div class="barrow"><span>Forms</span><div class="track"><div class="fill" style="width:50%"></div></div><span>5</span></div>
@@ -52,10 +52,10 @@ aside{grid-column:1/-1;background:#fffbe6;border:1px dashed #d9b600;border-radiu
 <div>CAD</div><div>640.00</div><div>1,100.00</div><div>0.00</div><div>0.00</div><div>0.00</div><div><b>1,100.00</b></div>
 <div>USD</div><div>0.00</div><div>0.00</div><div>160.00</div><div>0.00</div><div>0.00</div><div><b>160.00</b></div></div>
 <div class="note">The date range does not apply: this is today's book.</div></section>
-<section class="card full"><div class="rowh"><h2>Time spent in each stage <span class="i" title="What this counts: …">i</span></h2><button class="secondary">Export CSV</button></div>
+<section class="card full" style="border:0;background:transparent;padding:0"><div class="rowh"><h2>Time spent in each stage <span class="i" title="What this counts: …">i</span></h2><button class="secondary">Export CSV</button></div>
 <div class="scroll"><table><thead><tr><th>Stage</th><th>Ended</th><th>Average days</th><th>Median days</th><th></th></tr></thead><tbody>
 <tr><td>Document collection</td><td class="n">6</td><td class="n">12.5</td><td class="n">10.0</td><td>Slowest</td></tr>
 <tr><td>Forms</td><td class="n">4</td><td class="n">6.0</td><td class="n">5.5</td><td></td></tr></tbody></table></div></section>
-<section class="card full muted"><h2>Overdue tasks by person <span class="i" title="This figure comes in a later release.">i</span></h2><div class="note">Not counted yet</div></section>
-<aside><b>Board notes (not for porting):</b> one filter bar narrows every card. Money is one value per currency, never added. A figure outside your access reads "Not in your access", never 0. An empty table says why ("No invoices in this period"). "Export CSV" shows only with the Export permission and writes one audit line. No figure links to a list yet (Q1). At 375 px the cards stack, the filters wrap and tables scroll inside their card. The page itself never scrolls sideways.</aside>
+<section class="card full muted"><h2>Overdue tasks by person <span class="i" title="Coming in Release 1.">i</span></h2><div class="note">Not counted yet</div></section>
+<aside><b>Board notes (not for porting):</b> one filter bar narrows every card. Money is one value per currency, never added. A figure outside your access reads "Not in your access", never 0. An empty table says why ("No invoices in this period"). "Export CSV" shows only with the Export permission and writes one audit line. No figure links to a list yet (Q1). Each card shows its own scope; under a person filter the badge reads "&lt;Name&gt;'s work". At 375 px the cards stack, the filters wrap and tables scroll inside their card. The page itself never scrolls sideways.</aside>
 </main></body></html>
