@@ -1,6 +1,6 @@
 // CS-W2 part review (Release 1 row R1.3; BACKLOG CS-W2; brief design/briefs/CS-W2.md part 5; contract v0.1 §8 steps 2,
 // 2a, conditions 1 and 3; P-575, P-588 (4)): the platform firm on the seven review tables. Each named case has a pass and a fail.
-//   1. a scratch database: every migration before 20261126100000_shared__csw2_review_firm_id, two Sample firms, a case of each
+//   1. a scratch database: every migration before 20261126155300_shared__csw2_review_firm_id, two Sample firms, a case of each
 //      and one of a key with no platform firm, each with a filing, an item and one row in each review table; then the
 //      migration and every later one. DW5.1 (backfill), DW5.2 (fill), DW5.3 (each composite key, the finding's match,
 //      the keep), DW5.4 (names, INVOKER, the follow past the append-only and round guards). A second scratch database: a
@@ -17,7 +17,7 @@ import { call, needVisitorVisa, openCase, prepare, sql as copySql } from "../acc
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126100000_shared__csw2_review_firm_id";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126155300_shared__csw2_review_firm_id";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", HOST = "127.0.0.1:54329", pg = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const TABLES = ["review_finding", "filing_review", "readiness_pass", "review_round", "review_round_filing", "review_round_form", "review_check"];

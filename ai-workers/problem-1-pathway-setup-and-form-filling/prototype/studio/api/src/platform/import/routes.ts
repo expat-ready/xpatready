@@ -7,7 +7,10 @@ import type { Request } from "express";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../identity/keys.ts";
 import { MAX_BYTES } from "./csv.ts";
 import { parseInput } from "../http/input.ts";
+import { z } from "zod";
 import { ImportService, RUN_KEY, UploadQuery, VIEW_KEY } from "./engine.ts";
+
+const NoQuery = z.strictObject({});
 
 type R = Request & { platform?: StaffContext };
 
@@ -35,8 +38,12 @@ export class ImportController {
   attestation(@Req() r: R) { return this.svc.attestation(staffOf(r)); }
   @Post("attestation") @PermissionKeys(RUN_KEY)
   attest(@Req() r: R, @Body() b: unknown) { return this.svc.attest(staffOf(r), b); }
+  @Get() @PermissionKeys(VIEW_KEY)
+  list(@Req() r: R, @Query() q: unknown) { return this.svc.list(staffOf(r), q); }
   @Post() @PermissionKeys(RUN_KEY)
   async upload(@Req() r: R, @Query() q: unknown) { const s = staffOf(r), query = parseInput(UploadQuery, q ?? {}); return this.svc.upload(s, query, await csvBody(r)); }   // the query first (PF-28: an unknown key is 422)
+  @Get("origin/:kind/:id") @PermissionKeys(VIEW_KEY)
+  origin(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string, @Query() q: unknown) { const s = staffOf(r); parseInput(NoQuery, q ?? {}); return this.svc.origin(s, kind, id); }   // PF-28: an unknown query key is 422 (break m3)
   @Get(":id") @PermissionKeys(VIEW_KEY)
   view(@Req() r: R, @Param("id") id: string) { return this.svc.view(staffOf(r), id); }
   @Get(":id/rows") @PermissionKeys(VIEW_KEY)
