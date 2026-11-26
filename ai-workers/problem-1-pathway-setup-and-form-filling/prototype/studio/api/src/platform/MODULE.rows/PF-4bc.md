@@ -1,0 +1,2 @@
+Entry points: PF-4bc: `CognitoIdentityAdmin` (`identity/session/provider.ts`): IdentityAdminPort on Cognito's admin API (AdminCreateUser with SUPPRESS, AdminGetUser, AdminGetUserAuthFactors, AdminSetUserMFAPreference, AdminUserGlobalSignOut), a 3 s deadline per call, provider errors mapped by name (`mapProviderError`); `lockFirm(tx, firmId)` and `FIRM_TX` (`identity/session/firm-lock.ts`: a firm lock waited for at most 1.5 s, then 409 FIRM_BUSY; an 8 s transaction for the session's provider-calling changes).
+Tests: tests/check_pf4bc_cognito_admin.ts
