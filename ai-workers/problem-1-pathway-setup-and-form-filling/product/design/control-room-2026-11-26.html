@@ -1,0 +1,159 @@
+<title>Release 1 Recovery Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: control-room page; summary first, then capability grid, pipeline stations, workstreams, enforcement, recovery timeline. */
+:root{--bg:#f5f6f8;--panel:#fff;--fg:#16202c;--muted:#5b6777;--line:#dde2ea;--accent:#1f5fbf;--accent-soft:#e7eefb;
+--ok:#1d7a46;--ok-soft:#e2f3e9;--warn:#946000;--warn-soft:#fbefd6;--bad:#b3261e;--bad-soft:#fbe4e2;--idle:#8a94a3;--idle-soft:#eceff3;
+--display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;--body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0e131a;--panel:#151c25;--fg:#e6ebf2;--muted:#9aa7b8;--line:#28323f;--accent:#7aa8ff;--accent-soft:#1a2942;--ok:#5fcf8f;--ok-soft:#13301f;--warn:#f0b956;--warn-soft:#33270f;--bad:#ff8a80;--bad-soft:#3a1715;--idle:#7b8695;--idle-soft:#1f2732;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e131a;--panel:#151c25;--fg:#e6ebf2;--muted:#9aa7b8;--line:#28323f;--accent:#7aa8ff;--accent-soft:#1a2942;--ok:#5fcf8f;--ok-soft:#13301f;--warn:#f0b956;--warn-soft:#33270f;--bad:#ff8a80;--bad-soft:#3a1715;--idle:#7b8695;--idle-soft:#1f2732;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding-block:26px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:26px}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.2;text-wrap:balance}h1{font-size:2rem}h2{font-size:1.35rem;padding-bottom:6px;border-bottom:1px solid var(--line)}h3{font-size:1.02rem}
+p{margin:0;max-width:76ch}.sub{color:var(--muted)}section{display:flex;flex-direction:column;gap:12px}
+.eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:11px 13px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font-family:var(--display);font-size:1.55rem;font-variant-numeric:tabular-nums}.stat span{color:var(--muted);font-size:.84rem}
+.stat.bad{border-color:var(--bad)}.stat.warn{border-color:var(--warn)}
+.bar{display:flex;height:22px;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.bar div{display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:600;color:#fff;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.85rem;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
+.cell{border-radius:5px;padding:6px 7px;font-size:.74rem;line-height:1.25;border:1px solid var(--line);background:var(--panel);min-width:0;position:relative}
+.cell b{font-family:var(--mono);font-size:.74rem;display:block}.cell span{color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell.Works{background:var(--ok-soft);border-color:transparent}.cell.Partial{background:var(--warn-soft);border-color:transparent}.cell.Not{background:var(--panel)}
+.cell .ln{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.cell .ac{position:absolute;bottom:5px;right:6px;font-size:.65rem;color:var(--bad);font-weight:600}
+.box{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:660px;font-size:.9rem}th,td{text-align:left;vertical-align:top;padding:8px 11px;border-bottom:1px solid var(--line)}
+th{font-family:var(--display);font-weight:600;background:var(--accent-soft)}tr:last-child td{border-bottom:none}td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip{display:inline-block;font-size:.76rem;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.ok{background:var(--ok-soft);color:var(--ok)}.warn{background:var(--warn-soft);color:var(--warn)}.bad{background:var(--bad-soft);color:var(--bad)}.info{background:var(--accent-soft);color:var(--accent)}.idle{background:var(--idle-soft);color:var(--idle)}
+.needs{border:1px solid var(--bad);background:var(--bad-soft);border-radius:6px;padding:13px 15px;display:flex;flex-direction:column;gap:8px}
+.needs ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.st{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 11px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.st.c{border:2px solid var(--bad)}.st b{font-family:var(--display);font-size:1.3rem;font-variant-numeric:tabular-nums}.st p{font-size:.82rem;color:var(--muted)}
+code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:var(--muted);font-size:.84rem}
+</style>
+<div class="wrap">
+<header style="display:flex;flex-direction:column;gap:8px">
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 1, new account · 26 Nov 2026, 12:2x IST · from lead-watch full at 12:19 IST</div>
+  <h1>Release 1 Recovery Control Room</h1>
+  <p class="sub">One page for the founder: where Release 1 stands, what is moving, what is stuck, what is enforced, and the recovery plan. Every number comes from GitHub or main's <code>qa/CAPABILITIES.md</code> at 12:19 IST; estimates say so. The detailed plan is in <a href="https://claude.ai/artifact/PgnAemZQEb3FnbM9DTYaXX">Release 1 Plan of Attack</a>.</p>
+</header>
+
+<section class="needs">
+  <h2 style="border:none;padding:0">🔴 Needs you</h2>
+  <ol>
+    <li><b>Archive the six old cloud sessions</b> on claude.ai/code. They're the ones without a "b" or the new titles; GitHub refused their pushes.</li>
+    <li><b>Hand check R1.24 and R1.109</b> (asked 25 Nov 16:31 IST and still open). I'll bring each to you with a link when you have 10 minutes.</li>
+    <li><b>claude.ai sign-in in the built-in browser</b>, by an email code, when that account's inbox is at hand. Until then I steer lanes by message and you relay the few I can't wake.</li>
+  </ol>
+  <p class="sub">🟡 Decide when you can: the staging test mailbox for FD-10. Recommend Amazon SES in our own AWS account.</p>
+</section>
+
+<section>
+  <h2>Headline</h2>
+  <div class="stats">
+    <div class="stat bad"><b>0</b><span>proven today (target 15)</span></div>
+    <div class="stat"><b>64 / 110</b><span>proven Works on main</span></div>
+    <div class="stat bad"><b>+1</b><span>proven in the last 24 h (the switch stall)</span></div>
+    <div class="stat bad"><b>11 Jan</b><span>forecast at the last 24 h rate: not on track</span></div>
+    <div class="stat warn"><b>3-4 Dec</b><span>recovery forecast at 15 a day from 27 Nov (estimate)</span></div>
+    <div class="stat"><b>2.8 / day</b><span>needed for all 110 by 12 Dec</span></div>
+  </div>
+  <div class="bar" role="img" aria-label="64 Works, 17 Partial, 29 Not built">
+    <div style="width:58.2%;background:var(--ok)">64 Works</div>
+    <div style="width:15.5%;background:var(--warn)">17 Partial</div>
+    <div style="width:26.3%;background:var(--idle)">29 Not built</div>
+  </div>
+  <p><b>Recommendation:</b> clear my own queue first, because I am the constraint (next section). Everything I do in the next hour is Lead reads and answers, so the 20 lanes and the merge queue never wait on me.</p>
+</section>
+
+<section>
+  <h2>All 110 capabilities</h2>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--ok-soft);border:1px solid var(--ok)"></i>Works (proven)</span>
+    <span><i class="dot" style="background:var(--warn-soft);border:1px solid var(--warn)"></i>Partial</span>
+    <span><i class="dot" style="background:var(--panel);border:1px solid var(--line)"></i>Not built</span>
+    <span><i class="dot" style="background:var(--accent);border-radius:50%"></i>a lane is on it now</span>
+    <span style="color:var(--bad);font-weight:600">$</span>&nbsp;needs an outside account
+  </div>
+  <div class="grid" id="grid"></div>
+  <p class="sub">Hover or tap a tile for its name and owner. The blue dot means a cloud lane or a named PR owns the capability right now. Partial and Not-built tiles with no dot get the next free lanes, in plan order.</p>
+</section>
+
+<section>
+  <h2>The pipeline right now: where work waits</h2>
+  <div class="flow">
+    <div class="st"><span class="eyebrow">Shaped, ready</span><b>~15</b><p>Track A board covers 1 day (target 2). 14 Partials sit on no board: buffer owed.</p></div>
+    <div class="st warn"><span class="eyebrow">Building</span><b>24</b><p>Items building against a cap of 8 (P-745). 20 cloud lanes, cap 18 (A399). No new starts.</p></div>
+    <div class="st"><span class="eyebrow">Review</span><b>&lt;1 h</b><p>Fresh Opus reviewer. Approves are fast; rounds over the cap wait on me.</p></div>
+    <div class="st c"><span class="eyebrow">Lead answers and reads</span><b>11 + 9</b><p><b>The constraint.</b> 11 questions (answered 12:2x) and 9 approved PRs awaiting my read (P-423).</p></div>
+    <div class="st"><span class="eyebrow">Red after approval</span><b>~6</b><p>Old heads lack a pr-suites run (P-822, new overnight); a main merge fixes each.</p></div>
+    <div class="st warn"><span class="eyebrow">Merge queue and machines</span><b>2 batches</b><p>#3806 and #3813 running. 42 runs waiting for a machine, oldest 36 min. 132 jobs running.</p></div>
+    <div class="st"><span class="eyebrow">qa proof</span><b>2 lanes</b><p>R1.96 merged 00:31 with no proof (qa 1b owns it). R1.29's proof PR is #3789.</p></div>
+  </div>
+  <p><b>The constraint today is the Lead's answers and reads,</b> because 20 lanes started in one hour all reached review or a question within about 40 minutes, while I was writing plans. 25 PRs breached the 10-minute answer target. <b>Fix:</b> answers in batches every check (done for 11 at 12:2x), reads at once on "Ready for Lead read", and P-823 (#3661, labelled 12:2x) lets the gate label additive migrations, money and route PRs after Approve, with my read after the merge.</p>
+</section>
+
+<section>
+  <h2>Every workstream at a glance</h2>
+  <div class="box"><table>
+    <tr><th style="width:20%">Workstream</th><th>Where it stands</th><th style="width:14%">State</th></tr>
+    <tr><td>Product capabilities</td><td>13 builder lanes, one per capability nearest to Works (R1.56/57, R1.58, R1.111, R1.79, R1.85, R1.35, R1.76, R1.64, R1.95, R1.22, R1.5, R1.3), plus 4 fix-up lanes returning 10 approved PRs to the queue. New PRs since 12:00: #3808, #3811, #3812, #3815.</td><td><span class="chip warn">recovering</span></td></tr>
+    <tr><td>qa proof</td><td>qa 1b (R1.10, R1.55, R1.96, R1.45, re-check R1.24/42/50); qa 2 (each row as its last part lands). qa 1b's R1.10 question was ruled at 12:2x: key-first 404s are by design.</td><td><span class="chip warn">running</span></td></tr>
+    <tr><td>Operating system (pipeline)</td><td>Go-live 7 of 11 done. Today: #3800 waves fix <b>merged 12:00</b>; #3787 in the merge queue; #3661 P-823 labelled; OS-81 label-guard bug (#3810), OS-78c comment runs (#3814) open. OS-82 heartbeat fix and OS-83 pipeline-watch sent to OS-PM 4.</td><td><span class="chip warn">moving</span></td></tr>
+    <tr><td>Flaky tests</td><td>OS-51 lane found the three most-failed suites were real catches, not flakes. Ruled: close them with evidence, then measure the reds since P-822 blocks.</td><td><span class="chip ok">answered</span></td></tr>
+    <tr><td>Rules into enforcers (prose rows)</td><td>The register lists the prose-only rows still to become a check, a gate or a retirement (<code>rules/prose-only-g4-candidates.md</code>, 82 rows on 25 Nov). Batches of 10 per PR were planned (OS Tier 2). Not started on this account.</td><td><span class="chip bad">not started</span></td></tr>
+    <tr><td>Repository clean-up</td><td>Stage 1 (#2459: the October work leaves the main tree, P-676, P-838) is a draft, to land when the queue is quiet. About 1,580 claude/ branches on GitHub; a branch sweep is not scheduled.</td><td><span class="chip bad">waiting</span></td></tr>
+    <tr><td>Records and backlog</td><td>Owed: DECISIONS P-843 (lean team seats), P-839..P-841 into RULES, rows for R1.58 move-to-case, R1.98 FO-4c, R1.22 case export, R1.5 QA-643, PF-4bs, R1.35 import duplicates, PF-28 allow-list; shaping R1.113-R1.121.</td><td><span class="chip warn">owed by me</span></td></tr>
+    <tr><td>Outside accounts</td><td>Stripe, AWS, BoldSign, Google, Zoom and WhatsApp opened 25 Nov; staging keys are in AWS Secrets Manager. Owed: restart staging so it reads them (approved, A399). 13 capabilities depend on these accounts.</td><td><span class="chip warn">1 step owed</span></td></tr>
+    <tr><td>Hand-over safety</td><td>Two standby Leads on the Mac (Lead 2, Lead 3). STATE pushed after every step. Weekly use 39% at 11:10; the next switch is likely tonight (estimate).</td><td><span class="chip ok">in place</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>What is enforced, and what is not</h2>
+  <div class="box"><table>
+    <tr><th style="width:26%">Check</th><th>How it runs</th><th style="width:16%">Verdict</th></tr>
+    <tr><td>Lead's 30-minute check</td><td>Cron in the Lead's session at :03 and :33 with the fixed prompt; a hook refuses any other prompt (F-6Nov). It only runs while a Lead session exists, so nothing ran during the 9-hour switch.</td><td><span class="chip warn">enforced, session-bound</span></td></tr>
+    <tr><td>10-minute check</td><td>Used on 21-23 Nov (cron every 10 min) during the all-in push. Today: 30-minute check plus a 3-minute event watch that costs no tokens until something needs action. Same speed, fewer tokens. A full check every 10 minutes would mostly re-read unchanged data.</td><td><span class="chip info">replaced by the event watch</span></td></tr>
+    <tr><td>Event watch (questions, reads owed, label removals, dequeues, merges)</td><td>Started 12:1x by Lead 1, every 3 min. Stopgap until OS-83 runs the same checks inside GitHub Actions on every event.</td><td><span class="chip warn">stopgap → OS-83</span></td></tr>
+    <tr><td>Pipeline heartbeat (outside every session)</td><td>A GitHub workflow meant to run every 30 min and mail on red. It was red on all 23 runs since 18 Nov because of a stale expectation, so its mails were ignored. GitHub actually ran it only every 8-11 h.</td><td><span class="chip bad">broken → OS-82</span></td></tr>
+    <tr><td>Answer target (10 min) and Stop hook</td><td>sle-watch counts misses and question-gate.py blocks a Lead turn from ending with old questions. Both only act inside a Lead session.</td><td><span class="chip warn">enforced in session</span></td></tr>
+    <tr><td>Merge gates</td><td>label-guard, queue-gate, pr-suites before the label (P-822), pr-rules, Gate B, migration slots: all CI, all live.</td><td><span class="chip ok">enforced</span></td></tr>
+    <tr><td>Lane briefs</td><td>A hook refuses a start without a model and effort line, a Duplicate check or a "Done when" that names its test. It refused six of my briefs today until I fixed them.</td><td><span class="chip ok">enforced</span></td></tr>
+    <tr><td>Idle cloud lanes</td><td>Visible only in the app. ListAgents now shows every lane's state to the Lead; the automatic idle ACT (OS-68) is not built.</td><td><span class="chip bad">not enforced → OS-68</span></td></tr>
+    <tr><td>Auto-requeue after a failed batch</td><td>OS-05 waits on the Lead's P-731 ruling.</td><td><span class="chip bad">not built</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Recovery plan, next 24 hours</h2>
+  <div class="box"><table>
+    <tr><th>IST</th><th>Operating system</th><th>Product and proof</th><th>Proven (estimate)</th></tr>
+    <tr><td class="num">12-15</td><td>Lead clears all reads and answers; #3787 → #3699 → #3696 chain; OS-81, OS-78c land</td><td>Fix-up lanes return 10 PRs; #3633 R1.57 pay link, #2129 audit chain, #3647/#3701 portal enter the queue</td><td class="num">64 → 66</td></tr>
+    <tr><td class="num">15-18</td><td>#3715, #3506; OS-82 heartbeat green; P-731 ruling</td><td>qa 1b proves R1.10, R1.55; R1.96, R1.45 scored</td><td class="num">66-68</td></tr>
+    <tr><td class="num">18-24</td><td>OS-83 pipeline-watch live; OS-50 near-Proven first; suite times refreshed</td><td>R1.87, R1.57, R1.112, R1.60 merge and are proven; staging restarted on the new keys</td><td class="num">68-71</td></tr>
+    <tr><td class="num">27 Nov 00-12</td><td>OS-01 blocking; OS-68 idle ACT; P-823 measured</td><td>R1.111, R1.79, R1.85, R1.58, R1.35, R1.64</td><td class="num">71-77</td></tr>
+  </table></div>
+  <p class="sub">Each check compares this table with main and names any late row with its recovery. After the first 24 hours the target is 15 a day: about 7-8 per 12 hours and 2 per 3 hours.</p>
+</section>
+
+<footer>Sources: lead-watch.sh full run at 12:19 IST (main's tools in a scratch copy), qa/CAPABILITIES.md on origin/main, GitHub PRs and Actions, ListAgents at 12:0x IST. Kept by the tech lead and refreshed at each full report.</footer>
+</div>
+<script>
+const CAPS=[{"id": "R1.1", "n": "Hosting, data, backups and logs in Canada", "s": "Partial", "lane": "", "out": "AWS"}, {"id": "R1.2", "n": "Database", "s": "Works", "lane": "", "out": ""}, {"id": "R1.3", "n": "Walls between firms", "s": "Partial", "lane": "walls lane", "out": ""}, {"id": "R1.4", "n": "Each query runs inside its firm", "s": "Works", "lane": "", "out": ""}, {"id": "R1.5", "n": "Staff sign-in with two-step, passkeys, lock-ou", "s": "Partial", "lane": "sign-in lane", "out": "AWS Cognito"}, {"id": "R1.6", "n": "Permissions: deny by default, own versus all, ", "s": "Works", "lane": "", "out": ""}, {"id": "R1.8", "n": "Audit trail nobody can edit", "s": "Works", "lane": "", "out": ""}, {"id": "R1.9", "n": "Background jobs, schedules, reminders", "s": "Works", "lane": "", "out": ""}, {"id": "R1.10", "n": "Checking every input", "s": "Partial", "lane": "qa 1b (proof)", "out": ""}, {"id": "R1.11", "n": "Server framework", "s": "Works", "lane": "", "out": ""}, {"id": "R1.12", "n": "Screen framework, one UI kit", "s": "Works", "lane": "", "out": ""}, {"id": "R1.13", "n": "Logs, metrics, error reports, alerts", "s": "Works", "lane": "", "out": ""}, {"id": "R1.14", "n": "Backups with a tested restore", "s": "Works", "lane": "", "out": ""}, {"id": "R1.15", "n": "Secrets in a managed store", "s": "Partial", "lane": "", "out": "AWS"}, {"id": "R1.16", "n": "Automated testing", "s": "Works", "lane": "", "out": ""}, {"id": "R1.19", "n": "A firm is created once, with plan, trial and o", "s": "Works", "lane": "", "out": ""}, {"id": "R1.20", "n": "One entitlement check; seat and plan limits; d", "s": "Works", "lane": "", "out": ""}, {"id": "R1.21", "n": "Our own invoices with sales tax", "s": "Works", "lane": "", "out": ""}, {"id": "R1.22", "n": "Suspend, cancel, failed-payment hold, data dow", "s": "Not built", "lane": "export lane (+ old-account session)", "out": "Stripe"}, {"id": "R1.23", "n": "Firm logo, colour, sender name, favicon, banne", "s": "Works", "lane": "", "out": ""}, {"id": "R1.24", "n": "Each firm's own web address", "s": "Works", "lane": "", "out": ""}, {"id": "R1.89", "n": "Public pricing page", "s": "Works", "lane": "", "out": ""}, {"id": "R1.90", "n": "Self-serve sign-up, email check, trial with no", "s": "Works", "lane": "", "out": ""}, {"id": "R1.91", "n": "Plans, change, cancel, invoices, card update, ", "s": "Not built", "lane": "", "out": "Stripe"}, {"id": "R1.92", "n": "Firm profile, offices and time zones, licence-", "s": "Works", "lane": "", "out": ""}, {"id": "R1.93", "n": "Our team's console; health per firm; support b", "s": "Works", "lane": "", "out": ""}, {"id": "R1.100", "n": "Recorded acceptance of our terms, privacy noti", "s": "Works", "lane": "", "out": ""}, {"id": "R1.26", "n": "Public enquiry form, hardened against abuse", "s": "Works", "lane": "", "out": ""}, {"id": "R1.27", "n": "Every lead carries a source", "s": "Works", "lane": "", "out": ""}, {"id": "R1.28", "n": "Consent recorded per purpose", "s": "Works", "lane": "", "out": ""}, {"id": "R1.29", "n": "One person record; duplicate warning; safe mer", "s": "Works", "lane": "", "out": ""}, {"id": "R1.30", "n": "Lead lists, filters and board", "s": "Works", "lane": "", "out": ""}, {"id": "R1.31", "n": "Stage kinds; won by signature; totals per curr", "s": "Works", "lane": "", "out": ""}, {"id": "R1.32", "n": "Assign, take, reassign; Unassigned; assignment", "s": "Works", "lane": "", "out": ""}, {"id": "R1.33", "n": "Phone numbers", "s": "Works", "lane": "", "out": ""}, {"id": "R1.34", "n": "One person's data as an export, logged", "s": "Not built", "lane": "#3733 (round 6 allowed)", "out": ""}, {"id": "R1.35", "n": "Contacts import from a spreadsheet", "s": "Not built", "lane": "import lane", "out": ""}, {"id": "R1.36", "n": "Simple automation, message many with consent", "s": "Not built", "lane": "#3646 (Lead read owed)", "out": ""}, {"id": "R1.95", "n": "Custom fields and saved views", "s": "Not built", "lane": "custom fields lane", "out": ""}, {"id": "R1.98", "n": "Corporate clients, employers, LMIA", "s": "Partial", "lane": "", "out": ""}, {"id": "R1.108", "n": "Conflict-of-interest check", "s": "Works", "lane": "", "out": ""}, {"id": "R1.110", "n": "Client identity check", "s": "Works", "lane": "", "out": ""}, {"id": "R1.37", "n": "Public booking page; no double booking", "s": "Works", "lane": "", "out": ""}, {"id": "R1.38", "n": "Time zones from booking page to invite", "s": "Works", "lane": "", "out": ""}, {"id": "R1.39", "n": "Staff calendar screen", "s": "Works", "lane": "", "out": ""}, {"id": "R1.40", "n": "Calendar invite files", "s": "Works", "lane": "", "out": ""}, {"id": "R1.41", "n": "Staff hours and time off", "s": "Works", "lane": "", "out": ""}, {"id": "R1.42", "n": "Reschedule or cancel by link; outcomes; consul", "s": "Works", "lane": "", "out": ""}, {"id": "R1.43", "n": "Two-way Google or Outlook calendar sync", "s": "Not built", "lane": "", "out": "Google OAuth"}, {"id": "R1.104", "n": "Consultation agreement signed before the first", "s": "Works", "lane": "", "out": ""}, {"id": "R1.112", "n": "Video meeting links on bookings", "s": "Not built", "lane": "#3418 fix lane", "out": "Google"}, {"id": "R1.45", "n": "Firm templates, field picker, preview with a r", "s": "Partial", "lane": "qa 1b (proof)", "out": ""}, {"id": "R1.46", "n": "Template text editor (a plain text box)", "s": "Works", "lane": "", "out": ""}, {"id": "R1.47", "n": "One email layout", "s": "Works", "lane": "", "out": ""}, {"id": "R1.48", "n": "Sending, delivery state, bounces, the firm's s", "s": "Works", "lane": "", "out": ""}, {"id": "R1.49", "n": "Consent gate before every send; unsubscribe", "s": "Works", "lane": "", "out": ""}, {"id": "R1.50", "n": "In-app notifications; personal notification se", "s": "Works", "lane": "", "out": ""}, {"id": "R1.52", "n": "Connected mailbox; WhatsApp (no SMS)", "s": "Not built", "lane": "", "out": "OAuth, WhatsApp"}, {"id": "R1.53", "n": "Retainer with the regulator's 26 items; versio", "s": "Works", "lane": "", "out": ""}, {"id": "R1.54", "n": "E-signature with evidence; send any document f", "s": "Partial", "lane": "", "out": "BoldSign"}, {"id": "R1.55", "n": "Withdraw, re-issue, decline, signed offline", "s": "Partial", "lane": "qa 1b (proof)", "out": "BoldSign"}, {"id": "R1.56", "n": "Client invoices, tax by province, government-f", "s": "Partial", "lane": "card pay lane", "out": ""}, {"id": "R1.57", "n": "Card payment of invoiced fees into the firm's ", "s": "Not built", "lane": "card pay lane + #3692 fix lane", "out": "Stripe"}, {"id": "R1.58", "n": "Trust or operating on every payment; per-clien", "s": "Partial", "lane": "trust lane", "out": ""}, {"id": "R1.59", "n": "Money arithmetic", "s": "Works", "lane": "", "out": ""}, {"id": "R1.60", "n": "Deposit invoice prepared on signature", "s": "Not built", "lane": "#3681 fix lane", "out": ""}, {"id": "R1.96", "n": "Reversals, refunds, credit notes, payment plan", "s": "Not built", "lane": "qa 1b (proof)", "out": ""}, {"id": "R1.111", "n": "Client statement and period exports for the ac", "s": "Not built", "lane": "statements lane", "out": ""}, {"id": "R1.61", "n": "Sign and pay by single-use link", "s": "Partial", "lane": "", "out": "Stripe"}, {"id": "R1.62", "n": "Client login portal; progress stream with \"las", "s": "Not built", "lane": "migrations lane (#3647, #3701)", "out": ""}, {"id": "R1.74", "n": "Government deadlines that remind; working days", "s": "Works", "lane": "", "out": ""}, {"id": "R1.76", "n": "Notes; one timeline per record", "s": "Partial", "lane": "notes lane", "out": ""}, {"id": "R1.80", "n": "IRCC forms per applicant from one set of answe", "s": "Works", "lane": "", "out": ""}, {"id": "R1.99", "n": "AI on top of the guardrails: proposed values, ", "s": "Works", "lane": "", "out": ""}, {"id": "R1.106", "n": "Pathway assessment AS-1: Express Entry and FSW", "s": "Partial", "lane": "", "out": ""}, {"id": "R1.107", "n": "Pathway assessment AS-2: five provincial strea", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.87", "n": "Our access to a firm's data, logged and shown ", "s": "Partial", "lane": "qa 2 waits on #3675", "out": ""}, {"id": "R1.88", "n": "The firm reads its own audit log", "s": "Works", "lane": "", "out": ""}, {"id": "R1.97", "n": "Tamper-evident audit chain", "s": "Not built", "lane": "#2129 audit chain (needs owner)", "out": ""}, {"id": "R1.105", "n": "Keep periods; a leaving firm is closed, not de", "s": "Partial", "lane": "", "out": ""}, {"id": "R1.109", "n": "Complaints record", "s": "Works", "lane": "", "out": ""}, {"id": "R1.63", "n": "Per-person checklist with status words; reject", "s": "Works", "lane": "", "out": ""}, {"id": "R1.64", "n": "Upload that resumes after a dropped connection", "s": "Not built", "lane": "upload lane", "out": ""}, {"id": "R1.65", "n": "Private storage in Canada: firm-prefixed keys,", "s": "Works", "lane": "", "out": ""}, {"id": "R1.66", "n": "Virus scan; nothing served while scanning", "s": "Not built", "lane": "", "out": "AWS"}, {"id": "R1.67", "n": "File-type check", "s": "Works", "lane": "", "out": ""}, {"id": "R1.68", "n": "Preview for staff review", "s": "Works", "lane": "", "out": ""}, {"id": "R1.69", "n": "Read log, fingerprint, keep-period reminder", "s": "Works", "lane": "", "out": ""}, {"id": "R1.70", "n": "Expiry, translation and notarisation flags", "s": "Works", "lane": "", "out": ""}, {"id": "R1.72", "n": "Case with applicants, representative, pinned r", "s": "Works", "lane": "", "out": ""}, {"id": "R1.73", "n": "Stages moved by events", "s": "Works", "lane": "", "out": ""}, {"id": "R1.75", "n": "Tasks: My Tasks, Unassigned, handover", "s": "Not built", "lane": "#3635 (round 6 allowed)", "out": ""}, {"id": "R1.77", "n": "Submission number and UCI; decision, close, re", "s": "Works", "lane": "", "out": ""}, {"id": "R1.79", "n": "Firm dashboards and reports", "s": "Not built", "lane": "reports lane + #3734 fix lane", "out": ""}, {"id": "R1.82", "n": "Readiness check; staff approval per form", "s": "Works", "lane": "", "out": ""}, {"id": "R1.83", "n": "Conditional questions and fields", "s": "Works", "lane": "", "out": ""}, {"id": "R1.84", "n": "Pathway set-up: hierarchy, versioned releases,", "s": "Works", "lane": "", "out": ""}, {"id": "R1.85", "n": "Data-request register with legal hold", "s": "Partial", "lane": "data requests lane", "out": ""}, {"id": "R1.86", "n": "Breach register with firm notices", "s": "Works", "lane": "", "out": ""}, {"id": "R1.101", "n": "Client answers and uploads through a secure li", "s": "Works", "lane": "", "out": ""}, {"id": "R1.102", "n": "Find a person or case by name, email or file n", "s": "Works", "lane": "", "out": ""}, {"id": "R1.113", "n": "Platform-wide maintenance mode with a bilingua", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.114", "n": "One platform banner, EN/FR, with start and end", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.115", "n": "Platform settings registry (security settings;", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.116", "n": "Staff session timeout: auto sign-out for our s", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.117", "n": "Our staff administration: invite (company doma", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.118", "n": "Platform analytics: one Business page with an ", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.119", "n": "Read-only integrations status page", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.120", "n": "Our global templates and system emails: catalo", "s": "Not built", "lane": "", "out": ""}, {"id": "R1.121", "n": "Firm capability switches: escalation and at-ri", "s": "Not built", "lane": "", "out": ""}];
+const g=document.getElementById("grid");
+for(const c of CAPS){const d=document.createElement("div");const cls=c.s==="Works"?"Works":(c.s==="Partial"?"Partial":"Not");d.className="cell "+cls;
+d.title=c.id+" · "+c.n+" · "+c.s+(c.lane?" · "+c.lane:"")+(c.out?" · needs "+c.out:"");
+d.innerHTML="<b></b><span></span>";d.querySelector("b").textContent=c.id;d.querySelector("span").textContent=c.n;
+if(c.lane&&c.s!=="Works"){const l=document.createElement("i");l.className="ln";d.appendChild(l);}
+if(c.out&&c.s!=="Works"){const a=document.createElement("i");a.className="ac";a.textContent="$";d.appendChild(a);}
+g.appendChild(d);}
+</script>
