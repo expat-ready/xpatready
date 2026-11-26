@@ -5,7 +5,8 @@ output: an ACT line whose newest date ("24 Nov", "24 Nov 08:30 IST") is more tha
 stale list; once a week the list is one ACT line ("ACT   stale <name>: ..."), on the other checks one info line.
 "Unless it is still true": the detector dates each act by its newest event (retry-watch: the newest retry-only pass;
 outside-deps-watch: the row's newest status or due date), so an act that happens again, or a register row the Lead
-updates, carries a new date and is shown again at once. A line with no date, and every line that is not an ACT, passes
+updates, carries a new date and is shown again at once. --live REGEX keeps a matching ACT live whatever its age: lead-watch
+keeps an overdue "decision date … reached" live (review of #3837: a missed decision is still open). A line with no date, and every line that is not an ACT, passes
 unchanged. Memory: <state>/act-age.json ({"<name>": epoch of the last weekly listing}); the full list each check in
 <state>/stale-<name>.txt. Whatever goes wrong here, the detector's lines pass through unchanged with one ACT saying why.
    <detector> | python3 -I product/tools/act-age.py --name retry --state DIR [--now 2026-11-26T08:00:00Z] [--hours 72]
@@ -37,6 +38,7 @@ def main():
     a = argparse.ArgumentParser()
     a.add_argument("--name", required=True); a.add_argument("--state", required=True)
     a.add_argument("--now"); a.add_argument("--hours", type=float, default=72)
+    a.add_argument("--live", action="append", default=[], help="a regex: an ACT matching it is never stale (an overdue decision)")
     o = a.parse_args()
     raw = sys.stdin.read().splitlines()
     try:
@@ -44,12 +46,13 @@ def main():
                else datetime.now(timezone.utc)).astimezone(IST)
         keep, stale = [], []
         for l in raw:
-            t = newest(l, now) if l.startswith("ACT") else None
+            t = newest(l, now) if l.startswith("ACT") and not any(re.search(x, l) for x in o.live) else None
             (stale if t is not None and now - t > timedelta(hours=o.hours) else keep).append(l)
         os.makedirs(o.state, exist_ok=True)
         lst = os.path.join(o.state, f"stale-{o.name}.txt")
-        with open(lst, "w", encoding="utf-8") as f:
+        with open(lst + ".tmp", "w", encoding="utf-8") as f:
             f.writelines(l + "\n" for l in stale)
+        os.replace(lst + ".tmp", lst)
         mpath = os.path.join(o.state, "act-age.json")
         try:
             mem = json.load(open(mpath, encoding="utf-8"))
@@ -65,7 +68,9 @@ def main():
                              + ("; …" if len(stale) > 3 else "") + f"; all in {lst}"]
                 mem[o.name] = nowe
                 tmp = f"{mpath}.{os.getpid()}"
-                json.dump(mem, open(tmp, "w")); os.replace(tmp, mpath)
+                with open(tmp, "w") as f:
+                    json.dump(mem, f)
+                os.replace(tmp, mpath)
             else:
                 nxt = datetime.fromtimestamp(last + WEEK, IST).strftime("%d %b %H:%M IST")
                 out = out + [f"stale {o.name}: {len(stale)} line(s) about events over {o.hours:g} h old, listed weekly (next {nxt}); all in {lst}"]

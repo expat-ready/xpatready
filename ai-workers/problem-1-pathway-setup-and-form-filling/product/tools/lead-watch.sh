@@ -314,8 +314,9 @@ cf=$(python3 -I "$TOOLS/conformance-check.py" --quiet 2>&1); nf=$?
 if [ "$nf" -gt 100 ] || ! grep -q '^enforced:' <<<"$cf"; then ACT "set-up check did not run (exit $nf): $(tail -1 <<<"$cf")"
 else while IFS= read -r l; do ACT "set-up: ${l#FAIL }"; done < <(grep '^FAIL' <<<"$cf"); say "set-up $(tail -1 <<<"$cf")"; fi
 fresh "conformance-check.py: origin/main against design/engineering-approved-setup.json"
-od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1 | python3 -I "$TOOLS/act-age.py" --name outside --state "$STATE_DIR"); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
+od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1 | python3 -I "$TOOLS/act-age.py" --name outside --state "$STATE_DIR" --live 'decision date [^:]* reached'); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
 seen "$od"
+grep -qE '^(outside|ACT outside|ACT   stale outside)' <<<"$od" || ACT "outside: outside-deps-watch.py or act-age.py did not run ($(head -1 <<<"$od"))"
 fresh "outside-deps-watch.py"
 
 # 10. The app view (B197, founder A110, 16 Nov: "lead keep forgetting"; P-326, P-339): every lane on claude.ai/code, read in

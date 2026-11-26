@@ -59,7 +59,7 @@ new; set_c; prs; run; ok "pass: nothing passed only on retry" "$([ "$(none)" = 1
 new; set_c "$(bot 2026-11-24T01:00:00Z 3302 1 8 "$AB")" "$(bot 2026-11-24T02:00:00Z 3303 2 9 "$A")"; run
 ok "fail: one ACT per suite, its newest PR, its count, the IST time" "$([ "$(grep -c '^ACT' <<<"$o")" = 2 ] && has 'ACT   retry: check_a.ts passed only on retry 2 times, newest on #3303 at 24 Nov 07:30 IST')" "$o"
 run; ok "fail: seen at the last check: one ACT for both, and the list" "$([ "$(grep -c '^ACT' <<<"$o")" = 1 ] && [ "$(has 'ACT   retry: 2 suites with no fix PR, most often: check_a.ts (#3303), check_b.cjs (#3302)')" = 1 ] && grep -q '^check_b.cjs passed only' "$T/s$k/retry-watch.txt" && echo 1)" "$o"
-set_c; run 2027-03-01T03:00:00Z; ok "fail: months later, no comment left to read: still an ACT" "$(has 'ACT   retry: 2 suites with no fix PR')" "$o"
+set_c; run 2027-03-01T03:00:00Z; ok "fail: months later, no comment left to read: still an ACT, dated by the newest pass (OS-85 part 2: act-age.py makes it weekly)" "$(has 'ACT   retry: 2 suites with no fix PR, newest pass over 72 h ago (at 24 Nov 07:30 IST), most often: check_a.ts (#3303)')" "$o"
 new; set_c "$(bot 2026-11-24T01:00:00Z 3302 1 9 "$A")" "$(bot 2026-11-24T01:00:01Z 3303 2 9 "$A")"; run; ok "a batch holding two PRs counts once" "$(has 'check_a.ts passed only on retry 1 time,')" "$o"
 new; set_c "$(c someone 2026-11-24T01:00:00Z 3302 1 "$A")"; run; ok "pass: the same words from a person are not CI's comment" "$(none)" "$o"
 new; set_c "$(c "$B" 2026-11-24T01:00:00Z 3302 1 'a table | x | y | `check_a.ts` |')"; run; ok "pass: another bot comment naming a suite" "$(none)" "$o"

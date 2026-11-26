@@ -26,7 +26,14 @@ AT=2026-12-03T08:00:00Z run
 ok "a week later the stale list is an ACT again" "$(grep -q '^ACT   stale retry:' <<< "$out" && echo 1)" "$out"
 N=outside AT=2026-11-26T08:10:00Z run
 ok "each name keeps its own week (outside lists on its first check)" "$(grep -q '^ACT   stale outside:' <<< "$out" && echo 1)" "$out"
-IN2="$IN"; IN='ACT   retry: check_a.ts passed only on retry 3 times, newest on #3801 at 26 Nov 11:00 IST: no PR names its fix'; run
+IN2="$IN"; IN='ACT   retry: 2 suites with no fix PR, newest pass over 72 h ago (at 18 Nov 10:15 IST), most often: check_a.ts (#3001); all in /s/retry-watch.txt
+ACT   retry: 1 suite with no fix PR, most often: check_b.ts (#3790); all in /s/retry-watch.txt'; AT=2026-11-26T08:20:00Z run
+ok "retry-watch's real rollup lines: the old one (dated) leaves, the recent one (no date) stays" "$(grep -q '^ACT   retry: 1 suite with no fix PR' <<< "$out" && ! grep -q '^ACT   retry: 2 suites' <<< "$out" && echo 1)" "$out"
+IN='ACT outside: 1 AWS: decision date 18 Nov reached, not done: decide or take the fallback (none)
+ACT outside: 3 SomeVendor: stuck for 230 h (since 16 Nov 21:40 IST)'
+out=$(printf '%s\n' "$IN" | python3 -I "$A" --name outside2 --state "$T/s" --now "$NOW" --live 'decision date [^:]* reached' 2>&1)
+ok "--live keeps an overdue decision date live whatever its age; a stuck row of 16 Nov goes weekly" "$(grep -q '^ACT outside: 1 AWS: decision date 18 Nov' <<< "$out" && ! grep -q '^ACT outside: 3 SomeVendor' <<< "$out" && echo 1)" "$out"
+IN='ACT   retry: check_a.ts passed only on retry 3 times, newest on #3801 at 26 Nov 11:00 IST: no PR names its fix'; run
 ok "the same suite passing only on retry again (a new date) is shown at once: still true" "$(grep -q '^ACT   retry: check_a.ts .*26 Nov 11:00' <<< "$out" && echo 1)" "$out"
 IN='ACT   retry: something on 31 Dec 10:00 IST
 ACT   retry: other on 28 Dec 10:00 IST'; AT=2027-01-02T08:00:00Z run
@@ -36,5 +43,5 @@ ok "an unreadable memory lists the stale lines again (never hides them)" "$(grep
 out=$(printf '%s\n' "$IN" | python3 -I "$A" --name retry --state "$T/s" --now not-a-time 2>&1)
 ok "anything wrong here: every detector line passes unchanged, with one ACT saying why" "$(grep -q 'check_a.ts passed only on retry 2 times' <<< "$out" && grep -q 'act-age.py could not judge' <<< "$out" && echo 1)" "$out"
 LW="$TOOLS/lead-watch.sh"
-ok "lead-watch.sh pipes retry-watch.py and outside-deps-watch.py through act-age.py" "$(grep -q 'retry-watch.py" --state "$STATE_DIR" 2>&1 | python3 -I "$TOOLS/act-age.py" --name retry' "$LW" && grep -q 'outside-deps-watch.py" 2>&1 | python3 -I "$TOOLS/act-age.py" --name outside' "$LW" && echo 1)" "not wired"
+ok "lead-watch.sh pipes retry-watch.py and outside-deps-watch.py through act-age.py" "$(grep -q 'retry-watch.py" --state "$STATE_DIR" 2>&1 | python3 -I "$TOOLS/act-age.py" --name retry' "$LW" && grep -q "outside-deps-watch.py\" 2>&1 | python3 -I \"\$TOOLS/act-age.py\" --name outside --state \"\$STATE_DIR\" --live 'decision date \[^:\]\* reached'" "$LW" && grep -q 'outside-deps-watch.py or act-age.py did not run' "$LW" && echo 1)" "not wired"
 finish

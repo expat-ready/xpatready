@@ -147,17 +147,24 @@ def main():
         back = [n for n, _ in fx.get(s, [])]
         line = f"{s} passed only on retry {len(ev)} time{'s' * (len(ev) > 1)}, newest on #{prs[-1]} at {ist(t)}: " + (
             f"it came back after #{max(back)}'s fix" if back else f'no PR names its fix (body line "Retry fix: {s}")')
-        bad.append((s not in new, -len(ev), line))
+        bad.append((s not in new, -len(ev), line, t))
     bad.sort()
     with open(os.path.join(o.state, "retry-watch.txt"), "w") as fh:
-        fh.writelines(l + "\n" for _, _, l in bad)
-    first = [l for seen, _, l in bad if not seen and not why]
+        fh.writelines(l + "\n" for _, _, l, _ in bad)
+    first = [l for seen, _, l, _ in bad if not seen and not why]
     for l in first:
         print("ACT   retry: " + l)
-    rest = [l for _, _, l in bad if l not in first]
-    if rest:
-        print(f"ACT   retry: {len(rest)} suite{'s' * (len(rest) > 1)} with no fix PR, most often: "
-              + ", ".join(f"{l.split(' ', 1)[0]} ({l.split(' newest on ')[1].split(' ')[0]})" for l in rest[:5]) + f"; all in {os.path.join(o.state, 'retry-watch.txt')}")
+    # OS-85 part 2: the rest in two lines, by the age of each suite's newest pass. The old one carries its newest date, so
+    # lead-watch's act-age.py moves it to the weekly stale line; a suite that passes only on retry again is recent at once.
+    old_at = (now - timedelta(hours=72)).strftime(Z)
+    rest = [(l, t) for _, _, l, t in bad if l not in first]
+    for part, tag in (([x for x in rest if x[1] >= old_at], ""), ([x for x in rest if x[1] < old_at], "old")):
+        if not part:
+            continue
+        ls = [l for l, _ in part]
+        print(f"ACT   retry: {len(ls)} suite{'s' * (len(ls) > 1)} with no fix PR"
+              + (f", newest pass over 72 h ago (at {ist(max(t for _, t in part))})" if tag else "") + ", most often: "
+              + ", ".join(f"{l.split(' ', 1)[0]} ({l.split(' newest on ')[1].split(' ')[0]})" for l in ls[:5]) + f"; all in {os.path.join(o.state, 'retry-watch.txt')}")
     print(f"retry {len(bad)} of {len(found)} suites that passed only on retry have no fix PR; comments read to {ist(since)}")
 
 
