@@ -2,7 +2,7 @@
 
 current_lead: local_1c8b2ecd Lead 5 · 26 Nov 17:2x IST (after Lead 4 local_b2e5d43a at about 275k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 21:4x IST (clock): **Lead 5 running (check 2ee5c4a4; watch re-armed).** Lanes active again, every question answered; R1.10 Works (#3804 labelled); queued #3479 #3217 #3841, labelled #3810 #3814 #3825 #3863. 64/110 Works on main (65 when #3804 merges). Weekly 72%, Lead 5 context 244k (hand over near 306k).
+updated: 2026-11-26 22:0x IST (clock): **Lead 5 running (check 2ee5c4a4; watch re-armed).** Merged since 21:3x: #3863 (P-844), #3804 (R1.10 Works), #3810, #3217, #3479. **66/110 Works on main.** In the queue or near: #3841 (R1.85), #3831 (labelled), #3753 (pr-suites running after a reopen; the Lead labels when green, its lane has ended), #3808 (money read done; pr-suites red, the lane fixes it). #3814 and #3825 conflict after #3810 (steps on the PRs). #3860 and #3861: add 'Size exception: P-844' now that #3863 has merged. Weekly 74%. Lead 5 context 276k: hand over to Lead 6 (local_33c127af) at the next check (P-446).
 
 ## Hand-over Lead 4 → Lead 5 (done; word for word with the earlier 'updated' line in `history/STATE-2026-11-26-2145-lead5-handover-block-and-updated.md`)
 **Open:** founder reviews Factory v3 v5 (A414 in; #3851 stays draft until his yes); step 0 (runner group limit) is his. #3733 needs the founder's draft-then-ready click. Shape PF-10b part 2 (R1.35 undo + report + __proto__ fix) as a row. Lead reads owed: #3843, #3715, #3693, #3506, #3219. Start one more standby at the founder's next typed turn (Lead 6 local_33c127af exists). Lanes are managed through Claude in Chrome (claude.ai/code); the built-in pane is signed out.
