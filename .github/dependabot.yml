@@ -1,0 +1,24 @@
+# Dependabot (Factory v2 switch PR, Factory v3 review): weekly, grouped, few PRs at a time. Its PRs go through the same
+# checks as any PR (ci, the push guard); a dependency PR touching the studio is a code PR and runs the full queue check.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: "npm"
+    directories:
+      - "/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio"
+      - "/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk"
+      - "/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/env/node"
+      - "/packages/xfa-engine"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 3
+    groups:
+      npm-minor-and-patch:
+        update-types: ["minor", "patch"]
+      npm-major:
+        update-types: ["major"]

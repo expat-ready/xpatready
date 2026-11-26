@@ -1,0 +1,79 @@
+# .claude/approvals.yml: Claude Approvals policy (Factory v2, founder decisions A409, A410).
+# Schema: code.claude.com/docs/en/approvals-policy (read 26 Nov 2026). Read from main only: a change here counts once merged.
+# mode: observe = the "Claude Approvals" check shows what these rules WOULD decide and blocks nothing. Enforcing is a
+# later, separate step (delete the mode line), after the open approver question below is answered.
+# OPEN QUESTION (Factory v3 review): builders and the tech lead all push as one GitHub account, and GitHub never counts
+# an author's own approval. Who fills a seat is not decided; "seats: 1" below is what the rule would ask, shown in
+# observe mode only. Nothing else depends on the answer.
+# Code Review on risky paths only: claude/code_review is listed under advisory ONLY in the risky-path rules, so its
+# automatic review runs on a pull request that touches one of them; other pull requests get it only on request.
+version: 1
+mode: observe
+rules:
+  - purpose: "Every change: Claude comments and never approves; CI (the ci check) stays the gate."
+    paths: ["**"]
+    verdict: { claude: comments, seats: 0 }
+
+  - purpose: "Client money, fees, payments, trust, invoices and billing always need the tech lead's read; Claude never approves."
+    paths:
+      - "**/client-money/**"
+      - "**/client-money-*"
+      - "**/client-money.prisma"
+      - "**/*fees*"
+      - "**/*-fee.*"
+      - "**/*-fee-*"
+      - "**/fee-*"
+      - "**/*payment*"
+      - "**/*trust*"
+      - "**/*invoice*"
+      - "**/*refund*"
+      - "**/*billing*"
+      - "**/*ledger*"
+      - "**/*pric*"
+      - "**/*stripe*"
+    verdict: { claude: comments, seats: 1 }
+    advisory: [claude/code_review]
+
+  - purpose: "The database schema and migrations always need the tech lead's read; Claude never approves."
+    paths:
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/**"
+      - "**/prisma.config.*"
+    verdict: { claude: comments, seats: 1 }
+    advisory: [claude/code_review]
+
+  - purpose: "Permissions, roles, identity, firm scope and access checks always need the tech lead's read; Claude never approves."
+    paths:
+      - "**/*permission*"
+      - "**/*role*"
+      - "**/platform/identity/**"
+      - "**/*identity*"
+      - "**/*case-access*"
+      - "**/audit/access/**"
+      - "**/platform/firm-scope.ts"
+      - "**/platform/terms/gate.ts"
+      - "**/features/platform-terms.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/**/*public*"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/**/*-public/**"
+    verdict: { claude: comments, seats: 1 }
+    advisory: [claude/code_review]
+
+  - purpose: "The pipeline and the rules agents follow (workflows, merge queue, hooks, agent settings, tools) always need the tech lead's read."
+    paths:
+      - ".github/**"
+      - ".mergify.yml"
+      - ".githooks/**"
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - "REVIEW.md"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
+    verdict: { claude: comments, seats: 1 }
+    advisory: [claude/code_review]
+
+  - purpose: "A change to the review rules or agent settings always needs the tech lead's read."
+    paths: ["**/.claude/**"]
+    nested: inherit
+    verdict: { claude: comments, seats: 1 }
+    advisory: [claude/code_review]
