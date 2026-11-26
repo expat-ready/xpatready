@@ -168,3 +168,8 @@ No new findings. Open for the follow-up or the Lead, none blocking: R3-2, the pe
 Journey score unchanged: **9.4 / 10, pass** (plain words ½ for R3-2). D-scores as in round 3.
 
 Verdict: Approve 277dbeda616cd36136a30df7eff5fc44640fd233
+
+## Round 5 (diff-only, 26 Nov 2026): head `a1e249e6cb62e2fd19980adaba07b9a6c09321fc`
+Scope: 277dbeda6 to a1e249e6c. That is the records commit 89c333522 (round 4 records only: break-report.md, the journey-test report and this file) and the merge of part 2's new head 3226c5754. I compared part 3's own change from part 2 then (`cd73d1b74..277dbeda6`) with now (`3226c5754..a1e249e6c`), file by file. All 13 code and test files are identical, and only the three record files gained their round 4 sections. No old migration stamp appears in code. The coordinator ran check_pf22v_saved_views: 40/40. The journey score is unchanged: **9.4 / 10, pass**. Open Minors are unchanged (R3-2, R4-m1, the per-view queries, the screen honouring `empty`).
+
+Verdict: Approve a1e249e6cb62e2fd19980adaba07b9a6c09321fc
