@@ -97,3 +97,58 @@ cannot catch them. No writer exists yet (PF-19m part 1 defers "erasure (PF-21d) 
 * **Confirmed by the suite:** family member, same email in another firm, re-run KEPT/NOTHING, feature registered once.
 * **do_not_contact matching:** `fo_person.email` and `msg_suppression.address` are both lower case by constraint.
 * **A merged-away person through the job** (code read): `foPersonCheck` requires `merged_into_id IS NULL`; no eraser runs.
+
+## Round 2 (head f484b3e25; diff f9faf8699..f484b3e25)
+**Verdict: ready from the breaker's side. No Blocker or Major left; 4 new Minors.** I re-ran the round-1 script on a fresh
+scratch database migrated to f484b3e25, and added new attacks on the recursive CTE, the `strpos` matches and the
+email/phone audit match.
+
+**Fixed (re-run):**
+* **B1:** both repros now answer KEPT ("activity log lines (7 years) 1"); the request is HELD.
+* **B2:** the `case_client` and `plat_complaint` repros are HELD.
+* **M1:** the loser is anonymised. A chain C→D→S gives "merged-away records 2", all three are anonymised, and a second run
+  gives NOTHING. A crafted cycle X→Y→X terminates (UNION removes duplicates).
+* **M2:** another party's conflict check holding the person's id in `matches` → KEPT "conflict checks 1".
+* **m1:** the labels now lead. **m3:** the `msg_*` tables are counted.
+* **Still held:** every booking status, refusal and rollback, the parallel runs (two requests in parallel now give ERASED
+  and NOTHING), the walls, and the non-uuid id.
+* **Still open:** m2 (a company lead's text is cleared through its primary contact) is unchanged: repro 11 still gives
+  `ERASED — cleared: person 1, leads 1`.
+
+**Over-counting (the safe direction) holds.** A false KEPT is safe, and that is all these give:
+* Person `a@b.co` with another person's line holding `xa@b.com` → KEPT.
+* An unreadable phone stored as `''` or `1` (allowed by `fo_person_phone_check` when `phone_readable` is false) would match
+  every line → KEPT.
+* `strpos` on `matches`/`suggestions`, `plat_complaint` without `subject_kind`, and `msg_email.filed_id` without
+  `filed_kind` can only count more.
+* The conflict service writes `recordId` as the person's lower-case `id::text` (`conflict/service.ts:99`), so the uuid `strpos` matches.
+
+**New Minors**
+* **R2-m1. An email containing `"` or `\` escapes the audit match, so the answer can be ERASED.**
+  * `eraser.ts`, activity_log: `strpos(lower(detail::text || summary), $3)`. `jsonb::text` writes `quote"me@…` as
+    `quote\"me@…`, so the match misses.
+  * Both the app's rule (`sales/common.ts:46`, `^[^\s@]+@[^\s@]+\.[^\s@.]+$`) and `fo_person_email_check` accept such an address.
+  * Repro r2a: person `quote"me.brk@example.com`, with one line keyed outside the person's rows (entity msg_outbox) holding
+    that address and a name → `ERASED — Cleared: person 1.`
+  * Low reach: every arrival line is keyed on a lead, which is counted. Matching against `(detail #>> '{}')`-style values,
+    or against `to_jsonb($3)::text` trimmed of its quotes, closes it.
+* **R2-m2 (latent). Rows that stay on a merged-away record are not counted for the survivor.** FO-9b leaves these on the
+  loser (`merge/columns.ts` STAYS):
+  * identity checks, conflict checks, retainers, signers, outbox rows, complaints and original consents;
+  * a suppression of the loser's old address;
+  * and, for a chain C→D→S, C's own log lines and its C→D merge row.
+
+  KEPT_SQL counts only `person_id = S`, and `activity_log`'s `mine` follows one level only. Today this is masked: the
+  survivor always has a `fo_dup_merge` row, counted as `not_yet_erasable`, so the answer is KEPT. Once 2b-2 stops counting
+  merge rows (or clears them), it becomes a false ERASED. The fix: count over S plus the CTE's `gone` set.
+* **R2-m3. The 300-character cut now drops whole groups.** Eleven classes at count 12 give exactly 300 characters, ending
+  `…Kept (waiting for another module's eraser): c`. The "not yet erasable" group and the cleared list are lost. A typical
+  4-group person is already at 294 (`keptNote`). The outcome is still KEPT and HELD, so this is only the words; shorter
+  item words, or labels without the item list when over the limit, would fix it.
+* **R2-m4. activity_log reads the firm's whole audit log on every order.** It runs `lower(detail::text || summary)` over
+  every `audit_event` row of the firm, inside the order's transaction with the person row held FOR UPDATE.
+  * Repro perf: 1,000,000 lines took 8.7 s on this machine. That fits the job's 120 s per-order limit up to about 13M
+    lines, and a 501-order run is serial.
+  * There is no budget for this in STANDARDS. Recorded so it is not a surprise.
+* **Latent, same class as m3:** `plat_import_row` (PF-10a; `record_id`/`record_kind`, and `before_image` on MERGE rows,
+  which holds the person's earlier values) is not listed. Nothing writes it yet (PF-10b).
