@@ -88,7 +88,7 @@ try {
   await seedSampleFirms(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`);
   const signIn = async () => (await (await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R", secondStep: true }) })).json()).token as string;
-  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), P_ALWAYS = randomUUID(), P_WRITEFAIL = randomUUID(), people = new Set([P, P_FAIL_ONCE, P_REFUSE, P_ALWAYS, P_WRITEFAIL]);
+  const P = randomUUID(), P_FAIL_ONCE = randomUUID(), P_REFUSE = randomUUID(), P_ALWAYS = randomUUID(), P_WRITEFAIL = randomUUID(), people = new Set<string>([P, P_FAIL_ONCE, P_REFUSE, P_ALWAYS, P_WRITEFAIL]);
   let failedOnce = false, storeBack = false;
   nest.get(UploadDoors).register("STAFF", { allowedKinds: ["pdf"], authorize: async (_c, m) => (m.personId && people.has(m.personId) ? { personId: m.personId } : null), keyOf: (t, id) => `uploads/${t.personId}/${id}`,
     onComplete: async (_tx, f) => {
@@ -329,7 +329,7 @@ try {
       if (!cutFinal2 && route.request().method() === "PATCH" && off + 256 * 1024 >= small.length) { cutFinal2 = true; await route.fetch(); return route.abort("connectionreset"); }
       return route.continue();
     });
-  }, 0, false, { init: (ctx) => ctx.addInitScript(() => { delete (AbortSignal as unknown as { any?: unknown }).any; }) });
+  }, 0, false, { init: async (ctx) => { await ctx.addInitScript(() => { delete (AbortSignal as unknown as { any?: unknown }).any; }); } });
   ok("PF-F2 DW8m fail (break R3-M1): with no AbortSignal.any and the last answer lost, the page still ends done with the stored file's id (never paused for ever)",
     cutFinal2 && !!oldBrowser.result && rowOf(oldBrowser.result) === smallSha && rowsFor(P) === before12 + 1, { result: oldBrowser.result, failed: oldBrowser.failed, words: oldBrowser.words.slice(-3) });
   await oldBrowser.ctx.close();
