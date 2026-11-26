@@ -20,6 +20,7 @@ import { auditEvent } from "../../audit/audit-event.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
 import { forbidden, problem } from "../../identity/keys.ts";
 import { scopeOf, type HoldRow } from "./adapter.ts";
+import { firmNames, staffNames } from "../names.ts";
 
 type Tx = Prisma.TransactionClient;
 /** SA-07 Appendix A "Place and release legal holds" (Platform Owner only). */
@@ -53,8 +54,8 @@ const ScopeBody = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("CATEGORY"), category: LegalHoldCategory }),
   z.strictObject({ kind: z.literal("DATE_RANGE"), from: RangeEnd("from"), to: RangeEnd("to") }),
 ]).refine((s) => s.kind !== "DATE_RANGE" || s.from.getTime() <= s.to.getTime(), { message: "The range ends on or after its start.", path: ["to"] });
-const PlaceBody = z.strictObject({ firmId: FirmId, scope: ScopeBody, reason: Reason });
-const ReleaseBody = z.strictObject({ reason: Reason });
+export const PlaceBody = z.strictObject({ firmId: FirmId, scope: ScopeBody, reason: Reason });
+export const ReleaseBody = z.strictObject({ reason: Reason });
 /** The list's page: at most LIST_MAX holds; `truncated` says more match (break M1, review M2). */
 export const LIST_MAX = 500;
 const ListQuery = z.strictObject({ firm: FirmId.optional(), state: z.enum(["active", "released", "all"]).optional(), limit: z.coerce.number().int().min(1).max(LIST_MAX).optional() });
@@ -105,13 +106,16 @@ export class LegalHolds {
 
   /** GET /api/system/register/holds?firm=&state=active|released|all (default all)&limit= (1-500, default 500): newest
    *  first, filtered in the database; `truncated` is true when more holds match than were shown. */
-  async list(c: HoldCaller, query: unknown): Promise<{ holds: HoldView[]; truncated: boolean }> {
+  async list(c: HoldCaller, query: unknown): Promise<{ holds: (HoldView & { firmName: string | null; placedByName: string | null; releasedByName: string | null })[]; truncated: boolean }> {
     this.allowed(c);
     const q = ListQuery.safeParse(query ?? {});
     if (!q.success) fields(q.error);
     const state = q.data.state ?? "all", limit = q.data.limit ?? LIST_MAX;
     const rows = await this.rows({ firm: q.data.firm ?? null, active: state === "all" ? null : state === "active", id: null, limit: limit + 1 });
-    return { holds: rows.slice(0, limit), truncated: rows.length > limit };
+    const shown = rows.slice(0, limit);
+    // PF-21rs R0: each hold's firm and our staff by name, for our console.
+    const firms = await firmNames(this.db, shown.map((h) => h.firmId)), people = await staffNames(this.db, shown.flatMap((h) => [h.placedBy, h.releasedBy]));
+    return { holds: shown.map((h) => ({ ...h, firmName: firms.get(h.firmId) ?? null, placedByName: people.get(h.placedBy) ?? null, releasedByName: h.releasedBy ? people.get(h.releasedBy) ?? null : null })), truncated: rows.length > limit };
   }
 
   /** Places a hold in its own transaction under the firm's exclusive hold lock; `during` runs once the lock is held, before

@@ -12,13 +12,17 @@
 // Order (SA-10 §3.2; SA-10's WAITING_FOR_CUSTOMER "drops below unanswered tickets in the queue"): tickets waiting on us
 // (OPEN, WAITING_ON_SUPPORT) first, then those waiting on the firm, then closed; inside each, the one waiting longest
 // first (updated_at: Prisma's @updatedAt, set by PF-18b's ticket update with each reply or firm message; review m3).
+// Part 4 (Lead 15 on #3225; SA-10 §3.2 "firm (name and plan)"; challenge M2): each row's and the ticket's firm carries its
+// live plan from livePlanOf, the helper the Firms page uses, read in the same transaction once per firm on the page (at
+// most QUEUE_PAGE_SIZE reads); a firm with no live plan has plan null.
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { asBypass, touchFirm, touchPlatform } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { forbidden, problem } from "../identity/keys.ts";
-import { subjectOf, type SupportService } from "../support/support.ts";
+import { livePlanOf, type LivePlan } from "./live-plan.ts";
+import { BODY_MAX, subjectOf, type SupportService } from "../support/support.ts";
 import { SUPPORT_QUEUE, SUPPORT_TICKET } from "./support.bypass.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -40,21 +44,24 @@ const QueueQuery = z.strictObject({
   page: z.string().regex(/^[1-9][0-9]{0,4}$/, "a page number from 1").optional(),
 });
 /** The reply's body: `body` only (anything else, a priority or a status, is refused by name); its words are PF-18b's to judge. */
-const ReplyBody = z.strictObject({ body: z.unknown() });
+// R1.10 A4: a reply is text, refused before the ticket is looked up; A2: and its length, as replyAsSupport's Body counts it
+// (characters after line endings become \n) and in its words, so an over-long reply is named, never the ticket's 404.
+const ReplyBody = z.strictObject({ body: z.string({ error: "Write the reply as text." }).refine((s) => [...s.replace(/\r\n?/g, "\n")].length <= BODY_MAX, `at most ${BODY_MAX} characters`) });
 
-export type FirmRef = { id: string; key: string; name: string };
+export type FirmRef = { id: string; key: string; name: string; plan: LivePlan | null };
 export type QueueItem = { id: string; firm: FirmRef; subject: string; status: QueueStatus; page: string; raisedByName: string | null; messages: number; createdAt: string; updatedAt: string };
 export type QueuePage = { tickets: QueueItem[]; page: number; pageSize: number; total: number };
 export type QueueMessage = { id: string; authorKind: "FIRM_STAFF" | "SUPPORT"; authorName: string | null; body: string; files: number[]; createdAt: string };
 export type QueueTicket = Omit<QueueItem, "messages"> & { messages: QueueMessage[] };
 export type SupportCaller = { staffId: string; keys: readonly string[] };
-export type SystemSupportDeps = { db: PrismaClient; support: Pick<SupportService, "replyAsSupport"> };
+/** `now`: the clock PF-15's plan read uses (a lowered plan reaches a firm at its effective date); Date.now when left out. */
+export type SystemSupportDeps = { db: PrismaClient; support: Pick<SupportService, "replyAsSupport">; now?: () => number };
 
 type Row = { id: string; firmId: string; firmKey: string; firmName: string; status: QueueStatus; page: string; raisedByName: string | null; firstBody: string | null; messages: number; createdAt: Date; updatedAt: Date };
 
 const notFound = (): never => { throw new HttpException({ type: "https://expatready.local/problems/not-found", title: "Not found", status: 404, code: "NOT_FOUND", detail: "No such support ticket." }, HttpStatus.NOT_FOUND); };
 const fields = (e: z.ZodError, code: string): never => problem(FIELD_ERROR_STATUS, "Check the highlighted fields", "Some fields need a change.", { code, fields: fieldsOf(e) });
-const item = (r: Row): QueueItem => ({ id: r.id, firm: { id: r.firmId, key: r.firmKey, name: r.firmName }, subject: subjectOf(r.firstBody ?? ""), status: r.status, page: r.page,
+const item = (r: Row, plan: LivePlan | null): QueueItem => ({ id: r.id, firm: { id: r.firmId, key: r.firmKey, name: r.firmName, plan }, subject: subjectOf(r.firstBody ?? ""), status: r.status, page: r.page,
   raisedByName: r.raisedByName, messages: Number(r.messages), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() });
 
 export class SystemSupport {
@@ -76,7 +83,8 @@ export class SystemSupport {
         SELECT count(*)::int AS n FROM platform_support_ticket t
          WHERE (${status}::text IS NULL OR t.status::text = ${status}) AND (${firm}::uuid IS NULL OR t.firm_id = ${firm}::uuid)`;
       const rows = await this.rows(tx, { status, firm, id: null, offset: (page - 1) * QUEUE_PAGE_SIZE });
-      return { tickets: rows.map(item), page, pageSize: QUEUE_PAGE_SIZE, total: n };
+      const plans = await this.plans(tx, rows);
+      return { tickets: rows.map((r) => item(r, plans.get(r.firmId) ?? null)), page, pageSize: QUEUE_PAGE_SIZE, total: n };
     }));
   }
 
@@ -110,6 +118,13 @@ export class SystemSupport {
     }));
   }
 
+  /** Each firm's live plan on these rows, once per firm (livePlanOf, the Firms page's own source). */
+  private async plans(tx: Tx, rows: readonly Row[]): Promise<Map<string, LivePlan | null>> {
+    const now = (this.d.now ?? Date.now)(), out = new Map<string, LivePlan | null>();
+    for (const f of new Set(rows.map((r) => r.firmId))) out.set(f, await livePlanOf(tx, f, now));
+    return out;
+  }
+
   /** Tickets with their firm, raiser's name, first message (the subject) and message count, in the queue's order. */
   private rows(tx: Tx, w: { status: string | null; firm: string | null; id: string | null; offset: number }): Promise<Row[]> {
     return tx.$queryRaw<Row[]>`
@@ -132,7 +147,7 @@ export class SystemSupport {
     const ids = [...new Set(ms.filter((m) => m.authorKind === "FIRM_STAFF").map((m) => m.authorId))].filter((x) => UUID.test(x));
     const staff = ids.length ? await tx.platformStaff.findMany({ where: { firmId: r.firmId, id: { in: ids } }, select: { id: true, displayName: true } }) : [];
     const names = new Map(staff.map((s) => [s.id.toLowerCase(), s.displayName]));
-    const { messages: _n, ...head } = item(r);
+    const { messages: _n, ...head } = item(r, (await this.plans(tx, [r])).get(r.firmId) ?? null);
     return { ...head, messages: ms.map((m) => ({ id: m.id, authorKind: m.authorKind, authorName: m.authorKind === "SUPPORT" ? SUPPORT_NAME : names.get(m.authorId.toLowerCase()) ?? null,
       body: m.body, files: m.fileKeys.map((k) => Number(k.split("/").pop())), createdAt: m.createdAt.toISOString() })) };
   }

@@ -26,7 +26,11 @@ fi
 echo "node $(node -v) / npm $(npm -v)"
 
 echo "== packages (npm ci)"
-[ -d "$STUDIO/node_modules/.bin" ] && echo "already installed" || (cd "$STUDIO" && npm ci --no-fund --no-audit)
+# npm ci when missing or the lockfile changed; writes the stamp start.sh reads. "|| exit 1", never "&& echo": under
+# set -e a failure on the left of && does not stop the script, so a failed install went on to the schema (Lead's ruling
+# on #3569, comment 7144485389).
+bash "$STUDIO/tools/deps-fresh.sh" "$STUDIO" || exit 1
+echo "studio packages match package-lock.json"
 
 echo "== prototype packages (contracts and AI runner, AIW-D259; prototype/node_modules links here)"
 PN="$ROOT/.tools/solution-1-prototype/node"; PSRC="$P/prototype/env/node"

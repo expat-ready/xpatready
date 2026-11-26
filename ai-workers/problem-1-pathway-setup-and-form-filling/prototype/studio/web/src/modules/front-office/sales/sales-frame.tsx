@@ -7,11 +7,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Frame, useWhere, type Crumb } from "@/components/frame";
 import { Button } from "@/components/ui/controls";
 import { SignInCard as SignIn } from "@/modules/platform/frame";
+import { signOutHere } from "@/lib/sync/drafts";   // PF-31: Sign out forgets the person's drafts and tabs
 import { FindBox } from "@/modules/platform/find/find-box";
 import { NotificationBell } from "@/modules/platform/notifications/bell";   // PF-18ns (Lead 10 on #3279 Q1): the bell here too
 import { cn } from "@/lib/utils";
 import { Assignees, can, LeadRows, seesUnassigned, type Me } from "./contract";
 import { Loading } from "./loading";
+import { REVIEW_KEY, reviewQuery } from "../duplicates/review-contract";
 import { setStaffToken, staffApi, StaffApiError, useMe, useStaffToken } from "./session";
 const MeCtx = React.createContext<Me | null>(null);
 /** The signed-in staff member (inside SalesFrame only). */
@@ -29,6 +31,7 @@ export function useUnassignedCount(me: Me | null) {
 function Menu({ me }: { me: Me }) {
   // Only when the badge is on: Leads may have read the same list into the cache (re-review M1).
   const count = useUnassignedCount(me), unassigned = count.on ? count.data?.length ?? 0 : 0;
+  const pairs = useQuery({ ...reviewQuery("OPEN"), enabled: can(me, REVIEW_KEY), retry: false }), toReview = pairs.data?.openCount ?? pairs.data?.items.length ?? 0;
   const item = ({ isActive }: { isActive: boolean }) => cn("flex min-h-9 items-center justify-between gap-2 rounded-lg px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-text/5");
   return (
     <nav aria-label="Sales" className="hidden w-52 shrink-0 border-r border-border bg-surface-raised p-3 md:block">
@@ -39,6 +42,11 @@ function Menu({ me }: { me: Me }) {
         {unassigned ? <span data-unassigned-badge className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-text-warn">{unassigned} unassigned</span> : null}
       </NavLink>
       <NavLink to="/front-office/pipeline" className={item}>Pipeline</NavLink>
+      {/* FO-9s part 2: People to merge with its open count, for the people who may review pairs (BR-6). */}
+      {can(me, REVIEW_KEY) ? <NavLink to="/front-office/duplicates" className={item}>
+        <span>People to merge</span>
+        {toReview ? <span data-dup-count className="rounded-md bg-text/5 px-1.5 py-0.5 text-[11px] font-medium text-text" aria-label={`${toReview} to review`}>{toReview}</span> : null}
+      </NavLink> : null}
       {/* FO-4w: Settings for the people who may change them (Owner, Admin); the page says so to anyone else. */}
       {can(me, "agent/prospect:configure-form") || can(me, "agent/retainer:configure-template") ? <>
         <p className="px-3 pb-2 pt-4 text-xs font-medium text-text-muted">Settings</p>
@@ -59,11 +67,11 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
   const token = useStaffToken();
   const me = useMe();
   const qc = useQueryClient();
-  const signOut = () => { setStaffToken(null); qc.removeQueries({ queryKey: ["fo"] }); };
+  const signOut = () => { signOutHere(); setStaffToken(null); qc.removeQueries({ queryKey: ["fo"] }); };
   const who = me.data;
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
-    <Frame area="outside" title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
+    <Frame area="outside" workspace={!!who} title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
       controls={who ? <><FindBox /><NotificationBell /><Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button></> : null}
       menu={who ? <Menu me={who} /> : null}>
       <Place crumbs={crumbs} back={back ?? null} />
@@ -72,7 +80,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
           : (
             <MeCtx.Provider value={who}>
               {/* The menu column is hidden below 768 px: the same two places as links, so a phone reaches Pipeline. */}
-              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}{can(who, "agent/retainer:configure-template") ? <NavLink to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Retainer templates</NavLink> : null}</nav>
+              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, REVIEW_KEY) ? <NavLink to="/front-office/duplicates" className="text-text-link hover:underline">People to merge</NavLink> : null}{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}{can(who, "agent/retainer:configure-template") ? <NavLink to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Retainer templates</NavLink> : null}</nav>
               {children}
             </MeCtx.Provider>
           )}

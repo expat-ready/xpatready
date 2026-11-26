@@ -18,6 +18,7 @@ import { forbidden, problem } from "../../identity/keys.ts";
 import { CLOCK_LEAD_MS, clocksNear, currentAlerts } from "../../observability/alerts.ts";
 import { logPort } from "../../observability/log.ts";
 import { SystemIdentity, type SystemAuditLine } from "../../system-identity/service.ts";
+import { firmNames, staffNames } from "../names.ts";
 type Tx = Prisma.TransactionClient;
 /** SA-11 v2.16 line 778: "Manage the register of requests made to ExpatReady". */
 export const DSR_KEY = "system/compliance:dsr-manage";
@@ -35,6 +36,8 @@ export type RequestStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "OVERDUE" 
 export type RequestView = { id: string; type: string; requester: string; requesterEmail: string; receivedOn: string; targetDate: string; status: RequestStatus;
   actionsTaken: string | null; completedOn: string | null; firmId: string | null; personId: string | null; recordedBy: string; createdAt: string };
 export type StepView = { seq: number; kind: string; from: string | null; to: string | null; note: string | null; actor: string; at: string };
+/** PF-21rs R0: a read for our console names the request's firm and our staff (null when none or not found). */
+export type NamedRequest = RequestView & { firmName: string | null; recordedByName: string | null };
 /** Ordinary text: control characters (C0, C1) and the invisible direction marks that can reorder what a person reads are
  *  refused (as the hold register's reasons). */
 const plain = (max: number, what: string) => z.string().trim().min(1, `Give ${what}.`).max(max, `At most ${max} characters.`)
@@ -116,7 +119,11 @@ export class DataRequests {
       const p = MoveBody.safeParse(body ?? {});
       if (!p.success) fields(p.error);
       const [{ out }] = await tx.$queryRaw<{ out: string }[]>`SELECT plat_data_request_move(${id.toLowerCase()}::uuid, ${p.data.status}, ${p.data.actionsTaken ?? null},
-        ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`;
+        ${p.data.note ?? null}, ${`staff:${c.staffId}`}, ${this.today()}::date) AS out`.catch((e: unknown) => {
+        // PF-21d part 1b (break M3): an erasure scheduled or running holds the request; cancel it first.
+        if (/plat_data_request_erasure_guard/.test(String(e))) problem(409, "An erasure holds this request", "An erasure is scheduled or running for this request; cancel it before moving the request by hand.", { code: "ERASURE_SCHEDULED" });
+        throw e;
+      });
       if (out === "NOT_FOUND") notFound();
       if (out === "SAME") problem(409, "Already in that status", "The request is already in that status; nothing was changed.", { code: "SAME_STATUS" });
       if (out !== "MOVED") problem(409, "Not allowed", "That move is not allowed from the request's current status; nothing was changed.", { code: "MOVE_REFUSED" });
@@ -125,22 +132,28 @@ export class DataRequests {
     return this.one(id.toLowerCase());
   }
   /** GET /api/system/register/requests?status=&limit=: newest first; `truncated` when more match. */
-  async list(c: RequestCaller, query: unknown): Promise<{ requests: RequestView[]; truncated: boolean }> {
+  async list(c: RequestCaller, query: unknown): Promise<{ requests: NamedRequest[]; truncated: boolean }> {
     this.allowed(c);
     const q = ListQuery.safeParse(query ?? {});
     if (!q.success) fields(q.error);
     const limit = q.data.limit ?? LIST_MAX;
     const rows = await this.rows(q.data.status ?? null, null, null, limit + 1);
-    return { requests: rows.slice(0, limit), truncated: rows.length > limit };
+    return { requests: await this.named(rows.slice(0, limit)), truncated: rows.length > limit };
   }
   /** GET /api/system/register/requests/:id: the request and its steps in order. */
-  async read(c: RequestCaller, id: string): Promise<RequestView & { steps: StepView[] }> {
+  async read(c: RequestCaller, id: string): Promise<NamedRequest & { steps: (StepView & { actorName: string | null })[] }> {
     this.allowed(c);
     if (!UUID.test(id)) notFound();
     const r = await this.one(id.toLowerCase());
     const steps = await this.db.$queryRaw<{ seq: bigint; kind: string; from_status: string | null; to_status: string | null; note: string | null; actor: string; at: Date }[]>`
       SELECT * FROM plat_data_request_steps(${r.id}::uuid)`;
-    return { ...r, steps: steps.map((s) => ({ seq: Number(s.seq), kind: s.kind, from: s.from_status, to: s.to_status, note: s.note, actor: s.actor, at: s.at.toISOString() })) };
+    const [named] = await this.named([r]), people = await staffNames(this.db, steps.map((s) => s.actor));
+    return { ...named, steps: steps.map((s) => ({ seq: Number(s.seq), kind: s.kind, from: s.from_status, to: s.to_status, note: s.note, actor: s.actor, actorName: people.get(s.actor) ?? null, at: s.at.toISOString() })) };
+  }
+  /** PF-21rs R0: names for a read's firm and staff ids (the firm by REGISTER_FIRM_NAMES' one firm-less line). */
+  private async named(rows: RequestView[]): Promise<NamedRequest[]> {
+    const firms = await firmNames(this.db, rows.map((r) => r.firmId)), people = await staffNames(this.db, rows.map((r) => r.recordedBy));
+    return rows.map((r) => ({ ...r, firmName: r.firmId ? firms.get(r.firmId) ?? null : null, recordedByName: people.get(r.recordedBy) ?? null }));
   }
   /** The daily check (NFR5-14): every open request due within the lead; one request's failure never stops the rest. */
   async sweep(): Promise<{ overdue: string[]; near: string[]; failed: number }> {

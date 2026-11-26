@@ -1,6 +1,7 @@
 // Draft validation and release differences. Problems are stated in plain words with where they are; errors block
 // submission, warnings are shown and recorded. Conditions are checked against the portable copy of the team's
 // closed predicate contract (contracts/predicate.v0.schema.json) and against the library's field types.
+import { assessmentOnlyRelease, isAssessmentOnly, ASSESSMENT_ONLY_WORDS, type SnapshotEligibility } from "./eligibility/gates.ts";
 import { lineSet, setWords, type SnapSet } from "./document-sets.ts";
 import { Ajv } from "ajv";
 import { readFileSync } from "node:fs";
@@ -142,6 +143,8 @@ export function addedFilingProblems(s: Snapshot, types: Map<string, string>, der
   return out;
 }
 
+/** The eligibility without its assessment-only flag (a combination that files keeps every check). */
+const notAssessmentOnly = (e: SnapshotEligibility | undefined) => (e?.assessment_only ? (({ assessment_only: _a, ...rest }) => rest)(e) : e);
 export function validate(s: Snapshot, library: { key: string; valueType: string }[], derivedRows: { id: string; calculation: string }[], accepts?: Accepts): Problem[] {
   const out: Problem[] = [];
   const types = new Map(library.map((f) => [f.key, f.valueType]));
@@ -238,7 +241,10 @@ export function validate(s: Snapshot, library: { key: string; valueType: string 
   // Only the derived definitions this combination reads (Lead check item 3): the library holds every definition, and
   // one nobody here uses is not this combination's warning.
   const reads = derivedRead(s);
-  out.push(...gateProblems(s.eligibility, placed, reads, types, derived, (f) => `"${(s.derived_fields as { id: string; plain?: string | null }[]).find((d) => d.id === f)?.plain?.trim().replace(/\.$/, "") || factWords(s, f)}"`, s.placements)); // C6.9 BR-5
+  // AS-2a, break B1 on 6f71259ea: "assessment only" means no form and no document line; on a combination that files it
+  // is refused here, so it never switches this combination's checks off.
+  if (isAssessmentOnly(s.eligibility) && (s.forms.length || (s.document_requirements ?? []).length)) out.push({ level: "error", where: "Eligibility", item: "assessment-only", message: `${ASSESSMENT_ONLY_WORDS} is for a combination with no form and no document line: remove its forms and document lines, or turn assessment only off.` });
+  out.push(...gateProblems(assessmentOnlyRelease(s) ? s.eligibility : notAssessmentOnly(s.eligibility), placed, reads, types, derived, (f) => `"${(s.derived_fields as { id: string; plain?: string | null }[]).find((d) => d.id === f)?.plain?.trim().replace(/\.$/, "") || factWords(s, f)}"`, s.placements)); // C6.9 BR-5
   for (const d of derivedRows) if (reads.has(d.id) && !CALCULATIONS[d.calculation]) out.push({ level: "warning", where: "Derived fields", item: d.id, message: `Calculation ${d.calculation} has no tested helper: recorded, never evaluated.` });
   out.push(...channelProblems(s, accepts));
   out.push(...askedChoiceProblems(s, (m) => (m.inventory_file ? inventoryFields(m.inventory_file) ?? [] : []))); // B81: a code on an answer the form prints twice

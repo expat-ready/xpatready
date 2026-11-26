@@ -4,7 +4,8 @@
 // to each firm's active Owner and Admins and none to a third firm (nor to a case officer, a deactivated Admin or an ended
 // grant); DW3 a notice can't be sent twice to one firm for one breach (also two at once); DW4 a notice row can't be
 // changed or deleted, nor a breach deleted; DW5 an integrity alert pre-fills a draft breach and sends nothing (a draft or
-// an undecided breach gets no notice); DW6 the record and notices are audited (events, one line on the firm's trail);
+// an undecided breach gets no notice); DW6 the record and notices are audited (events, one line on the firm's trail; AUD-3: a read of a breach writes one
+// read line on each firm it names);
 // DW7 firm walls: a firm's session reads and writes nothing in the register, and the definers refuse it; DW8 the
 // migration measured right after itself on an empty and a demo-data copy, migrate diff empty.
 // One process, scratch databases and a scratch file folder (removed at the end), fakeJobs (nothing leaves the machine),
@@ -38,7 +39,7 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 700)}` : ""}`); };
 const uuid = () => globalThis.crypto.randomUUID();
 
-type Res = { status: number; body: any };
+type Res = { status: number; body: any; requestId: string | null };
 /** Creates carry an Idempotency-Key (break B4): a new one per call unless the test names it (`key`), or none (`key: null`). */
 const call = async (base: string, method: string, path: string, o: { token?: string; body?: unknown; key?: string | null } = {}): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json", "user-agent": "pf21c-check/1" };
@@ -48,7 +49,7 @@ const call = async (base: string, method: string, path: string, o: { token?: str
   const r = await fetch(`${base}${path}`, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
   const text = await r.text();
   let body: any = text; try { body = JSON.parse(text); } catch { /* text */ }
-  return { status: r.status, body };
+  return { status: r.status, body, requestId: r.headers.get("x-request-id") };
 };
 
 // ------------------------------------------------------------------------------------------- the scratch databases
@@ -82,8 +83,9 @@ const { Messages } = await import("../api/src/platform/messages/send/messages.ts
 const { fakeAlerts } = await import("../ports/alert.ts");
 const { FakeClock } = await import("../ports/clock.ts");
 const { fakeJobs } = await import("../ports/jobs.ts");
-const { BREACH_MESSAGES, BREACH_AUDIT, BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches } = await import("../api/src/platform/register/breaches/service.ts");
+const { BREACH_MESSAGES, BREACH_WORDS, BREACH_AUDIT, BREACH_MANAGE_KEY, BREACH_READ_KEY, Breaches } = await import("../api/src/platform/register/breaches/service.ts");
 const feature = (await import("../api/src/features/platform-register-breaches.ts")).default;
+const accessFeature = (await import("../api/src/features/audit-access.ts")).default;   // AUD-3's interceptor, as in the app (the breach read naming firms, R1.87 P6)
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 wallUnscopedQueries();   // as the API server: a query outside every scope runs as xr_app with no firm (our staff's plane)
@@ -112,11 +114,11 @@ try {
   const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
   const firmLocal = new LocalIdentity("pf21c-firm-standin-key-0123456789abcdef", () => clock.now());
   const systemLocal = new SystemLocalIdentity("pf21c-system-standin-key-0123456789abc", () => clock.now());
-  const providers = feature.providers.filter((p) => !(typeof p === "object" && "provide" in p && p.provide === BREACH_MESSAGES));
+  const providers = feature.providers.filter((p) => !(typeof p === "object" && "provide" in p && (p.provide === BREACH_MESSAGES || p.provide === BREACH_WORDS)));
   @Module({ controllers: [PlatformIdentityController, SystemIdentityController, ...feature.controllers] as never[],
     providers: [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
       { provide: SYSTEM_IDENTITY_PORT, useValue: systemLocal }, SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard },
-      { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: BREACH_MESSAGES, useValue: messages }, ...providers] as never[] }) class TestApp {}
+      ...accessFeature.providers, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: BREACH_MESSAGES, useValue: messages }, { provide: BREACH_WORDS, useValue: messages }, ...providers] as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());
   await app.listen(0, "127.0.0.1"); apps.push(app);
@@ -157,8 +159,8 @@ try {
   const future = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, discoveredAt: new Date(Date.now() + 86_400_000).toISOString() } });
   const noFirm = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, affectedFirms: [uuid()] } });
   const extra = await call(base, "POST", "/api/system/register/breaches", { token: ownerT, body: { ...body, status: "RECORDED" } });
-  ok("PF-21c DW1 fail: the Platform Owner without a reason (400), with an unknown category, a future discovery or an unknown field (422 each), or an unknown firm (404) records nothing",
-    noReason.status === 400 && badCat.status === 422 && future.status === 422 && extra.status === 422 && noFirm.status === 404 && noFirm.body.code === "FIRM_NOT_FOUND"
+  ok("PF-21c DW1 fail: the Platform Owner without a reason (422 naming reason; R1.10 A4), with an unknown category, a future discovery or an unknown field (422 each), or an unknown firm (404) records nothing",
+    noReason.status === 422 && !!noReason.body.fields?.reason && badCat.status === 422 && future.status === 422 && extra.status === 422 && noFirm.status === 404 && noFirm.body.code === "FIRM_NOT_FOUND"
     && Number(sql(`select count(*) from plat_breach`)) === rowsBefore, [noReason.status, badCat.status, future.status, extra.status, noFirm.status]);
 
   // Record a breach
@@ -321,6 +323,32 @@ try {
   ok("PF-21c DW6 pass: the breach's events read RECORDED, CHANGED (the decision, before and after), NOTICE_SENT for A and B; each names our staff member",
     one.status === 200 && kinds === "RECORDED,CHANGED,NOTICE_SENT,NOTICE_SENT" && changeEv?.detail.before.decision === "UNDECIDED" && changeEv?.detail.after.decision === "NOTIFY_FIRMS"
     && (one.body.events as { actor: string }[]).every((e) => e.actor === `staff:${OWNER}`) && one.body.notices.length === 2, { kinds, changeEv });
+  // AUD-3, the breach read naming firms (R1.87 P6, #3491's stated limit): our staff's read of one breach is a read of each
+  // firm it names, so one platform.system.firm_read line lands on each named firm's own trail, beside the platform line.
+  // Round 1 (breaker M1): the firm's line names neither the route nor the scope, so it never tells the firm that our breach
+  // register names it (whatever we decided to tell it); both stay on the platform line, under the same correlation id.
+  const readOf = (firm: string, rid: string | null) => sql(`select count(*) || '|' || coalesce(string_agg(actor || '|' || actor_type || '|' || (detail->>'route') || '|' || coalesce(detail->>'scope', 'none') || '|' || (detail::text ~* 'breach')::text, ','), '') from audit_event
+    where firm_id = '${firm}' and action = 'platform.system.firm_read' and correlation_id = '${rid}'`);
+  const wantRead = `1|ourstaff:${OWNER}|OUR_STAFF|/api/system|none|false`;
+  ok("PF-21c DW6 pass (AUD-3, R1.87 P6): reading a breach that names firms A and B writes one OUR_STAFF firm-read line on firm A's trail and one on firm B's, naming our staff member, the route and the scope, plus one cross_tenant.access line on the platform's own trail naming the route and scope (the firm's line names neither)",
+    one.status === 200 && readOf(firmA, one.requestId) === wantRead && readOf(firmB, one.requestId) === wantRead
+    && sql(`select detail->>'route' || '|' || (detail->>'scope') from audit_event where firm_id is null and action = 'cross_tenant.access' and correlation_id = '${one.requestId}'`) === "/api/system/register/breaches/:id|one breach and the firms it names", { a: readOf(firmA, one.requestId), b: readOf(firmB, one.requestId) });
+  ok("PF-21c DW6 fail (AUD-3, R1.87 P6): firm C, which the breach does not name, gets no read line", readOf(firmC, one.requestId) === "0|");
+  const listed = await call(base, "GET", "/api/system/register/breaches", { token: ownerT });
+  ok("PF-21c DW6 fail (AUD-3): the register's list (a read across firms that names no one firm's records) writes no line on any firm's trail, only its platform line",
+    listed.status === 200 && sql(`select count(*) from audit_event where firm_id is not null and correlation_id = '${listed.requestId}'`) === "0"
+    && sql(`select count(*) from audit_event where firm_id is null and action = 'cross_tenant.access' and correlation_id = '${listed.requestId}'`) === "1");
+  // Round 2 (reviewer M1): all or none (P-607 (3)): firm B's read line refused at the database for one call, then dropped.
+  sql(`create function pf21c_refuse() returns trigger language plpgsql as $$ begin raise exception 'pf21c test: refused'; end $$;
+       create trigger pf21c_refuse before insert on audit_event for each row when (new.action = 'platform.system.firm_read' and new.firm_id = '${firmB}'::uuid) execute function pf21c_refuse()`);
+  const refusedRead = await call(base, "GET", `/api/system/register/breaches/${id}`, { token: ownerT });
+  sql(`drop trigger pf21c_refuse on audit_event; drop function pf21c_refuse()`);
+  ok("PF-21c DW6 fail (AUD-3, fail-closed, round 2): when one named firm's read line cannot be written, the read answers 500 with no breach in it, and no line is kept: not firm A's, not the platform's",
+    refusedRead.status === 500 && !JSON.stringify(refusedRead.body).includes(one.body.description) && refusedRead.body?.notices === undefined
+    && sql(`select count(*) from audit_event where correlation_id = '${refusedRead.requestId}' and action in ('platform.system.firm_read', 'cross_tenant.access')`) === "0", { status: refusedRead.status, body: JSON.stringify(refusedRead.body).slice(0, 200) });
+  const missing = await call(base, "GET", `/api/system/register/breaches/${globalThis.crypto.randomUUID()}`, { token: ownerT });
+  ok("PF-21c DW6 fail (AUD-3): an unknown breach answers 404 and writes no read line on any trail",
+    missing.status === 404 && sql(`select count(*) from audit_event where correlation_id = '${missing.requestId}'`) === "0", { status: missing.status });
   const ev = JSON.parse(sql(`select row_to_json(a) from (select actor, actor_type, entity_key, detail, summary from audit_event where firm_id = '${firmA}' and action = 'platform.breach.notice_sent') a`));
   ok("PF-21c DW6 pass: firm A's own trail has exactly one notice line, naming the notice and our staff member by their own word (AUD-3a: ourstaff:<id>, OUR_STAFF, as PF-21b's holds); firm C's has none; no firm line for the record itself",
     lines(firmA, "platform.breach.notice_sent") === 1 && lines(firmB, "platform.breach.notice_sent") === 1 && lines(firmC, "platform.breach.notice_sent") === 0

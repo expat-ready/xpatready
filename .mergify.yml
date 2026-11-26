@@ -19,7 +19,7 @@ merge_queue:
   mode: parallel
 
 # Scopes: the fenced modules, as their module cards claim them (.claude/rules/modules, product/tools/module-cards.py),
-# plus each module's own schema file; migrations one at a time (capacity 1: a second migration failed queued PRs 60%
+# plus each module's own schema file; migrations one at a time PER AREA (SPD-2; capacity 1: a second migration failed queued PRs 60%
 # of the time, design/merge-queue-causes-2026-11-16.md); pipeline work (checks, workflows, Mergify, tools, agent rules)
 # its own lane, never batched with product (P-717 (a)). Path owners (P-785 (2) step 2, founder 22 Nov): each area's own
 # screens (web/src/modules/<area>/**), its tests (tests/check_<area id>*) and its feature files (api/src/features/
@@ -43,6 +43,7 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-*.prisma"
           # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/platform/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/system/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_pf*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_aud*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-*.ts"
@@ -69,6 +70,7 @@ scopes:
           # P-785 (2) step 2: the area's own screens, tests and feature files (check-mergify-scopes.sh, path owners)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo7*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/client-money-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/client-money/**"   # FO-7s1: the Money area's screens
       case-side:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts"
@@ -78,6 +80,7 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-deadlines/*.ts"   # card api-cases (CS-DL1 part 2, #2317)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/search/*.ts"   # card api-cases (CS-S1 part 2, #2913)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-notes/*.ts"   # card api-cases (CS-NT1 part 1, #2999)
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/documents/*.ts"   # card api-cases (CS-D6 part 2, #3497)
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/assessments.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/team.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts"
@@ -150,9 +153,178 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/field-drafts.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/draft-contract.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/answer-keys.ts"
-      migrations:
+      # SPD-2 (P-802, founder 22 Nov): one migration slot per area, not one for the whole product. A migration folder is
+      # named <stamp>_<area>__<name> (<area>: the schema file it changes; "shared" when it writes tables of several), and
+      # mig-<area> holds that schema file, the folders named for it and the shared ones (capacity 1 each, below): two
+      # migrations of different areas queue together, two of one area wait in order, a shared one waits for every area.
+      # ci.yml's job "fast" refuses a migration that names no area, the wrong one, or a stamp not after main's newest
+      # (product/tools/migration-slots.py check, with the exact git mv). Generated: migration-slots.py mergify; checked
+      # by check-mergify-scopes.sh (migration-slots.py mergify --check). Undo: one scope "migrations" over migrations/**.
+      mig-answers:
         include:
-          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/answers.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_answers__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-case-notes:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/case-notes.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_case-notes__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-case-search:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/case-search.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_case-search__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-cases:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/cases.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_cases__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-client-money:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/client-money.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_client-money__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-evidence:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/evidence.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_evidence__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-filings:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/filings.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_filings__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-forms:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/forms.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_forms__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-booking:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-booking.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-booking__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-compliance:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-compliance.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-compliance__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-consult:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-consult.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-consult__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-duplicates:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-duplicates.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-duplicates__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-retainers:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-retainers.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-retainers__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-sales:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-sales.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-sales__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-front-office-signing:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-signing.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_front-office-signing__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-governance:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/governance.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_governance__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-library:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/library.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_library__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-pathways:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/pathways.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_pathways__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-entitlements:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-entitlements.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-entitlements__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-files:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-files.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-files__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-import:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-import.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-import__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-messages:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-messages.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-messages__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-offices:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-offices.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-offices__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-permissions:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-permissions.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-permissions__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-register:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-register.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-register__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-support:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-support.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-support__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-system:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-system.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-system__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-web-address:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-web-address.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-web-address__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-proposals:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/proposals.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_proposals__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-review:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/review.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_review__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-submission:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/submission.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_submission__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-testing:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/testing.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_testing__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       pipeline:
         include:
           - ".github/**"
@@ -175,13 +347,50 @@ scopes:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml"
+      # SPD-2: a migration of a barrier schema file is a barrier too (migration-slots.py)
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_audit__*/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_base__*/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_extension__*/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_links__*/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"
   capacities:
     money: 1
-    migrations: 1
     pipeline: 1
+    mig-answers: 1
+    mig-case-notes: 1
+    mig-case-search: 1
+    mig-cases: 1
+    mig-client-money: 1
+    mig-evidence: 1
+    mig-filings: 1
+    mig-forms: 1
+    mig-front-office-booking: 1
+    mig-front-office-compliance: 1
+    mig-front-office-consult: 1
+    mig-front-office-duplicates: 1
+    mig-front-office-retainers: 1
+    mig-front-office-sales: 1
+    mig-front-office-signing: 1
+    mig-governance: 1
+    mig-library: 1
+    mig-pathways: 1
+    mig-platform: 1
+    mig-platform-entitlements: 1
+    mig-platform-files: 1
+    mig-platform-import: 1
+    mig-platform-messages: 1
+    mig-platform-offices: 1
+    mig-platform-permissions: 1
+    mig-platform-register: 1
+    mig-platform-support: 1
+    mig-platform-system: 1
+    mig-platform-web-address: 1
+    mig-proposals: 1
+    mig-review: 1
+    mig-submission: 1
+    mig-testing: 1
 
 
 # One product queue (D1, P-416, founder 8 Nov ~09:05 IST "Approve all stands"): M2 is 60/60 (P-415), so the two queues
@@ -200,6 +409,8 @@ scopes:
 # CAPABILITIES.md among the last 300 closed PRs (17 Nov), all 7 had a "qa:" title and none a claude/qa- branch (cloud
 # sessions name their own branches). No allow_checks_interruption: Mergify's default inserts a higher-priority PR just
 # after the batches whose checks already run, so a verdict never restarts a running product batch.
+# P-827 (founder 25 Nov, one-time): the order is verdicts, pipeline, product, records until P-822, P-823 and the
+# Lead-tool fixes are on main (the pipeline queue's comment below; undo: move pipeline back after product).
 # product/screens/B119/check-queue-rules.py reads this file and fails when the queues stop routing that way. The daily
 # records PR (P-336) stays.
 queue_rules:
@@ -215,6 +426,32 @@ queue_rules:
       - label = records
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
+    merge_conditions:
+      - check-success = ci
+    merge_method: merge
+  # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
+  # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
+  # product code. The XFA engine rule applies here too.
+  # P-827 (founder 25 Nov 10:3x IST, typed "Yes, pipeline first"; a one-time exception to P-717 (a)'s order): pipeline
+  # is listed just after verdicts, ahead of product, so enforcement lands first until P-822, P-823 and the Lead-tool
+  # fixes are on main. No allow_checks_interruption: Mergify's default puts a higher-priority PR just after the batches
+  # whose checks already run, so a pipeline PR never restarts a running product batch.
+  # Undo: move pipeline back after product when P-827 ends (this block below product's; check-queue-rules.py's order
+  # and engineering-approved-setup.json's queue_order with it).
+  - name: pipeline
+    batch_size: 2
+    batch_max_failure_resolution_attempts: 2
+    batch_max_wait_time: 2 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      - -label=records
+      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      - or:
+          - check-success = xfa-engine
+          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
     merge_conditions:
       - check-success = ci
     merge_method: merge
@@ -237,7 +474,8 @@ queue_rules:
       # comment lines above it.
       - check-success = pr-rules
       - -label=records
-      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" below, never a product batch.
+      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" (listed above product while P-827
+      # holds), never a product batch.
       - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
       # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
       # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
@@ -264,26 +502,6 @@ queue_rules:
       - or:
           - check-success = skeleton
           - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
-    merge_method: merge
-  # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
-  # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
-  # product code and, after product in priority, never holds a product PR back. The XFA engine rule applies here too.
-  - name: pipeline
-    batch_size: 2
-    batch_max_failure_resolution_attempts: 2
-    batch_max_wait_time: 2 min
-    queue_conditions:
-      - base = main
-      - -draft
-      - "label = review: approved"
-      - check-success = ci
-      - -label=records
-      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
-      - or:
-          - check-success = xfa-engine
-          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
-    merge_conditions:
-      - check-success = ci
     merge_method: merge
   - name: records
     batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR

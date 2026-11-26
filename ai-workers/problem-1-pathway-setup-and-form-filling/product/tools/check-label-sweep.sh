@@ -22,6 +22,7 @@ case "$m $u" in
     [ "$pg" = 1 ] && [ ! -f "$FX/events-$n-p1.json" ] && { echo '{"message":"Server Error"}'; exit 22; }; echo '[]';;
   "DELETE "*/issues/*/labels/review%3A%20approved) n=$(printf '%s' "$u" | sed 's|.*/issues/\([0-9]*\)/labels.*|\1|')
     [ -n "${FAIL_DELETE:-}" ] && { echo '{"message":"Forbidden"}'; exit 22; }; echo "DELETE $n" >> "$FX/log"; echo '[]';;
+  "GET "*/issues/*/labels*) [ -f "$FX/labels.json" ] || { echo '{"message":"Not Found"}'; exit 22; }; [ "$pg" = 1 ] && cat "$FX/labels.json" || echo '[]';;
   "POST "*/issues/*/comments) n=$(printf '%s' "$u" | sed 's|.*/issues/\([0-9]*\)/comments.*|\1|')
     echo "POST $n $(echo "$d" | jq -r .body | head -1 | cut -c1-40)" >> "$FX/log"; echo '{}';;
   *) echo "unexpected $m $u" >> "$FX/log"; exit 22;;
@@ -94,6 +95,15 @@ reset; pr 17 | evs > "$T/fx/issues.json"; ev labeled "review: approved" github-a
 ok "B134: the labelled PRs cannot be listed: nothing removed, the run is red" "$([ $r = 2 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" FAIL_DELETE=1 GH_TOKEN=x REPO=o/r API=https://api.test bash "$S" 2>&1); r=$?; log=$(cat "$T/fx/log")
 ok "B134: GitHub refuses the removal: the run is red and says so" "$([ $r = 2 ] && grep -q 'could not be removed' <<< "$out" && echo 1)" "exit $r: $out / $log"
+# 8b. The DELETE fails because the label is already off (#3472, 24 Nov, 404): done. Still on, or its labels unreadable (a 404
+# GitHub also gives a token that may not see the PR): red, never taken for done.
+fd() { : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" FAIL_DELETE=1 GH_TOKEN=x REPO=o/r API=https://api.test QUEUE_GATE="$T/bin/gate" bash "$S" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+echo '[{"name":"tooling"}]' > "$T/fx/labels.json"; fd
+ok "label already off when the DELETE answers 404: done, the run is green, no comment" "$([ $r = 0 ] && [ -z "$log" ] && grep -q '#17: .*was already off' <<< "$out" && echo 1)" "exit $r: $out / $log"
+echo '[{"name":"tooling"},{"name":"review: approved"}]' > "$T/fx/labels.json"; fd
+ok "... still on: the run is red and says it could not be removed" "$([ $r = 2 ] && grep -q '#17: .*could not be removed' <<< "$out" && echo 1)" "exit $r: $out"
+rm -f "$T/fx/labels.json"; fd
+ok "... its labels unreadable: red, never taken for done" "$([ $r = 2 ] && grep -q '#17: .*could not be removed' <<< "$out" && echo 1)" "exit $r: $out"
 # 9. A label with no labeled event in its list (GitHub trimmed it): kept, red, never silent.
 reset; pr 18 | evs > "$T/fx/issues.json"; ev labeled records github-actions[bot] Bot | evs > "$T/fx/events-18-p1.json"
 sweep

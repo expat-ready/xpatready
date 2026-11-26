@@ -10,6 +10,7 @@ import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { ArrowDown, ArrowUp, Copy, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { ACCOUNT_WORDS, CHANNEL_WORDS, CHANNELS, SIGNATURE_FITS, SIGNATURE_WORDS, throughAccount, type Channel, type IrccAccount, type Signature } from "../../../../contracts/forms";
 import { changeWords, COPIES_WORDS, copiesWords, SIGNED_BY, type LastFormChange, type RemovedForm, type WorkspaceFormLine } from "../../../../contracts/workspace";
@@ -244,7 +245,7 @@ function LineMenu({ id, l, onRedo, onRemove, onBulk }: { id: string; l: Workspac
   };
   return (
     // Not modal (as RowMenu): a modal menu hides the page header from screen readers while it stays focusable (axe).
-    <DropdownMenu.Root modal={false}>
+    <MenuRoot modal={false}>
       <DropdownMenu.Trigger asChild><Button size="sm" variant="ghost" aria-label={`Actions for ${l.code}`}><MoreHorizontal /></Button></DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-[280px] rounded-lg border border-border bg-surface-raised p-1 text-sm shadow-lg">
@@ -255,7 +256,7 @@ function LineMenu({ id, l, onRedo, onRemove, onBulk }: { id: string; l: Workspac
           <DropdownMenu.Item className={`${item} text-text-danger`} onSelect={onRemove}><Trash2 className="size-4" /> Remove from this combination</DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    </MenuRoot>
   );
 }
 

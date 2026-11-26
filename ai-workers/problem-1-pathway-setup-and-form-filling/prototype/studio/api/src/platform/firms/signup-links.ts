@@ -6,6 +6,8 @@
 import { Body, Controller, HttpCode, Inject, Post, Req } from "@nestjs/common";
 import { SystemKeys, SystemReason, systemStaffOf, type SystemStaffContext } from "../system-identity/keys.ts";
 import { PlatformSignUp } from "./routes.ts";
+import { LinkBody } from "./signup.ts";
+import { NoFirmData } from "../audit/access/declare.ts";
 
 type R = { systemStaff?: SystemStaffContext };
 
@@ -13,6 +15,6 @@ type R = { systemStaff?: SystemStaffContext };
 export class SignupLinkController {
   constructor(@Inject(PlatformSignUp) private readonly s: PlatformSignUp) {}
 
-  @Post() @HttpCode(201) @SystemKeys("system/signup-link:manage") @SystemReason()
+  @Post() @HttpCode(201) @SystemKeys("system/signup-link:manage") @SystemReason(LinkBody) @NoFirmData("makes a private sign-up link, a row with no firm until it is used")
   make(@Req() r: R, @Body() b: unknown) { return this.s.makeLink(systemStaffOf(r), b); }
 }

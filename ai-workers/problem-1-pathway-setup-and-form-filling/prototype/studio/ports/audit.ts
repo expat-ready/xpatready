@@ -112,34 +112,58 @@ export type CaseEntry = z.input<typeof CaseEntry>;
 /** A case line names its workspace; a platform or front-office line never does (AuditEntry is strict). */
 export const isCaseEntry = (e: AuditEntry | CaseEntry | OurStaffPlatformEntry): e is CaseEntry => !!e && typeof e === "object" && "workspaceId" in e;
 
-/** AUD-3c (Lead 10's ruling on #3040, 23 Nov; Lead B's points): our own staff's firm-less `platform.bypass` line, a narrow
- *  entry kind of its own, never a case-side line. Firm null (it names no firm and takes none), no case, no workspace (the
- *  adapter finds the platform audit workspace: a `workspaceId` would make it a case entry), action `platform.bypass` only,
- *  entity `plat_bypass_use` (the bypass use's name is the key), actor an `ourstaff:<id>` word. The adapter also refuses
- *  it outside our staff's request, under any actor but the request's own, and in a request or job that acts for a firm. */
-export const OurStaffPlatformEntry = z.strictObject({
+/** AUD-3c (Lead 10's ruling on #3040, 23 Nov; Lead B's points) and AUD-3 part 1 round 6 (Lead 15's ruling on #3209, 24
+ *  Nov): our own staff's firm-less line, a narrow entry kind of its own, never a case-side line. Firm null (it names no firm
+ *  and takes none), no case, no workspace (the adapter finds the platform audit workspace: a `workspaceId` would make it a
+ *  case entry), actor an `ourstaff:<id>` word. Its action and entity are one of exactly two fixed pairs, a union
+ *  discriminated on the action, so no pair can cross:
+ *   - `platform.bypass` / `plat_bypass_use` (a bypass use in our staff's request; the use's name is the key);
+ *   - `cross_tenant.access` / `plat_system_access` (a read across firms, SA-11-12; the route pattern is the key; detail
+ *     is exactly scope, method, route and the declared filters: today only `firm`, a firm id the list was filtered to).
+ *  The adapter also refuses it outside our staff's request, under any actor but the request's own, and in a request or
+ *  job that acts for a firm. */
+const ourStaffPlatformBase = {
   firmId: z.null(),
   actor: z.string().regex(/^ourstaff:[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, "ourstaff:<id>"),
-  action: z.literal("platform.bypass"),
-  entity: z.literal("plat_bypass_use"),
-  /** The bypass use's name. */
   entityKey: z.string().min(1).max(200),
   summary: z.string().trim().min(1).max(600),
-  /** Never a firm in detail (breaker m3): older readers take detail.firmId as a line's firm (AUD-1a's delete rule, FO's
-   *  timeline filters), and this line names none. */
-  detail: AuditDetail.default({}).refine((d) => !Object.keys(d).some((k) => /^firm_?id$/i.test(k)), "a firm-less line holds no firm id in detail"),
-});
+  /** QA-594's shape on every port write: this kind changes no row, so before and after are null when given (round 6). */
+  before: z.null().optional(),
+  after: z.null().optional(),
+};
+export const OurStaffPlatformEntry = z.discriminatedUnion("action", [
+  z.strictObject({
+    ...ourStaffPlatformBase,
+    action: z.literal("platform.bypass"),
+    entity: z.literal("plat_bypass_use"),
+    /** Never a firm in detail (breaker m3): older readers take detail.firmId as a line's firm (AUD-1a's delete rule, FO's
+     *  timeline filters), and this line names none. */
+    detail: AuditDetail.default({}).refine((d) => !Object.keys(d).some((k) => /^firm_?id$/i.test(k)), "a firm-less line holds no firm id in detail"),
+  }),
+  z.strictObject({
+    ...ourStaffPlatformBase,
+    action: z.literal("cross_tenant.access"),
+    entity: z.literal("plat_system_access"),
+    /** Scope, method, route and the declared filters only: no firm id key, no personal data (Lead 15's ruling). */
+    detail: z.strictObject({
+      scope: z.string().regex(/^[A-Za-z][A-Za-z0-9 ,.'()/-]{1,119}$/, "the route's declared scope, in plain words"),
+      method: z.string().regex(/^[A-Z]{3,7}$/, "an HTTP method"),
+      route: z.string().regex(/^\/api\/system(\/[A-Za-z0-9:._-]+)*$/, "a /api/system route pattern").max(200),
+      firm: FirmId.optional(),
+    }),
+  }),
+]);
 export type OurStaffPlatformEntry = z.input<typeof OurStaffPlatformEntry>;
 /** The firm-less kind: no workspace and a firm of null (an AuditEntry's firm is always a firm id). */
 export const isOurStaffPlatformEntry = (e: AuditEntry | CaseEntry | OurStaffPlatformEntry): e is OurStaffPlatformEntry => !!e && typeof e === "object" && !("workspaceId" in e) && (e as { firmId?: unknown }).firmId === null;
-/** Its one entity, never written as an ordinary firm-trail entry. */
-export const OUR_STAFF_PLATFORM_ENTITY = "plat_bypass_use";
+/** Its two entities, never written as an ordinary firm-trail entry. */
+export const OUR_STAFF_PLATFORM_ENTITIES: ReadonlySet<string> = new Set(["plat_bypass_use", "plat_system_access"]);
 
 /** What the request a line is written in says about who acts (the adapter's audit context; a fake may be given one). */
 export type AuditRequestContext = { actor?: string; actorType?: string; firmId?: string };
 /** AUD-3c: the refusals of the firm-less kind, shared by the real adapter and the fake. Returns the reason, or null. */
 export function ourStaffPlatformRefusal(e: z.output<typeof OurStaffPlatformEntry>, ctx: AuditRequestContext | undefined): string | null {
-  if (ctx?.actorType !== "OUR_STAFF") return "audit line refused: a firm-less platform.bypass line under an ourstaff: word is written only in a request our staff make";
+  if (ctx?.actorType !== "OUR_STAFF") return "audit line refused: a firm-less line under an ourstaff: word (platform.bypass or cross_tenant.access) is written only in a request our staff make";
   if (ctx.actor !== e.actor) return `audit line refused: the line names ${e.actor}, but this request is ${ctx.actor ?? "nobody"}'s`;
   if (ctx.firmId) return `audit line refused: this request or job acts for firm ${ctx.firmId}, so its line is that firm's, not a firm-less one`;
   return null;
@@ -149,7 +173,7 @@ export function ourStaffPlatformRefusal(e: z.output<typeof OurStaffPlatformEntry
 export interface AuditPort<Tx = unknown> {
   /** Records one line inside `tx`. Throws on a refused entry or a failed write, so the caller's transaction rolls back.
    *  A CaseEntry (AUD-1m: it names a workspace) is a case-side or configuration line; an OurStaffPlatformEntry (AUD-3c: firm
-   *  null, no workspace) is our staff's firm-less platform.bypass line; any other entry is an AuditEntry. */
+   *  null, no workspace) is our staff's firm-less line (platform.bypass or cross_tenant.access); any other entry is an AuditEntry. */
   record(tx: Tx, entry: AuditEntry | CaseEntry | OurStaffPlatformEntry): Promise<void>;
 }
 
@@ -163,7 +187,7 @@ export type FakeAudit = AuditPort<unknown> & {
   readonly entries: ReadonlyArray<z.output<typeof AuditEntry>>;
   /** AUD-1m: the case-side lines recorded, in order (kept apart: a case line is never read as a platform line). */
   readonly caseEntries: ReadonlyArray<z.output<typeof CaseEntry>>;
-  /** AUD-3c: our staff's firm-less platform.bypass lines recorded, in order. */
+  /** AUD-3c: our staff's firm-less lines recorded (platform.bypass and cross_tenant.access), in order. */
   readonly platformEntries: ReadonlyArray<z.output<typeof OurStaffPlatformEntry>>;
   /** How many records were refused by `failOn`. */
   readonly failures: number;
@@ -196,7 +220,7 @@ export function fakeAudit(opts: { failOn?: (e: z.output<typeof AuditEntry>, tx: 
         return;
       }
       const e = AuditEntry.parse(entry);
-      if (e.entity === OUR_STAFF_PLATFORM_ENTITY) throw new Error(`audit line refused: ${OUR_STAFF_PLATFORM_ENTITY} is the firm-less kind's entity, never a firm's line`);
+      if (OUR_STAFF_PLATFORM_ENTITIES.has(e.entity)) throw new Error(`audit line refused: ${e.entity} is the firm-less kind's entity, never a firm's line`);
       // Breaker m2: given a context, the fake keeps AUD-3a's rule as the adapter does: our staff's word only in our staff's
       // request, and in such a request only their own word (without a context it knows no request, as before).
       if (opts.context) {

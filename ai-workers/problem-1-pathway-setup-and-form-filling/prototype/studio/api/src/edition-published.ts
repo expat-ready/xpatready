@@ -51,6 +51,7 @@ async function fill(db: Db, workspaceId: string): Promise<number> {
     dates = JSON.parse(stdout.trim().split("\n").pop()!);
   } catch { failedAt = Date.now(); return 0; }
   // Only rows still unread are written: an edition given its date meanwhile (an upload) keeps it.
-  await db.$transaction(files.map((x) => db.formEdition.updateMany({ where: { id: x.id, published: null }, data: { published: dates[x.file] ?? "" } })));
+  // M2: interactive, never an array batch (firm-scope.ts oneQueryPerCaller); one statement per file, all or none.
+  await db.$transaction(async (tx) => { for (const x of files) await tx.formEdition.updateMany({ where: { id: x.id, published: null }, data: { published: dates[x.file] ?? "" } }); }, { maxWait: 10_000, timeout: 30_000 });
   return files.length;
 }
