@@ -65,7 +65,7 @@ tick() { awk 'NR <= 3' | sed 's/.*/`&`/' | paste -sd ' ' -; }
 
 paths() {  # stdin: changed paths → those that keep the Lead's read by the list (a)
   local f
-  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$LIST" > "$H.hard"; awk 'f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$LIST" > "$H.soft"
+  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$LIST" > "$H.hard"; awk '/^# --- read-after public/ {exit} f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$LIST" > "$H.soft"   # P-823's public-route lines are queue-gate.sh's after-read only
   while IFS= read -r f; do [ -n "$f" ] || continue
     if grep -qiEf "$H.hard" <<< "$f"; then printf '%s\n' "$f"; continue; fi
     [ -s "$H.soft" ] && grep -qiEf "$H.soft" <<< "$f" || continue

@@ -33,7 +33,7 @@ case "$m $p" in
   "GET commits/"*/check-runs?check_name=pr-suites*) s=${p#commits/}; serve "suites-${s%%/*}.json";;   # P-822
   "GET commits/"*/check-runs*) s=${p#commits/}; serve "checks-${s%%/*}.json";;
   "GET actions/runs/"*) serve "run-${p#actions/runs/}.json";;
-  "POST issues/"*/labels) n=${p#issues/}; echo "LABEL ${n%%/*}" >> "$FX/log"; echo '[]';;
+  "POST issues/"*/labels) n=${p#issues/}; l=$(echo "$d" | jq -r '.labels[0]'); case "$l" in after-read*) [ -n "${FAIL_AFTERLABEL:-}" ] && { echo '{"message":"no"}'; exit 22; };; esac; if [ "$l" = "review: approved" ]; then echo "LABEL ${n%%/*}"; else echo "LABELNAME ${n%%/*} $l"; fi >> "$FX/log"; echo '[]';;
   "POST issues/"*/comments) n=${p#issues/}; echo "COMMENT ${n%%/*} $(echo "$d" | jq -r .body | head -1 | cut -c1-700)" >> "$FX/log"; echo '{}';;
   "POST statuses/"*) echo "STATUS ${p#statuses/} $(echo "$d" | jq -r '.context + " " + .state')" >> "$FX/log"; echo '{}';;
   "POST actions/runs/"*/rerun) r=${p#actions/runs/}; echo "RERUN ${r%%/*}" >> "$FX/log"; echo '{}';;
@@ -106,27 +106,32 @@ ok "label: a known reviewer (REVIEWERS) with write access is allowed" "$(grep -q
 cmt 7 helper NONE "Reviewer: Approve $HEAD1"; REV=helper run label 7
 ok "label refused: a known reviewer's login without write access (author_association NONE)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"
-for f in ".github/workflows/x.yml" ".mergify.yml" "ai-workers/x/product/tools/queue-gate.sh" "ai-workers/x/product/tools/lead-read-paths.txt" ".githooks/pre-push" ".claude/skills/next/SKILL.md" "$S/prisma/schema/cases.prisma" "$S/prisma/migrations/3_c/migration.sql" "$S/web/src/runtime/fees.tsx" "$S/api/src/rounds.ts" "$S/prisma/schema/client-money.prisma"; do
+for f in ".github/workflows/x.yml" ".mergify.yml" "ai-workers/x/product/tools/queue-gate.sh" "ai-workers/x/product/tools/lead-read-paths.txt" ".githooks/pre-push" ".claude/skills/next/SKILL.md" "$S/prisma/schema/cases.prisma" "$S/prisma/migrations/3_c/migration.sql" "$S/prisma/schema/client-money.prisma"; do   # the last three: no patch given, so read first (P-823 fails closed)
   files 7 "$S/api/src/form.ts" "$f"; run label 7
   ok "label refused: $f keeps the Lead's read (P-423)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
 done
 # B206 part 3 (P-751): money and permissions keep the Lead's read; a screenshot (*.png under screens/), an image or .txt
 # under product/, or a records-only PR (records-only.sh and the "records" label) sets off only the guard lines, never money.
 PR3=ai-workers/problem-1-pathway-setup-and-form-filling/product
-for f in "$S/api/src/permissions.ts" "$S/api/src/platform/identity/roles.ts" "ai-workers/x/product/tools/fees.md" "ai-workers/x/product/tools/screens/fee.png" ".github/screens/fee.png" "$PR3/tools/fees-shot.png" "$PR3/screens/R1.58/fees.json" "$PR3/qa/walks/payment/walk.cjs" "$S/prisma/migrations/9_fee/README.md" "$PR3/screens/B119/fee-notes.md" "$PR3/screens/B119/shot.png" "$PR3/qa/reports/2026-11-19-fees/README.md" "$PR3/screens/R1.58/payment-rules.md" "$PR3/screens/R1.58/payment-board.html"; do
+for f in "$S/api/src/permissions.ts" "$S/api/src/platform/identity/roles.ts" "ai-workers/x/product/tools/fees.md" "ai-workers/x/product/tools/screens/fee.png" ".github/screens/fee.png" "$PR3/tools/fees-shot.png" "$S/prisma/migrations/9_fee/README.md" "$PR3/screens/B119/fee-notes.md" "$PR3/screens/B119/shot.png"; do
   files 7 "$S/api/src/form.ts" "$f"; run label 7
   ok "label refused: $f keeps the Lead's read (B206 part 3: money, permissions, the guard lines, and a .md or .html beside code: a suite may read it)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
 done
+# P-823: money is read after the label: labelled, the line "Lead after-read owed: money #7 <head>" and the money label
+for f in "$S/web/src/runtime/fees.tsx" "$S/api/src/rounds.ts" "$PR3/screens/R1.58/fees.json" "$PR3/qa/walks/payment/walk.cjs" "$PR3/qa/reports/2026-11-19-fees/README.md" "$PR3/screens/R1.58/payment-rules.md" "$PR3/screens/R1.58/payment-board.html"; do
+  files 7 "$S/api/src/form.ts" "$f"; run label 7
+  ok "P-823 label: $f is money: labelled, with \"Lead after-read owed: money\" and the label after-read: money" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q "^COMMENT 7 \*\*Queue gate (P-823):\*\* Lead after-read owed: money #7 $HEAD1 (money: within the hour" <<< "$log" && grep -qx 'LABELNAME 7 after-read: money' <<< "$log" && echo 1)" "$out / $log"
+done
 for f in "$PR3/screens/R1.58/payment-shot.png" "$PR3/qa/reports/2026-11-19-fees/invoice-run.txt" "$PR3/qa/reports/2026-11-19-fees/ledger.jpg" "$S/web/screens/fee-form.png"; do
   files 7 "$S/api/src/form.ts" "$f"; run label 7
-  ok "label: $f is a screenshot, or an image or .txt under product/: no Lead read for it (B206 part 3)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+  ok "label: $f is a screenshot, or an image or .txt under product/: no Lead read for it, and no after-read either (B206 part 3, P-823)" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q 'after-read' <<< "$log" && echo 1)" "$out / $log"
 done
 nofull; prj 7 $HEAD1 false records; files 7 "$PR3/qa/reports/2026-11-19-fees/README.md" "$PR3/qa/BUGS.md"; run label 7
-ok "label: a records-only PR (records label and records-only.sh) with a fees-named report: no Lead read (B206 part 3)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+ok "label: a records-only PR (records label and records-only.sh) with a fees-named report: no Lead read, no after-read either (B206 part 3)" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q 'after-read' <<< "$log" && echo 1)" "$out / $log"
 prj 7 $HEAD1; run label 7
-ok "label refused: the same files without the records label (set from a full checkout; this job's checkout cannot see a suite reading a .md)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
+ok "label: the same files without the records label (set from a full checkout; this job's checkout cannot see a suite reading a .md) owe the money after-read (P-823)" "$(grep -qx 'LABEL 7' <<< "$log" && grep -qx 'LABELNAME 7 after-read: money' <<< "$log" && echo 1)" "$out / $log"
 prj 7 $HEAD1 false records; RECORDS_ONLY=/nonexistent; export RECORDS_ONLY; run label 7; unset RECORDS_ONLY
-ok "label refused: records-only.sh cannot answer, so the records label alone exempts nothing (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
+ok "label: records-only.sh cannot answer, so the records label alone exempts nothing: the money after-read is owed (fails closed)" "$(grep -qx 'LABELNAME 7 after-read: money' <<< "$log" && echo 1)" "$out / $log"
 prj 7 $HEAD1 false records; files 7 "$PR3/screens/B119/notes.md"; run label 7
 ok "label refused: a records-only PR touching a guard line (screens/B119/) still keeps the Lead's read" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 prj 7 $HEAD1; full 41 7 $HEAD1 completed success
@@ -605,6 +610,72 @@ ok "OS-82: the plan's annotations cannot be read: proof exit 2" "$([ $r = 2 ] &&
 oldrun $HEAD1 success skipped; suites $HEAD1 completed failure; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "OS-82: a real pr-suites check run (red) on the head wins over an old run's skipped parts" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 rm -f "$T/fx/suiteruns.json" "$T/fx/jobs-99.json" "$T/fx/annot-990.json"; prj 7 $HEAD1; files 7 "$S/api/src/form.ts"; suites $HEAD1 completed success
+# --- P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after the label (money,
+# additive migrations, public routes); a migration is judged on the PR's added lines, never its name. PR 9 is drawn for
+# the 1-in-3 after-read (9 mod 3 = 0), PR 7 is not.
+fp() {  # fp <n> <path> <status> <patch> ... → files-<n>.json with status and patch (GitHub's form)
+  local n=$1; shift; local a='[]'
+  while [ $# -ge 3 ]; do a=$(jq -c --arg f "$1" --arg s "$2" --arg p "$3" '. + [{filename: $f, status: $s, patch: $p, changes: 1}]' <<< "$a"); shift 3; done
+  echo "$a" > "$T/fx/files-$n.json"; }
+MG="$S/prisma/migrations/20261125090000_cases__add_case_notes/migration.sql"
+ADD=$'@@ -0,0 +1,5 @@\n+-- Adds case notes; we never drop or delete one (comment lines are not read)\n+CREATE TABLE "case_note" ("id" TEXT NOT NULL, "case_id" TEXT NOT NULL);\n+CREATE INDEX "case_note_case_idx" ON "case_note"("case_id");\n+ALTER TABLE "case" ADD COLUMN "notes" TEXT;'
+prj 9 $HEAD1; cmt 9 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+fp 9 "$MG" added "$ADD"; run label 9
+ok "P-823 plant: an additive migration (ON DELETE CASCADE onto its own new table and a comment saying drop are not destructive), drawn: labelled, \"Lead after-read owed: migration\" and after-read: other" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q "^COMMENT 9 \*\*Queue gate (P-823):\*\* Lead after-read owed: migration #9 $HEAD1 (1 in 3" <<< "$log" && grep -qx 'LABELNAME 9 after-read: other' <<< "$log" && echo 1)" "$out / $log"
+fp 7 "$MG" added "$ADD"; run label 7
+ok "P-823: the same additive migration, not drawn (7 mod 3 = 1): labelled, says so, no after-read label" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (P-823):\*\* read after the label (migration), not drawn' <<< "$log" && ! grep -q '^LABELNAME' <<< "$log" && echo 1)" "$out / $log"
+for c in 'DROP COLUMN:+ALTER TABLE "case" DROP COLUMN "notes";' 'named additive, adds a DROP:+ALTER TABLE "case" DROP CONSTRAINT "case_pkey";' 'lower case:+drop table "old_case";' \
+         'RENAME:+ALTER TABLE "case" RENAME COLUMN "a" TO "b";' 'TRUNCATE:+TRUNCATE "case_note";' 'DELETE FROM over two lines:+DELETE'$'\n''+  FROM "case_note" WHERE true;'; do
+  fp 9 "$MG" added "@@ -0,0 +1,3 @@"$'\n'"+CREATE TABLE \"x\" (\"id\" TEXT);"$'\n'"${c#*:}"; TRIG=approve run label 9
+  ok "P-823 plant: a migration named additive whose added lines say ${c%%:*}: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "keeps the Lead's read first" <<< "$out" && grep -q 'a migration that is not additive' <<< "$out" && grep -q '^COMMENT 9 .*not put on by itself' <<< "$log" && echo 1)" "$out / $log"
+done
+# The scanner's own cases (comments, strings, $ bodies, calls, dots, operators, the narrowing): check-migration-additive.sh
+ALLF=$(cat <<'SQL'
+@@ -0,0 +1,6 @@
++CREATE TABLE "n" ("id" TEXT NOT NULL, "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "amt" DECIMAL(65,30), "p" TEXT REFERENCES "p"("id") ON DELETE CASCADE, CONSTRAINT "n_pkey" PRIMARY KEY ("id"));
++CREATE UNIQUE INDEX "n_p_key" ON "n"("p");
++ALTER TABLE "case" ADD COLUMN "kind" TEXT;
++ALTER TABLE "case" ADD COLUMN "score" DOUBLE PRECISION NOT NULL;
++ALTER TABLE "case" ADD COLUMN "seen_at" TIMESTAMP(3);
++ALTER TABLE "case" ADD COLUMN "tags" TEXT[];
+SQL
+)
+fp 9 "$MG" added "$ALLF"; run label 9
+ok "P-823: an additive migration of the three allowed forms (the tech lead, 12:50 IST): a new table, an index on it, ADD COLUMN of a built-in type with no default: labelled, read after" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$MG" modified "$ADD"; run label 9
+ok "P-823 plant: an edit to a migration (status modified), additive lines or not: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'an edit, rename or removal of a migration' <<< "$out" && echo 1)" "$out / $log"
+fp 9 "$MG" removed ""; run label 9
+ok "P-823 plant: a migration removed (no patch): refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+fp 9 "$S/prisma/schema/cases.prisma" modified $'@@ -1,2 +1,3 @@\n model Case {\n+  notes String?\n }' "$MG" added "$ADD"; run label 9
+ok "P-823: a schema change that only adds lines, with its additive migration: labelled, read after (migration)" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: migration #9' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$S/prisma/schema/cases.prisma" modified $'@@ -1,3 +1,2 @@\n model Case {\n-  notes String?\n }'; run label 9
+ok "P-823 plant: a schema change that removes a line: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'a schema change that removes' <<< "$out" && echo 1)" "$out / $log"
+for f in ".github/workflows/ci.yml" "$S/api/src/platform/identity/keys.ts" "$S/api/src/permissions.ts"; do
+  fp 9 "$f" modified $'@@ -1 +1,2 @@\n x\n+y' "$MG" added "$ADD"; run label 9
+  ok "P-823 plant: $f beside an additive migration: refused, read first (workflows and permissions)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+done
+fp 9 "$S/api/src/front-office/booking/public.controller.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 9
+ok "P-823: a public route file: labelled, \"Lead after-read owed: public\"" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q "Lead after-read owed: public #9 $HEAD1" <<< "$log" && grep -qx 'LABELNAME 9 after-read: other' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$S/api/src/platform/settings/routes.ts" modified $'@@ -1 +1,3 @@\n x\n+  @OpenRead("a door without sign-in")\n+  @Get("hours")'; run label 9
+ok "P-823: an API file that adds an OpenRead( route: read after as a public route" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q 'Lead after-read owed: public #9' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$S/api/src/billing/invoice.ts" modified $'@@ -1 +1,2 @@\n x\n+y' "$MG" added "$ADD"; run label 9
+ok "P-823: money and an additive migration: the money line wins (within the hour)" "$(grep -q 'Lead after-read owed: migration, money #9 .*(money: within the hour' <<< "$log" && grep -qx 'LABELNAME 9 after-read: money' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$S/api/src/billing/invoice.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; FAIL_AFTERLABEL=1; export FAIL_AFTERLABEL; run label 9; unset FAIL_AFTERLABEL
+ok "P-823 (#3661 review M3): the after-read label cannot be put on: review: approved is not put on either, exit 2" "$([ $r = 2 ] && ! grep -q '^LABEL 9' <<< "$log" && grep -q 'is not put on either' <<< "$out" && echo 1)" "exit $r: $out / $log"
+fp 9 "$S/api/src/billing/invoice.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 9
+ok "P-823 (#3661 review M3): the after-read label goes on before review: approved" "$(grep -n -e 'LABELNAME 9 after-read: money' -e '^LABEL 9$' <<< "$log" | head -1 | grep -q 'after-read: money' && echo 1)" "$log"
+fp 9 "$S/api/src/form.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 9
+ok "P-823: no read-after path: labelled with no after-read line" "$(grep -qx 'LABEL 9' <<< "$log" && ! grep -q 'after-read' <<< "$log" && echo 1)" "$out / $log"
+fp 9 "$MG" added "$ADD"; LEAD_READ_PATHS=/nonexistent; export LEAD_READ_PATHS; run label 9; unset LEAD_READ_PATHS
+ok "P-823: lead-read-paths.txt unreadable: refused (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'unreadable' <<< "$out" && echo 1)" "$out / $log"
+fp 9 "$S/prisma.config.ts" modified $'@@ -1 +1 @@\n-  migrations: { path: "prisma/migrations" },\n+  migrations: { path: "prisma/m2" },'; run label 9
+ok "P-823 (#3661 review M5): prisma.config.ts (it names the migrations path): read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'read first' <<< "$out" && echo 1)" "$out / $log"
+sed 's/^# --- read-after migration/# --- read-after migratoin/' "$TOOLS/lead-read-paths.txt" > "$T/lrp-typo.txt"
+fp 9 "$MG" added $'@@ -0,0 +1 @@\n+DROP TABLE "case";'; LEAD_READ_PATHS="$T/lrp-typo.txt"; export LEAD_READ_PATHS; run label 9; unset LEAD_READ_PATHS
+ok "P-823 (#3661 review m6): a typo in a read-after marker fails closed (never a DROP read as money)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'without its marker' <<< "$out" && echo 1)" "$out / $log"
+fp 9 "$MG" added "$ADD"; run eligible 9
+ok "P-823: eligible for an additive migration (the sweep keeps the gate's label)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$S/api/src/form.ts"; files 9 "$S/api/src/form.ts"
 
 # --- the wiring
 R=$(git -C "$TOOLS" rev-parse --show-toplevel); M="$R/.mergify.yml"; W="$R/.github/workflows/queue-gate.yml"
