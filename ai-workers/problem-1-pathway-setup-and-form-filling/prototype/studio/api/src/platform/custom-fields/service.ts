@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import type { PlatCustomField, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
-import { CHOICE_TYPES, choicesIssue, CUSTOM_FIELD_LIMIT, CustomFieldType, keyFromLabel, LIMITS, readValue, sameForm, trimText, type CustomFieldPort, type EntityAccess } from "../../../../ports/custom-fields.ts";
+import { CHOICE_TYPES, choicesIssue, CUSTOM_FIELD_LIMIT, CustomFieldType, EntityKind, keyFromLabel, LIMITS, readValue, sameForm, trimText, type CustomFieldPort, type EntityAccess } from "../../../../ports/custom-fields.ts";
 import { firmScope } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
@@ -230,9 +230,11 @@ export class CustomFieldsService {
 
   /** Saves a record's values: only the keys sent change (null or empty clears one); every required field must end filled. */
   async put(ctx: StaffContext, kindRaw: unknown, idRaw: string, body: unknown) {
-    const { kind, access } = this.access(kindRaw, true);   // PF-28: a malformed address is 404, then the body's field errors (422), then the lookup
-    const id = UUID.test(idRaw) ? idRaw.toLowerCase() : notFound("record");
+    // PF-28's order: a malformed address (kind or id) is 404, then the body's field errors (422), then the lookup.
+    if (!EntityKind.safeParse(kindRaw).success || !UUID.test(idRaw)) return notFound("record");
     const b = parseInput(PutValues, body ?? {});
+    const { kind, access } = this.access(kindRaw, true);
+    const id = idRaw.toLowerCase();
     if (!(await access.canView(ctx, id))) return notFound("record");
     if (!(await access.canEdit(ctx, id))) return problem(403, "Not allowed", "You can see this record but not change it.", { code: "NOT_ALLOWED" });
     const firmId = firmScope(ctx.firmId).firmId;
