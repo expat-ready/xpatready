@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL, firmsSql } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261112150000_a24_case_number";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", DB = `xr_studio_a24_mig_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
@@ -39,7 +40,11 @@ try {
       (gen_random_uuid(), '${W}', '${K[0]}', '${u(40)}', 'spouse_or_partner', 2);
     insert into case_stage (id, workspace_id, case_id, firm_key, ord, stage_key, staff_name, client_name, combination_id, application_subject_id, state, started_from)
       select gen_random_uuid(), workspace_id, id, firm_key, 1, 'k', 'S', 'S', combination_id, ('{${A.join(",")}}'::uuid[])[array_position('{${K.join(",")}}'::uuid[], id)], 'CURRENT', 'BEGIN' from runtime_case;`);
-  for (const d of all.filter((x) => x >= NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
+  for (const d of all.filter((x) => x >= NEW)) {
+    // CS-W1 part 2 needs every case's firm: the firms this suite's cases use exist before it.
+    if (d.startsWith(CSW1_PART2)) sql(SAMPLE_FIRMS_SQL + firmsSql("solo-firm", "other-firm", "new-firm"));
+    psql(["-f", join(MIG, d, "migration.sql")]);
+  }
   // The workspace's person roles (the database refuses a role that is not one; the Sample import writes them).
   sql(`insert into person_role (workspace_id, role_key, label, meaning, takes_part_in_case, may_be_applicant) values ${["principal", "spouse_or_partner", "child"].map((r) => `('${W}', '${r}', '${r}', 'Sample', true, true)`).join(", ")}`);
   const numberOf = (k: string) => sql(`select case_number from runtime_case where id='${k}'`);

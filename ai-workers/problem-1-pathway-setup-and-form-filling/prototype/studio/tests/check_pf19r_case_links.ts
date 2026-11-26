@@ -130,21 +130,25 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   // ------------------------------------------------------------------ DW10 a case whose firm has no platform firm
   const k4 = await newCase("dw10"), E = `partner.e.${run}@example.com`;
   // CS-K1: a case's client is of the case's firm key (the foreign key to case_client), so the made-up key gets its own client row first.
-  sql(`with c as (insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, created_by)
+  // CS-W1 part 2 (20261126160000): a case's firm is required and never changes (case_firm_fixed), so a case whose firm key
+  // has no platform firm can no longer exist and the API's 409 FIRM_CANNOT_SEND cannot be reached from one; the check is
+  // now that the database refuses making one (the statement, client row included, rolls back) and nothing is sent.
+  const sqlErr = (q: string) => { try { sql(q); return ""; } catch (e) { return String((e as { stderr?: string }).stderr ?? e); } };
+  const noFirm = sqlErr(`with c as (insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, created_by)
          select gen_random_uuid(), workspace_id, 'no-platform-firm-${run}', case_client_next_number(workspace_id, 'no-platform-firm-${run}'), 'Sample client (DW10)', 'PERSON', 'seed:pf19r' from runtime_case where id = '${k4.id}' returning id)
        update runtime_case set firm_id = null, firm_key = 'no-platform-firm-${run}', client_id = (select id from c) where id = '${k4.id}'`);
-  const noFirm = await call("POST", `/runtime/cases/${k4.id}/people/${k4.S}/link`, { address: E }, "user-P");
-  ok("DW10 fail: a case firm key with no platform firm → refused in words (409 FIRM_CANNOT_SEND), nothing written: no link, no outbox row, no demo copy",
-    noFirm.status === 409 && noFirm.body?.code === "FIRM_CANNOT_SEND" && /cannot send email yet/.test(noFirm.body?.detail ?? "") && sql(`select count(*) from person_link where subject_id = '${k4.S}'`) === "0" && outboxTo(E).length === 0 && (await inbox(E)).length === 0, noFirm.body);
+  ok("DW10 fail: a case firm key with no platform firm cannot be made (CS-W1 part 2 refuses it, the case keeps its firm), nothing written: no link, no outbox row, no demo copy",
+    /case_firm_fixed: a runtime_case row keeps its firm/.test(noFirm) && sql(`select firm_key from runtime_case where id = '${k4.id}'`) === "sample-firm" && sql(`select count(*) from case_client where firm_key = 'no-platform-firm-${run}'`) === "0"
+    && sql(`select count(*) from person_link where subject_id = '${k4.S}'`) === "0" && outboxTo(E).length === 0 && (await inbox(E)).length === 0, noFirm);
   ok("DW10 pass: a case of a platform firm sends (DW7's case, firm sample-firm)", r7.length === 1 && r7[0].firm_id === firmA);
   // Break B3: a case whose firm_id names another firm than its key's (sample-solo on a sample-firm case) sends nothing.
   const firmB = sql(`select id from platform_firm where key = 'sample-solo'`), k6 = await newCase("dw10b"), H = `partner.h.${run}@example.com`;
   // CS-K1: the case and its client carry the same firm id (the foreign key on client_id, firm_id, RESTRICT both ways), so the
   // fixture crosses both: the case's firm id to null (the key is then not checked), the client's, then the case's.
-  sql(`update runtime_case set firm_id = null where id = '${k6.id}'; update case_client set firm_id = '${firmB}' where id = (select client_id from runtime_case where id = '${k6.id}'); update runtime_case set firm_id = '${firmB}' where id = '${k6.id}'`);
-  const crossed = await call("POST", `/runtime/cases/${k6.id}/people/${k6.S}/link`, { address: H }, "user-P");
-  ok("DW10 fail (break B3): a case whose firm_id names another firm than its firm key's is refused; nothing is sent as the other firm",
-    crossed.status === 409 && crossed.body?.code === "FIRM_CANNOT_SEND" && outboxTo(H).length === 0 && sql(`select count(*) from msg_outbox where firm_id = '${firmB}' and address = '${H}'`) === "0", crossed.body);
+  // CS-W1 part 2: the crossing itself is now refused (case_firm_fixed), so the check is that refusal, the case keeping its firm.
+  const crossed = sqlErr(`begin; update runtime_case set firm_id = null where id = '${k6.id}'; update case_client set firm_id = '${firmB}' where id = (select client_id from runtime_case where id = '${k6.id}'); update runtime_case set firm_id = '${firmB}' where id = '${k6.id}'; commit;`);
+  ok("DW10 fail (break B3): a case whose firm_id names another firm than its firm key's cannot be made (CS-W1 part 2 refuses it); nothing is sent as the other firm",
+    /case_firm_fixed: a runtime_case row keeps its firm/.test(crossed) && sql(`select firm_id from runtime_case where id = '${k6.id}'`) === firmA && outboxTo(H).length === 0 && sql(`select count(*) from msg_outbox where firm_id = '${firmB}' and address = '${H}'`) === "0", crossed);
   // Break B4, B9: an address the sending path would refuse or rewrite is a field error in words, never a 500.
   const k7 = await newCase("dw7b");
   const odd = await Promise.all([`jos\u00e9.${run}@example.com`, `x.${run}@ex_ample.com`, `\uff58.${run}@example.com`].map((a) => call("POST", `/runtime/cases/${k7.id}/people/${k7.S}/link`, { address: a }, "user-P")));
