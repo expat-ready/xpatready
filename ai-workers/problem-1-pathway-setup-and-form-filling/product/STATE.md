@@ -2,7 +2,7 @@
 
 current_lead: local_1c8b2ecd Lead 5 · 26 Nov 17:2x IST (after Lead 4 local_b2e5d43a at about 275k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 17:2x IST (clock): **Lead 4 hands over to Lead 5; read the hand-over block first.** Nightly re-run green. 64/110 Works. Weekly 66% at 17:1x.
+updated: 2026-11-26 21:1x IST (clock): **Lead 5 running (check 2ee5c4a4, cron 3,33; watch re-armed).** Founder answers: no 17:30 account switch (weekly 66%, switch at 95%); Lead 3 reopened (planning only) for the A414 v3 update. #3852 requeued (checks timeout 11:50Z); #3822 round 3 allowed. No lane comment since 13:26Z: cloud lanes stopped for the switch that isn't happening; claude.ai in the browser pane is signed out, founder to sign in so the Lead can wake them (A242). 64/110 Works.
 
 ## Hand-over Lead 4 → Lead 5, 17:2x IST 26 Nov (Lead 4 at ~275k, about 200k past its start read, P-446; Lead 3's block word for word: `history/STATE-2026-11-26-1720-lead4-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 4's fb75f702 is deleted. Re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com; Lead 4 fixed its f-string at 16:4x, backup `.bak`). Standby after you: Lead 6 local_33c127af; start one more at the founder's next typed turn (P-286).
