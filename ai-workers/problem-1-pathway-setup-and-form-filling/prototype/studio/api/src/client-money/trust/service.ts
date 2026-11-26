@@ -29,6 +29,7 @@ import { trustShows } from "../reads/common.ts";
 import { TrustDocuments, trustSubject, trustText, type TrustTemplate } from "./documents.ts";
 import { ApplyIn, RefundIn, applyTrust, refKey, refundTrust } from "./money-out.ts";
 import { invoiceInScope } from "../reads/visibility.ts";
+import { liveParty } from "../live-party.ts";
 import type { MoneyVisibility } from "../../../../ports/money-visibility.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -103,6 +104,7 @@ export class TrustMoney {
     const made = await this.write(async (tx) => {
       await this.trustOn(tx, f);
       const who = await partyOf(tx, f, r), caseId = r.caseId ? await this.caseOf(tx, ctx, seen, r.caseId, who) : this.partySeen(seen, who);
+      await liveParty(tx, f, who.id, seen);   // FO-9b part 2m: never a request to a merged-away client
       await textOk(tx, "purpose", r.purpose, 500);
       const details = (await tx.moneyPaymentSettings.findFirst({ where: firmScope(f), select: { trustDetails: true } }))?.trustDetails?.trim() || null;
       const row = await tx.moneyTrustRequest.create({ data: { firmId: f, personId: who.personId, companyId: who.companyId, caseId, amountMinor: r.amountMinor, currency: r.currency, purpose: r.purpose, createdBy: by,
@@ -186,6 +188,7 @@ export class TrustMoney {
         caseId ??= q.caseId;
       }
       if (!caseId) this.partySeen(seen, who);
+      await liveParty(tx, f, who.id, seen);   // FO-9b part 2m, under the party's lock, after C5's 404 (review M1)
       if (d.reference) {
         await textOk(tx, "reference", d.reference, 200);
         const [dup] = await tx.$queryRaw<{ n: bigint }[]>`select count(*) as n from money_payment p join money_trust_entry e on e.firm_id = p.firm_id and e.payment_id = p.id
@@ -222,7 +225,7 @@ export class TrustMoney {
         await textOk(tx, "pick", a.pick.reason, 200);
       }
       const done = await applyTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), invoiceId: a.invoiceId, amountMinor: a.amountMinor, unclearedAcknowledged: a.unclearedAcknowledged, duplicateOf: a.duplicateOf,
-        pick: a.pick, ...(payer ? { payer: { personId: payer.personId, companyId: payer.companyId } } : {}) });
+        pick: a.pick, seen, ...(payer ? { payer: { personId: payer.personId, companyId: payer.companyId } } : {}) });
       const v = done.after.view;
       return { entryId: done.entryId, invoiceId: done.invoiceId, amountMinor: done.amountMinor, currency: done.currency, invoice: { number: v.number, statusWord: v.statusWord, dueMinor: v.dueMinor } };
     });
@@ -247,7 +250,7 @@ export class TrustMoney {
           payee = other ? { ...(other.personId ? { personId: other.personId } : { companyId: other.companyId! }), reason: r.payee.reason } : { name: r.payee.name, reason: r.payee.reason };
         }
       }
-      return refundTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), holder: { personId: who.personId, companyId: who.companyId }, caseId, r, payee });
+      return refundTrust(tx, this.audit, { firmId: f, by, today: dayOf(this.clock.now()), holder: { personId: who.personId, companyId: who.companyId }, caseId, r, payee, seen });
     });
   }
 
