@@ -124,7 +124,7 @@ try {
   /** A case of the firm (its client made by case_client_for_case, ENABLE ALWAYS); its id and its client's. */
   const newCase = (firmKey = "sample-firm") => {
     const id = randomUUID();
-    sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', '${firmKey}')`);
+    sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_id, firm_key) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', (select id from platform_firm where key = '${firmKey}'), '${firmKey}')`);
     return { id, client: sql(`select client_id from runtime_case where id = '${id}'`) };
   };
   /** An audit line written straight to the table (its trigger off), at a time given, as a case's code would write it. */
@@ -266,7 +266,7 @@ try {
   ok("break F2 pass: 300 lines the prefilter reads but case-feed.ts drops never leave an empty page: page 1 holds the case's 10 lines and says no more",
     dp.status === 200 && dp.body.lines.length === 10 && dp.body.more === false && dp.body.lines.every((l: { summary: string }) => l.summary.includes(`saved on case ${d8}`)), { n: dp.body?.lines?.length, more: dp.body?.more });
   const bc = randomUUID().replace(/^.{8}/, s8);
-  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key) values ('${bc}', '${W}', '${randomUUID()}', 'user-Q', 'user-S', 'C-2026-09999', 'sample-solo')`);
+  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_id, firm_key) values ('${bc}', '${W}', '${randomUUID()}', 'user-Q', 'user-S', 'C-2026-09999', (select id from platform_firm where key = 'sample-solo'), 'sample-solo')`);
   const leak = line({ at: tA(3_000), actor: "user-S", action: "stage moved", entity: "case", key: bc, summary: `FIRMB-LEAK moved case ${s8} to Submitted`, caseId: null, firmId: null });
   const tlF3 = await call(BASE, "GET", TL(c.id), { token: T.OWNER });
   ok("break F3 fail: a 'case' line keyed by another case's full id (the same first 8 characters, no firm id) never shows on this case's timeline",

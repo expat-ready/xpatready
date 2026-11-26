@@ -122,7 +122,7 @@ try {
   let n = 0;
   const newCase = (firmKey = "sample-firm") => {
     const id = randomUUID();
-    sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, client_id) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', '${firmKey}', '${randomUUID()}')`);
+    sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_id, firm_key, client_id) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', (select id from platform_firm where key = '${firmKey}'), '${firmKey}', '${randomUUID()}')`);
     return id;
   };
   const N = (c: string, rest = "") => `/api/runtime/cases/${c}/notes${rest}`;
