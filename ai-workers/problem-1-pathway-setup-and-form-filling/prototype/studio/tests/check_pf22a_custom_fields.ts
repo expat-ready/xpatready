@@ -173,7 +173,7 @@ try {
   // ------------------------------------------------------------------ C4: archive with a confirm
   const archive = await call("PATCH", `/${due.body.id}`, owner.token, { archived: true });
   ok("PF-22a C4 fail: archiving a field with values without confirm → 409 FIELD_IN_USE naming 1 prospect, still active",
-    archive.status === 409 && archive.body.code === "FIELD_IN_USE" && archive.body.count === 1 && /1 prospect have/.test(archive.body.detail) && sql(`select archived_at is null from plat_custom_field where id = '${due.body.id}'`) === "t", archive);
+    archive.status === 409 && archive.body.code === "FIELD_IN_USE" && archive.body.count === 1 && /1 prospect has a value/.test(archive.body.detail) && sql(`select archived_at is null from plat_custom_field where id = '${due.body.id}'`) === "t", archive);
   const agentArchive = await call("PATCH", `/${due.body.id}`, agent.token, { archived: true, confirm: true });
   ok("PF-22a C4 fail: an Agent cannot archive (403)", agentArchive.status === 403);
   const archived = await call("PATCH", `/${due.body.id}`, owner.token, { archived: true, confirm: true });
@@ -199,6 +199,56 @@ try {
   const defs = await call("GET", "?kind=fo_prospect", owner.token);
   ok("PF-22a C5 pass: a new choice is added to a field in use; it moves to second place; the list counts its use",
     grow.status === 200 && grow.body.options.length === 3 && defs.body.fields[1].key === "referral_partner" && defs.body.fields[1].optionUse["Maple Law"] === 1 && defs.body.fields[1].valueCount === 1, defs.body);
+
+  // ------------------------------------------------------------------ C7: review and break round 1 (each a fail test first)
+  const cred = await add(owner, { kind: "fo_prospect", label: "Credential assessment", type: "CHECKBOX" });
+  const notes = await add(owner, { kind: "fo_prospect", label: "Case notes", type: "LONG_TEXT" });
+  const v1 = await call("GET", path, agent.token);
+  const long = "n".repeat(4500);
+  const credSave = await call("PUT", path, agent.token, { version: v1.body.version, values: { credential_assessment: true, case_notes: long } });
+  ok("PF-22a C7 pass (review M1, M2): a field named like a secret (\"Credential assessment\") and a 4,500-character note both save; the audit line names fields by id and cuts the long value",
+    cred.status === 201 && credSave.status === 200 && credSave.body.values.credential_assessment === true && credSave.body.values.case_notes.length === 4500
+      && sql(`select count(*) from audit_event where action = 'custom_field.values_set' and detail::text like '%credential%'`) === "0" && sql(`select count(*) from audit_event where action = 'custom_field.values_set' and detail::text like '%(cut)%'`) === "1", credSave.body);
+  const staleBody = await call("PUT", path, agent.token, { version: v1.body.version, values: { case_notes: "mine" } });
+  ok("PF-22a C7 fail (review M3): a stale save answers 409 with the values as they are now and the keys that differ", staleBody.status === 409 && staleBody.body.current?.values?.credential_assessment === true && staleBody.body.changed?.includes("case_notes"), staleBody.body);
+  const fv = (await call("GET", "?kind=fo_prospect", owner.token)).body.fields.find((f: { key: string }) => f.key === "case_notes");
+  await call("PATCH", `/${notes.body.id}`, owner.token, { helpText: "First admin", version: fv.version });
+  const fieldStale = await call("PATCH", `/${notes.body.id}`, owner.token, { helpText: "Second admin", version: fv.version });
+  ok("PF-22a C7 fail (review M3): a field change on the version read before → 409 STALE_VERSION with the field as it is now; the first change kept",
+    fieldStale.status === 409 && fieldStale.body.code === "STALE_VERSION" && fieldStale.body.current?.helpText === "First admin" && sql(`select help_text from plat_custom_field where id = '${notes.body.id}'`) === "First admin", fieldStale.body);
+  const agentList = await call("GET", "?kind=fo_prospect", agent.token), ownerList = await call("GET", "?kind=fo_prospect", owner.token);
+  ok("PF-22a C7 pass/fail (review m1): counts across the firm go only to a holder of agent/custom-field:manage", agentList.body.fields.every((f: { valueCount: unknown; optionUse: unknown }) => f.valueCount === null && f.optionUse === null) && ownerList.body.fields.some((f: { valueCount: number }) => f.valueCount > 0));
+  const v2 = await call("GET", path, agent.token);
+  const both = await Promise.all([0, 1].map((i) => call("PUT", path, agent.token, { version: v2.body.version, values: { case_notes: `race ${i}` } })));
+  ok("PF-22a C7 pass/fail (review m2: the record lock): two saves on one version → one 200 and one 409", both.map((r) => r.status).sort().join() === "200,409", both.map((r) => r.status));
+  const v3 = await call("GET", path, agent.token);
+  const pi = await call("PUT", path, agent.token, { version: v3.body.version, values: {} });
+  const numField = await add(owner, { kind: "fo_prospect", label: "Ratio", type: "NUMBER" });
+  const nums = await call("PUT", path, agent.token, { version: pi.body.version, values: { ratio: 0.1 + 0.2 } });
+  const zero = await call("PUT", path, agent.token, { version: nums.body.version, values: { follow_up_date: "0000-01-01" } });
+  const nul = await call("PUT", path, agent.token, { version: nums.body.version, values: { case_notes: "a\u0000b" } });
+  const proto = await call("PUT", path, agent.token, { version: nums.body.version, values: JSON.parse('{"__proto__": "x"}') });
+  ok("PF-22a C7 pass (round 3: extra_float_digits): 0.1+0.2 is stored and read back exactly", numField.status === 201 && nums.status === 200 && nums.body.values.ratio === 0.1 + 0.2, [numField.status, numField.body.key, nums.status, nums.body.values, sql(`select value::text from plat_custom_value where value::text like '0.3%'`)]);
+  ok("PF-22a C7 fail (break m1, m2, m5): year 0000, a NUL and a __proto__ key are refused 422, never a 500 or a silent 200", zero.status === 422 && nul.status === 422 && proto.status === 422, [zero.status, nul.status, proto.status]);
+  // review m2: the person seen through a prospect the Agent owns, though the lead is another Agent's
+  const lead2 = await leads.add(other.ctx as never, { requestId: randomUUID(), givenNames: "Bo", familyName: "Sample", email: "bo.pf22a@example.com", source: "Phone call" }) as { id: string; person: { id: string } };
+  const p2 = (await pros.engage(other.ctx as never, lead2.id)) as { id: string };
+  sql(`update fo_prospect set owner_staff_id = '${agent.id}' where id = '${p2.id}'`);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  const viaProspect = await call("GET", `/values/fo_person/${lead2.person.id}`, agent.token), stranger = await call("GET", `/values/fo_person/${lead2.person.id}`, reader.token);
+  ok("PF-22a C7 pass/fail (review m2, challenge m10): the prospect's own Agent reads the person though the lead is another's; someone seeing neither gets 404", viaProspect.status === 200 && stranger.status === 404, [viaProspect.status, stranger.status]);
+  // review m2: archive and re-add takes key _2; un-archive at 50 is refused
+  const spare = await add(owner, { kind: "fo_person", label: "Spare", type: "TEXT" });
+  await call("PATCH", `/${spare.body.id}`, owner.token, { archived: true });
+  const spare2 = await add(owner, { kind: "fo_person", label: "Spare", type: "TEXT" });
+  ok("PF-22a C7 pass (challenge M4): archive and re-add takes the key spare_2", spare2.status === 201 && spare2.body.key === "spare_2", spare2.body);
+  const compField = (await call("GET", "?kind=fo_company", owner.token)).body.fields[0];
+  await call("PATCH", `/${compField.id}`, owner.token, { archived: true });
+  await add(owner, { kind: "fo_company", label: "Field fifty", type: "TEXT" });
+  const unarchive50 = await call("PATCH", `/${compField.id}`, owner.token, { archived: false });
+  ok("PF-22a C7 fail: un-archiving when the kind already has 50 fields → 422 LIMIT_REACHED", unarchive50.status === 422 && unarchive50.body.code === "LIMIT_REACHED", unarchive50.body);
+  const archivedMove = await call("PATCH", `/${compField.id}`, owner.token, { position: 0 });
+  ok("PF-22a C7 fail (review m4): a place for an archived field writes no audit line", archivedMove.status === 200 && sql(`select count(*) from audit_event where entity_key = '${compField.id}' and action = 'custom_field.changed'`) === "0", archivedMove.body);
 
   // ------------------------------------------------------------------ C6: walls
   const bList = await call("GET", "?kind=fo_prospect", ownerB.token), bRead = await call("GET", path, ownerB.token), bPatch = await call("PATCH", `/${ref.body.id}`, ownerB.token, { label: "Taken" });

@@ -13,11 +13,11 @@
 // M6: no other action of the record waits on it). Every change is one transaction with one audit line (fail-closed);
 // a value may be personal, so it goes in the line's before/after, never in its summary or detail (PF-23).
 import { HttpException } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { PlatCustomField, Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
-import { CHOICE_TYPES, choicesIssue, CUSTOM_FIELD_LIMIT, CustomFieldType, EntityKind, keyFromLabel, LIMITS, readValue, sameForm, trimText, type CustomFieldPort, type EntityAccess } from "../../../../ports/custom-fields.ts";
+import { CHOICE_TYPES, choicesIssue, CUSTOM_FIELD_LIMIT, CUSTOM_FIELD_MANAGE, CustomFieldType, EntityKind, keyFromLabel, LIMITS, storable, readValue, sameForm, trimText, type CustomFieldPort, type EntityAccess } from "../../../../ports/custom-fields.ts";
 import { firmScope } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
@@ -27,23 +27,40 @@ type Value = string | number | boolean | string[];
 export type CustomFieldDeps = { db: PrismaClient; audit: AuditPort<Tx>; registry: CustomFieldPort<StaffContext> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const label = z.string().refine((s) => { const t = trimText(s); return [...t].length >= 1 && [...t].length <= LIMITS.label; }, `1 to ${LIMITS.label} characters.`);
-const help = z.string().refine((s) => [...trimText(s)].length <= LIMITS.helpText, `at most ${LIMITS.helpText} characters.`).nullable();
-const choices = z.array(z.string().max(400)).max(LIMITS.choices);
+/** Text the database can store: no NUL and no lone surrogate (break m1). */
+const clean = storable;
+const label = z.string().refine(clean, "Use letters, digits and punctuation only.").refine((s) => { const t = trimText(s); return [...t].length >= 1 && [...t].length <= LIMITS.label; }, `1 to ${LIMITS.label} characters.`);
+const help = z.string().refine(clean, "Use letters, digits and punctuation only.").refine((s) => [...trimText(s)].length <= LIMITS.helpText, `at most ${LIMITS.helpText} characters.`).nullable();
+const choices = z.array(z.string().max(400).refine(clean, "Use letters, digits and punctuation only.")).max(LIMITS.choices);
 export const AddField = strict({ kind: z.string().max(64), label, type: CustomFieldType, required: z.boolean().optional(), options: choices.optional(), helpText: help.optional() });
 export const ChangeField = strict({ label: label.optional(), type: CustomFieldType.optional(), required: z.boolean().optional(), options: choices.optional(), helpText: help.optional(),
-  position: z.number().int().min(0).max(1000).optional(), archived: z.boolean().optional(), confirm: z.boolean().optional() })
-  .refine((b) => Object.keys(b).some((k) => k !== "confirm"), { error: "Name what to change." });
-export const PutValues = strict({ values: z.record(z.string().max(40), z.unknown()), version: z.string().max(80) });
+  position: z.number().int().min(0).max(1000).optional(), archived: z.boolean().optional(), confirm: z.boolean().optional(),
+  /** The field's version as read (review M3): a stale one is 409 STALE_VERSION with the field as it is now. */
+  version: z.string().max(80).optional() })
+  .refine((b) => Object.keys(b).some((k) => k !== "confirm" && k !== "version"), { error: "Name what to change." });
+export const PutValues = strict({
+  values: z.record(z.string().max(40), z.unknown()).refine((v) => Object.keys(v).length <= 100, "At most 100 fields in one save.").refine((v) => !Object.hasOwn(v, "__proto__"), "__proto__ is not a field."),
+  version: z.string().max(80) });
 
 /** A field as the API answers it. */
-export type FieldView = { id: string; key: string; label: string; type: string; required: boolean; options: string[]; helpText: string | null; position: number; archivedAt: string | null; valueCount: number; optionUse: Record<string, number> };
+export type FieldView = { id: string; key: string; label: string; type: string; required: boolean; options: string[]; helpText: string | null; position: number; archivedAt: string | null; version: string;
+  /** How many records use it, and each choice: only for agent/custom-field:manage holders (counted across the firm, so never shown to someone who sees only their own; review m1, break m4). */
+  valueCount: number | null; optionUse: Record<string, number> | null };
 
 const fieldsError = (fields: Record<string, string>, detail?: string): never =>
   problem(FIELD_ERROR_STATUS, "Check the details", detail ?? `${Object.keys(fields).length === 1 ? "One field needs" : `${Object.keys(fields).length} fields need`} a change: ${Object.values(fields).join(" ").slice(0, 500)} Nothing was saved.`, { code: "INVALID", fields });
 const conflict = (detail: string, code: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
 const notFound = (what: string): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
-const records = (kind: string, n: number) => `${n} ${kind.replace(/^[a-z]+_/, "").replace(/_/g, " ")}${n === 1 ? "" : "s"}`;
+const noun = (kind: string, n: number) => { const w = kind.replace(/^[a-z]+_/, "").replace(/_/g, " "); return n === 1 ? w : w === "person" ? "people" : w === "company" ? "companies" : `${w}s`; };
+/** "1 prospect has", "14 prospects have" (review m3). */
+const records = (kind: string, n: number) => `${n} ${noun(kind, n)} ${n === 1 ? "has" : "have"}`;
+const recordsUse = (kind: string, n: number) => `${n} ${noun(kind, n)}`;
+/** A value as the audit line takes it: at most 4000 characters a string (AuditValues; LONG_TEXT holds 5000: review M2). */
+const audited = (v: Value | null): Value | null => (typeof v === "string" && [...v].length > 4000 ? `${[...v].slice(0, 3990).join("")} … (cut)` : v);
+/** The audit line's name for a field: its id, never its key (a key such as "credential_assessment" would read as a secret's
+ *  name and refuse the line: review M1). Hex has no letters of a secret word. */
+const auditKey = (fieldId: string) => `cf_${fieldId.replace(/-/g, "")}`;
+const fieldVersion = (f: Pick<PlatCustomField, "updatedAt">) => f.updatedAt.toISOString();
 const optionsOf = (f: Pick<PlatCustomField, "options">) => (Array.isArray(f.options) ? (f.options as string[]) : []);
 
 /** The database's own refusals (a race the service's checks lost) as the same answers. */
@@ -57,6 +74,8 @@ function dbRefusal(e: unknown): never {
   if (/P2002|unique constraint/i.test(m)) conflict("Another field has this name. Reload and try again.", "DUPLICATE_KEY");
   throw e;
 }
+
+const byKeyOf = (fields: PlatCustomField[]) => new Map(fields.map((f) => [f.key, f]));
 
 export class CustomFieldsService {
   constructor(private readonly d: CustomFieldDeps) {}
@@ -75,9 +94,9 @@ export class CustomFieldsService {
   /** The kind's fields in order (archived ones too with `archived`), each with how many records use it and each choice. */
   async list(ctx: StaffContext, kindRaw: unknown, archived = false): Promise<{ kind: string; fields: FieldView[]; limit: number; activeCount: number }> {
     const { kind } = this.access(kindRaw);
-    return this.listIn(this.d.db, ctx.firmId, kind, archived);
+    return this.listIn(this.d.db, ctx.firmId, kind, archived, ctx.keys.includes(CUSTOM_FIELD_MANAGE));
   }
-  private async listIn(db: Tx | PrismaClient, firmIdRaw: string, kind: string, archived: boolean) {
+  private async listIn(db: Tx | PrismaClient, firmIdRaw: string, kind: string, archived: boolean, withCounts = true) {
     const firmId = firmScope(firmIdRaw).firmId;
     const rows = await db.platCustomField.findMany({ where: firmScope(firmId, { entityKind: kind, ...(archived ? {} : { archivedAt: null }) }), orderBy: [{ archivedAt: { sort: "desc", nulls: "first" } }, { position: "asc" }, { createdAt: "asc" }] });
     const counts = await db.$queryRaw<{ field_id: string; n: number }[]>`select v.field_id::text, count(*)::int as n from plat_custom_value v join plat_custom_field f on f.id = v.field_id and f.firm_id = v.firm_id
@@ -89,7 +108,7 @@ export class CustomFieldsService {
     const n = new Map(counts.map((c) => [c.field_id, c.n]));
     const fields = rows.map((f): FieldView => ({
       id: f.id, key: f.key, label: f.label, type: f.type, required: f.required, options: optionsOf(f), helpText: f.helpText, position: f.position, archivedAt: f.archivedAt?.toISOString() ?? null,
-      valueCount: n.get(f.id) ?? 0, optionUse: Object.fromEntries(uses.filter((u) => u.field_id === f.id).map((u) => [u.label, u.n])),
+      version: fieldVersion(f), valueCount: withCounts ? n.get(f.id) ?? 0 : null, optionUse: withCounts ? Object.fromEntries(uses.filter((u) => u.field_id === f.id).map((u) => [u.label, u.n])) : null,
     }));
     const activeCount = await db.platCustomField.count({ where: firmScope(firmId, { entityKind: kind, archivedAt: null }) });
     return { kind, fields, limit: CUSTOM_FIELD_LIMIT, activeCount };
@@ -150,7 +169,10 @@ export class CustomFieldsService {
     try {
       await this.d.db.$transaction(async (tx) => {
         await this.lockKind(tx, firmId, kind);
+        // The field's row under lock first, so a first value being written (put takes it FOR SHARE) is counted (break m3).
+        await tx.$queryRaw`select id from plat_custom_field where firm_id = ${firmId}::uuid and id = ${found.id}::uuid for update`;
         const f = await tx.platCustomField.findFirstOrThrow({ where: firmScope(firmId, { id: found.id }) });
+        if (b.version !== undefined && b.version !== fieldVersion(f)) conflict("Someone changed this field after you opened it. Reload to see their change, then try again.", "STALE_VERSION", { current: { label: f.label, type: f.type, required: f.required, options: optionsOf(f), helpText: f.helpText, archived: f.archivedAt !== null, version: fieldVersion(f) } });
         const used = await tx.platCustomValue.count({ where: firmScope(firmId, { fieldId: f.id }) });
         const data: Prisma.PlatCustomFieldUpdateInput = {};
         const type = b.type ?? f.type;
@@ -165,7 +187,7 @@ export class CustomFieldsService {
             const [use] = await tx.$queryRaw<{ label: string; n: number }[]>`select o.label, count(*)::int as n from plat_custom_value v
               cross join lateral (select v.value #>> '{}' as label where jsonb_typeof(v.value) = 'string' union all select jsonb_array_elements_text(v.value) where jsonb_typeof(v.value) = 'array') o
               where v.firm_id = ${firmId}::uuid and v.field_id = ${f.id}::uuid and o.label = any(${gone}::text[]) group by 1 order by 2 desc, 1 limit 1`;
-            if (use) conflict(`“${use.label}” is used on ${records(kind, use.n)}, so it cannot be removed.`, "OPTION_IN_USE", { option: use.label, count: use.n });
+            if (use) conflict(`“${use.label}” is used on ${recordsUse(kind, use.n)}, so it cannot be removed.`, "OPTION_IN_USE", { option: use.label, count: use.n });
           }
           data.options = next;
         }
@@ -173,7 +195,7 @@ export class CustomFieldsService {
         if (b.required !== undefined) data.required = b.required;
         if (b.helpText !== undefined) data.helpText = b.helpText ? trimText(b.helpText) || null : null;
         if (b.archived === true && !f.archivedAt) {
-          if (used && b.confirm !== true) conflict(`${records(kind, used)} have a value in this field. The values are kept but hidden. Send confirm to archive it.`, "FIELD_IN_USE", { count: used });
+          if (used && b.confirm !== true) conflict(`${records(kind, used)} a value in this field. The values are kept but hidden from records and filters. Confirm to archive it.`, "FIELD_IN_USE", { count: used });
           data.archivedAt = new Date();
         }
         if (b.archived === false && f.archivedAt) {
@@ -184,11 +206,11 @@ export class CustomFieldsService {
         }
         const after = Object.keys(data).length ? await tx.platCustomField.update({ where: { id: f.id }, data }) : f;
         if (b.position !== undefined && !after.archivedAt) await this.place(tx, firmId, kind, f.id, b.position);
-        const moved = b.position !== undefined && b.position !== f.position;
+        const moved = b.position !== undefined && b.position !== f.position && !after.archivedAt;   // an archived field has no place (review m4)
         if (!Object.keys(data).length && !moved) return;
         const final = await tx.platCustomField.findFirstOrThrow({ where: firmScope(firmId, { id: f.id }) });
         const action = data.archivedAt instanceof Date ? "custom_field.archived" : data.archivedAt === null ? "custom_field.unarchived" : "custom_field.changed";
-        await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action, entity: "plat_custom_field", entityKey: f.id, summary: `Custom field ${action.split(".")[1]} on ${kind}${action === "custom_field.archived" && used ? ` (${used} values kept)` : ""}`,
+        await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action, entity: "plat_custom_field", entityKey: f.id, summary: `Custom field ${action.split(".")[1]} on ${kind}${action === "custom_field.archived" && used ? ` (${used} ${used === 1 ? "value" : "values"} kept)` : ""}`,
           detail: { fieldId: f.id, entityKind: kind, valueCount: used }, before: this.values(f), after: this.values(final) });
       });
       return this.view(firmId, kind, found.id);
@@ -203,9 +225,9 @@ export class CustomFieldsService {
     for (const [i, f] of order.entries()) if (active.find((a) => a.id === f.id)?.position !== i) await tx.platCustomField.update({ where: { id: f.id }, data: { position: i } });
   }
 
-  private version(rows: { id: string; fieldId: string; updatedAt: Date }[]) {
+  private version(rows: { id: string; fieldId: string; updatedAt: Date; value: unknown }[]) {
     if (!rows.length) return "0";
-    return createHash("sha256").update(rows.map((r) => `${r.fieldId}:${r.id}:${r.updatedAt.getTime()}`).sort().join("|")).digest("hex").slice(0, 20);
+    return createHash("sha256").update(rows.map((r) => `${r.fieldId}:${r.id}:${r.updatedAt.getTime()}:${JSON.stringify(r.value)}`).sort().join("|")).digest("hex").slice(0, 20);   // the value too (review m6)
   }
 
   /** A record's active fields and values, whether this person may change them, and the version to send back. */
@@ -232,6 +254,8 @@ export class CustomFieldsService {
   async put(ctx: StaffContext, kindRaw: unknown, idRaw: string, body: unknown) {
     // PF-28's order: a malformed address (kind or id) is 404, then the body's field errors (422), then the lookup.
     if (!EntityKind.safeParse(kindRaw).success || !UUID.test(idRaw)) return notFound("record");
+    const sent = (body as { values?: unknown } | null)?.values;
+    if (sent && typeof sent === "object" && Object.hasOwn(sent, "__proto__")) fieldsError({ __proto__: "This is not a field." });   // never a silent 200 (break m5)
     const b = parseInput(PutValues, body ?? {});
     const { kind, access } = this.access(kindRaw, true);
     const id = idRaw.toLowerCase();
@@ -241,9 +265,14 @@ export class CustomFieldsService {
     try {
       return await this.d.db.$transaction(async (tx) => {
         await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`plat-custom-value:${firmId}:${kind}:${id}`}))`;
+        // The kind's fields FOR SHARE: an archive or a type change waits for this save, and this save for it (break m3).
+        await tx.$queryRaw`select id from plat_custom_field where firm_id = ${firmId}::uuid and entity_kind = ${kind} for share`;
         const fields = await tx.platCustomField.findMany({ where: firmScope(firmId, { entityKind: kind, archivedAt: null }), orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
         const rows = await tx.platCustomValue.findMany({ where: firmScope(firmId, { entityKind: kind, entityId: id }) });
-        if (this.version(rows) !== b.version) conflict("Someone changed these fields after you opened them. Reload to see their change, then save again.", "STALE_VERSION");
+        if (this.version(rows) !== b.version) {
+          const now = await this.read(tx, firmId, kind, id, true);
+          conflict("Someone changed these fields after you opened them. Their change is shown; save again to keep yours.", "STALE_VERSION", { current: now, changed: Object.keys(b.values).filter((k) => byKeyOf(fields).has(k) && JSON.stringify(now.values[k] ?? null) !== JSON.stringify(b.values[k] ?? null)) });
+        }
         const byKey = new Map(fields.map((f) => [f.key, f]));
         const errors: Record<string, string> = {}, next = new Map<string, Value | null>();
         for (const [key, raw] of Object.entries(b.values)) {
@@ -259,13 +288,15 @@ export class CustomFieldsService {
         for (const [fieldId, value] of next) {
           const f = fields.find((x) => x.id === fieldId)!, old = rows.find((r) => r.fieldId === fieldId);
           if (JSON.stringify(old?.value ?? null) === JSON.stringify(value)) continue;
-          before[f.key] = (old?.value as Value | undefined) ?? null; after[f.key] = value;
+          before[auditKey(f.id)] = audited((old?.value as Value | undefined) ?? null); after[auditKey(f.id)] = audited(value);
           if (value === null) await tx.platCustomValue.delete({ where: { id: old!.id } });
-          else if (old) await tx.platCustomValue.update({ where: { id: old.id }, data: { value, updatedBy: ctx.staffId } });
-          else await tx.platCustomValue.create({ data: { firmId, fieldId, entityKind: kind, entityId: id, value, updatedBy: ctx.staffId } });
+          // Written as JSON text cast to jsonb: Prisma's Json write rounds a number to 15 digits (0.1+0.2 became 0.3), and a
+          // number must come back as JS wrote it (round 3: the database compares through float8's shortest text).
+          else if (old) await tx.$executeRaw`update plat_custom_value set value = ${JSON.stringify(value)}::jsonb, updated_by = ${ctx.staffId}::uuid, updated_at = now() where id = ${old.id}::uuid and firm_id = ${firmId}::uuid`;
+          else await tx.$executeRaw`insert into plat_custom_value (id, firm_id, field_id, entity_kind, entity_id, value, updated_by, updated_at) values (${randomUUID()}::uuid, ${firmId}::uuid, ${fieldId}::uuid, ${kind}, ${id}::uuid, ${JSON.stringify(value)}::jsonb, ${ctx.staffId}::uuid, now())`;
         }
         if (Object.keys(after).length) await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "custom_field.values_set", entity: "plat_custom_value", entityKey: `${kind}:${id}`,
-          summary: `Custom field values changed on ${kind} (${Object.keys(after).length} field${Object.keys(after).length === 1 ? "" : "s"})`, detail: { entityKind: kind, entityId: id, fields: Object.keys(after) }, before, after });
+          summary: `Custom field values changed on ${kind} (${Object.keys(after).length} field${Object.keys(after).length === 1 ? "" : "s"})`, detail: { entityKind: kind, entityId: id, fieldIds: Object.keys(after).map((k) => k.slice(3)) }, before, after });
         return this.read(tx, firmId, kind, id, true);
       });
     } catch (e) { return dbRefusal(e); }

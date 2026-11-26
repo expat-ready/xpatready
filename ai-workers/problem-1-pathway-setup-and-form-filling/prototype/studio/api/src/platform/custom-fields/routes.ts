@@ -5,6 +5,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
 import { CUSTOM_FIELD_MANAGE } from "../../../../ports/custom-fields.ts";
 import { parseInput, query } from "../http/input.ts";
+import { Versioned } from "../http/if-match.ts";
 import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { CustomFieldsService } from "./service.ts";
 
@@ -25,9 +26,9 @@ export class CustomFieldsController {
   @Get("values/:kind/:id") @AnyStaff(RECORD)
   values(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string) { return this.svc.readValues(staffOf(r), kind, id); }
 
-  @Put("values/:kind/:id") @HttpCode(200) @AnyStaff(RECORD)
+  @Put("values/:kind/:id") @HttpCode(200) @AnyStaff(RECORD) @Versioned()
   put(@Req() r: R, @Param("kind") kind: string, @Param("id") id: string, @Body() b: unknown) { return this.svc.put(staffOf(r), kind, id, b); }
 
-  @Patch(":id") @PermissionKeys(CUSTOM_FIELD_MANAGE)
+  @Patch(":id") @PermissionKeys(CUSTOM_FIELD_MANAGE) @Versioned()
   change(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.change(staffOf(r), id, b); }
 }
