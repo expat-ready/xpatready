@@ -3,7 +3,9 @@
 // 2's (`/api/system/register/holds`) with PF-21rs R0's names. Only our Platform Owner holds the key; a hold stops deletion
 // of what it covers until it is released (LegalHoldPort, asked by every deleter). Legal reading Unconfirmed: no counsel.
 import { z } from "zod";
-import { shortId } from "./contract";
+/** An id shown short, "3f2a…c91e" (contract.ts's shortId; kept here so this file imports only zod: the API's type check reads it
+ *  through the browser check, under node16 module rules).*/
+const shortId = (id: string) => (id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Review M1 (B2): the dialog's own plain words before anything is sent (the API's refusals stay the backstop). */
