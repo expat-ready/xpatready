@@ -57,6 +57,8 @@ export function linkOk(s: string): boolean {
   } catch { return false; }
 }
 const Link = z.string({ error: VIDEO_WORDS.link }).refine((s) => s === "" || linkOk(s), VIDEO_WORDS.link);
+/** Neither door takes a query field (PF-28): an id-like one is 403 above, any other is 422. */
+export const VideoQuery = z.strictObject({});
 export const VideoBody = z.strictObject({
   /** null or "" clears the link. */
   myMeetingLink: Link.nullable().optional(),
@@ -96,6 +98,7 @@ export class VideoService {
   async get(ctx: StaffContext, query: Record<string, unknown> = {}) {
     if (Object.keys(query).some((k) => ["staffid", "userid", "personid", "id"].includes(k.toLowerCase().replace(/_/g, ""))))
       throw problem(403, "not-your-record", "Not allowed", VIDEO_WORDS.notYours, { code: "OWN_RECORD_ONLY" });
+    parseInput(VideoQuery, query);   // PF-28: any other query field → 422 naming it
     const p = await this.db.foVideoPref.findFirst({ where: firmScope(ctx.firmId, { staffId: ctx.staffId }), select: { myMeetingLink: true, sourceChoice: true } });
     return this.answer((p as Pref | null) ?? { myMeetingLink: null, sourceChoice: null });
   }
@@ -106,6 +109,7 @@ export class VideoService {
     // Another person's id anywhere in the request (body or query, any spelling) is refused, never ignored (breaker m7).
     if ([...names(body), ...names(query)].some((k) => ["staffid", "userid", "personid", "id"].includes(k)))
       throw problem(403, "not-your-record", "Not allowed", VIDEO_WORDS.notYours, { code: "OWN_RECORD_ONLY" });
+    parseInput(VideoQuery, query);   // PF-28: any other query field → 422 naming it
     const v = parseInput(VideoBody, body ?? {});
     return this.db.$transaction(async (tx) => {
       // One save per person at a time (breaker m3): two tabs never write back a link the other cleared, and two first

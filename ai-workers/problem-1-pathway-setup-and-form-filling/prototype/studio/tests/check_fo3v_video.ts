@@ -161,6 +161,10 @@ try {
   const byId = await me("PUT", OWNER, { id: CO.id, myMeetingLink: null }), byCase = await me("PUT", OWNER, { StaffId: CO.id }), readOther = await call(base, "GET", `/api/front-office/me/video?staff_id=${CO.id}`, OWNER.token);
   ok("FO-3v AG-4-59 fail (breaker m7): another person's id in the query, as `id`, or in another spelling → 403, nothing saved for anyone",
     [byQuery, byId, byCase, readOther].every((r) => r.status === 403) && (await me("GET", OWNER)).body.myMeetingLink === null && (await me("GET", CO)).body.myMeetingLink === LINK, [byQuery.status, byId.status, byCase.status, readOther.status]);
+  // PF-28: any other query field is 422 naming it, on the read and the save; nothing saved.
+  const qRead = await call(base, "GET", "/api/front-office/me/video?pf28Unknown=x", CO.token), qSave = await call(base, "PUT", "/api/front-office/me/video?colour=red", CO.token, { myMeetingLink: "https://meet.example/q" });
+  ok("FO-3v PF-28 fail: an unknown query field on GET or PUT → 422 naming it, nothing saved",
+    qRead.status === 422 && qRead.body.fields?.pf28Unknown !== undefined && qSave.status === 422 && qSave.body.fields?.colour !== undefined && (await me("GET", CO)).body.myMeetingLink === LINK, [qRead.status, qRead.body.fields, qSave.status]);
   const noChoice = await me("PUT", CO, { sourceChoice: null });
   ok("FO-3v rule 3 fail (breaker m4): \"no choice\" is not kept while the person has a source; the choice stays My meeting link, as bookings use it", noChoice.status === 200 && noChoice.body.sourceChoice === "MY_LINK", noChoice.body);
   // Breaker m3: two saves at once. One tab clears the link while another changes only the choice: the link stays cleared.
