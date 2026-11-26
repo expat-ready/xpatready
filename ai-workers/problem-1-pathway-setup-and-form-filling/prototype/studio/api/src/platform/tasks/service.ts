@@ -11,7 +11,7 @@ import { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
-import { fieldsOf, FIELD_ERROR_STATUS } from "../http/input.ts";
+import { fieldsOf, FIELD_ERROR_STATUS, idParam } from "../http/input.ts";
 import { forbidden, type StaffContext } from "../identity/keys.ts";
 import { TIME_ZONE } from "../settings.ts";
 import { holdsKey } from "../identity/catalogue.ts";
@@ -158,7 +158,7 @@ export class Tasks {
   private async dbKnows(zone: string): Promise<boolean> { try { await this.deps.db.$queryRaw`select now() at time zone ${zone}`; return true; } catch { return false; } }
   /** The first of these zones known by its canonical name, else my office's, else the firm's, else UTC. */
   private async zoneOf(s: StaffContext, named: string | null | undefined, ...given: (string | null | undefined)[]): Promise<string> {
-    if (named != null) { const c = canonicalZone(named); return c && (await this.dbKnows(c)) ? c : refused("Please check the highlighted details.", { "due.zone": "A time zone from the list" }); }
+    if (named != null) { const c = canonicalZone(named); return c && (await this.dbKnows(c)) ? c : refused("Please check the highlighted details.", { due: "Choose a time zone from the list." }); }
     for (const z0 of given) { const c = canonicalZone(z0); if (c && (await this.dbKnows(c))) return c; }
     return canonicalZone(await this.deps.offices.zoneFor(s.firmId, await this.deps.offices.officeOfStaff(s.firmId, s.staffId))) ?? refused("Choose a time zone for this due date.", { due: "Name a time zone: your office's is not one on the list." });
   }
@@ -196,7 +196,7 @@ export class Tasks {
 
   /** PATCH: title, details, category, due and priority (agent/task:edit; the host visible). */
   async edit(s: StaffContext, id: string, body: unknown): Promise<TaskView> {
-    const b = parse(EditTask, body);
+    const b = (idParam(id, "task"), parse(EditTask, body));
     return this.change(s, id, b.version, "plat.task.edit", "Task changed", async (row, host) => {
       if (!this.has(s, KEY.edit) || !host) forbidden("You can view this task but not change it.");
       const zone = b.due ? await this.zoneOf(s, b.due.zone, row.dueZone, host!.zone) : undefined;
@@ -207,7 +207,7 @@ export class Tasks {
 
   /** POST assign: to an active colleague, or back to Unassigned (agent/task:assign; open tasks only). */
   async assign(s: StaffContext, id: string, body: unknown): Promise<TaskView> {
-    const b = parse(AssignTask, body);
+    const b = (idParam(id, "task"), parse(AssignTask, body));
     return this.change(s, id, b.version, "plat.task.assign", b.assigneeStaffId ? "Task assigned" : "Task unassigned", async (row, host, tx) => {
       if (!this.has(s, KEY.assign) || !host) forbidden("Only people who can assign tasks can do this.");
       if (!(OPEN_STATUSES as readonly string[]).includes(row.status)) conflict("Only an open task can be assigned. Reopen it first.");
@@ -240,7 +240,7 @@ export class Tasks {
 
   /** POST complete: Done (the assignee, or agent/task:edit with the host visible). */
   async complete(s: StaffContext, id: string, body: unknown): Promise<TaskView> {
-    const b = parse(VersionOnly, body);
+    const b = (idParam(id, "task"), parse(VersionOnly, body));
     return this.change(s, id, b.version, "plat.task.complete", "Task done", async (row, host) => {
       if (!(row.assigneeStaffId === s.staffId || (this.has(s, KEY.edit) && host))) forbidden("Only the person it is assigned to, or someone who can change tasks, can mark it done.");
       if (!(OPEN_STATUSES as readonly string[]).includes(row.status)) conflict("This task is already closed.");
@@ -250,7 +250,7 @@ export class Tasks {
 
   /** POST reopen: a done or cancelled task is open again (agent/task:edit). */
   async reopen(s: StaffContext, id: string, body: unknown): Promise<TaskView> {
-    const b = parse(VersionOnly, body);
+    const b = (idParam(id, "task"), parse(VersionOnly, body));
     return this.change(s, id, b.version, "plat.task.reopen", "Task reopened", async (row, host, tx) => {
       if (!this.has(s, KEY.edit) || !host) forbidden("You can view this task but not change it.");
       if ((OPEN_STATUSES as readonly string[]).includes(row.status)) conflict("This task is already open.");
@@ -261,7 +261,7 @@ export class Tasks {
 
   /** POST cancel: with a reason (agent/task:edit). */
   async cancel(s: StaffContext, id: string, body: unknown): Promise<TaskView> {
-    const b = parse(CancelTask, body);
+    const b = (idParam(id, "task"), parse(CancelTask, body));
     return this.change(s, id, b.version, "plat.task.cancel", "Task cancelled", async (row, host) => {
       if (!this.has(s, KEY.edit) || !host) forbidden("You can view this task but not change it.");
       if (!(OPEN_STATUSES as readonly string[]).includes(row.status)) conflict("This task is already closed.");

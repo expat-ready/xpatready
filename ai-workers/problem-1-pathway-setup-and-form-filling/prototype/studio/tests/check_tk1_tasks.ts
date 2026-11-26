@@ -140,8 +140,8 @@ try {
   const stale = await call("PATCH", `/api/platform/tasks/${T}`, OFF, { version: 1, title: "Lost update" });
   ok("TK4 pass: an edit naming the current version is kept (version 2, due cleared); TK4 fail: a second edit naming version 1 is 409 'This task changed' and nothing moves",
     edited.status === 200 && edited.body.version === 2 && edited.body.dueAt === null && stale.status === 409 && stale.body.detail === "This task changed. Reload to see it." && (await row(T))!.title === "Call about the job offer letter", { edited: edited.body, stale: stale.body });
-  const readerEdit = await call("PATCH", `/api/platform/tasks/${T}`, READER, { version: 2, title: "x" }), unknown = await call("PATCH", `/api/platform/tasks/${T}`, OFF, { version: 2, owner: "x" });
-  ok("TK4 fail (BR-8): Read-only (view.all, no edit) reads it but cannot edit (403); an unknown field is 422", readerEdit.status === 403 && unknown.status === 422, { readerEdit: readerEdit.status, unknown: unknown.status });
+  const readerEdit = await call("PATCH", `/api/platform/tasks/${T}`, READER, { version: 2, title: "x" }), unknown = await call("PATCH", `/api/platform/tasks/${T}`, OFF, { version: 2, owner: "x" }), badIds = await Promise.all(["", "/assign", "/complete", "/reopen", "/cancel"].map((r) => call(r ? "POST" : "PATCH", `/api/platform/tasks/not-a-uuid${r}`, OFF, { owner: "x" })));
+  ok("TK4 fail (BR-8): Read-only (view.all, no edit) reads it but cannot edit (403); an unknown field is 422; a malformed id is 404 before the body is read (PF-28) on edit, assign, complete, reopen and cancel", readerEdit.status === 403 && unknown.status === 422 && badIds.every((x) => x.status === 404), { readerEdit: readerEdit.status, unknown: unknown.status, badIds: badIds.map((x) => x.status) });
 
   // ---------------------------------------------------------------- TK5 assign and Take it (BR-5, BR-8)
   const open = await call("POST", "/api/platform/tasks", OWNER, onLead({ title: "Send the checklist" }));
