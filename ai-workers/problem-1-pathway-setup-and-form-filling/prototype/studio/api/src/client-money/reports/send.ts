@@ -12,7 +12,8 @@
 //     * Sent by a person only, with no schedule (§13: no automatic statements).
 //     * The person names the period on purpose: period "EVERYTHING" (no dates; the screen's default, AG-6-28 rule 3) or
 //       "DATES" with a from, a to or both. An email to a client is not undone, so no body sends the whole history by
-//       accident: no period is 422 naming `period`, read before the client is looked up (PF-28 (b) on #3753).
+//       accident: no period is 422 naming `period`, read after the path's shape and before the client is looked up
+//       (PF-28 (b) on #3753).
 //     * It goes to the client's own address only, with no Cc (AG-6-41): a person's email, or a company's current
 //       primary contact's. No address, or one the mail port would refuse, answers 422 naming `to`, and nothing is sent
 //       (break m2).
@@ -74,6 +75,7 @@ export class StatementSend {
 
   /** POST …/statement/send. */
   async send(ctx: StaffContext, kind: string, id: string, body: unknown): Promise<SendView> {
+    kindOf(kind); if (!UUID.test(id)) notFound("client");   // a malformed path is the one not-found, before the body (PF-28 (b))
     const { period, ...dates } = parseInput(SendBody, body ?? {});
     if (period === "EVERYTHING" && (dates.from || dates.to)) badField("period", "Everything takes no dates: choose Dates to send a from and to.");
     if (period === "DATES" && !dates.from && !dates.to) badField("from", "Choose a from date, a to date or both.");

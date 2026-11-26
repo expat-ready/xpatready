@@ -142,9 +142,11 @@ try {
   ok("FO-7r P6 fail: a schedule field is no field of Send statement (422 naming it): a person sends, never a schedule", sched.status === 422 && JSON.stringify(sched.body).includes("every") && mail.sent.length === n1, sched.body);
   // P7 (PF-28 (b) on #3753): the period is chosen on purpose; no period, or a period that contradicts its dates, sends nothing
   const l7 = Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)), named = (r: { body: unknown }, k: string) => Object.hasOwn(((r.body as { fields?: object })?.fields) ?? {}, k);
-  const noPeriod = await call(tA, "POST", `${S}/statement/send`, {}), noPeriodOther = await call(tA, "POST", `/front-office/money/parties/logo/${sql(`select gen_random_uuid()`)}/statement/send`, {});
+  const noPeriod = await call(tA, "POST", `${S}/statement/send`, {}), noPeriodOther = await call(tA, "POST", `/front-office/money/parties/person/${sql(`select gen_random_uuid()`)}/statement/send`, {});
+  const badKind = await call(tA, "POST", `/front-office/money/parties/logo/${PA}/statement/send`, {}), badId = await call(tA, "POST", `/front-office/money/parties/person/not-a-uuid/statement/send`, {});
   const allDated = await call(tA, "POST", `${S}/statement/send`, { period: "EVERYTHING", from: "2020-01-01" }), datesNone = await call(tA, "POST", `${S}/statement/send`, { period: "DATES" });
-  ok("FO-7r P7 fail: no period → 422 naming period, read before the client (an unknown path too); Everything with a date → 422 naming period; Dates with none → 422 naming from; nothing sent, no line",
+  ok("FO-7r P7 fail: a malformed kind or id → 404 before the body (the path's shape first)", badKind.status === 404 && badId.status === 404, [badKind.status, badId.status]);
+  ok("FO-7r P7 fail: no period → 422 naming period, read before the client is looked up (an unknown client too); Everything with a date → 422 naming period; Dates with none → 422 naming from; nothing sent, no line",
     noPeriod.status === 422 && named(noPeriod, "period") && noPeriodOther.status === 422 && named(noPeriodOther, "period") && allDated.status === 422 && named(allDated, "period") && datesNone.status === 422 && named(datesNone, "from")
     && mail.sent.length === n1 && Number(sql(`select count(*) from audit_event where action = 'statement.sent'`)) === l7, [noPeriod.body, noPeriodOther.status, allDated.body, datesNone.body]);
   const dated = await call(tA, "POST", `${S}/statement/send`, { period: "DATES", from: "2020-01-01", to: "2020-01-31" }), dm = mail.sent.at(-1);
