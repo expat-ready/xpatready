@@ -1,0 +1,41 @@
+// platform-tasks.prisma — the firm's tasks (PF-29a, R1.75; one file per area, DB-SPLIT). Owner: the R1.75 screens lane.
+// Migration 20261126060000_platform-tasks__pf29a_plat_task holds the rules Prisma cannot say. Written only by api/src/platform/tasks/.
+
+/// One task (AG-13-1, -2, -5, -8, -62; BR-19) on a host a module registers (tasks/hosts.ts): fo_person, case, case_client or
+/// firm (no host_id), with the context it was made in. No assignee = Unassigned; the assignee is same-firm staff by trigger
+/// (Prisma cannot say an optional composite key), active by the service. Due time with its zone; CANCELLED needs a reason;
+/// version is the change counter (409 when stale); source_key once per firm; *_by are actor words (staff:<id>, system:<door>).
+/// (`staff:<id>`, `system:<door>`), as the audit lines carry.
+model PlatTask {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId          String    @map("firm_id") @db.Uuid
+  hostType        String    @map("host_type")
+  hostId          String?   @map("host_id") @db.Uuid
+  contextType     String?   @map("context_type")
+  contextId       String?   @map("context_id") @db.Uuid
+  title           String
+  description     String?
+  category        String?
+  assigneeStaffId String?   @map("assignee_staff_id") @db.Uuid
+  assignedBy      String?   @map("assigned_by")
+  dueAt           DateTime? @map("due_at") @db.Timestamptz
+  dueZone         String?   @map("due_zone")
+  priority        String    @default("MEDIUM")
+  status          String    @default("OPEN")
+  cancelReason    String?   @map("cancel_reason")
+  completedBy     String?   @map("completed_by")
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz
+  archivedAt      DateTime? @map("archived_at") @db.Timestamptz
+  sourceKey       String?   @map("source_key")
+  version         Int       @default(1)
+  createdBy       String    @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, sourceKey])
+  @@index([firmId, assigneeStaffId, status, dueAt])
+  @@index([firmId, hostType, hostId])
+  @@map("plat_task")
+}

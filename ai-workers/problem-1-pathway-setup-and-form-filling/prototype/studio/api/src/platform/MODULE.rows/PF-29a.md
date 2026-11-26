@@ -1,0 +1,3 @@
+Entry points: PF-29a/b (R1.75 part p1): `POST /api/platform/tasks` (agent/task:create; on a host the maker can see), `GET|PATCH /api/platform/tasks/:id`, `POST …/:id/assign`, `…/take` (first wins: 409 naming the winner), `…/complete`, `…/reopen`, `…/cancel` (`api/src/platform/tasks/routes.ts`; each change names its `version`, 409 when stale); `TaskHosts.register(hostType, host)` (`api/src/platform/tasks/hosts.ts`: each module states who may see its records; the firm host built in; a task whose host the reader cannot see is "Restricted" to its assignee and maker, 404 for anyone else).
+Tables: platTask
+Tests: tests/check_tk1_tasks.ts
