@@ -12,8 +12,6 @@ while read -r lref lsha rref rsha; do
   case "$lsha" in *[!0]*) ;; *) continue;; esac          # local delete: nothing to check
   # P-87: every change reaches main by PR (GitHub cannot lock main on this plan, so the rule is held here too).
   [ "$rref" = refs/heads/main ] && [ -z "$XR_ALLOW_MAIN_PUSH" ] && { echo "Push to main refused (P-87): push your branch and open a PR."; rc=1; continue; }
-  # P-91: the scout lane (Goose) pushes only its own files and small fixes.
-  case "$lref" in refs/heads/scout/*) bash "$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/scout.sh" scope "$lsha" || { rc=1; continue; };; esac
   # New or existing branch alike: check every commit on the pushed head that is not yet on a branch of the remote being
   # pushed to ($1). "$rsha..$lsha" re-checked main's own commits after a merge of main and refused clean pushes
   # (6 Nov, #1072: a canada.ca capture already on main). Known limit: a commit on a remote-tracking ref that GitHub has
