@@ -31,6 +31,14 @@ function Steps({ at }: { at: 0 | 1 | 2 | 3 }) {
 }
 function NoAccess() { return <EmptyState data-no-access title={COPY.noAccess} description={COPY.noAccessAsk} titleLevel={1} />; }
 
+/** After a step changes (Preview, Import, Back), focus goes to the page's heading, so a keyboard or screen-reader user
+ *  hears where they are (break m4); not on the first view. */
+function FocusOnChange({ k }: { k: string }) {
+  const first = React.useRef(true);
+  React.useEffect(() => { if (first.current) { first.current = false; return; } document.querySelector<HTMLElement>("[data-step-heading]")?.focus(); }, [k]);
+  return null;
+}
+
 // ------------------------------------------------------------------------------------------------ step 1: the file
 function FileStep() {
   const navigate = useNavigate();
@@ -43,7 +51,10 @@ function FileStep() {
     const next: typeof err = {};
     if (!source.trim()) next.source = "Name where the file comes from.";
     if (!file) next.file = "Choose a CSV file.";
-    setErr(next); if (next.source || next.file || !people) return;
+    else if (!/\.csv$/i.test(file.name) && file.type !== "text/csv") next.file = "Choose a CSV file (a name ending in .csv).";   // break m2: a type check before sending
+    setErr(next);
+    if (next.source || next.file) { document.querySelector<HTMLElement>(next.source ? "[data-source]" : "[data-file]")?.focus(); return; }
+    if (!people) return;
     setBusy(true);
     try {
       const b = await staffApi<{ id: string; mappingFrom?: string }>(`/platform/imports?target=${encodeURIComponent(people.key)}&source=${encodeURIComponent(source.trim())}`, { method: "POST", csv: file! });
@@ -158,7 +169,7 @@ function ColumnsStep({ b, columns, setColumns, declared, setDeclared, onPreviewe
           const used = usedElsewhere(columns, h), id = `col-${i}`;
           return (
             <tr key={h} data-column={h}>
-              <td className="max-w-48 font-medium max-sm:max-w-28"><label htmlFor={id} className="block truncate" title={h}>{h}</label></td>
+              <td className="max-w-48 font-medium max-sm:max-w-32"><label htmlFor={id} className="block truncate" title={h}>{h}</label><span className="block truncate text-xs font-normal text-text-muted sm:hidden">{b.sample.map((r) => r[i] ?? "").filter((v) => v !== "").slice(0, 3).join(" · ") || "—"}</span></td>
               <td className="max-w-64 text-xs text-text-muted max-sm:hidden"><span className="block truncate">{b.sample.map((r) => r[i] ?? "").filter((v) => v !== "").slice(0, 3).join(" · ") || "—"}</span></td>
               <td className="min-w-40 max-sm:min-w-0">
                 <Select id={id} value={columns[h] ?? ""} onChange={(e) => { const next = { ...columns, [h]: e.target.value || null }; setColumns(next); if (!consentMapped(next, t.fields)) setDeclared(false); }} data-import-as={h}>
@@ -223,8 +234,8 @@ function Running({ b }: { b: Batch }) {
     catch (x) { setErr(errorOf(x, "Could not continue. Try again.")); } finally { setBusy(false); }
   };
   return (
-    <div className="flex flex-col gap-3" data-step="running" role="status">
-      <p className="text-sm text-text">Importing… <span data-written>{written}</span> of {b.rows} rows written.</p>
+    <div className="flex flex-col gap-3" data-step="running">
+      <p role="status" className="text-sm text-text">Importing… <span data-written>{written}</span> of {b.rows} rows written.</p>
       {stalled ? <Notice tone="warn" action={<Button size="sm" busy={busy} onClick={() => void again()} data-continue>{COPY.continue}</Button>}>{COPY.stalled}</Notice> : null}
       {err ? <p role="alert" className="text-sm text-text-danger">{err}</p> : null}
     </div>
@@ -244,22 +255,26 @@ function Result({ b }: { b: Batch }) {
 }
 
 function BatchBody({ id }: { id: string }) {
-  const me = usePlatformStaff(), [params] = useSearchParams();
+  const me = usePlatformStaff(), [params] = useSearchParams(), navigate = useNavigate();
   const runs = me.keys.includes(KEY.run);
   const batch = useQuery({ queryKey: ["pf", "imports", id, "view"], queryFn: async () => Batch.parse(await staffApi(`/platform/imports/${id}`)),
-    refetchInterval: (q) => (q.state.data?.state === "RUNNING" ? 2_000 : false) });
+    refetchInterval: (q) => (q.state.data?.state === "RUNNING" ? 2_000 : false),
+    // The answer's keys include the file's own column names (a column named "constructor" or "__proto__"): structural
+    // sharing walks them as objects and threw, so the answer is kept as parsed (break M1).
+    structuralSharing: false });
   const [columns, setColumns] = React.useState<Columns | null>(null), [declared, setDeclared] = React.useState(false), [onColumns, setOnColumns] = React.useState(false);
   const b = batch.data;
   React.useEffect(() => { if (b && columns === null) { setColumns(b.mapping?.columns ?? Object.fromEntries(b.header.map((h) => [h, null]))); setDeclared(!!b.mapping?.declared); } }, [b, columns]);
   if (batch.isPending) return <Loading label="Loading the import" />;
-  if (batch.isError) return <p role="alert" className="text-sm text-text-danger">{errorOf(batch.error, "Could not load the import.")}</p>;
+  if (batch.isError) return <EmptyState data-load-failed title={batch.error instanceof StaffApiError && batch.error.status === 404 ? "No such import" : "The import could not load"} description={errorOf(batch.error, "Check your connection and try again.")} titleLevel={1} action={<Button variant="outline" onClick={() => navigate("/platform/import")}>Back to imports</Button>} />;
   if (!b || !columns) return <Loading label="Loading the import" />;
   const step = stepOf(b.state), viewOnly = !runs && (step === "columns" || step === "preview");
   const at = step === "columns" || (step === "preview" && onColumns) ? 1 : step === "preview" ? 2 : 3;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
+      <FocusOnChange k={`${step}-${at}`} />
       <header className="flex flex-col gap-2">
-        <h1 className="truncate text-2xl font-semibold text-text" title={`Import ${b.targetLabel.toLowerCase()} from ${b.sourceName}`}>Import {b.targetLabel.toLowerCase()} from {b.sourceName}</h1>
+        <h1 tabIndex={-1} data-step-heading className="truncate text-2xl font-semibold text-text outline-none" title={`Import ${b.targetLabel.toLowerCase()} from ${b.sourceName}`}>Import {b.targetLabel.toLowerCase()} from {b.sourceName}</h1>
         {step === "columns" || step === "preview" ? <Steps at={at as 1 | 2} /> : <p className="text-sm text-text-muted"><Pill tone={stateWords(b.state, b.counts).tone}>{stateWords(b.state, b.counts).text}</Pill></p>}
       </header>
       {viewOnly ? <RowsTable b={b} phase="DRY_RUN" />

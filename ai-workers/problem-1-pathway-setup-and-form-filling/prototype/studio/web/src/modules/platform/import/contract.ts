@@ -93,9 +93,9 @@ export function runBlocked(b: Batch, columns: Columns, declared: boolean): strin
 export const importWords = (b: Batch) => { const n = b.totals.CREATE + b.totals.MERGE; return `Import ${n} ${n === 1 ? "person" : "people"}`; };
 /** "Done: 2 created, 1 merged, 1 skipped, 1 not imported." */
 export const doneWords = (c: { created: number; merged: number; skipped: number; errors: number }) => `Done: ${c.created} created, ${c.merged} merged, ${c.skipped} skipped, ${c.errors} not imported.`;
-/** The People template (AG-18-5): the target's field labels as the header, and one Sample row. */
+/** The People template (AG-18-5): the target's field labels as the header, no rows (a Sample row would be imported as a
+ *  real person, break m8). */
 export function templateCsv(fields: Field[]): string {
-  const sample: Record<string, string> = { givenNames: "Sample", familyName: "Person", email: "sample.person@example.com", phone: "+1 416 555 0100", language: "en", marketingConsent: "no" };
   const q = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  return `${fields.map((f) => q(f.label)).join(",")}\r\n${fields.map((f) => q(sample[f.key] ?? "")).join(",")}\r\n`;
+  return `${fields.map((f) => q(f.label)).join(",")}\r\n`;
 }

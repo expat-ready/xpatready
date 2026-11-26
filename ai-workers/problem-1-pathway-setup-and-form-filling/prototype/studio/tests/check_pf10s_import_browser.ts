@@ -29,7 +29,7 @@ ok("PF-10s pass/fail: one column per field: the fields other columns use, never 
 ok("PF-10s pass/fail: the states in words, and a run that made nobody is \"Nothing imported\", not \"Done\"",
   stateWords("COMPLETED", { created: 1, merged: 0 }).text === "Done" && stateWords("COMPLETED", { created: 0, merged: 0 }).text === "Nothing imported" && stateWords("PARTIAL").text === "Done with errors" && stateWords("DRY_RUN_READY").text === "Preview ready");
 ok("PF-10s pass (challenge m3): a list row opens at its step", stepOf("DRAFT") === "columns" && stepOf("DRY_RUN_READY") === "preview" && stepOf("RUNNING") === "running" && stepOf("PARTIAL") === "result");
-ok("PF-10s pass: the template's header is the fields' labels, a value with a comma quoted", templateCsv([{ key: "x", label: "A, B", required: false, kind: "TEXT" }, { key: "email", label: "Email", required: false, kind: "EMAIL" }]).startsWith("\"A, B\",Email\r\n"));
+ok("PF-10s pass/fail (break m8): the template is the fields' labels only (a value with a comma quoted), no Sample row to import by mistake", templateCsv([{ key: "x", label: "A, B", required: false, kind: "TEXT" }, { key: "email", label: "Email", required: false, kind: "EMAIL" }]) === "\"A, B\",Email\r\n");
 
 // ------------------------------------------------------------------------------------------------ part 2: the browser
 if (!PORT || PORT === 4400 || !DB) { ok("PF-10s browser part: an isolated copy's port and database are given (never :4400)", false, { PORT, DB }); process.exit(summary() ? 1 : 0); }
@@ -86,6 +86,28 @@ try {
   const trapOn = await d.locator("[data-run]").isEnabled(), trapWhy = await d.locator("[data-run-why]").count();
   ok("PF-10s BR-2 fail (review M1): declaration ticked, then the consent column unmapped → the fresh preview's Import is enabled (no false \"columns changed\")", declGone && trapOn && trapWhy === 0, { declGone, trapOn, trapWhy });
   await d.context().close();
+
+  // Break round 1: a column named "constructor" (the answer's keys are the file's columns), a file that is not a CSV,
+  // and an import that does not exist.
+  const c = await signIn("user-R");
+  await c.goto(`${BASE}/platform/import/new`);
+  await c.locator("[data-source]").fill("Ctor");
+  await c.locator("[data-file]").setInputFiles({ name: "notes.pdf", mimeType: "application/pdf", buffer: Buffer.from("Email,Name\r\nx@y.test,X\r\n") });
+  await c.locator("[data-upload]").click();
+  const typeRefused = (await c.locator('[data-file]').getAttribute("aria-invalid")) === "true" && await c.evaluate(() => document.activeElement?.matches("[data-file]") ?? false) && c.url().endsWith("/platform/import/new");
+  await c.locator("[data-file]").setInputFiles({ name: "c.csv", mimeType: "text/csv", buffer: Buffer.from(`Email,First name,constructor\r\nct.${run}@client.test,Cee,v\r\n`) });
+  await c.locator("[data-upload]").click(); await seen(c, '[data-step="columns"]', 30_000);
+  await c.locator("[data-preview]").click();
+  const ctorPrev = await seen(c, '[data-step="preview"]', 30_000) && await seen(c, "[data-row]");
+  const headFocused = await c.evaluate(() => document.activeElement?.matches("[data-step-heading]") ?? false);
+  await c.locator("[data-run]").click();
+  const ctorDone = await seen(c, "[data-done]", 60_000), ctorFail = await c.locator("[data-load-failed]").count();
+  ok("PF-10s fail (break M1, m2, m4): a .pdf is refused on the file field (focus there); a column named \"constructor\" previews and imports (no \"could not load\"); focus moves to the heading after Preview",
+    typeRefused && ctorPrev && ctorDone && ctorFail === 0 && headFocused, { typeRefused, ctorPrev, ctorDone, ctorFail, headFocused });
+  await c.goto(`${BASE}/platform/import/00000000-0000-4000-8000-000000000000`);
+  const nf = await seen(c, "[data-load-failed] h1", 20_000);
+  ok("PF-10s fail (break m5): an import that does not exist reads \"No such import\" as the page's heading, with the way back", nf && (await c.locator("[data-load-failed] h1").innerText()).trim() === "No such import" && (await c.getByRole("button", { name: "Back to imports" }).count()) === 1);
+  await c.context().close();
 
   // Axe on every step (review S5): file, columns, preview, at 1440 and 375 px.
   for (const width of [1440, 375]) {
