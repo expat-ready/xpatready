@@ -31,7 +31,8 @@ export type PackageInput = {
   /** Lines the README adds after its own (the caller's gaps). */
   notes?: string[];
 };
-export type Package = { bytes: Uint8Array; rowCounts: Record<string, number> };
+/** `missing`: the listed files the store did not have (module, name; never content): skipped, named in the README (part 2). */
+export type Package = { bytes: Uint8Array; rowCounts: Record<string, number>; missing: { module: string; name: string }[] };
 
 export async function buildPackage(p: PackageInput): Promise<Package> {
   const zip = new PizZip(), enc = new TextEncoder(), rowCounts: Record<string, number> = {};
@@ -45,24 +46,26 @@ export async function buildPackage(p: PackageInput): Promise<Package> {
   const readme = [p.title, `Made ${p.madeAt.toISOString()}.`, "Nothing in this download is masked: it holds personal data. Keep it safe.",
     "Each .csv file is UTF-8 with a header row. A text cell that starts with =, +, -, @ or a tab is written with a leading ' so a spreadsheet shows it as text.",
     "Amounts are whole minor units (cents) beside their own currency column: never converted, never added across currencies.", ""];
+  // Per module: the sections, then the stored files (each size checked before it is added), then the README, which has one
+  // line per file written in the file loop: stored, or listed but missing from the store (one lost object never blocks the
+  // firm's whole download: PF-11 part 2, review Major 4; one line per file: round 2 Minor 1).
+  const missing: Package["missing"] = [];
   for (const m of p.modules) {
     for (const s of m.sections) {
       rowCounts[`${m.module}/${s.key}`] = s.rows.length;
       readme.push(`${m.module}/${s.key}.csv: ${s.title} (${s.rows.length} rows).`);
+      add(`${m.module}/${s.key}.csv`, sectionCsv(s));
     }
-    for (const f of m.files) readme.push(`${m.module}/files/${f.name}: a stored file (sha256 ${f.sha256}).`);
+    for (const f of m.files) {
+      const bytes = await p.file(f.key);
+      if (!bytes) { missing.push({ module: m.module, name: f.name }); readme.push(`${m.module}/files/${f.name}: listed, but missing from the store when this download was made; it is not in this download.`); continue; }
+      add(`${m.module}/files/${f.name}`, bytes);
+      readme.push(`${m.module}/files/${f.name}: a stored file (sha256 ${f.sha256}).`);
+    }
     if (m.words) readme.push(`${m.module}: ${m.words}`);
   }
   add("README.txt", [...readme, "", ...(p.notes ?? [])].join("\r\n") + "\r\n");
-  for (const m of p.modules) {
-    for (const s of m.sections) add(`${m.module}/${s.key}.csv`, sectionCsv(s));
-    for (const f of m.files) {
-      const bytes = await p.file(f.key);
-      if (!bytes) throw new Error(`${m.module}: a listed file is missing from the store`);
-      add(`${m.module}/files/${f.name}`, bytes);
-    }
-  }
   const bytes = new Uint8Array(zip.generate({ type: "uint8array", compression: "DEFLATE" }));
   if (bytes.byteLength > p.cap) throw new ExportTooLarge();
-  return { bytes, rowCounts };
+  return { bytes, rowCounts, missing };
 }

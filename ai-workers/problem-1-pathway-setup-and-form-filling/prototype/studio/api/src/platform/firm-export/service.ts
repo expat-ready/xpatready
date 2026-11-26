@@ -127,12 +127,13 @@ export class FirmExports {
     const r0 = await this.d.db.platformFirmExport.findFirst({ where: { id: exportId, firmId, state: "QUEUED" } });
     if (!r0 || (await this.d.db.platformFirmExport.updateMany({ where: { id: exportId, state: "QUEUED", attempt: r0.attempt }, data: { attempt: r0.attempt + 1 } })).count !== 1) return;
     const claimed = { ...r0, attempt: r0.attempt + 1 };
-    let reason: string | null = null, made: { bytes: Uint8Array; rowCounts: Record<string, number> } | null = null;
+    let reason: string | null = null, made: { bytes: Uint8Array; rowCounts: Record<string, number>; missing: { module: string; name: string }[] } | null = null;
     try {
       const f = await this.d.db.platformFirm.findUnique({ where: { id: firmId }, select: { status: true, operatingName: true } });
       if (!f || !OPEN_STATES.includes(f.status)) reason = CLOSED_FIRM;
       else made = await buildPackage({ title: `Full data download of ${f.operatingName}`, madeAt: this.d.now(), modules: await this.d.port.collect(firmId), file: async (k) => (await this.d.files.get(firmId, k))?.bytes ?? null, cap: this.d.cap ?? PACKAGE_CAP });
-    } catch (e) { reason = e instanceof ExportTooLarge ? TOO_LARGE : NOT_MADE; }
+      for (const m of made?.missing ?? []) logPort.error("firm_export_file_missing", new Error("a listed file is missing from the store"), { firmId, module: m.module });
+    } catch (e) { reason = e instanceof ExportTooLarge ? TOO_LARGE : NOT_MADE; if (!(e instanceof ExportTooLarge)) logPort.error("firm_export_build_failed", e, { firmId }); }
     const stored = made && !reason ? await this.d.files.put(firmId, `firm-export/${exportId}/${claimed.attempt}.zip`, made.bytes, "application/zip").catch(() => { reason = NOT_MADE; return null; }) : null;
     const now = this.d.now(), expiresAt = new Date(now.getTime() + EXPIRY_DAYS * 86_400_000);
     const won = await this.d.db.$transaction(async (tx) => {
