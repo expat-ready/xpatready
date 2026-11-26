@@ -34,7 +34,7 @@ export const RULE_WORDS: Record<string, string> = {
   required: "is required", duplicate_in_file: "is the same as an earlier row of this file (that row is imported)", nothing_new: "is already on the record: nothing to add",
   cell_count: "has a different number of cells from the header", not_email: "is not an email address", not_phone: "is not a phone number",
   not_language: "is not a language code (for example en or fr)", not_allowed_value: "is not one of the allowed values", too_long: "is too long",
-  no_contact: "needs an email or a phone", write_failed: "could not be saved (nothing of it was imported)", not_text: "has characters that cannot be saved",
+  no_contact: "needs an email or a phone", write_failed: "could not be saved (nothing of it was imported)", name_needed: "needs a given or family name", needs_email: "needs an email (consent is for email)", not_text: "has characters that cannot be saved",
 };
 export const reasonWords = (t: ImportTarget<unknown> | undefined, r: Reason) => `${t?.fields.find((f) => f.key === r.field)?.label ?? r.field}: ${RULE_WORDS[r.rule] ?? r.rule.replace(/_/g, " ")}`;
 
@@ -52,6 +52,7 @@ const fail = (status: number, code: string, detail: string, extra: Record<string
 /** PF-28: the query strings, each key named (an unknown one is refused 422, naming it). */
 export const UploadQuery = query("target", "source", "name");
 export const RowsQuery = query("outcome", "page");
+export const ListQuery = query("page");
 
 export class ImportService {
   private readonly now: () => Date;
@@ -279,6 +280,19 @@ export class ImportService {
 
 
 
+  /** GET /imports: the firm's batches, newest first (AG-18-56). */
+  async list(s: StaffContext, raw: unknown) {
+    const q = parseInput(ListQuery, raw ?? {}), page = Math.max(1, Math.min(10_000, Number.parseInt(q.page ?? "1", 10) || 1));
+    const where = { firmId: s.firmId };
+    const [total, list] = await Promise.all([this.d.db.platImportBatch.count({ where }), this.d.db.platImportBatch.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * PAGE, take: PAGE })]);
+    return { page, pageSize: PAGE, total, imports: list.map((b) => ({ id: b.id, target: b.targetKey, targetLabel: this.d.targets.get(b.targetKey)?.label ?? b.targetKey, sourceName: b.sourceName, state: b.state, counts: { created: b.createdCount, merged: b.mergedCount, skipped: b.skippedCount, errors: b.errorCount }, importerStaffId: b.importerStaffId, createdAt: b.createdAt.toISOString(), finishedAt: b.finishedAt?.toISOString() ?? null, undoDeadline: b.undoDeadline?.toISOString() ?? null })) };
+  }  /** GET /imports/origin/:kind/:id: where an imported record came from (AG-18-42: origin Import, the batch, its source). */
+  async origin(s: StaffContext, kind: string, id: string) {
+    if (!this.d.targets.list().some((t) => t.recordKind === kind)) fail(404, "NOT_FOUND", "No such kind of record.");   // PF-28: an unknown kind is not found
+    const rid = idParam(id, "record");   // and so is a malformed id
+    const r = await this.d.db.platImportRow.findFirst({ where: { firmId: s.firmId, phase: "RUN", outcome: "CREATE", recordKind: kind, recordId: rid }, include: { batch: true } });
+    return r ? { imported: true, origin: "IMPORT", batchId: r.batchId, sourceName: r.batch.sourceName, at: r.writtenAt.toISOString() } : { imported: false };
+  }
 }
 
 const tally = (o: string[]) => ({ CREATE: o.filter((x) => x === "CREATE").length, MERGE: o.filter((x) => x === "MERGE").length, SKIP: o.filter((x) => x === "SKIP").length, ERROR: o.filter((x) => x === "ERROR").length });
