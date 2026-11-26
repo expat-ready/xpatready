@@ -66,12 +66,12 @@ export function CaseNotesPanel({ caseId }: { caseId: string }) {
             <div className="space-y-3 px-4 py-3"><h3 className="text-sm font-semibold">Notes</h3><Skeleton className={`${WRITER_H} w-full`} /><Skeleton className={`${NOTES_H} w-full`} /></div>
             <div className="space-y-3 px-4 py-3"><h3 className="text-sm font-semibold">Timeline</h3><Skeleton className={`${CHIPS_H} w-full`} /><Skeleton className={`${LINES_H} w-full`} /></div>
           </div>
-        : notes.isError ? <div className="p-4"><Notice tone="danger" title={(notes.error as StaffApiError)?.status === 404 ? "Not in your firm" : "The notes could not be loaded"}>{errWords(notes.error, "notes", "read")}</Notice></div>
+        : notes.isError ? <div className="p-4"><Notice tone="danger" title={(notes.error as StaffApiError)?.status === 404 ? "Not available to you" : "The notes could not be loaded"}>{errWords(notes.error, "notes", "read")}</Notice></div>
           : <div className="divide-y divide-border">
               <div className="space-y-3 px-4 py-3">
                 <h3 className="text-sm font-semibold">Notes</h3>
                 <div className={WRITER_H}>{keys.includes(EDIT) ? <Writer caseId={caseId} share={keys.includes(SHARE)} draft={draft} /> : <p className="text-[13px] text-text-muted" data-notes-read-only>Your role can read notes but not add them.</p>}</div>
-                <div role="region" aria-label="Notes" tabIndex={0} className={`${NOTES_H} ${BOX}`}><NoteList caseId={caseId} notes={notes.data!.notes} mayEdit={keys.includes(EDIT)} share={keys.includes(SHARE)} /></div>
+                <div role="region" aria-label="Note list" tabIndex={0} className={`${NOTES_H} ${BOX}`}><NoteList caseId={caseId} notes={notes.data!.notes} mayEdit={keys.includes(EDIT)} share={keys.includes(SHARE)} /></div>
               </div>
               <Timeline path={`/runtime/cases/${caseId}/timeline`} chips />
             </div>}
