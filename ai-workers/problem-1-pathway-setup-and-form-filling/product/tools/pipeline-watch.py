@@ -6,9 +6,12 @@ on main and a PR comment. It runs the Lead's existing detectors against GitHub a
   proof  proof-read-watch.py (a merged Completes: row with no qa PR; an approved PR waiting on the Lead's read);
   wake   merge-wake.py --post (it posts its own wake comments, OS-49; its ACT lines are posted here);
   owed   owed-watch.py starts (STATE.md) and, only when the board's data.json is in the checkout, lanes.
-Each ACT goes as one line of a comment on every PR it names ("#n"): a cloud lane is subscribed to its own PR, so the
-comment wakes it, as OS-49 does; the tech lead reads PR comments. Several acts for one PR go in one comment, one line
-each. An act names no PR (owed starts, lanes): it goes to the job summary only.
+Each ACT goes as one line of a comment on the PR it concerns, the first "#n" in it ("Q #7", "#9 approved", "R1.5 merged
+in #8", "wake: #7 ..."): a cloud lane is subscribed to its own PR, so the comment wakes it, as OS-49 does; the tech lead
+reads PR comments. Several acts for one PR go in one comment, one line each. Only an open PR of this repository (not a
+fork's) is posted to (review round 1 of #3819: a PR body or title is anyone's text, so other numbers in an act are never
+targets); an act with no such PR goes to the job summary. The act's text sits in a code span, so no "@" in a title or
+branch name mentions anyone and no "#n" in it links.
 No duplicate post: each line carries a hidden key, <!-- pipeline-watch:<key> -->, the act's text with its changing
 numbers (minutes, times, counts) blanked, so "unanswered 12 min" and "unanswered 22 min" are the same act. A key found in
 a comment by github-actions[bot] on that PR in the last 24 h is not posted again; one still standing after 24 h is posted
@@ -52,9 +55,11 @@ def gh(*args):
     return subprocess.run(cmd + list(args), capture_output=True, text=True, timeout=120)
 
 
-def key(name, text):
-    """The act without its changing numbers: digits not part of a PR (#n) or an item (R1.n) id become N."""
+def key(name, text, target):
+    """The act without its changing numbers: digits not part of a PR (#n) or an item (R1.n) id become N; other PRs than
+    the target become #N, so a 24 h list that gains a PR is still the same act on this one (round 1, minor)."""
     norm = re.sub(r"(?<![#.\d])\d+(?:[.:]\d+)*", "N", text)
+    norm = re.sub(r"#(\d+)\b", lambda m: m.group(0) if int(m.group(1)) == target else "#N", norm)
     return hashlib.sha1(f"{name}|{norm}".encode()).hexdigest()[:16]
 
 
@@ -105,23 +110,28 @@ def main():
             lines.append(f"ACT   watch: {name} is broken (exit {r.returncode}): {(broke[0] if broke else r.stderr.strip())[:160]}"); bad = 1
         lines.append(f"watch {name}: {len(found)} act(s)")
         acts += [(name, t) for t in found]
+    try:   # the open PRs of this repository (gh pr list, as the workflow saves it): the only targets
+        ours = {p["number"] for p in json.load(open(os.path.join(o.state, "prs-body.json"), encoding="utf-8"))
+                if not p.get("isCrossRepository")}
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        ours = set(); lines.append(f"ACT   watch: the open PR list cannot be read ({type(e).__name__}): nothing posted"); bad = 1
     by_pr, loose = {}, []
     for name, text in acts:
-        prs = sorted({int(x) for x in PRN.findall(text)})
-        if not prs:
-            loose.append(f"{name}: {text}")
-        for n in prs:
+        m = PRN.search(text); n = int(m.group(1)) if m else None
+        if n in ours:
             by_pr.setdefault(n, []).append((name, text))
+        else:
+            loose.append(f"{name}: {text}" + (f" (#{n} is not an open PR of this repository)" if n else ""))
     for n in sorted(by_pr):
         have = posted(o.repo, n, now)
         if have is None:
             lines.append(f"ACT   watch: the comments of #{n} cannot be read: nothing posted there ({len(by_pr[n])} act(s))"); continue
         new, seen = [], set()
         for name, text in by_pr[n]:
-            k = key(name, text)
+            k = key(name, text, n)
             if k in have or k in seen:
                 continue
-            seen.add(k); new.append(f"* {name}: {text} <!-- pipeline-watch:{k} -->")
+            seen.add(k); new.append(f"* {name}: `{text.replace('`', chr(39))}` <!-- pipeline-watch:{k} -->")
         if not new:
             lines.append(f"watch #{n}: {len(by_pr[n])} act(s) already posted in the last 24 h"); continue
         body = "**Pipeline watch (OS-84):** " + ("this pull request has an act:" if len(new) == 1 else f"{len(new)} acts on this pull request:") \
@@ -133,7 +143,7 @@ def main():
             lines.append(f"ACT   watch: the post on #{n} failed: {(r.stderr or r.stdout).strip()[:160]}"); bad = 1; continue
         lines.append(f"watch #{n}: posted {len(new)} line(s)")
     for t in loose:
-        lines.append(f"ACT   watch (no PR named; summary only): {t}")
+        lines.append(f"ACT   watch (no open PR of this repository named; summary only): {t}")
     print("\n".join(lines))
     if o.summary:
         with open(o.summary, "a", encoding="utf-8") as f:

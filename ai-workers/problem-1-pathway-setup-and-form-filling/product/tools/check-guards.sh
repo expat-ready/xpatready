@@ -716,6 +716,9 @@ OS84 bot|product/tools/pipeline-watch.py|s/            if (c.get("user") or {}).
 OS84 again|product/tools/pipeline-watch.py|s/            if now - t < AGAIN:/            if True:/|check-pipeline-watch.sh
 OS84 sle|product/tools/pipeline-watch.py|s/(Q #\\d+: \.\*)/([A-Z] #\\d+: .*)/|check-pipeline-watch.sh
 OS84 broken|product/tools/pipeline-watch.py|s/        if not out or (name in/        if False and (name in/|check-pipeline-watch.sh
+OS84 ours|product/tools/pipeline-watch.py|s/        if n in ours:/        if n:/|check-pipeline-watch.sh
+OS84 fork|product/tools/pipeline-watch.py|s/                if not p.get("isCrossRepository")}/                }/|check-pipeline-watch.sh
+OS84 span|product/tools/pipeline-watch.py|s/`{text.replace(.`., chr(39))}`/{text}/|check-pipeline-watch.sh
 OS84 writers|../../.github/workflows/pipeline-watch.yml|s/      contains(fromJSON(.\[.OWNER.,.MEMBER.,.COLLABORATOR.\].), github.event.comment.author_association)/      true/|check-pipeline-watch.sh'
 # OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'

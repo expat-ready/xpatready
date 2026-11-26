@@ -29,6 +29,8 @@ NOW=1764150000   # 2025-11-26T09:40:00Z, the stand-in clock (PW key age is read 
 run() { : > "$T/fx/log"; out=$(cd "$T" && FX="$T/fx" PW_GH="$T/gh" PW_CMD_SLE="bash $T/fx/sle.sh" PW_CMD_PROOF="bash $T/fx/proof.sh" \
   PW_CMD_WAKE="bash $T/fx/wake.sh" PW_CMD_OWED="bash $T/fx/owed.sh" python3 -I "$W" --repo o/r --state "$T/state" --now "${AT:-$NOW}" --summary "$T/sum.md" "$@" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 for n in 7 8 9; do echo '[]' > "$T/fx/comments-$n.json"; done
+# open PRs of this repository: 7, 8, 9; 11 is a fork's (round 1 of #3819: only the repository's own open PRs are targets)
+echo '[{"number":7},{"number":8},{"number":9,"isCrossRepository":false},{"number":11,"isCrossRepository":true}]' > "$T/state/prs-body.json"
 
 quiet; det sle "MISS  Q #7: question for the tech lead unanswered 12 min (target 10)
 MISS  L #8: quiet 45 min with work left (target 30): read its session, send its next step
@@ -56,13 +58,26 @@ ACT   2 approved PR(s) waiting over 24 h on the Lead's P-423 read: #8 #9: read e
 det wake "wake  #7 waited on #3, all on main; it is approved or queued: nothing to type
 ACT   wake: #7 was woken by a PR comment 70 min ago and has not merged #3 yet: lane not found. Type: \"#3 is on main\""
 run --post
-ok "proof: the act on #8 and the aggregate naming #8 and #9 go in one comment on #8, one line each" "$([ "$(grep -c '^POST 8 ' <<< "$log")" = 1 ] && [ "$(grep '^POST 8 ' <<< "$log" | grep -o 'pipeline-watch:' | wc -l)" = 2 ] && echo 1)" "$log"
-ok "proof: #9 gets its read act and the aggregate (two lines, one comment)" "$([ "$(grep -c '^POST 9 ' <<< "$log")" = 1 ] && [ "$(grep '^POST 9 ' <<< "$log" | grep -o 'pipeline-watch:' | wc -l)" = 2 ] && echo 1)" "$log"
+ok "proof: the act on #8 and the 24 h list (its first PR is #8) go in one comment on #8, one line each" "$([ "$(grep -c '^POST 8 ' <<< "$log")" = 1 ] && [ "$(grep '^POST 8 ' <<< "$log" | grep -o 'pipeline-watch:' | wc -l)" = 2 ] && echo 1)" "$log"
+ok "proof: #9 gets its own read act only (one line): a later number in an act is never a target" "$([ "$(grep -c '^POST 9 ' <<< "$log")" = 1 ] && [ "$(grep '^POST 9 ' <<< "$log" | grep -o 'pipeline-watch:' | wc -l)" = 1 ] && echo 1)" "$log"
+ok "each act's text sits in a code span (no mention or link from a title)" "$(grep '^POST 9 ' <<< "$log" | grep -q '\* proof: `#9 approved' && echo 1)" "$log"
 ok "wake: its ACT line is posted on #7; its info lines are not" "$(grep '^POST 7 ' <<< "$log" | grep -q 'has not merged #3' && ! grep -q 'nothing to type' <<< "$log" && echo 1)" "$log"
-ok "the issue numbers inside an act (#3) are not posted to as PRs only when the act names them: #3 has no comments file, so it is said" "$(grep -q 'comments of #3 cannot be read' <<< "$out" && ! grep -q '^POST 3 ' <<< "$log" && echo 1)" "$out"
+ok "a number the act waits on (#3) is not posted to" "$(! grep -q '^POST 3 ' <<< "$log" && ! grep -q 'comments of #3' <<< "$out" && echo 1)" "$out / $log"
+
+quiet; det wake "ACT   wake: #11 waits on #5 #9 #12, neither open nor merged by a merge commit on main: @org/team: settle what it waits for
+ACT   wake: #12 waits on #3: lane not found"; run --post
+ok "a fork's PR (#11) and a number that is no open PR (#12) get no post; their acts go to the summary" "$([ -z "$log" ] && grep -q '#11 is not an open PR of this repository' "$T/sum.md" && grep -q '#12 is not an open PR' "$T/sum.md" && echo 1)" "$out / $log"
+quiet; det sle "MISS  Q #7: question for the tech lead unanswered 12 min (target 10) \`@someone\`"; run --post
+ok "a backtick in an act cannot close its code span" "$(grep '^POST 7 ' <<< "$log" | grep -q "\`Q #7: .*'@someone'\`" && echo 1)" "$log"
+quiet; rm -f "$T/fx/comments-8.json"; det proof "ACT   #8 approved at 09:00 IST 70 min ago, unlabelled: waits on the Lead's P-423 read"; run --post
+ok "the comments of the target cannot be read: nothing posted there, and it is said" "$([ -z "$log" ] && grep -q 'comments of #8 cannot be read' <<< "$out" && echo 1)" "$out"
+echo '[]' > "$T/fx/comments-8.json"
+mv "$T/state/prs-body.json" "$T/state/prs.bak"; run --post
+ok "the open PR list cannot be read: nothing posted, the run is red" "$([ -z "$log" ] && [ $r = 1 ] && echo 1)" "exit $r: $out"
+mv "$T/state/prs.bak" "$T/state/prs-body.json"
 
 quiet; det owed "ACT   owed starts: 2 starts owed at the founder's next typed turn"; run --post
-ok "owed: an act naming no PR goes to the summary only" "$([ -z "$log" ] && grep -q 'no PR named; summary only' "$T/sum.md" && echo 1)" "$log"
+ok "owed: an act naming no PR goes to the summary only" "$([ -z "$log" ] && grep -q 'summary only): owed' "$T/sum.md" && echo 1)" "$log"
 
 quiet; det wake "" 1; run --post
 ok "a detector that prints nothing and fails is said and turns the run red" "$([ $r = 1 ] && grep -q 'ACT   watch: wake is broken' <<< "$out" && echo 1)" "exit $r: $out"
@@ -82,7 +97,9 @@ if on["schedule"][0]["cron"].split()[0].count(",") != 5: bad.append("not every 1
 if (on["push"] or {}).get("branches") != ["main"] or (on["workflow_run"] or {}).get("branches") != ["main"]: bad.append("push or workflow_run not on main only")
 if d.get("permissions") != {}: bad.append("workflow-level permissions are not {}")
 j = d["jobs"]["watch"]; p = j["permissions"]
-if [k for k, v in p.items() if v == "write"] != ["issues"]: bad.append(f"writes {p}")
+if sorted(k for k, v in p.items() if v == "write") != ["issues", "pull-requests"]: bad.append(f"writes {p}")
+sv = [x for x in j["steps"] if str(x.get("uses", "")).startswith("actions/cache/save")]
+if not sv or "always()" not in str(sv[0].get("if", "")): bad.append("merge-wake memory is not saved when the run is red")
 if (d.get("concurrency") or {}).get("cancel-in-progress") is not False: bad.append("concurrency may cancel")
 co = [s for s in j["steps"] if str(s.get("uses", "")).startswith("actions/checkout")]
 if not co or co[0]["with"].get("ref") != "main" or co[0]["with"].get("persist-credentials") is not False: bad.append("checkout is not main without credentials")
@@ -93,6 +110,6 @@ if "pipeline-watch.py" not in txt or "--post" not in txt: bad.append("does not r
 print("; ".join(bad) or "ok")
 PY
 )
-ok "pipeline-watch.yml: every 10 min plus push and ci on main and writers' comments; only issues: write; main's copy, no PR code; never cancelled" "$([ "$wf" = ok ] && echo 1)" "$wf"
+ok "pipeline-watch.yml: every 10 min plus push and ci on main and writers' comments; writes only comments; memory saved always; main's copy, no PR code; never cancelled" "$([ "$wf" = ok ] && echo 1)" "$wf"
 ok "pipeline-watch.py runs the four existing detectors (no detection of its own)" "$(for s in sle-watch.py proof-read-watch.py merge-wake.py owed-watch.py; do grep -q "\"$s\"" "$W" || echo no; done | grep -q no || echo 1)" "a detector is not named"
 finish
