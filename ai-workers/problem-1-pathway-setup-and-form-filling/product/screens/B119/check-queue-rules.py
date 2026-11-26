@@ -9,7 +9,10 @@ queue_conditions the way Mergify does (the first queue, in file order, whose con
 label, "attr=x" holds when any item equals x and "-attr=x" when none does) on fixed PRs, and checks the rules every
 queue keeps (base main, the review label, green ci, refusing drafts, records last). P-664 (founder 17 Nov, "Yes,
 verdicts first (Recommended)"): a queue "verdicts", listed first, takes only qa verdict records (label "records", title
-starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. Each fixed PR lists its files;
+starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. P-827 (founder 25 Nov,
+"Yes, pipeline first", one-time): the queue "pipeline" is listed second, ahead of "product", without
+allow_checks_interruption, until P-822, P-823 and the Lead-tool fixes are on main (undo: move pipeline back after
+product when P-827 ends, here and in .mergify.yml). Each fixed PR lists its files;
 its label comes from records-only.sh is-records and must agree with the case's expected label (so the definition and
 the cases cannot drift apart), and the label name the queues use must be the one records-only.sh prints. A missing
 records-only.sh fails the check. Then it breaks the configuration on purpose and expects each
@@ -162,9 +165,10 @@ def problems(cfg, have_script):
     out = []
     qs = cfg.get("queue_rules", [])
     names = [q.get("name") for q in qs]
-    if names != ["verdicts", "product", "pipeline", "records"]:
-        out.append(f"queue order is {names}: want verdicts, product, pipeline, records (the first listed has the highest "
-                   "priority; qa verdicts first (P-664), pipeline after product (P-717 (a)), records last)")
+    # P-827 (one-time): pipeline ahead of product. Undo: move pipeline back after product when P-827 ends.
+    if names != ["verdicts", "pipeline", "product", "records"]:
+        out.append(f"queue order is {names}: want verdicts, pipeline, product, records (the first listed has the highest "
+                   "priority; qa verdicts first (P-664), pipeline ahead of product while P-827 holds, records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
         for need in ("base = main", "label = review: approved", "check-success = ci"):
@@ -182,8 +186,20 @@ def problems(cfg, have_script):
                     out.append(f"queue verdicts: queue_conditions lack {need!r} (only qa verdict records go first)")
             if q.get("allow_checks_interruption"):
                 out.append("queue verdicts: allow_checks_interruption set (a verdict must not restart a running batch)")
+        if q.get("name") == "pipeline" and q.get("allow_checks_interruption"):   # P-827: ahead of product, never restarting it
+            out.append("queue pipeline: allow_checks_interruption set (a pipeline PR must not restart a running product batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
+    # P-717 (a), whatever the order (P-827 lists pipeline first, so routing alone no longer shows it): product keeps its
+    # own pipeline-path exclusion, the same pattern pipeline selects with, so no PR falls between the two queues.
+    paths = {q.get("name"): [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)
+                             and c.replace(" ", "").lstrip("-").startswith("files~=^(?!")] for q in qs}
+    prod = [c[len("files~="):] for c in paths.get("product", []) if c.startswith("files~=")]
+    pipe = [c[len("-files~="):] for c in paths.get("pipeline", []) if c.startswith("-files~=")]
+    if not prod:
+        out.append("queue product: queue_conditions lack the pipeline-path exclusion 'files ~= ^(?!(...))' (P-717 (a))")
+    elif pipe and prod != pipe:
+        out.append("queue product and pipeline: their pipeline-path patterns differ, so a PR can fall between them")
     for c in CASES:
         try:
             pr, note = labelled(c, have_script)
@@ -219,10 +235,17 @@ def mutations(cfg):
         for q in c["queue_rules"]:
             q["queue_conditions"] = [x for x in q["queue_conditions"] if not (isinstance(x, dict) and "xfa-engine" in str(x))]
         return c
-    def interrupt(c):
+    def interrupt(c, name="verdicts"):
         c = copy.deepcopy(c)
         for q in c["queue_rules"]:
-            if q["name"] == "verdicts": q["allow_checks_interruption"] = True
+            if q["name"] == name: q["allow_checks_interruption"] = True
+        return c
+    def other_paths(c):   # product's pipeline exclusion drifts from pipeline's pattern
+        c = copy.deepcopy(c)
+        for q in c["queue_rules"]:
+            if q["name"] == "product":
+                q["queue_conditions"] = [x.replace("AGENTS", "AGENTZ") if isinstance(x, str) and x.replace(" ", "").startswith("files~=^(?!") else x
+                                         for x in q["queue_conditions"]]
         return c
     def swap01(c):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
@@ -253,8 +276,10 @@ def mutations(cfg):
         ("product takes pipeline-only PRs (P-717 (a))", drop("product", lambda x: x.startswith("files~="))),
         ("pipeline takes PRs with app code (P-717 (a))", drop("pipeline", lambda x: x.startswith("-files~=^(?!"))),
         ("pipeline skips green ci", drop("pipeline", lambda x: x.startswith("check-success"))),
-        ("pipeline listed before product (P-717 (a))", swap12(cfg)),
-        ("verdicts listed after product (P-664)", swap01(cfg)),
+        ("pipeline listed after product (P-827)", swap12(cfg)),
+        ("product's pipeline-path pattern differs from pipeline's (P-717 (a))", other_paths(cfg)),
+        ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
+        ("verdicts listed after pipeline (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
     ]
 
@@ -279,7 +304,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, product, records; verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
+        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

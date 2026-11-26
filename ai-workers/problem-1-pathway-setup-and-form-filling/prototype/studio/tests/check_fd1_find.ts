@@ -116,9 +116,9 @@ try {
   const one = await refusal(() => route.find({ platform: R }, { q: "a" })), none = await refusal(() => route.find({ platform: R }, {})), long = await refusal(() => route.find({ platform: R }, { q: "x".repeat(101) }));
   const misspelt = await refusal(() => route.find({ platform: R }, { query: "Anna" }));
   ok("PF-30a fail (PF-28): a misspelt query key (query=) → 422 naming it", misspelt?.status === 422 && JSON.stringify(misspelt.body).includes("query"), misspelt);
-  ok("PF-30a fail: a 1-character query, no query or 101 characters → 400, the refusal not repeating it", one?.status === 400 && none?.status === 400 && long?.status === 400 && !JSON.stringify(long).includes("xxxx"), { one, none, long });
+  ok("PF-30a fail (R1.10 A2: a field error, 422 naming q): a 1-character query, no query or 101 characters → 422, the refusal not repeating it", [one, none, long].every((a) => a?.status === 422 && !!(a.body as { fields?: Record<string, string> }).fields?.q) && !JSON.stringify(long).includes("xxxx"), { one, none, long });
   const veryLong = await refusal(() => route.find({ platform: R }, { q: "x".repeat(600) }));
-  ok("PF-30a fail (breaker m2): 600 characters → the same 400 QUERY_LENGTH as 101", veryLong?.status === 400 && JSON.stringify(veryLong.body).includes("QUERY_LENGTH"), veryLong);
+  ok("PF-30a fail (breaker m2): 600 characters → the same 422 QUERY_LENGTH as 101", veryLong?.status === 422 && JSON.stringify(veryLong.body).includes("QUERY_LENGTH"), veryLong);
   const zelda = await add(R, { givenNames: "Zelda5", familyName: "Sample", email: "zelda5@example.com" });
   ok("PF-30a pass (breaker m4): a name shaped like a file number (\"zelda5\") is still searched as a name", ids(await find(R, "zelda5")).includes(zelda.person.id));
   const jose = await add(R, { givenNames: "José", familyName: "García", email: "jose.garcia@example.com" });
@@ -212,7 +212,7 @@ try {
   } finally { hooked.restore(); await app.close(); }
   const findings = scanText(lines.join("\n"), "find-probe.log", queries);
   ok("PF-30a pass (logs): through GET /api/platform/find the hooked server logs request lines, and PF-23's scanner finds none of the queries in them",
-    statuses.join(",") === "200,200,200,200,400" && lines.some((l) => l.includes("/api/platform/find")) && findings.length === 0 && queries.every((q) => !lines.join("\n").includes(q)) && JSON.parse(body).groups.length >= 1, { statuses, findings, lines: lines.length });
+    statuses.join(",") === "200,200,200,200,422" && lines.some((l) => l.includes("/api/platform/find")) && findings.length === 0 && queries.every((q) => !lines.join("\n").includes(q)) && JSON.parse(body).groups.length >= 1, { statuses, findings, lines: lines.length });
   const control = scanText(JSON.stringify({ event: "log", message: "find Annabel Sample" }), "planted.log", queries);
   ok("PF-30a fail (logs): a line that does hold a query (planted) is caught by the same scanner", control.length === 1, control);
   ok("PF-30a pass (review m4): a dropped finder is logged by its module and a reason word only, never its error's words", lines.some((l) => l.includes("finder broken-sample dropped (ERROR)")) && !lines.join("\n").includes("no record for"));

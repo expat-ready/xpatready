@@ -117,7 +117,7 @@ try {
   const visitor = `j48.visitor.${run}@example.com`, v = await pageAs(null), hostHad = outboxTo(O.email).length;   // a kept copy holds earlier runs' host emails
   await v.goto(`${BASE}/book/sample-firm`); await v.locator("[data-type-card]").first().waitFor({ timeout: 30_000 });
   await axeOf(v, "W1 the firm's booking page"); await noSideways(v, "W1 the firm's booking page");
-  await v.getByRole("link", { name: "Choose Free consultation" }).click(); await v.getByRole("heading", { name: "Choose a time" }).waitFor();
+  await v.getByRole("link", { name: "Choose Free consultation", exact: true }).click(); await v.getByRole("heading", { name: "Choose a time" }).waitFor();
   const days = v.locator('[role="group"] button:not([disabled])');
   for (let i = 0; i < 3 && (await days.count()) === 0; i++) { await v.getByRole("button", { name: "Next month" }).click(); await v.waitForTimeout(800); }
   await days.first().click(); await v.locator("[data-day-times] li button").first().click();
