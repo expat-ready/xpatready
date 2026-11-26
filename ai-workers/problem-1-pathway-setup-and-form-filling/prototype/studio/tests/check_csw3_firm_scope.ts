@@ -278,14 +278,17 @@ async function api() {
 // case-feed.ts's rule within the case's workspace, never a line carrying another firm's id).
 // And case-access (CS-NT1 part 4, #3822): staffWhoMaySee reads one runtime_case joined on c.firm_id = the staff's firm,
 // within firmScope(firmId), the caseScope rule's own file (CS-S1 part 2).
-const ALLOW = `case-access case-reports client-money/reports/metrics case-document-flags case-document-reads documents/keep-period case-notes/service case-notes/timeline search/party-search client-money/visibility-adapter client-money/reads/parties client-money/trust/service case-clients/prospect-won case-clients/client-link case-clients/live case-deadlines/reminders features/case-milestones assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
+// And case-notes/person-timeline (CS-NT1t, #3829): the person's cases are read by client id only after
+// CaseNotes.subjectFor has found the client in the session's firm (404 otherwise), and each case is then read through
+// CaseTimeline.pageAfter, the case timeline's own firm and caseScope gate.
+const ALLOW = `case-access case-notes/person-timeline case-reports client-money/reports/metrics case-document-flags case-document-reads documents/keep-period case-notes/service case-notes/timeline search/party-search client-money/visibility-adapter client-money/reads/parties client-money/trust/service case-clients/prospect-won case-clients/client-link case-clients/live case-deadlines/reminders features/case-milestones assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
   core demo document-review-counts earlier-facts employer-link filing-changes filing-record fill-case findings finished-story form-additions
   form-library health person-link readiness-inputs readiness release-update review-rounds review-runs review-stamp routes-data runtime
   sample-case sample-validated sign-steps stage-scope studio submission-record submission team where-used`.split(/\s+/).map((f) => `api/src/${f}.ts`);
 function census() {
   const listed = () => execFileSync("bash", [join(STUDIO, "tests", "fixtures", "csw3", "csw3-spike.sh"), "census"], { encoding: "utf8" }).split("\n").slice(2).filter(Boolean).map((l) => l.split("\t")[0]);
   const now = listed(), extra = now.filter((f) => !ALLOW.includes(f));
-  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (47 at part 1, 48 with CS-S1 part 2, 49 with CS-NT1 part 1, 50 with CS-MV1, 51 with CS-D7, 52 with FO-7q part 3, 53 with CS-D6 part 1, 54 with FO-7t part 1, 55 with CS-D6 part 2, 56 with CS-R1 part 1, 57 with PF-R2cm, 58 with CS-NT1 part 3, 59 with CS-NT1 part 4)", ALLOW.length === 59 && extra.length === 0, extra);
+  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (47 at part 1, 48 with CS-S1 part 2, 49 with CS-NT1 part 1, 50 with CS-MV1, 51 with CS-D7, 52 with FO-7q part 3, 53 with CS-D6 part 1, 54 with FO-7t part 1, 55 with CS-D6 part 2, 56 with CS-R1 part 1, 57 with PF-R2cm, 58 with CS-NT1 part 3, 59 with CS-NT1 part 4, 60 with CS-NT1t)", ALLOW.length === 60 && extra.length === 0, extra);
   const planted = join(STUDIO, "api", "src", `zz-csw3-planted-${process.pid}.ts`);
   writeFileSync(planted, "// a throwaway file the census must catch\nexport const x = (db: any) => db.case.findMany({});\n");
   try {
