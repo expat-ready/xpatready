@@ -25,6 +25,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import { client, recorder } from "./runtime/api.ts";
 import { SESSION_KEY } from "../web/src/modules/system/contract.ts";
 import { COPY, fieldErrors, firmsText, firmWords, fromLocalBox, noticesText, recordBody, STATUS_WORDS, statusOf, whenWords } from "../web/src/modules/system/privacy/contract.ts";
+import { dueWords, logBody, REQUEST_COPY, stepWords } from "../web/src/modules/system/privacy/requests.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [PORT, DBNAME] = [Number(process.argv[2] ?? 4434), process.argv[3] ?? "xr_studio_pf21rs"];
@@ -66,6 +67,16 @@ const BREACHES = "/system/register/breaches";
   const many = Array.from({ length: 124 }, (_, i) => ({ id: `f${i}`, name: `Firm ${i}` }));
   ok("PF-21rs P pass/fail (break m3): a long firm list shows three names and \"and N more\"; three or fewer show in full",
     firmsText(many) === "Firm 0, Firm 1, Firm 2 and 121 more" && firmsText(many.slice(0, 3)) === "Firm 0, Firm 1, Firm 2");
+}
+
+{
+  ok("PF-21rs B1 P pass/fail: a target date reads \"in n days\", \"today\" or \"n days late\", nothing once completed",
+    dueWords({ targetDate: "2026-12-10", status: "PENDING" }, "2026-12-07") === "in 3 days" && dueWords({ targetDate: "2026-12-10", status: "OVERDUE" }, "2026-12-12") === "2 days late"
+      && dueWords({ targetDate: "2026-12-10", status: "IN_PROGRESS" }, "2026-12-10") === "today" && dueWords({ targetDate: "2026-12-10", status: "COMPLETED" }, "2026-12-12") === "");
+  const lb = logBody({ type: "ACCESS", requester: "a", requesterEmail: "b", receivedOn: "2026-11-20", firmId: " ", personId: "" }), lp = logBody({ type: "DELETION", requester: "a", requesterEmail: "b", receivedOn: "2026-11-20", firmId: "f", personId: "p" });
+  ok("PF-21rs B1 P pass/fail: the log body sends the firm and person together or not at all; steps read in words (Logged, A → B, the daily check's alert)",
+    !("firmId" in lb) && !("subject" in lb) && lp.firmId === "f" && JSON.stringify(lp.subject) === JSON.stringify({ kind: "PERSON", id: "p" })
+      && stepWords({ kind: "RECEIVED", from: null, to: "PENDING" }) === "Logged" && stepWords({ kind: "STATUS_CHANGED", from: "PENDING", to: "IN_PROGRESS" }) === "Pending → In progress" && stepWords({ kind: "OVERDUE_ALERTED", from: null, to: null }).startsWith("Overdue"));
 }
 
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
@@ -301,6 +312,84 @@ try {
     a2widths[w] = { axe: await serious(p1), sideways: await p1.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth > 1) }; }
   await p1.setViewportSize({ width: 1440, height: 900 });
   ok("PF-21rs A2 W6 (break M3): the breach page at 1440, 1024 and 400 px with every \"Words sent\" open: axe-core 0 serious, no sideways page scroll", Object.values(a2widths).every((x) => !x.axe.length && !x.sideways), a2widths);
+
+  // ---------------------------------------------------------------------------------------- B1 requests to us (row W1, W2)
+  const REQUESTS = "/system/register/requests", reqHeading = (p: Page) => p.getByRole("heading", { level: 1, name: REQUEST_COPY.title });
+  const tday = sql(`select to_char((now() at time zone 'America/Toronto')::date, 'YYYY-MM-DD')`), minus = (n: number) => sql(`select to_char('${tday}'::date - ${n}, 'YYYY-MM-DD')`);
+  await p1.goto(`${BASE}/system/privacy/requests`);
+  const reqIn = await reqHeading(p1).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  ok("PF-21rs B1 W1 pass (j_85 W1): the Privacy group links \"Requests to us\"; the page is headed \"Data requests to us\" with \"Log a request\"",
+    reqIn && (await p1.getByRole("navigation", { name: "Console" }).getByRole("group", { name: "Privacy" }).getByRole("link", { name: "Requests to us" }).count()) === 1 && (await p1.getByRole("button", { name: "Log a request" }).count()) === 1);
+  const reqCount = () => sql(`select count(*) from plat_data_request`), r0 = reqCount();
+  await p1.getByRole("button", { name: "Log a request" }).click();
+  const ld = p1.getByRole("dialog", { name: REQUEST_COPY.logTitle }); await ld.waitFor();
+  await ld.getByLabel("Requester's email").fill("not an email"); await ld.getByRole("button", { name: "Log the request" }).click();
+  await ld.locator("[role=alert]").first().waitFor({ timeout: 5000 }).catch(() => undefined);
+  const invalid = await ld.locator("[aria-invalid=true]").evaluateAll((xs) => xs.map((x) => x.getAttribute("data-field")));
+  ok("PF-21rs B1 W1 fail: no name and a bad email → each refusal under its field (the API's words), nothing stored",
+    invalid.includes("requester") && invalid.includes("requesterEmail") && (await ld.locator("[role=alert]").count()) >= 2 && reqCount() === r0, invalid);
+  const who = `Requester ${run} Sample`;
+  await ld.getByLabel("Type").selectOption("ACCESS"); await ld.getByLabel("Requester's name").fill(who); await ld.getByLabel("Requester's email").fill(`req.${run}@example.com`);
+  await ld.getByLabel("Received on").fill(minus(2));
+  await ld.getByRole("button", { name: "Log the request" }).click();
+  await p1.locator("[data-request-status]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const reqId = sql(`select id from plat_data_request where requester_name = '${who}'`);
+  const target = await p1.locator("[data-target-date]").getAttribute("datetime").catch(() => null);
+  ok("PF-21rs B1 W1 pass: logged → the request's page, Pending, its target date received + 30 days (on the page and stored)",
+    !!reqId && target === sql(`select to_char('${minus(2)}'::date + 30, 'YYYY-MM-DD')`) && sql(`select status || '|' || target_date from plat_data_request where id = '${reqId}'`) === `PENDING|${target}`
+      && (await p1.locator("[data-done]").innerText().catch(() => "")) === REQUEST_COPY.logged, { reqId, target });
+  await p1.getByRole("button", { name: "Start work" }).click();
+  const mv = p1.getByRole("dialog", { name: "Start work?" }); await mv.waitFor(); await mv.getByRole("button", { name: "Start work" }).click(); await mv.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  await p1.locator('[data-request-status="IN_PROGRESS"]').waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await p1.getByRole("button", { name: "Mark completed" }).click();
+  const cm = p1.getByRole("dialog", { name: "Mark completed?" }); await cm.waitFor(); await cm.getByRole("button", { name: "Mark completed" }).click();
+  const actErr = await cm.locator("[data-field=actionsTaken][aria-invalid=true]").waitFor({ timeout: 5000 }).then(() => true, () => false);
+  ok("PF-21rs B1 W1 fail: Mark completed without \"What was done\" → the API's field error under it; still In progress", actErr && (await cm.locator("[role=alert]").count()) === 1 && sql(`select status from plat_data_request where id = '${reqId}'`) === "IN_PROGRESS");
+  await cm.getByLabel("What was done").fill("Sample: sent the requester a copy of their account data."); await cm.getByRole("button", { name: "Mark completed" }).click();
+  await cm.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+  await p1.locator('[data-request-status="COMPLETED"]').waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const steps1 = await p1.getByRole("list", { name: "Steps" }).innerText().catch(() => "");
+  ok("PF-21rs B1 W1 pass (j_85 W2): In progress, then Completed; each step listed by our staff member's name; no move left",
+    sql(`select status from plat_data_request where id = '${reqId}'`) === "COMPLETED" && /Logged/.test(steps1) && steps1.includes("Pending → In progress") && steps1.includes("In progress → Completed") && steps1.includes("Platform Owner (Sample)")
+      && (await p1.locator("[data-actions-taken]").innerText()).includes("copy of their account data") && (await p1.getByRole("button", { name: /Start work|Mark completed|Put on hold/ }).count()) === 0, steps1.slice(0, 300));
+  await p1.screenshot({ path: join(SHOTS, "b1-01-request-completed-1440.png"), fullPage: true });
+  // W2: a request received 40 days ago is Overdue at once (the check runs on logging), with one alert step; Overdue is never a button.
+  const late = await api(tOwner, REQUESTS, "POST", { type: "DELETION", requester: `Late ${run} Sample`, requesterEmail: `late.${run}@example.com`, receivedOn: minus(40) });
+  await p1.goto(`${BASE}/system/privacy/requests/${late.body?.id}`); await p1.locator("[data-request-status]").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const lateSteps = await p1.locator('[data-step="OVERDUE_ALERTED"]').count();
+  ok("PF-21rs B1 W2 pass (j_85 W3): a request received 40 days ago shows Overdue, \"10 days late\", with one alert step underneath",
+    late.status === 201 && (await p1.locator('[data-request-status="OVERDUE"]').innerText().catch(() => "")).includes("10 days late") && lateSteps === 1, { status: late.status, lateSteps });
+  ok("PF-21rs B1 W2 fail (BR-5): no \"Overdue\" move is offered, and the API refuses one by hand (422)",
+    (await p1.locator("[data-request-moves]").getByRole("button", { name: /overdue/i }).count()) === 0 && (await api(tOwner, `${REQUESTS}/${reqId}/status`, "POST", { status: "OVERDUE" })).status === 422);
+  await p1.goto(`${BASE}/system/privacy/requests`); await p1.locator(`[data-request-row="${late.body?.id}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  await p1.locator('[data-status-chip="OVERDUE"]').click(); await p1.waitForTimeout(500);
+  const overdueRows = await p1.locator("[data-request-row]").evaluateAll((rs) => rs.map((r) => r.getAttribute("data-status")));
+  ok("PF-21rs B1 W2 pass: the Overdue chip lists only Overdue requests, the late one among them", overdueRows.length > 0 && overdueRows.every((x) => x === "OVERDUE") && (await p1.locator(`[data-request-row="${late.body?.id}"]`).count()) === 1, overdueRows);
+  // W5 on these pages: a firm's token is refused on every route and nothing is written; the Auditor (no request key) reads the API's 403 words.
+  const firmEmailB = sql(`select email from platform_staff where actor_id = 'user-R'`);
+  const tFirmB = (await api(null, "/platform/session/local", "POST", { firmKey: "sample-firm", email: firmEmailB, secondStep: true })).body?.token as string;
+  const r1 = reqCount();
+  const reqTries = [await api(tFirmB, REQUESTS), await api(tFirmB, `${REQUESTS}/${reqId}`), await api(tFirmB, REQUESTS, "POST", { type: "ACCESS", requester: "x", requesterEmail: "x@example.com", receivedOn: tday }), await api(tFirmB, `${REQUESTS}/${late.body?.id}/status`, "POST", { status: "IN_PROGRESS" })];
+  ok("PF-21rs B1 W5 fail (a): a firm Owner's token → 403 on the request list, one request, log and move; nothing written", reqTries.every((r) => r.status === 403) && reqCount() === r1 && sql(`select status from plat_data_request where id = '${late.body?.id}'`) === "OVERDUE", reqTries.map((r) => r.status));
+  const pr = await signedIn(await ourToken(AUDITOR)); await pr.goto(`${BASE}/system/privacy/requests`);
+  const audWords = await pr.locator("[data-requests-error]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-21rs B1 W5 fail (c, BR-8): our Auditor on Requests reads the API's 403 words: no table, no \"Log a request\", no Requests link",
+    audWords.length > 0 && (await pr.getByRole("table").count()) === 0 && (await pr.getByRole("button", { name: "Log a request" }).count()) === 0 && (await pr.getByRole("link", { name: "Requests to us" }).count()) === 0, audWords);
+  await pr.context().close();
+  // W6: keyboard opens Log a request on its first field; axe-core 0 serious and no sideways scroll on both pages at 1440, 1024 and 400 px.
+  await p1.goto(`${BASE}/system/privacy/requests`); await reqHeading(p1).waitFor({ timeout: 15_000 });
+  await p1.getByRole("button", { name: "Log a request" }).focus(); await p1.keyboard.press("Enter"); await ld.waitFor();
+  const reqFirst = await p1.evaluate(() => document.activeElement?.getAttribute("data-field") ?? document.activeElement?.tagName ?? "");
+  const axeLog = await serious(p1); await p1.keyboard.press("Escape"); await ld.waitFor({ state: "hidden", timeout: 5000 }).catch(() => undefined);
+  const rw: Record<string, { axe: string[]; sideways: boolean }> = {};
+  for (const [name, path] of [["list", "/system/privacy/requests"], ["one", `/system/privacy/requests/${reqId}`]] as const) for (const w of [1440, 1024, 400]) {
+    await p1.setViewportSize({ width: w, height: 900 }); await p1.goto(`${BASE}${path}`); await p1.locator("[data-request-row], [data-request-status]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+    rw[`${name}-${w}`] = { axe: await serious(p1), sideways: await p1.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth > 1) };
+    if (w === 400) await p1.screenshot({ path: join(SHOTS, `b1-02-request-${name}-400.png`), fullPage: true });
+  }
+  await p1.setViewportSize({ width: 1440, height: 900 });
+  ok("PF-21rs B1 W6 pass: Enter on \"Log a request\" opens it on its first field; both pages at 1440, 1024 and 400 px (the dialog open too): axe-core 0 serious, no sideways page scroll",
+    reqFirst === "type" && !axeLog.length && Object.values(rw).every((x) => !x.axe.length && !x.sideways), { reqFirst, axeLog, rw });
 
   // ---------------------------------------------------------------------------------------- W5 the walls (A1's page)
   const firmEmail = sql(`select email from platform_staff where actor_id = 'user-R'`);

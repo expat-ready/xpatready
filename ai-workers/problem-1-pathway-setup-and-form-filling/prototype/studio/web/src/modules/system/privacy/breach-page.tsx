@@ -85,9 +85,18 @@ function BreachBody() {
   const reload = () => { void qc.invalidateQueries({ queryKey: ["sys", "breach", id] }); void qc.invalidateQueries({ queryKey: ["sys", "breaches"] }); };
   /** Break M1: before a change, the breach is read again; if someone changed it since this page read it, nothing is sent and the
    *  page reloads (the PATCH itself takes no version yet: a runtime row, asked of the tech lead on #3538). */
+  // PF-21rs B (the A2 quarantine, batch #3749): a change dialog opens only on a fresh read of the breach (reopened right
+  // after "changed elsewhere", it showed the old words while the reload was still on its way), and its stale check compares
+  // with the breach as it was when the dialog opened, never with a copy a background refetch replaced meanwhile.
+  const seenAt = React.useRef<{ updatedAt: string; notices: number } | null>(null), [readying, setReadying] = React.useState(false);
+  const opening = async (open: () => void) => {
+    if (readying) return;
+    setReadying(true);
+    try { const r = await one.refetch(); if (!r.data) return; seenAt.current = { updatedAt: r.data.updatedAt, notices: r.data.notices.length }; open(); } finally { setReadying(false); }
+  };
   const unchanged = async () => {
-    const now = BreachOne.parse(await systemApi(`/register/breaches/${encodeURIComponent(id)}`));
-    if (now.updatedAt !== one.data?.updatedAt || now.notices.length !== one.data?.notices.length) { reload(); throw new SystemApiError(409, { status: 409, code: "STALE", detail: COPY.stale }); }
+    const now = BreachOne.parse(await systemApi(`/register/breaches/${encodeURIComponent(id)}`)), was = seenAt.current;
+    if (!was || now.updatedAt !== was.updatedAt || now.notices.length !== was.notices) { reload(); throw new SystemApiError(409, { status: 409, code: "STALE", detail: COPY.stale }); }
   };
   const b = one.data;
   if (!b && !one.isError) return <p role="status" className="text-sm text-text-muted" data-loading>Loading the breach…</p>;
@@ -113,7 +122,7 @@ function BreachBody() {
           <p className="mt-1 text-sm text-text-muted" data-next-step>{NEXT_STEP[status]}</p>
           {!manage ? <p className="mt-1 text-sm text-text-muted" data-read-only>{COPY.readOnly}</p> : null}
         </div>
-        {manage ? <Button ref={editButton} variant={b.status === "DRAFT" ? "default" : "outline"} onClick={() => setEditing(true)}>{b.status === "DRAFT" ? "Confirm the record" : "Edit the record"}</Button> : null}
+        {manage ? <Button ref={editButton} variant={b.status === "DRAFT" ? "default" : "outline"} busy={readying} onClick={() => void opening(() => setEditing(true))}>{b.status === "DRAFT" ? "Confirm the record" : "Edit the record"}</Button> : null}
       </header>
       <div role="status">{done ? <p className="rounded-lg border border-border border-l-4 border-l-ok bg-surface-raised px-4 py-3 text-sm" data-done>{done}</p> : null}</div>
 
@@ -128,7 +137,7 @@ function BreachBody() {
         </dl>
       </Card>
 
-      <Card title="Decision" id="breach-decision" action={manage && b.status === "RECORDED" && !fixed ? <Button ref={decideButton} variant={b.decision === "UNDECIDED" ? "default" : "outline"} size="sm" onClick={() => { setChoice(b.decision === "UNDECIDED" ? null : b.decision); setWhy(""); setDeciding(true); }}>{b.decision === "UNDECIDED" ? "Decide" : "Change the decision"}</Button> : undefined}>
+      <Card title="Decision" id="breach-decision" action={manage && b.status === "RECORDED" && !fixed ? <Button ref={decideButton} variant={b.decision === "UNDECIDED" ? "default" : "outline"} size="sm" busy={readying} onClick={() => void opening(() => { setChoice(b.decision === "UNDECIDED" ? null : b.decision); setWhy(""); setDeciding(true); })}>{b.decision === "UNDECIDED" ? "Decide" : "Change the decision"}</Button> : undefined}>
         <dl>
           <Row label="Decision">{b.status === "DRAFT" ? `${DECISION_WORDS[b.decision]} (confirm the record first)` : b.decision === "NOTIFY_FIRMS" ? "Notify the affected firms" : DECISION_WORDS[b.decision]}</Row>
           {b.decisionReason ? <Row label="Why">{b.decisionReason}</Row> : null}
