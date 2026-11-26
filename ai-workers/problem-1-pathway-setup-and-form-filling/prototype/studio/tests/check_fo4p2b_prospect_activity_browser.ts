@@ -10,7 +10,7 @@
 //   PA6 (round 1) the page's own Move adds its line to the timeline without a reload; a long note reads in full after
 //       "Show all of it"; the Log a call panel gives focus back to its button, and asks before throwing typed data away
 // Firm keys are put back at the end. No model call, US$0, never :4400.
-//   zsh studio/tools/isolated.sh fo4p2b 4433 start --ttl 60 AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo4p2b_prospect_activity_browser.ts fo4p2b 4433
+//   zsh studio/tools/isolated.sh fo4p2b 4433 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx studio/tests/check_fo4p2b_prospect_activity_browser.ts 4433 xr_studio_fo4p2b
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -23,9 +23,10 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const [NAME, PORT] = [process.argv[2] ?? "fo4p2b", Number(process.argv[3] ?? 4433)];
+// The port and the copy's database, as run-suites.sh passes them (a lane prefix renames both).
+const PORT = Number(process.argv[2] ?? 4433), DBNAME = process.argv[3] ?? "xr_studio_fo4p2b";
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
-const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const BASE = `http://localhost:${PORT}`;
 const { ok, summary } = recorder();
 const { sql: rawSql } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
