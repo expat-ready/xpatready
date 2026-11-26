@@ -47,7 +47,14 @@ head whose pr-suites is red, that is a queue-gate gap for its owner, not a suite
 `run-suites.sh --only <suite>` 20 times in a row in a fresh cloud copy (cloud-setup.sh; each run its own isolated
 copy, as CI):
 
-(running: results land here in the next commit)
+| Suite | Passes in a row | Time per run | Last line, every run |
+|---|---|---|---|
+| check_forms_qa53.ts | **20/20** (26 Nov 06:34–06:46Z), exit 0 each | 24–26 s | 49 passed, 0 failed |
+| check_pf24w_environment.ts | **20/20** (06:47–06:56Z), exit 0 each | 25–29 s | 28 passed, 0 failed |
+| check_csw3_firm_scope.ts | **20/20** (06:57–07:13Z), exit 0 each | 36–43 s | 48/48 passed |
+
+Not run here: the batches' other shard suites. Each of the three starts its own isolated copies (own database, own
+port), so no shard neighbour shares their state, and none of the 16 failing logs points at a neighbour.
 
 ## What would actually lower the red-batch rate
 
