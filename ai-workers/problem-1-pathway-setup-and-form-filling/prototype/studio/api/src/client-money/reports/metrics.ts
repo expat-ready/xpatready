@@ -12,7 +12,9 @@
 //     part (the statement's RETURNED_FROM_TRUST). Credit applied is the same money again, never counted (FO-7r break M1);
 //     a trust deposit is never fees (MS-D20(15));
 //   * Trust received (AG-14-36): deposits into trust, less a correction of a deposit and refunds out of trust to the
-//     client (MS-D24); a withdrawal to an invoice is not taken off (that money was received). While trust does not show
+//     client (MS-D24); a withdrawal to an invoice is not taken off (that money was received). A move to a case is a pair
+//     that nets to zero firm-wide; under a person filter only its + half on the person's case is in, so money moved onto
+//     the case counts there on the day it moved, and a refund from the case never stands alone (break M1). While trust does not show
 //     for the firm (AG-6-59 rules 5-6), the answer holds no trust figure (an empty list of figures);
 //   * Overdue ageing (AG-14-14): issued invoices with a balance (status-sql.ts DUE_SQL's terms, set-based) that are not written off, by days
 //     past the due date on the firm's today; "Current" is not yet past due (or no due date). The date range does not
@@ -112,7 +114,7 @@ export const collectedSql = (fr: Frame) => Prisma.sql`
 export const trustSql = (fr: Frame) => Prisma.sql`
   select e.currency::text as currency, sum(e.amount_minor::bigint)::text as amount from money_trust_entry e
     left join money_trust_entry d on d.firm_id = e.firm_id and d.id = e.corrects_entry_id
-   where ${fr.who("e")} and (e.kind in ('DEPOSIT', 'REFUND_TO_CLIENT') or (e.kind = 'CORRECTION' and d.kind = 'DEPOSIT')) ${inPeriod(Prisma.sql`e.created_at`, fr)}
+   where ${fr.who("e")} and (e.kind in ('DEPOSIT', 'REFUND_TO_CLIENT', 'MOVE_TO_CASE') or (e.kind = 'CORRECTION' and d.kind = 'DEPOSIT')) ${inPeriod(Prisma.sql`e.created_at`, fr)}
    group by e.currency`;
 /** Each issued invoice not written off, with its currency, party, days past due on `today` and what is still due: status-sql.ts's
  *  DUE_SQL over FACTS_LATERAL's terms (total − credited − paid, paid = operating − refunded + trust + applied, trust per
@@ -134,7 +136,9 @@ export const openSql = (fr: Frame, today: string) => {
       ae as (select e.id as entry, e.invoice_id as id, e.amount_minor::bigint as v from money_credit_entry e join inv on inv.id = e.invoice_id where e.firm_id = ${F} and e.kind = 'APPLIED'
         union all select e.id, p.invoice_id, e.amount_minor::bigint from money_credit_entry e join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id join inv on inv.id = p.invoice_id
          where e.firm_id = ${F} and e.kind = 'APPLIED' and e.invoice_id is distinct from p.invoice_id),
-      ap as (select ae.id, -sum(ae.v + coalesce((select sum(r.amount_minor::bigint) from money_credit_entry r where r.firm_id = ${F} and r.reverses_entry_id = ae.entry), 0)) as v from ae group by 1)
+      -- each entry's reversals, grouped once (a lookup per entry was 6.5 ms per 1,000 applications: break m2)
+      rv as (select r.reverses_entry_id as entry, sum(r.amount_minor::bigint) as v from money_credit_entry r where r.firm_id = ${F} and r.reverses_entry_id in (select ae.entry from ae) group by 1),
+      ap as (select ae.id, -sum(ae.v + coalesce(rv.v, 0)) as v from ae left join rv on rv.entry = ae.entry group by 1)
     select inv.currency::text as currency, inv.person_id, inv.company_id, (${today}::date - inv.due_date)::int as days,
            greatest(0, coalesce(tot.v, 0) - coalesce(cn.v, 0) - (coalesce(op.v, 0) - coalesce(rf.v, 0) + greatest(coalesce(tw.v, 0) - coalesce(cn.back, 0), 0) + coalesce(ap.v, 0))) as due
       from inv left join tot on tot.id = inv.id left join cn on cn.id = inv.id left join op on op.id = inv.id left join rf on rf.id = inv.id left join tw on tw.id = inv.id left join ap on ap.id = inv.id`;
@@ -176,7 +180,7 @@ export function moneyMetrics(db: Reader, now: () => Date = () => new Date()): Me
     },
     {
       key: "reports.money.overdue_by_client", module: MODULE, label: "Overdue by client", kind: "LIST", aggregation: "LIST", moneyTreatment: "PER_CURRENCY", scopeAware: false, drillTarget: null,
-      source: "Each client with money overdue today, per currency: the amount and how many days the oldest is past due; most owed first. The date range does not apply.",
+      source: "Each client with money overdue today, per currency: the amount and how many days the oldest is past due; most owed first in each currency. The date range does not apply.",
       async read(ctx, f): Promise<Reading> {
         const fr = await frameOf(db, ctx, f), today = todayIn(fr.zone, now());
         const rows = await db.$queryRaw<{ client: string | null; kind: string; currency: Currency; amount: string; oldest: number }[]>`
@@ -185,13 +189,17 @@ export function moneyMetrics(db: Reader, now: () => Date = () => new Date()): Me
             from (${openSql(fr, today)}) o
             left join fo_person p on p.firm_id = ${ctx.firmId}::uuid and p.id = o.person_id left join fo_company c on c.firm_id = ${ctx.firmId}::uuid and c.id = o.company_id
            where o.due > 0 and o.days >= 1
-           group by coalesce(o.person_id, o.company_id), 1, 2, o.currency order by sum(o.due) desc, 1 nulls last`;
+           group by coalesce(o.person_id, o.company_id), 1, 2, o.currency
+           -- the most owed of each currency in turn (never CAD against USD, break m1): rank within the currency first
+           order by row_number() over (partition by o.currency order by sum(o.due) desc), o.currency, 1 nulls last`;
         const keep = (r: (typeof rows)[number]): Row => ({ client: r.client ? Array.from(r.client).slice(0, 120).join("") : null, client_type: r.kind, currency: r.currency, overdue: major(r.amount), oldest_days: Number(r.oldest) });
-        if (rows.length <= LIST_MAX_ROWS) return { kind: "LIST", rows: rows.map(keep) };
+        // shown by currency, most owed first within it (the cut above took each currency's most owed in turn)
+        const shown = (xs: typeof rows) => [...xs].sort((a, b) => a.currency.localeCompare(b.currency) || (BigInt(b.amount) > BigInt(a.amount) ? 1 : BigInt(b.amount) < BigInt(a.amount) ? -1 : 0) || (a.client ?? "\uffff").localeCompare(b.client ?? "\uffff"));
+        if (rows.length <= LIST_MAX_ROWS) return { kind: "LIST", rows: shown(rows).map(keep) };
         // past the cap: one "more clients" row per currency for the rest, so no currency is ever added to another
         const head = rows.slice(0, LIST_MAX_ROWS - 2), rest = rows.slice(LIST_MAX_ROWS - 2);
-        const more = (["CAD", "USD"] as const).flatMap((cur) => { const m = rest.filter((r) => r.currency === cur); return m.length ? [{ client: `${m.length} more clients`, client_type: null, currency: cur, overdue: major(m.reduce((n, r) => n + BigInt(r.amount), 0n)), oldest_days: Math.max(...m.map((r) => Number(r.oldest))) }] : []; });
-        return { kind: "LIST", rows: [...head.map(keep), ...more] };
+        const more = (["CAD", "USD"] as const).flatMap((cur) => { const m = rest.filter((r) => r.currency === cur); return m.length ? [{ client: `${m.length} more ${m.length === 1 ? "client" : "clients"}`, client_type: null, currency: cur, overdue: major(m.reduce((n, r) => n + BigInt(r.amount), 0n)), oldest_days: Math.max(...m.map((r) => Number(r.oldest))) }] : []; });
+        return { kind: "LIST", rows: [...shown(head).map(keep), ...more] };
       },
     },
     {

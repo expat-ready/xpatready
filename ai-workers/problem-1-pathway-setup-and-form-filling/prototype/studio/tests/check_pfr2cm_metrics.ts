@@ -206,6 +206,18 @@ try {
   ok("PF-R2cm DW6 fail (walls): the solo firm sees only its own 777.77, never the Sample firm's money; a read named for the Sample firm inside the solo firm reads nothing",
     eq(soloBilled, { CAD: "777.77" }) && eq(await withFirm(B, () => moneyMetrics(walled, () => NOW)[0]!.read({ firmId: A, staffId: OWNER.staffId, keys: OWNER.keys, scope: "financial" }, NOV)), { kind: "MONEY", figures: [] }), soloBilled);
 
+  // break M1: 1,000.00 deposited with no case, moved onto user-O's case, 300.00 refunded from the case
+  const firmTrust0 = figs(await one(OWNER, K("trust_received"), NOV));
+  const DM = trust("DEPOSIT", 100000, "2026-11-24T15:00:00Z");
+  void DM;
+  const out = sql(`${R} insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, created_by, created_at) values ('${A}', '${PA}', 'MOVE_TO_CASE', -100000, 'CAD', ${++seq}, 0, 'seed', '2026-11-24T16:00:00Z') returning id`);
+  sql(`${R} insert into money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, seq, balance_after_minor, moved_from_entry_id, created_by, created_at) values ('${A}', '${PA}', '${caseO}', 'MOVE_TO_CASE', 100000, 'CAD', ${++seq}, 0, '${out}', 'seed', '2026-11-24T16:00:00Z');
+    insert into money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, seq, balance_after_minor, refund_method, refunded_on, refund_reference, reason, created_by, created_at) values ('${A}', '${PA}', '${caseO}', 'REFUND_TO_CLIENT', -30000, 'CAD', ${++seq}, 0, 'E_TRANSFER', '2026-11-24', 'ET-R2CM', 'Sample', 'seed', '2026-11-24T17:00:00Z')`);
+  const oTrust = figs(await one(OWNER, K("trust_received"), mine)), firmTrust1 = figs(await one(OWNER, K("trust_received"), NOV));
+  ok("PF-R2cm DW6 pass (break M1): under a person filter, money moved onto that person's case counts as received there: 1,000.00 in, 300.00 refunded = 700.00", eq(oTrust, { CAD: "700.00" }), oTrust);
+  ok("PF-R2cm DW6 fail (break M1): firm-wide the move nets to nothing (+700.00 only), and the case's refund never stands alone as a negative figure",
+    eq(firmTrust1, { CAD: major(Math.round(Number((firmTrust0 as Record<string, string>).CAD) * 100) + 70000) }) && !JSON.stringify(oTrust).includes("-"), { firmTrust0, firmTrust1, oTrust });
+
   // ------------------------------------------------------------------------------------------------------------ DW7
   const tax = rows(await one(OWNER, K("tax_collected"), NOV));
   ok("PF-R2cm DW7 pass (AG-14-37): tax collected per tax name and currency: CAD HST 145.00 (13 % and 15 % summed under one name), CAD GST 25.00, USD GST 10.00",
@@ -220,6 +232,11 @@ try {
       select '${B}', i.id, 1, 'FEE', 'Sample', 1, 10000, 10000, 130000, 1300, i.currency from money_invoice i where i.firm_id = '${B}' and i.number like 'BULK-%';
     insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by)
       select '${B}', i.id, 'CASH', 4000, i.currency, 'OPERATING', i.issued_at + interval '1 day', 'bulk-' || i.id, 'seed' from money_invoice i where i.firm_id = '${B}' and i.number like 'BULK-%3';
+    -- break m2: 15,000 credit applications (five per invoice) and 15,000 reversals
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, invoice_id, created_by)
+      select '${B}', '${PB}', 'APPLIED', -10, i.currency, 1000 + row_number() over (), 0, i.id, 'seed:bulk' from money_invoice i cross join generate_series(1, 5) k where i.firm_id = '${B}' and i.number like 'BULK-%';
+    insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, reverses_entry_id, reason, created_by)
+      select '${B}', '${PB}', 'REVERSED', 4, e.currency, 100000 + row_number() over (), 0, e.id, 'Sample', 'seed:bulk' from money_credit_entry e where e.created_by = 'seed:bulk';
     analyze`);
   // a December invoice of the solo firm with credit applied (and part of it reversed) and a part payment, for the parity check
   const IC = invoice({ firm: B, person: PB, issued: "2026-12-01T15:00:00Z", due: "2026-12-02", lines: [["FEE", 30000, 0, 0]] });
@@ -239,9 +256,22 @@ try {
   ok("PF-R2cm DW4 fail (parity): the written-off invoice is in neither list, and the credit-applied invoice owes 265.00 (300.00 − 10.00 paid − 40.00 applied + 15.00 reversed)", pA.n === 4 && pB.ic, { pA, pB });
   const ctxs = [{ firmId: A, staffId: OWNER.staffId, keys: OWNER.keys, scope: "financial" as const }, { firmId: B, staffId: SOLO.staffId, keys: SOLO.keys, scope: "financial" as const }];
   const slow = await overBudget(registry.all(), ctxs, (f, fn) => withFirm(f, fn), NOV);
-  ok("PF-R2cm DW8 pass: every money figure answers within 200 ms (STANDARDS §9) in each firm with ~3,000 invoices in the other", slow.length === 0, slow);
+  ok("PF-R2cm DW8 pass: every money figure answers within 200 ms (STANDARDS §9) in each firm with ~3,000 invoices in the other (15,000 credit applications and their reversals among them: break m2)", slow.length === 0, slow);
   const tight = await overBudget(registry.all(), ctxs.slice(1), (f, fn) => withFirm(f, fn), {}, -1);
   ok("PF-R2cm DW8 fail: the same check with no budget names every figure (it bites)", tight.length === keys.length, tight);
+
+  // break m1 and m3: 102 CAD clients and 100 USD clients (with Client A and Maple) overdue in the Sample firm, past the 200-row cap
+  sql(`${R} insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) select gen_random_uuid(), '${A}', 'Cap ' || g, 'Sample', 'cap' || g || '@example.org', 'seed:cap', now() from generate_series(1, 200) g;
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at)
+      select '${A}', p.id, 'CAP-' || p.given_names, case when split_part(p.given_names, ' ', 2)::int <= 101 then 'CAD' else 'USD' end::"MoneyCurrency", '2026-11-01', '2026-10-15T12:00Z', 'seed', 'seed', now()
+        from fo_person p where p.created_by = 'seed:cap';
+    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency)
+      select '${A}', i.id, 1, 'FEE', 'Sample', 1, case when i.currency = 'CAD' then 100000 else 90000 end, case when i.currency = 'CAD' then 100000 else 90000 end, 0, 0, i.currency from money_invoice i where i.number like 'CAP-%'`);
+  const capped = rows(await one(OWNER, K("overdue_by_client"))) as Record<string, string | number | null>[];
+  const named = (cur: string) => capped.filter((r) => r.currency === cur && r.client_type !== null).length;
+  ok("PF-R2cm DW4 pass (break m1): past the cap each currency keeps its own most owed (99 CAD, 99 USD named), never ranked CAD against USD", capped.length === 200 && named("CAD") === 99 && named("USD") === 99, { n: capped.length, cad: named("CAD"), usd: named("USD") });
+  ok("PF-R2cm DW4 fail (break m1, m3): the rest is one row per currency with its sum: \"3 more clients\" CAD 3,000.00 and \"1 more client\" USD 160.00 (singular)",
+    eq(capped.slice(-2), [{ client: "3 more clients", client_type: null, currency: "CAD", overdue: "3000.00", oldest_days: 24 }, { client: "1 more client", client_type: null, currency: "USD", overdue: "160.00", oldest_days: 55 }]), capped.slice(-2));
 } finally {
   await walled.$disconnect().catch(() => {});
   await db.$disconnect().catch(() => {});
