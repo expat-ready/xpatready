@@ -9,11 +9,16 @@
 //   PT5 staff only: the simulated client (x-actor, no staff session) is refused; an internal note never reaches a client
 //       read (there is none here: the client's case read shows only CLIENT_VISIBLE case notes, never a person's)
 //   PT6 a case outside the reader's caseScope is left out of the person's timeline, never named
+//   PT7 by screens: the client page shows the Timeline with the person's note, a case's note and the prospect's note, at
+//       1440 and 375 px, axe clean, no sideways scroll; another firm's Owner sees no such client
 // No model call, US$0, never :4400.
 //   zsh studio/tools/isolated.sh csnt1t 4432 start --ttl 60 AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_csnt1t_person_timeline.ts 4432 xr_studio_csnt1t
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { chromium } from "playwright";
+const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const PORT = Number(process.argv[2] ?? 4432), DB = process.argv[3] ?? "xr_studio_csnt1t", BASE = `http://localhost:${PORT}`;
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
@@ -113,6 +118,36 @@ try {
   const t6 = await call("GET", `/runtime/clients/${P}/timeline`, undefined, { token: tT });
   ok("PT6 fail: a Case manager who cannot open the cases sees the person's own note but none of the cases' lines", t6.status === 200 && has(t6.body, `Person note ${run}`) && !(t6.body?.lines ?? []).some((l: { caseId: string | null }) => l.caseId), t6.status);
   putBack();
+  // ---- PT7 by screens ------------------------------------------------------------------------------------------------
+  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  try {
+    for (const width of [1440, 375]) {
+      const ctx = await browser.newContext({ viewport: { width, height: 900 } });
+      await ctx.addInitScript((x) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_000_000 })); localStorage.setItem("xr-actor", "user-R"); }, tA);
+      const pg = await ctx.newPage(); const errors: string[] = []; pg.on("pageerror", (e) => errors.push(String(e)));
+      await pg.goto(`${BASE}/clients/${P}`);
+      const tl = pg.locator("[data-client-timeline]");
+      await tl.locator("[data-timeline-line]").first().waitFor({ timeout: 60000 });
+      for (let i = 0; i < 3 && !(await tl.innerText()).includes(`Person note ${run}`) && (await tl.locator("[data-timeline-older]").count()); i++) {
+        const before = await tl.locator("[data-timeline-line]").count();
+        await tl.locator("[data-timeline-older]").click();
+        await pg.waitForFunction(([n]) => document.querySelectorAll("[data-client-timeline] [data-timeline-line]").length > n, [before], { timeout: 30000 });
+      }
+      const text = await tl.innerText();
+      ok(`PT7 pass at ${width}: the client page's Timeline shows the person's note, both cases' notes and the prospect's note (Show older as needed)`, [`Person note ${run}`, `Case one note ${run}`, `Case two note ${run}`, `Prospect note ${run}`].every((s) => text.includes(s)), text.slice(0, 300));
+      const axe = await new AxeBuilder({ page: pg }).include("[data-client-timeline]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+      ok(`PT7 axe (WCAG 2.2 AA) at ${width}: the client page's Timeline`, axe.violations.length === 0, axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`));
+      ok(`PT7 at ${width}: no sideways scroll, no page error`, !(await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) && errors.length === 0, errors.slice(0, 3));
+      if (process.env.SHOTS) await tl.screenshot({ path: `${process.env.SHOTS}/client-timeline-${width}.png` });
+      await ctx.close();
+    }
+    const ctxB = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctxB.addInitScript((x) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_000_000 })); }, tB);
+    const pb = await ctxB.newPage();
+    await pb.goto(`${BASE}/clients/${P}`);
+    const none = await pb.locator("[data-no-client]").waitFor({ timeout: 60000 }).then(() => true, () => false);
+    ok("PT7 fail: another firm's Owner opening A's client sees \"No such client\" and no timeline line", none && !(await pb.content()).includes(`Person note ${run}`), { none });
+  } finally { await browser.close(); }
   const t6b = await call("GET", `/runtime/clients/${P}/timeline`, undefined, { token: tT });
   ok("PT6 pass: with agent/case:view.all back, the same person sees the cases' lines", t6b.status === 200 && (t6b.body?.lines ?? []).some((l: { caseId: string | null }) => l.caseId === A1 || l.caseId === A2), t6b.status);
 } finally {

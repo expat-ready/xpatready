@@ -69,6 +69,9 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
       (gen_random_uuid(), '${ws}', now() - interval '3 minutes', 'staff:${R}', 'case.decision.recorded', 'case', '${L}', 'Decision recorded on case (Sample)', '${L}'),
       (gen_random_uuid(), '${ws}', now() - interval '2 minutes', 'staff:${R}', 'case.sample-unknown-act', 'case', '${L}', 'An act this screen has no words for', '${L}'),
       (gen_random_uuid(), '${ws}', now() - interval '1 minutes', 'staff:${R}', 'viewed', 'case document', gen_random_uuid()::text, 'Viewed a document', '${L}')`);
+    // Break M1 / review M1: 60 access lines newer than every other line: a whole page of the API's would be views.
+    sql(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, case_id)
+      select gen_random_uuid(), '${ws}', now() - (g || ' seconds')::interval, 'staff:${R}', 'viewed', 'case document', gen_random_uuid()::text, 'Viewed ' || g, '${L}' from generate_series(1, 60) g`);
 
     for (const width of [1440, 375]) {
       const first = width === 1440;
@@ -87,14 +90,24 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
       await panel.locator("[data-notes-no-session]").waitFor({ timeout: 30000 });
       ok(`DP9 fail at ${width}: with no staff session the panel offers the sign-in inline and no writer`, (await panel.locator("[data-sign-in-card]").count()) === 1 && (await panel.locator("[data-note-text]").count()) === 0);
       await shot("1-no-session");
-      await as(ownerToken); await openPage(A);
+      await as(ownerToken);
+      await p.route("**/api/runtime/cases/*/notes", async (r) => { await new Promise((ok2) => setTimeout(ok2, 1500)); await r.continue(); });   // slow the read to see the skeleton
+      await p.goto(`${BASE}/cases/${A}`);
+      await panel.locator("[data-notes-loading]").waitFor({ timeout: 60000 });
+      const below = async () => panel.evaluate((s) => Math.round(s.getBoundingClientRect().height));
+      const hLoading = await below();
       await panel.locator("[data-note-text]").waitFor({ timeout: 30000 });
+      const hLoaded = await below();
+      await p.unroute("**/api/runtime/cases/*/notes");
+      ok(`review M2 at ${width}: the panel keeps its height from the skeleton to the loaded panel (nothing below moves)`, hLoading === hLoaded, { hLoading, hLoaded });
       ok(`DP9 pass at ${width}: signed in, the writer and the notes show; "Signed in as" names the staff member`, /Signed in as .+ \(firm staff\)/.test(await panel.innerText()));
       if (first) {
         ok("DP1 setup: a case with no note says so", (await panel.locator("[data-notes-empty]").count()) === 1);
         await axe("the empty panel");
         // ---- DP2 ----------------------------------------------------------------------------------------------------
-        ok("DP2 fail: an empty note is not sent (Add note disabled)", await panel.locator("[data-note-add]").isDisabled());
+        const before0 = sql(`select count(*) from case_note where case_id = '${A}'`);
+        await panel.locator("[data-note-add]").click();
+        ok("DP2 fail (challenge m4): Add on an empty note says \"Write the note first.\" in words and sends nothing", /Write the note first\./.test(await panel.locator("[data-note-error]").innerText()) && sql(`select count(*) from case_note where case_id = '${A}'`) === before0);
         await panel.locator("[data-note-text]").fill("x".repeat(5001));
         ok("DP2 fail: 5,001 characters: the box says to keep it to 5,000 with the count, Add note disabled", /Keep the note to 5,000 characters \(5,001 now\)\./.test(await panel.innerText()) && (await panel.locator("[data-note-add]").isDisabled()));
         await axe("the writer with its error");
@@ -139,6 +152,7 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
         await panel.locator("[data-note-conflict]").waitFor({ timeout: 30000 });
         ok("DP5 fail: the conflict says so, keeps the typed words and shows the current note", (await panel.locator("[data-note-edit-text]").inputValue()) === "My words, typed while someone else changed it" && /changed in another tab/.test(await panel.innerText()));
         await axe("a note in conflict");
+        ok("DP5 fail (break m7): after a conflict there is no plain Save; replacing their words is its own button", (await byKey.locator("[data-note-save]").count()) === 0 && (await byKey.locator("[data-note-overwrite]").count()) === 1);
         await panel.locator("[data-note-use-current]").click();
         ok("DP5 pass: Use the current note puts its words in the box", /changed in another tab/.test(await panel.locator("[data-note-edit-text]").inputValue()));
         await shot("3-conflict");
@@ -157,6 +171,11 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
         takeKey("CASE_MANAGER", VIEW_ALL);   // user-T (Case manager only, not on case A) can no longer open it
         await panel.locator("[data-note-mention-open]").click();
         await panel.locator(`[data-note-person='${O}']`).waitFor({ timeout: 30000 });
+        await p.keyboard.press("Escape");
+        await p.waitForFunction(() => document.activeElement?.hasAttribute("data-note-mention-open"), null, { timeout: 5000 }).catch(() => undefined);
+        ok("DP7 (break m4): Escape closes the list and gives focus back to Mention", (await panel.locator("[data-note-person]").count()) === 0 && await panel.locator("[data-note-mention-open]").evaluate((b) => b === document.activeElement));
+        await panel.locator("[data-note-mention-open]").click();
+        await panel.locator(`[data-note-person='${O}']`).waitFor({ timeout: 30000 });
         const people = await panel.locator("[data-note-person]").evaluateAll((els) => els.map((e) => e.getAttribute("data-note-person")));
         ok("DP7 pass: the mention list holds the case officer (on this case) first, and never someone who cannot open the case", people[0] === O && !people.includes(T), { people, O, T });
         await axe("the mention list open");
@@ -168,6 +187,15 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
         ok("DP7 pass: after Add the panel says who was told, and the case officer is told once", Number(sql(`select count(*) from msg_notification where kind = 'note-mention'`)) - Number(before) === 1);
         const forced = await api("POST", `/runtime/cases/${A}/notes`, { text: "Sample forced mention", mentions: [T] }, { token: ownerToken });
         ok("DP7 fail: a forced mention of someone who cannot open the case is 400, nothing written", forced.status === 400 && sql(`select count(*) from case_note where case_id = '${A}' and text = 'Sample forced mention'`) === "0", forced);
+        // Review M3, break m10: the people read is one query, whatever the firm's size: 1,000 more Case officers (view.all; the per-person reads took about 1 s per 300).
+        const firmA = sql("select id from platform_firm where key = 'sample-firm'");
+        sql(`with s as (insert into platform_staff (id, firm_id, email, display_name, updated_at) select gen_random_uuid(), '${firmA}', 'bulk-${process.pid}-' || g || '@example.org', 'Sample Bulk ' || lpad(g::text, 4, '0'), now() from generate_series(1, 1000) g returning id)
+          insert into platform_role_grant (id, staff_id, role, firm_id, granted_by) select gen_random_uuid(), id, 'CASE_OFFICER', '${firmA}', 'test' from s`);
+        const t0 = Date.now(), bulk = await api("GET", `/runtime/cases/${A}/notes/people`, undefined, { token: ownerToken }), ms = Date.now() - t0;
+        ok("review M3 pass: with 1,000 more staff the people read answers in under 1.5 s, the case team still first, all 1,000 listed", bulk.status === 200 && ms < 1500 && bulk.body.people[0].staffId === O && bulk.body.people.filter((x) => x.name.startsWith("Sample Bulk")).length === 1000, { status: bulk.status, ms });
+        const t1 = Date.now(), withMention = await api("POST", `/runtime/cases/${A}/notes`, { text: "Sample mention among many", mentions: [O] }, { token: ownerToken }), ms1 = Date.now() - t1;
+        ok("review M3 fail-safe: an add with a mention among 1,000 more staff is saved (201) in under 1.5 s", withMention.status === 201 && ms1 < 1500, { status: withMention.status, ms1 });
+        sql(`with s as (select id from platform_staff where email like 'bulk-${process.pid}-%') , g as (delete from platform_role_grant where staff_id in (select id from s)) delete from platform_staff where id in (select id from s)`);
         const tToken = await signIn("sample-firm", sql(`select email from platform_staff where id = '${T}'`));
         const outside = await Promise.all([`/runtime/cases/${A}/notes`, `/runtime/cases/${A}/timeline`, `/runtime/cases/${A}/notes/people`].map((u) => api("GET", u, undefined, { token: tToken }).then((r) => r.status)));
         ok("DP7 fail (caseScope, the part 3s order): a Case manager who cannot open the case gets 404 on its notes, timeline and people", outside.every((s) => s === 404), outside);
@@ -178,7 +206,7 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
         await openPage(L);
         const tl = panel.locator("[data-case-timeline]");
         await tl.locator("[data-timeline-line]").first().waitFor({ timeout: 30000 });
-        ok("DP12 fail (B1): the access line (viewed) is not shown", (await tl.locator("[data-timeline-type='viewed']").count()) === 0);
+        ok("DP12 fail (B1; break M1): 61 access lines newer than the rest are not shown, and the older lines are (no false \"Nothing has happened\")", (await tl.locator("[data-timeline-type='viewed']").count()) === 0 && (await tl.locator("[data-timeline-empty]").count()) === 0 && (await tl.locator("[data-timeline-line]").count()) === 10);
         ok("DP12 pass: the unknown type reads \"Other change\", the decision \"Decision recorded\", an upload \"Document uploaded\"; no 8-character id",
           /Other change/.test(await tl.locator("[data-timeline-type='case.sample-unknown-act']").innerText()) && /Decision recorded/.test(await tl.innerText()) && /Document uploaded/.test(await tl.innerText()) && !(await tl.innerText()).includes("An act this screen has no words for"));
         ok("DP8 pass: the first 10 lines show, then Show older", (await tl.locator("[data-timeline-line]").count()) === 10 && (await tl.locator("[data-timeline-older]").count()) === 1);
@@ -210,7 +238,7 @@ const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert
       // ---- DP9 fail: another firm's case → the firm words ---------------------------------------------------------
       await as(soloToken); await openPage(A);
       await panel.getByText("This case is not in the firm you are signed in to.").waitFor({ timeout: 30000 }).catch(() => undefined);
-      ok(`DP9 fail at ${width}: another firm's Owner sees "This case is not in the firm you are signed in to." and no note`, /This case is not in the firm you are signed in to\./.test(await panel.innerText()) && (await panel.locator("[data-note]").count()) === 0);
+      ok(`DP9 fail at ${width}: another firm's Owner sees "This case is not in the firm you are signed in to." and no note`, /This case is not in the firm you are signed in to, or your role cannot open it\./.test(await panel.innerText()) && (await panel.locator("[data-note]").count()) === 0);
       await ctx.close();
     }
     ok("no page error during the walk", errors.length === 0, errors.slice(0, 5));
