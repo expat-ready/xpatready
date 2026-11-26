@@ -96,3 +96,42 @@ Evidence (scratch databases on :54329 only; never :4400):
 * `zz_break_job.ts` (untracked in the worktree) is not part of this diff and was not reviewed.
 
 **Verdict: Block** (plan word: Ship after fixes; 2 Majors, no Blocker). Fix M1 and M2; the Minors are Should.
+
+## Round 2 (head 72896a3ad6b95fec0865ca54ffbe8c8042d9cd2d; diff 70c939fc1..72896a3ad only)
+Re-run at the head: `check_pf21d_fo_eraser` 48/48, `check_pf19a_messages_schema` 94/94 (was 91/94), `check_fo9b_merge` 88/88.
+
+* **M1: closed.**
+  * `msg_write_once` now nests msg_event's branch (migration :86-100), so the other tables reach their own `23001 … write-once`.
+  * A new test line fails on the old flat `IF`: msg_consent_wording must say "is write-once" and must not report a missing field.
+* **M2: closed.**
+  * Attribution, merge and event now each get the refusal set: no claim, a forged request, a wrong time, another person, and
+    another column (merge's other-column case was already there).
+  * XL has its own note, attribution row and event, and the job must clear them.
+  * Mutation again, in a scratch copy: I removed the claim check from the msg_event branch and the definer's merged-into
+    chain. The check now reads **43/48**, with the M2 refusal line, the job line, the XL line and two step lines failing.
+* **m2: closed.** R2-m1 (a quoted email in a line's detail) and R2-m2 (a suppression of the merged-away record's address,
+  counted as "do-not-contact address 2") each have a line.
+* **m4: closed.** `message_addresses` is in the "later" (not yet erasable) group, and the test reads "Kept (not yet erasable)".
+* **m5: closed.** `rollback.sql` says to roll the app code back with it, and what happens if not.
+* **m6: closed.** A claim 1 ms off is refused (`oneMsOff`).
+* **Breaker m1 (rollback clears its `_prisma_migrations` row): fine.**
+  * The trigger functions it restores are unchanged from round 1, which I verified byte-identical.
+  * 19 of the 24 rollbacks in the repo already clear the row this way.
+* **Breaker m3 (no exception while `fo_dup.merging` is on): fine.**
+  * Migration :28 returns false before reading the request.
+  * Tested (`duringMerge`).
+  * FO-9b's own branch runs before the erasure branch in `fo_sales_insert_only`, so merges are unaffected (fo9b 88/88).
+* **Left for the PR body (Should, accepted as such):**
+  * m1: the Undo refusal is read in code at merge/service.ts:288, with no test.
+  * m3: the reasoning for not building `claim_id`.
+  * m7: the undone-merge snapshot.
+  * I have not seen the PR body; the builder must put all three there.
+* **Note, no action:** the job's step line no longer asserts "message events" or a full "merge records".
+  * Reason: the eraser's note is limited to 300 characters, and that limit cuts the end of the cleared list.
+  * The database rows prove the clearing instead (test :312-325).
+
+Journey score unchanged at 8/10. Feedback and state rises to 1 (M1 fixed) and Trust to 1 (m4), so it would now read 9/10.
+
+**Verdict: Approve** on 72896a3ad6b95fec0865ca54ffbe8c8042d9cd2d. No Blocker or Major is open; m1, m3 and m7 go in the PR body.
+
+Reviewer: Approve 72896a3ad6b95fec0865ca54ffbe8c8042d9cd2d
