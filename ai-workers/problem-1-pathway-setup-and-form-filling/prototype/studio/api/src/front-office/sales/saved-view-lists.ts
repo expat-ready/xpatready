@@ -13,7 +13,11 @@ import { cfPart, customFieldIdsWhere, customFieldQuery } from "../../platform/cu
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { SavedViewRegistry } from "../../platform/saved-views/registry.ts";
+import { visibilityOf } from "./common.ts";
+import { VIEWS } from "./leads.ts";
+import { dayRange } from "./prospects.ts";
 import { LEADS_QUERY_SHAPE, PROSPECTS_QUERY_SHAPE } from "./routes.ts";
+import { sourcesAsked, sourcesSeen } from "./source-filter.ts";
 
 /** The share key of every front-office list (AG-2 §10). */
 export const FO_SHARE_KEY = "agent/prospect:configure-pipeline";
@@ -38,6 +42,23 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
   async check(ctx: StaffContext, filter: ViewFilter, kind: "fo_person" | "fo_prospect", fixed?: "INDIVIDUAL" | "CORPORATE"): Promise<{ filter: ViewFilter; dropped: DroppedPart[] }> {
     const out: ViewFilter = { ...filter }, dropped: DroppedPart[] = [];
     const drop = (part: string, label: string) => { delete out[part]; dropped.push({ part, label }); };
+    const one = (v: unknown) => (typeof v === "string" ? v : undefined);
+    // Each value as the list itself reads it, so a saved view never opens to the list's 422 (review M1, M2).
+    if (kind === "fo_person" && one(filter.view) && !(VIEWS as readonly string[]).includes(one(filter.view)!)) drop("view", `“${one(filter.view)}” is not a view of the leads list.`);
+    if (kind === "fo_prospect" && !fixed && one(filter.type) && !["INDIVIDUAL", "CORPORATE"].includes(one(filter.type)!.toUpperCase())) drop("type", "The pipeline is Individual or Corporate.");
+    if (filter.from !== undefined || filter.to !== undefined) {
+      try { await dayRange(this.db, ctx.firmId, filter.from, filter.to); } catch (e) {
+        if (!(e instanceof HttpException)) throw e;
+        for (const part of ["from", "to"]) if (filter[part] !== undefined) drop(part, "This date is not a real day (YYYY-MM-DD).");
+      }
+    }
+    // challenge M3: a source no lead this person can see has is dropped for them (said), never a 422 from the list.
+    const asked = sourcesAsked(filter.source);
+    if (asked.length) {
+      const vis = await visibilityOf(this.db, ctx), seen = await sourcesSeen(this.db, ctx, vis);
+      const gone = asked.filter((x) => !seen.includes(x));
+      if (gone.length) drop("source", `No lead you can see has the source ${gone.map((x) => `“${x}”`).join(", ").slice(0, 200)}.`);
+    }
     if (kind === "fo_prospect" && typeof filter.stage === "string" && filter.stage) {
       const type = fixed ?? (typeof filter.type === "string" && filter.type ? filter.type.toUpperCase() : "INDIVIDUAL");
       const ok = type === "INDIVIDUAL" || type === "CORPORATE" ? await this.db.foStage.count({ where: firmScope(ctx.firmId, { pipeline: type, key: filter.stage.toUpperCase() }) }) : 0;
@@ -50,7 +71,8 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
     for (const [key, values] of Object.entries(cfPart(filter))) {
       try { await customFieldIdsWhere(this.db, ctx.firmId, kind, { [key]: values }); } catch (e) {
         if (!(e instanceof HttpException)) throw e;
-        drop(`cf.${key}`, (e.getResponse() as { fields?: Record<string, string> }).fields?.[`cf.${key}`] ?? "This custom field no longer applies.");
+        const why = (e.getResponse() as { fields?: Record<string, string> }).fields?.[`cf.${key}`] ?? "";
+        drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
       }
     }
     return { filter: out, dropped };

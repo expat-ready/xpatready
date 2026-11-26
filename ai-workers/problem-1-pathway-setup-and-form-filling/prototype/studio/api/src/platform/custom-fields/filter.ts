@@ -11,19 +11,23 @@
 // narrows inside its own visibility, so a filter never widens what a person sees. Only the platform reads plat_custom_*.
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { readValue, trimText, type CustomFieldType } from "../../../../ports/custom-fields.ts";
+import { readValue, storable, trimText, type CustomFieldType } from "../../../../ports/custom-fields.ts";
 import { firmScope } from "../firm-scope.ts";
 import { FIELD_ERROR_STATUS } from "../http/input.ts";
 import { problem } from "../identity/keys.ts";
 
 type Tx = Prisma.TransactionClient;
 /** A custom-field query key. */
+/** The most records a custom-field filter may match before it must be narrowed. */
+export const MAX_MATCHES = 30000;
 export const CF_KEY = /^cf\.[a-z][a-z0-9_]{0,39}$/;
-const cfValue = z.union([z.string().max(500), z.array(z.string().max(500)).max(100)]);
+const cfText = z.string().max(500).refine(storable, "Use letters, digits and punctuation only.");   // no NUL: never a 500 (break m1)
+const cfValue = z.union([cfText, z.array(cfText).max(100)]);
 /** A list's query schema with its cf.* keys: the named keys as given, cf.* keys as text or a list, any other key refused. */
 export function customFieldQuery<S extends z.ZodRawShape>(shape: S) {
   return z.object(shape).catchall(cfValue).superRefine((q, c) => {
-    for (const k of Object.keys(q)) if (!(k in shape) && !CF_KEY.test(k)) c.addIssue({ code: "custom", path: [k], message: "This field is not allowed here." });
+    for (const k of Object.keys(q)) if (!Object.hasOwn(shape, k) && !CF_KEY.test(k))   // own keys only: "constructor" is no query word (break m2)
+      c.addIssue({ code: "custom", path: [k], message: "This field is not allowed here." });
   });
 }
 /** The cf.* part of a parsed query, by field key. */
@@ -32,7 +36,8 @@ export const cfPart = (q: Record<string, unknown>): Record<string, string[]> =>
 
 const refuse = (fields: Record<string, string>): never =>
   problem(FIELD_ERROR_STATUS, "Check the filter", `${Object.values(fields).join(" ")}`.slice(0, 600), { code: "INVALID_FILTER", fields });
-const range = (s: string) => { const m = /^([^.]*)\.\.([^.]*)$/.exec(s); return m ? [m[1].trim(), m[2].trim()] as const : [s.trim(), s.trim()] as const; };
+const range = (s: string) => { const m = /^(.*?)\.\.(.*)$/.exec(s);   // the first ".." splits, so 2500.75 is one number (review M5)
+  return m ? [m[1].trim(), m[2].trim()] as const : [s.trim(), s.trim()] as const; };
 
 /** One field's condition as SQL on plat_custom_value v, or the plain words when the asked value does not fit the field. */
 function condition(f: { label: string; type: CustomFieldType; options: string[] }, asked: string[]): Prisma.Sql | string {
@@ -88,5 +93,8 @@ export async function customFieldIdsWhere(db: Tx | PrismaClient, firmIdRaw: stri
     const got: Set<string> = new Set(rows.map((r) => r.id));
     ids = ids === null ? got : new Set([...ids].filter((x) => got.has(x)));
   }
+  // A list reads at most 500 rows; an id list past the database's parameter limit would fail, so a filter that matches
+  // more is refused in words (break m4: never a 500).
+  if (ids && ids.size > MAX_MATCHES) refuse(Object.fromEntries(keys.map((k) => [`cf.${k}`, "This filter matches too many records. Add another filter to narrow it."])));
   return [...(ids ?? [])];
 }

@@ -147,7 +147,7 @@ try {
   ok("PF-22v V8 pass: the leads list filters by the person's field (contains, any case)", nick.status === 201 && leadList.status === 200 && leadList.body.length === 1 && leadList.body[0].id === openLead.id, leadList.body);
 
   // ------------------------------------------------------------------ V2: personal views
-  const save = (who: { token: string }, body: Record<string, unknown>) => call("POST", V, who.token, body);
+  const save = (who: { token: string }, body: Record<string, unknown>) => call("POST", V, who.token, { requestId: randomUUID(), ...body });
   const p1 = await save(agent, { list: "fo.pipeline.individual", name: "My referrals", filter: { "cf.referral_partner": "Maple Law" } });
   ok("PF-22v V2 pass: an Agent saves a personal view with a custom-field filter; it lists for them, owned by them", p1.status === 201 && p1.body.shared === false && p1.body.owner?.id === agent.id
     && (await call("GET", `${V}?list=fo.pipeline.individual`, agent.token)).body.personal.some((v: { id: string }) => v.id === p1.body.id), p1.body);
@@ -203,6 +203,50 @@ try {
   ok("PF-22v V6 fail/pass: an Agent cannot take a shared view back (403); an Admin can, and it becomes theirs", unshare.status === 403 && take.status === 200 && take.body.shared === false && take.body.owner?.id === admin.id, [unshare.body, take.body]);
   const del = await call("DELETE", `${V}/${goodStage.body.id}`, agent.token);
   ok("PF-22v V6 pass: an owner deletes their view; audited", del.status === 200 && sql(`select count(*) from plat_saved_view where id = '${goodStage.body.id}'`) === "0" && sql(`select count(*) from audit_event where entity_key = '${goodStage.body.id}' and action = 'saved_view.deleted'`) === "1");
+
+  // ------------------------------------------------------------------ V9: review and break round 1 (each a fail test first)
+  const rid = randomUUID();
+  const first = await call("POST", V, agent.token, { requestId: rid, list: "fo.leads", name: "Once", filter: {} });
+  const again = await call("POST", V, agent.token, { requestId: rid, list: "fo.leads", name: "Once", filter: {} });
+  const reused = await call("POST", V, agent.token, { requestId: rid, list: "fo.leads", name: "Other", filter: {} });
+  ok("PF-22v V9 pass/fail (review M4): the same request again answers the same view, one row; the id reused for another view → 409",
+    first.status === 201 && again.body.id === first.body.id && sql(`select count(*) from plat_saved_view where name = 'Once'`) === "1" && reused.status === 409 && reused.body.code === "REQUEST_REUSED", [again.body, reused.body]);
+  const ver = first.body.version;
+  const r1 = await call("PATCH", `${V}/${first.body.id}`, agent.token, { name: "Once renamed", version: ver });
+  const r2 = await call("PATCH", `${V}/${first.body.id}`, agent.token, { name: "Lost edit", version: ver });
+  const d1 = await call("DELETE", `${V}/${first.body.id}`, agent.token, { version: ver });
+  ok("PF-22v V9 fail (review M3): a change or a delete on the version read before → 409 STALE_VERSION with the view as it is; the first change kept",
+    r1.status === 200 && r2.status === 409 && r2.body.code === "STALE_VERSION" && r2.body.current?.name === "Once renamed" && d1.status === 409 && sql(`select name from plat_saved_view where id = '${first.body.id}'`) === "Once renamed", [r2.body, d1.body]);
+  const sorted = await call("PATCH", `${V}/${first.body.id}`, agent.token, { sort: { by: "arrivedAt", dir: "asc" } });
+  const unsorted = await call("PATCH", `${V}/${first.body.id}`, agent.token, { sort: null });
+  ok("PF-22v V9 pass (review minor): a sort is set, and null clears it", sorted.body.sort?.by === "arrivedAt" && unsorted.status === 200 && unsorted.body.sort === null, unsorted.body);
+  const bad = await Promise.all([{ view: "bogus" }, { from: "31/31/2026" }, { source: "No Such Source" }].map((f) => save(agent, { list: "fo.leads", name: "Bad2", filter: f })));
+  const badType = await save(agent, { list: "fo.prospects", name: "Bad2", filter: { type: "SPACESHIP" } });
+  ok("PF-22v V9 fail (review M2, break M3): a view, a date, a source or a type the list would refuse → 400 at save, the part named; nothing saved",
+    bad.every((r) => r.status === 400 && r.body.code === "INVALID_FILTER") && !!bad[0].body.fields?.view && !!bad[1].body.fields?.from && !!bad[2].body.fields?.source && badType.status === 400 && !!badType.body.fields?.type
+      && sql(`select count(*) from plat_saved_view where name = 'Bad2'`) === "0", [...bad.map((r) => r.body), badType.body]);
+  const huge = await save(agent, { list: "fo.leads", name: "Huge", filter: { source: Array.from({ length: 40 }, (_, i) => `${i}`.padEnd(480, "x")) } });
+  const nulName = await save(agent, { list: "fo.leads", name: "a\u0000b", filter: {} });
+  const ctorKey = await save(agent, { list: "fo.leads", name: "Ctor", filter: { constructor: "x" } });
+  ok("PF-22v V9 fail (review M6, break m1, m2): an oversized filter, a NUL in a name, a \"constructor\" key → 400/422, never a 500", huge.status === 422 && nulName.status === 422 && ctorKey.status === 400, [huge.status, nulName.status, ctorKey.status]);
+  const budget = await call("POST", "/api/platform/custom-fields", admin.token, { kind: "fo_prospect", label: "Budget", type: "NUMBER" });
+  await put(agent, "fo_prospect", mine2.prospect.id, { budget: 2500.5 });
+  const dec = await call("GET", `${FO}/prospects?cf.budget=1000..2500.75`, agent.token), decOpen = await call("GET", `${FO}/prospects?cf.budget=2500.25..`, agent.token), decOut = await call("GET", `${FO}/prospects?cf.budget=2500.75..`, agent.token);
+  ok("PF-22v V9 pass/fail (review M5): decimal ranges work (2500.5 is in 1000..2500.75 and in 2500.25.., not in 2500.75..)",
+    budget.status === 201 && dec.status === 200 && dec.body.length === 1 && decOpen.body.length === 1 && decOut.status === 200 && decOut.body.length === 0, [dec.body, decOpen.body, decOut.body]);
+  // review M1 / challenge M3: a shared view naming a source the viewer's leads do not have is dropped for them, never a 422
+  sql(`update fo_lead set source = 'Web form' where id = '${theirs.lead.id}'`);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });   // the Admin sees every lead's source
+  const webView = await save(admin, { list: "fo.leads", name: "Web leads", filter: { view: "all", source: "Web form" }, shared: true });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  const agentWeb = (await call("GET", `${V}?list=fo.leads`, agent.token)).body.shared.find((v: { id: string }) => v.id === webView.body.id);
+  const agentOpens = await call("GET", `${FO}/leads?${new URLSearchParams(agentWeb?.applies ?? {})}`, agent.token);
+  ok("PF-22v V9 pass (review M1, challenge M3): the Admin shares a source view; for an Agent whose leads lack that source the part is dropped and named, and the rest opens (200)",
+    webView.status === 201 && agentWeb?.dropped[0]?.part === "source" && /Web form/.test(agentWeb.dropped[0].label) && agentOpens.status === 200, [webView.body, agentWeb, agentOpens.status]);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  const adminAll = await call("GET", `${FO}/prospects?${new URLSearchParams(seenBy[0].body.shared[0].applies)}`, admin.token);
+  ok("PF-22v V9 pass (review minor, BR-13): with everyone-sees-all, the same shared view shows the Admin every open prospect (3)", adminAll.status === 200 && adminAll.body.length >= 3, adminAll.body.length);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
 
   // ------------------------------------------------------------------ V7: walls
   const bList = await call("GET", `${V}?list=fo.pipeline.individual`, adminB.token), bPatch = await call("PATCH", `${V}/${allOpen.body.id}`, adminB.token, { name: "Ours" });

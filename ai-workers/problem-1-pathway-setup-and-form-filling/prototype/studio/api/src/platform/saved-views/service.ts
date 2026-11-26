@@ -12,11 +12,12 @@
 // Replace. A view never shows more than the viewer may see: the list applies its visibility when it is read. Two views
 // with one name are both kept, each labelled with its owner. Every change is one transaction with one audit line (ids and
 // facts; a filter's words may hold a person's text, so only its keys are recorded).
-import type { PlatSavedView, Prisma, PrismaClient } from "@prisma/client";
+import { createHash } from "node:crypto";
+import { Prisma, type PlatSavedView, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
 import { droppedLine, VIEW_NAME_MAX, type ListRegistration, type SavedViewPort, type ViewFilter } from "../../../../ports/saved-views.ts";
-import { trimText } from "../../../../ports/custom-fields.ts";
+import { storable, trimText } from "../../../../ports/custom-fields.ts";
 import { firmScope } from "../firm-scope.ts";
 import { fieldsOf, parseInput, strict } from "../http/input.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
@@ -25,13 +26,23 @@ type Tx = Prisma.TransactionClient;
 export type SavedViewDeps = { db: PrismaClient; audit: AuditPort<Tx>; registry: SavedViewPort<StaffContext> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const name = z.string().max(400).refine((s) => { const n = [...trimText(s)].length; return n >= 1 && n <= VIEW_NAME_MAX; }, `1 to ${VIEW_NAME_MAX} characters.`);
+const name = z.string().max(400).refine(storable, "Use letters, digits and punctuation only.").refine((s) => { const n = [...trimText(s)].length; return n >= 1 && n <= VIEW_NAME_MAX; }, `1 to ${VIEW_NAME_MAX} characters.`);
 const columns = z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/, "a column name")).max(50).refine((a) => new Set(a).size === a.length, "each column once.");
 const sort = strict({ by: z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/), dir: z.enum(["asc", "desc"]) }).nullable();
-const filter = z.record(z.string().max(64), z.unknown());
-export const CreateView = strict({ list: z.string().max(64), name, filter, columns: columns.optional(), sort: sort.optional(), shared: z.boolean().optional() });
-export const ChangeView = strict({ name: name.optional(), filter: filter.optional(), columns: columns.optional(), sort: sort.optional(), shared: z.boolean().optional() })
-  .refine((b) => Object.keys(b).length > 0, { error: "Name what to change." });
+/** At most 16,000 characters as JSON: under the database's 16,384, so a large filter is a 400, never its check's 500 (review M6). */
+const filter = z.record(z.string().max(64), z.unknown()).refine((f) => !JSON.stringify(f).includes("\\u0000"), "Use letters, digits and punctuation only.").refine((f) => JSON.stringify(f).length <= 16000, "The filter is too long (at most 16,000 characters).");
+const version = z.string().max(80);
+/** A new view names its request (STANDARDS §4): the same request again answers the view it made (review M4). */
+export const CreateView = strict({ requestId: z.string().regex(UUID, "a request id (uuid)"), list: z.string().max(64), name, filter, columns: columns.optional(), sort: sort.optional(), shared: z.boolean().optional() });
+export const ChangeView = strict({ name: name.optional(), filter: filter.optional(), columns: columns.optional(), sort: sort.optional(), shared: z.boolean().optional(), version: version.optional() })
+  .refine((b) => Object.keys(b).some((k) => k !== "version"), { error: "Name what to change." });
+export const RemoveView = strict({ version: version.optional() });
+/** The view's id from the firm, the person and the request: a repeat of the request meets the row it made (no column needed). */
+const idOf = (firmId: string, staffId: string, requestId: string) => {
+  const h = createHash("sha256").update(`plat-saved-view:${firmId}:${staffId}:${requestId.toLowerCase()}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${((parseInt(h[16], 16) & 3) | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+};
+const stale = (v: PlatSavedView): never => problem(409, "Changed since you opened it", "Someone changed this view after you opened it. Reload to see their change.", { code: "STALE_VERSION", current: { name: v.name, filter: v.filter, shared: v.ownerStaffId === null, version: v.updatedAt.toISOString() } });
 
 const notFound = (): never => problem(404, "Not found", "No such view in your firm.", { code: "NOT_FOUND" });
 const notShared = (): never => problem(403, "Not allowed", "Sharing a view with the firm, or changing a shared one, needs an Owner or Admin.", { code: "SHARE_NOT_ALLOWED" });
@@ -73,7 +84,7 @@ export class SavedViewsService {
       columns: (v.columns ?? []) as string[], sort: v.sort ?? null, shared: v.ownerStaffId === null,
       owner: v.ownerStaffId ? who.get(v.ownerStaffId) ?? { id: v.ownerStaffId, name: "Former staff member", active: false } : null,
       createdBy: who.get(v.createdBy) ?? { id: v.createdBy, name: "Former staff member", active: false },
-      canChange: v.ownerStaffId === null ? canShare : v.ownerStaffId === ctx.staffId, updatedAt: v.updatedAt.toISOString(),
+      canChange: v.ownerStaffId === null ? canShare : v.ownerStaffId === ctx.staffId, updatedAt: v.updatedAt.toISOString(), version: v.updatedAt.toISOString(),
     };
   }
 
@@ -101,11 +112,23 @@ export class SavedViewsService {
     if (b.shared && !ctx.keys.includes(reg.shareKey)) return notShared();
     const f = await this.checked(ctx, reg, b.filter);
     const firmId = firmScope(ctx.firmId).firmId;
-    const v = await this.d.db.$transaction(async (tx) => {
-      const v = await tx.platSavedView.create({ data: { firmId, ownerStaffId: b.shared ? null : ctx.staffId, listKind: list, name: trimText(b.name), filter: f, columns: b.columns ?? [], sort: b.sort ?? undefined, createdBy: ctx.staffId } });
+    const id = idOf(firmId, ctx.staffId, b.requestId);
+    const again = await this.d.db.platSavedView.findFirst({ where: firmScope(firmId, { id }) });
+    if (again) return this.repeat(ctx, again, b, f);
+    const made = await this.d.db.$transaction(async (tx) => {
+      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`plat-saved-view:${id}`}))`;
+      const twin = await tx.platSavedView.findFirst({ where: firmScope(firmId, { id }) });
+      if (twin) return { v: twin, twin: true };
+      const v = await tx.platSavedView.create({ data: { id, firmId, ownerStaffId: b.shared ? null : ctx.staffId, listKind: list, name: trimText(b.name), filter: f, columns: b.columns ?? [], sort: b.sort ?? undefined, createdBy: ctx.staffId } });
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "saved_view.created", entity: "plat_saved_view", entityKey: v.id, summary: `${b.shared ? "Shared" : "Personal"} view saved on ${list}`, detail: { viewId: v.id, list, shared: !!b.shared }, before: null, after: this.values(v) });
-      return v;
+      return { v, twin: false };
     });
+    return made.twin ? this.repeat(ctx, made.v, b, f) : this.one(ctx, made.v);
+  }
+
+  /** The same request again: the view it made, or 409 when the request id is reused for another view. */
+  private repeat(ctx: StaffContext, v: PlatSavedView, b: z.infer<typeof CreateView>, f: ViewFilter) {
+    if (v.listKind !== b.list || v.name !== trimText(b.name) || JSON.stringify(v.filter) !== JSON.stringify(f)) return problem(409, "Request already used", "This request id already made another view. Send a new one.", { code: "REQUEST_REUSED" });
     return this.one(ctx, v);
   }
 
@@ -125,14 +148,18 @@ export class SavedViewsService {
     if (!UUID.test(id)) return notFound();
     const b = parseInput(ChangeView, body ?? {});
     const firmId = firmScope(ctx.firmId).firmId;
+    // The filter is checked before the transaction (its check reads with the list's own connection: review minor).
+    const seen = await this.mine(this.d.db, ctx, id);
+    const newFilter = b.filter !== undefined ? await this.checked(ctx, seen.reg, b.filter) : undefined;
     const v = await this.d.db.$transaction(async (tx) => {
       const { v, reg } = await this.mine(tx, ctx, id, true);
+      if (b.version !== undefined && b.version !== v.updatedAt.toISOString()) stale(v);   // review M3
       if (b.shared !== undefined && b.shared !== (v.ownerStaffId === null) && !ctx.keys.includes(reg.shareKey)) notShared();
       const data: Prisma.PlatSavedViewUncheckedUpdateInput = {};
       if (b.name !== undefined) data.name = trimText(b.name);
-      if (b.filter !== undefined) data.filter = await this.checked(ctx, reg, b.filter);
+      if (newFilter !== undefined) data.filter = newFilter;
       if (b.columns !== undefined) data.columns = b.columns;
-      if (b.sort !== undefined) data.sort = b.sort ?? undefined;
+      if (b.sort !== undefined) data.sort = b.sort === null ? Prisma.DbNull : b.sort;   // null clears it (review minor)
       if (b.shared === true && v.ownerStaffId !== null) data.ownerStaffId = null;
       if (b.shared === false && v.ownerStaffId === null) data.ownerStaffId = ctx.staffId;
       const after = await tx.platSavedView.update({ where: { id: v.id }, data });
@@ -144,10 +171,13 @@ export class SavedViewsService {
   }
 
   /** Deletes a view (its owner; a shared one with the share key). */
-  async remove(ctx: StaffContext, id: string) {
+  async remove(ctx: StaffContext, id: string, body: unknown = {}) {
+    if (!UUID.test(id)) return notFound();
+    const b = parseInput(RemoveView, body ?? {});
     const firmId = firmScope(ctx.firmId).firmId;
     await this.d.db.$transaction(async (tx) => {
       const { v } = await this.mine(tx, ctx, id, true);
+      if (b.version !== undefined && b.version !== v.updatedAt.toISOString()) stale(v);
       await tx.platSavedView.delete({ where: { id: v.id } });
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "saved_view.deleted", entity: "plat_saved_view", entityKey: v.id, summary: `View deleted from ${v.listKind}`, detail: { viewId: v.id, list: v.listKind }, before: this.values(v), after: null });
     });
