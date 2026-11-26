@@ -1,5 +1,5 @@
 // PF-29a and PF-29b (R1.75; shape screens/tk-tasks/shape-r175.md part p1; concept r2.1 BR-3, BR-5, BR-8, BR-10; AG-13-1,
-// -2, -8, -62, -67; BR-19): the task table's rules (plat_task, migration 20261125150000_platform-tasks__pf29a_plat_task) and the task
+// -2, -8, -62, -67; BR-19): the task table's rules (plat_task, migration 20261126060000_platform-tasks__pf29a_plat_task) and the task
 // routes (api/src/platform/tasks/) behind PF-4's guard and PF-12's walls. Each Done when line is one named case with a pass
 // and a fail (TK1-TK8). One scratch database (every migration, PF-3's Sample firms), dropped at the end; the routes run in
 // a Nest app as the API server builds them (the local stand-in's tokens). Sample people only; no browser, no model call (US$0).
