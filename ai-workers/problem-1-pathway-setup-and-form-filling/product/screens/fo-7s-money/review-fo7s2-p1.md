@@ -128,3 +128,37 @@ I used the builder's copy `fo7s2` on :4762, serving this code (the dialog shows 
 **Not checked in round 2:** CI on fead0c665; a real screen reader; real Stripe onboarding.
 
 Reviewer: Changes fead0c6655574bfa406108be1bbdf05ac7e980f8
+
+## Round 3 (26 Nov): `git diff fead0c665..3d7bcab5f6eb3ec2bbeeab011c61adb63ed5e689`, diff only (Lead 5)
+Scope: `section.tsx` and `check_fo7s2_card_browser.ts`; the rest of the diff is records. I used the builder's copy `fo7s2` on :4762 (db `xr_studio_fo7s2`, `PLATFORM_IDENTITY=local`). Its bundle `index-DSeZJiDu.js` carries this head's new mount effect and cleanup. `check_fo7s2_card_browser.ts 4762 xr_studio_fo7s2` passed **45/45**. I restored the three screenshots it rewrote. My probes ran as sample-solo's Owner (a different firm from the suite's, so no clash), with the same onboarding stubs as S4 and a 2.5 s delay on one call at a time. The journey score from round 1 (8/10) stands: this round changes no step of the walk.
+
+**Verdict: Ship (Approve).** M1 is closed: a Cancel or a departure from the page never sends the Connect. 0 Blocker, 0 Major. 2 new Minor (Should), neither blocking.
+
+**M1, closed on every path I could reach.** The onboarding call count is 1 (the 401 alone) in every case below, and the browser stays on the copy.
+* **Cancel, Escape and the dialog's X**, each pressed while the dialog's `/platform/me` read was in flight, then again while `/platform/session/local` was in flight: 6 runs, all 1 call. Focus was back on "Connect with Stripe" after each one (m8).
+* **A second Connect after each of those 6 cancels:** the 401, then "Sign in again", then exactly one resend, and Stripe opens (3 calls in total). The flag does not stick.
+* **Leaving the page during each of the two calls:** browser Back, Alt+PageDown (another workspace tab), Alt+Shift+W (closing the Getting paid tab), and a move inside the same tab. Afterwards I opened Getting paid again from the Money menu. That made 8 runs, all 1 call, before and after the later visit.
+* **A normal step-up**, with no delay, with `/me` slowed and with the sign-in slowed: exactly 2 calls (the 401, then one resend), then Stripe.
+* **Leaks:**
+  * Another browser tab is a separate JavaScript realm, so the flags cannot reach it.
+  * A reload clears them.
+  * On a later visit in the same tab, `cancelled` may still be true. That is harmless: it only blocks a kept Connect, and every new kept Connect starts with a 401 that sets it back to false. The cleanup also takes a kept Connect that would otherwise wait for a later visit.
+* **Each guard checked by removing it** in the served bundle (my probe rewrote the script in the browser; I changed no code):
+  * Without the unmount cleanup, a move inside the same tab during either call sends the Connect when the person comes back to Getting paid (calls 2, Stripe opens). So the cleanup carries the weight on that path.
+  * Without the address check at mount, every path still holds, because the cleanup covers them. The check is a second guard.
+
+**New Minor:**
+* **m9. A plain Cancel moves focus on a later visit.** `closeAsk` always sets `refocusAt`, even when no sign-in is running and so no remount follows. Nothing clears it when the person leaves.
+  * **Probe:** I opened Invoices, then Getting paid from the Money menu, pressed Connect, pressed Cancel, closed the tab, and opened Getting paid again from the menu with the keyboard. Focus landed on "Connect with Stripe". In the same walk without the Cancel, focus stays at the page top. So for 60 s after any Cancel, opening the page jumps past its heading to the button.
+  * **Fix:** in the unmount cleanup, set `refocusAt = 0` in the branch that checks the address. Or set it only while "Sign in again" is pressed and still running.
+  * **Fail test:** Cancel with no sign-in, leave and come back within 60 s, then assert that the focused element is not `[data-card-step]`.
+* **m10. The suite does not fail if the cleanup is removed.**
+  * **Why:** the new Back line opens Getting paid in a second workspace tab, so the section stays mounted out of view. The remount after the sign-in runs the cleanup and then the address check, and either one alone keeps `calls === 1`. With the cleanup removed, the suite still passes 45/45, but the path above sends the Connect.
+  * **Fail test:** on a single tab, open `/money/settings/getting-paid` directly. Slow the dialog's `/platform/me`, click "Sign in again", and move the same tab to `/money/invoices` (Back to an earlier in-app entry, or a non-menu link). Wait for the sign-in, open Getting paid again, then assert `calls === 1`.
+  * **Also:** the S4 M1 comment says the Cancel lands "before the change is kept as well as after". At 300 ms it lands only during `/me`. The during-sign-in Cancel from round 1 is no longer in the suite. It is still guarded twice (`takeWaiting` in `closeAsk`, and `cancelled`), so this only needs a correction to the comment.
+
+**Note (not counted):** I pressed Cancel during the slow `/me`, then pressed Connect again before that sign-in landed. When the first sign-in landed, the second dialog closed and the Connect was sent (3 calls) without "Sign in again" being pressed a second time. The person's last action was Connect, and the sign-in they had started did complete, so this matches what they asked for.
+
+**Not checked in round 3:** the full CI on 3d7bcab5f. Only CodeQL and review-rounds ran, and both passed; the other jobs were skipped. Also not checked: a real screen reader and real Stripe onboarding.
+
+Reviewer: Approve 3d7bcab5f6eb3ec2bbeeab011c61adb63ed5e689
