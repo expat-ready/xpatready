@@ -2,7 +2,7 @@
 
 current_lead: local_43b637a0 Lead 2 · 26 Nov 12:44 IST (after Lead 1 local_90e2d17d at about 510k context, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 13:4x IST (clock): **Lead 2 (check 0ba55641, cron 3,33) working the owed reads; read the hand-over block first.** 64/110 Works (+1 in 24 h). Weekly **58% at 13:33, ~8%/h: 95% about 18:10 IST** (estimate); push STATE and RESUME by 94%.
+updated: 2026-11-26 14:1x IST (clock; earlier lines marked 14:3x-15:2x were written 13:5x-14:0x, mislabelled): **Lead 2 (check 0ba55641, cron 3,33) working the owed reads; read the hand-over block first.** 64/110 Works (+1 in 24 h). Weekly **58% at 13:33, ~8%/h: 95% about 18:10 IST** (estimate); push STATE and RESUME by 94%.
 
 ## Hand-over Lead 1 → Lead 2, 12:44 IST 26 Nov (Lead 1's earlier lines word for word: `history/STATE-2026-11-26-1245-lead1-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 1's 9ee4a01a is deleted. Run lead-watch from main's tools in a scratch clone (`git rev-parse` needs a git repo: `$TMPDIR/fx` style clone at origin/main), with LEAD_CONTEXT from get_usage. Re-arm the 3-minute event watch until OS-83 lands: script in Lead 1's scratchpad `lane-watch.sh` (copy: comments with "Question for the tech lead", "Ready for Lead read", label-guard removals, Mergify dequeues, merges to main; every 180 s; Monitor). Standby after you: Lead 3 local_adad5033; start one more at the founder's next typed turn.
