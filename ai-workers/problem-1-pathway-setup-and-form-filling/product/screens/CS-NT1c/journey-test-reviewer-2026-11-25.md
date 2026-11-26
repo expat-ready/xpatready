@@ -78,3 +78,8 @@ This round re-ran journey 5 (Error) on the timeline's query only, because that i
 * **Not a journey failure, but it blocks the merge:** the type check fails on 3 new errors in timeline.ts (review M2). At run time nothing changes for a person, because tsx strips types.
 
 Score: unchanged at **8/10, pass** (no 0). Every criterion is as in round 2: no step a person takes changed, and the error words are the same. Could not test: a screen reader, an intended user's walk (D17, D20).
+
+## Round 6 (075bde483), reviewer, 26 Nov
+075bde483 is a merge of main plus the migration re-stamp (the SQL is 100% the same, 3 name references updated) and the notification port's additive merge with FO-5d. No route, service, timeline or error text of this PR changed (the PR's own diff is identical to f9a8eb281's apart from the stamp), so the journeys were not walked again. Evidence at 075bde483: check_csnt1_timeline 36/36, check_csnt1_notes 56/56 (mentions notify on a case and on a case client), check_fo5d_decline_withdraw 41/41.
+
+Score: unchanged at **8/10, pass** (no 0). Could not test: a screen reader, an intended user's walk (D17, D20).
