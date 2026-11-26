@@ -11,6 +11,9 @@
 //                                 `{ firmFilter: true }` only on a route whose own query takes `?firm=<id>` and narrows
 //                                 to that firm: the line then names it (`detail.firm`), and that firm's access report
 //                                 shows it (AUD-3 part 2, breaker M1: a route that ignores `?firm=` must never record it);
+//                                 a service that answers with named firms' data calls noteFirmsRead(ids) (tracker.ts), and
+//                                 each named firm gets one `platform.system.firm_read` line too, in the same transaction
+//                                 (the breach read, R1.87 P6);
 //   @NoFirmData("why")            it touches no firm's data (our own staff's sign-in, identity and access).
 // A route with none stops the start-up with its name (access/lines.ts, SystemAccessLines).
 import { SetMetadata } from "@nestjs/common";

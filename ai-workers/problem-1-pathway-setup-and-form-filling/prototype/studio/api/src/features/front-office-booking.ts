@@ -9,5 +9,7 @@ import type { MailPort } from "../../../ports/mail.ts";
 import type { OfficeClockPort } from "../../../ports/offices.ts";
 import { OFFICE_CLOCK } from "../platform/settings/offices/clock.ts";
 import { MESSAGES_MAIL } from "./platform-messages.ts";
+import type { NotificationPort } from "../../../ports/notifications.ts";
+import { NOTIFICATION_PORT as NOTES } from "../platform/notifications/store.ts";   // FO-3v part 1: the host's "Add a video link" item
 
-export default { controllers: [BookingPublicController, BookingFeedController, BookingStaffController], providers: [Booking, BookingFeed, { provide: BOOKING_PORTS, useFactory: (mail: MailPort, offices: OfficeClockPort) => runtimeBookingPorts(mail, offices), inject: [MESSAGES_MAIL, OFFICE_CLOCK] }] } satisfies Feature;
+export default { controllers: [BookingPublicController, BookingFeedController, BookingStaffController], providers: [Booking, BookingFeed, { provide: BOOKING_PORTS, useFactory: (mail: MailPort, offices: OfficeClockPort, notes?: NotificationPort<never>) => ({ ...runtimeBookingPorts(mail, offices), notifications: notes }), inject: [MESSAGES_MAIL, OFFICE_CLOCK, { token: NOTES, optional: true }] }] } satisfies Feature;

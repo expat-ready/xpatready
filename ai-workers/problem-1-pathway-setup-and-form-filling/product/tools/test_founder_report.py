@@ -18,7 +18,7 @@ FR = os.path.join(HERE, "fixtures", "founder-report")
 STAGES = ["--stage", "Building: 4 · 2.5 h · 3/1 · ⚠️ two drafts quiet 3 h",
           "--stage", "Merge queue + machines: 5 · 50 min · 4/2 · ❌ batch failed twice",
           "--stage", "qa proof: 3 · 1 h · 2/2 · ✅ keeping up"]
-FULL = ["--needs", "nothing", "--constraint", "merge queue because 3 PRs wait 50 min → doing: requeue #14 → expect by 12:30",
+FULL = ["--needs", "nothing", "--decide", "nothing", "--constraint", "merge queue because 3 PRs wait 50 min → doing: requeue #14 → expect by 12:30",
         "--aws", "0", "--weekly", "71", "--rate", "2.5", "--context", "38"]
 
 
@@ -30,7 +30,7 @@ def run(*extra, plan=os.path.join(FR, "plan.json"), start=os.path.join(FR, "CAPA
     return r.returncode, r.stdout, r.stderr
 
 
-BLOCKS = [r"^🔴 Needs you: ", r"^━━ Cycle 07:00 → 07:00 IST ━━", r"^Stage\s+Items", r"^Constraint today: ",
+BLOCKS = [r"^🔴 Needs you: ", r"^🟡 Decide when you can: ", r"^━━ Cycle 07:00 → 07:00 IST ━━", r"^Stage\s+Items", r"^Constraint today: ",
           r"^Each capability: build → review", r"^By 19:00 \(8\):", r"^By 07:00 \(7\):", r"^Reserve / out of cycle",
           r"^Outside the 15", r"^Constraint: ",
           r"^Since last report:", r"^Money and resources: "]
@@ -48,11 +48,11 @@ class FounderReport(unittest.TestCase):
         pos = positions(out, BLOCKS)
         self.assertNotIn(None, pos, out)
         self.assertEqual(pos, sorted(pos), out)
-        self.assertTrue(out.startswith("🔴 Needs you: nothing\n"), out)
+        self.assertTrue(out.startswith("🔴 Needs you: nothing\n\n🟡 Decide when you can: nothing\n"), out)   # P-478
         lines = out.splitlines()
-        self.assertTrue(lines[4].startswith("Proven this cycle"), lines[4])     # the figures sit right under the header
-        self.assertEqual(lines[6], "```")
-        self.assertTrue(lines[7].startswith("Stage "), lines[7])          # A262: the stage table before the board
+        self.assertTrue(lines[6].startswith("Proven this cycle"), lines[6])     # the figures sit right under the header
+        self.assertEqual(lines[8], "```")
+        self.assertTrue(lines[9].startswith("Stage "), lines[9])          # A262: the stage table before the board
         print(out)
 
     def test_header_numbers(self):
@@ -122,6 +122,7 @@ class FounderReport(unittest.TestCase):
     def test_missing_inputs_print_unknown(self):
         _, out, _ = run(start=os.path.join(FR, "missing.md"))
         self.assertIn("🔴 Needs you: unknown", out)
+        self.assertIn("🟡 Decide when you can: unknown", out)             # not passed: unknown, never a guess
         self.assertIn("Proven this cycle  unknown", out)
         self.assertIn("Forecast by 07:00  unknown   ·   On track unknown", out)
         self.assertIn("Constraint: unknown", out)
@@ -138,7 +139,8 @@ class FounderReport(unittest.TestCase):
         self.assertNotIn("Constraint:", out)
         self.assertNotIn("Money and resources:", out)
         self.assertNotIn("Constraint today:", out)                         # the stage table is the full report's
-        pos = positions(out, [BLOCKS[i] for i in (0, 1, 4, 5, 6, 7, 8, 10)])
+        pos = positions(out, [BLOCKS[i] for i in (0, 1, 2, 5, 6, 7, 8, 9, 11)])
+        self.assertNotIn(None, pos, out)                                   # P-478: 1b is in the checks' report too
         self.assertEqual(pos, sorted(pos), out)
 
     def test_since_capped_at_four_and_96_time(self):
@@ -205,7 +207,12 @@ class FounderReport(unittest.TestCase):
     def test_needs_one_line_per_item(self):
         _, out, _ = run("--needs", "AWS keys · Settings · R1.13-15 cannot prove", "--needs", "US$40 run · card · R1.24 waits")
         self.assertTrue(out.startswith("🔴 Needs you:\n\n- AWS keys · Settings · R1.13-15 cannot prove\n"
-                                       "- US$40 run · card · R1.24 waits\n\n━━ Cycle"), out)
+                                       "- US$40 run · card · R1.24 waits\n\n🟡 Decide when you can: unknown\n\n━━ Cycle"), out)
+
+    def test_decide_one_line_per_item_after_needs(self):
+        _, out, _ = run("--needs", "nothing", "--decide", "OS-25 order · #3683 · none stops", "--decide", "CI parts 24 → 20 · ci.yml · none stops")
+        self.assertTrue(out.startswith("🔴 Needs you: nothing\n\n🟡 Decide when you can:\n\n- OS-25 order · #3683 · none stops\n"
+                                       "- CI parts 24 → 20 · ci.yml · none stops\n\n━━ Cycle"), out)
 
     def test_dequeued_is_red_even_without_the_approval_label(self):
         gh = os.path.join(tempfile.mkdtemp(), "github.json")

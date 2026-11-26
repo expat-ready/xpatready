@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Import board</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#dde1e8;--primary:#1f4e79;--ok:#1d6b3a;--warn:#8a5a00;--err:#a32020}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,sans-serif;padding:16px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:24px 0 8px}.sub{color:var(--muted);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;max-width:1100px;margin-bottom:16px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600;font-size:12px}
+.btn{display:inline-block;padding:9px 14px;border-radius:6px;border:1px solid var(--line);background:#fff}.btn.p{background:var(--primary);color:#fff;border-color:var(--primary)}
+.chip{display:inline-block;padding:2px 8px;border-radius:10px;border:1px solid var(--line);font-size:12px}.c{border-color:var(--ok);color:var(--ok)}.m{border-color:var(--primary);color:var(--primary)}.s{color:var(--muted)}.e{border-color:var(--err);color:var(--err)}
+.steps{display:flex;gap:8px;margin-bottom:12px;color:var(--muted)}.steps b{color:var(--ink)}
+.muted{color:var(--muted)}.box{border:1px solid var(--line);border-radius:6px;padding:10px;margin:10px 0;background:#fafbfc}
+select{padding:6px;border:1px solid var(--line);border-radius:4px}
+</style></head><body>
+<h1>Import</h1><p class="sub">Bring people in from a spreadsheet (CSV). You see a preview before anything is saved.</p>
+
+<div class="card"><div style="display:flex;justify-content:space-between"><b>Imports</b><span class="btn p">New import</span></div>
+<table><tr><th>Started</th><th>What</th><th>Source</th><th>State</th><th>Created</th><th>Merged</th><th>Skipped</th><th>Errors</th><th>By</th></tr>
+<tr><td>25 Nov 2026, 10:12</td><td>People</td><td>Old CRM</td><td><span class="chip">Done with errors</span></td><td>2</td><td>1</td><td>1</td><td>1</td><td>Owner (Sample)</td></tr></table>
+<p class="muted">Empty: "No imports yet. Download the template, fill it in, then choose New import." <span class="btn">Download the template</span></p></div>
+
+<h2>Step 1 — File</h2>
+<div class="card"><div class="steps"><b>1 File</b> › 2 Columns › 3 Preview</div>
+<p>What are you importing: <b>People</b></p><p>Where it comes from <input value="Old CRM"> <span class="muted">Used to remember your column choices.</span></p>
+<div class="box">Choose a CSV file or drop it here · <span class="muted">CSV UTF-8, at most 10 MB and 5,000 rows</span></div>
+<span class="btn p">Next: columns</span></div>
+
+<h2>Step 2 — Columns</h2>
+<div class="card"><div class="steps">1 File › <b>2 Columns</b> › 3 Preview</div>
+<div class="box">Mapping from your last import from Old CRM.</div>
+<table><tr><th>Column in your file</th><th>First values</th><th>Import as</th></tr>
+<tr><td>First name</td><td class="muted">Client · Client · Client</td><td><select><option>Given names</option></select></td></tr>
+<tr><td>Last name</td><td class="muted">A · B · C</td><td><select><option>Family name</option></select></td></tr>
+<tr><td>Email</td><td class="muted">a@client.test · b@client.test · not-an-email</td><td><select><option>Email</option></select></td></tr>
+<tr><td>Marketing</td><td class="muted">yes · no · yes</td><td><select><option>Email marketing consent</option></select></td></tr>
+<tr><td>Notes</td><td class="muted">…</td><td><select><option>Don't import</option></select></td></tr></table>
+<div class="box"><label><input type="checkbox"> I declare that each person marked "yes" in the consent column agreed to receive that kind of message from our firm, and that we can show how.</label></div>
+<div class="box"><b>An Owner's confirmation</b><br><label><input type="checkbox"> I confirm, as an Owner of this firm, that the firm may lawfully transfer the personal data in the files we import, and that the people in them were told how the firm uses their data.</label> <span class="btn">Confirm</span><br><span class="muted">Admin view: "An Owner must confirm this once before people can be imported."</span></div>
+<span class="btn">Back</span> <span class="btn p">Preview</span></div>
+
+<h2>Step 3 — Preview</h2>
+<div class="card"><div class="steps">1 File › 2 Columns › <b>3 Preview</b></div>
+<p><span class="chip c">To create 2</span> <span class="chip m">To merge 1</span> <span class="chip s">Skip 1</span> <span class="chip e">Errors 1</span> <span class="muted">Merge fills only empty fields; nothing already on a person is changed.</span></p>
+<table><tr><th>Row</th><th>Outcome</th><th>Reason</th><th>Person</th></tr>
+<tr><td>1</td><td><span class="chip c">Create</span></td><td></td><td></td></tr>
+<tr><td>2</td><td><span class="chip m">Merge</span></td><td class="muted">Fills only empty fields</td><td></td></tr>
+<tr><td>3</td><td><span class="chip e">Error</span></td><td>Email: is not an email address</td><td></td></tr>
+<tr><td>4</td><td><span class="chip s">Skip</span></td><td>Email: is the same as an earlier row of this file (that row is imported)</td><td></td></tr></table>
+<p><span class="btn">Back to columns</span> <span class="btn p">Import 3 people</span> <span class="muted">Stale: "The columns changed. Preview again before importing." (Import disabled)</span></p></div>
+
+<h2>Result</h2>
+<div class="card"><p><b>Done:</b> 2 created, 1 merged, 1 skipped, 1 not imported.</p><p class="muted">Each created row reads "Imported from Old CRM". Running: "Writing rows: 1 of 4" read every 2 s; Continue import after 60 s with no progress.</p></div>
+</body></html>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # B204 (P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the hooks"), guard 28: the
 # waves list and its page. First the real files: design/waves.tsv holds every R1 id of qa/CAPABILITIES.md exactly once
-# (101; waves.py ids) and design/waves.md's generated block matches tools/waves.py gen (statuses aside). Then waves.py on throwaway
+# (110 since P-842; waves.py ids) and design/waves.md's generated block matches tools/waves.py gen (statuses aside). Then waves.py on throwaway
 # files: a missing id fails, the full list passes, a drifted page fails, allow refuses a wave 4 item and passes a wave 1
 # item, the next wave and a noted exception, the active wave moves on when wave 1 has 3 unproven left, and wip counts
 # building and Built-not-Proven against caps 8 and 12. No network, US$0.
@@ -11,9 +11,9 @@ set -u
 PH="$TOOLS/.."; W="$TOOLS/waves.py"
 T=$(mktemp -d "${TMPDIR:-/tmp}/waves.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
 
-# 1. The real list against the real CAPABILITIES.md: every R1 id once, nothing else, 101 in all.
+# 1. The real list against the real CAPABILITIES.md: every R1 id once, nothing else, 110 in all (P-842).
 o=$(python3 -I "$W" ids 2>&1); ok "design/waves.tsv has every R1 id of CAPABILITIES.md once, and no other" "$([ $? = 0 ] && echo 1)" "$o"
-n=$(grep -cE '^\| R1\.[0-9]+ ' "$PH/qa/CAPABILITIES.md"); ok "CAPABILITIES.md has the 101 R1 items (so waves.tsv has exactly 101)" "$([ "$n" = 101 ] && echo 1)" "$n"
+n=$(grep -cE '^\| R1\.[0-9]+ ' "$PH/qa/CAPABILITIES.md"); ok "CAPABILITIES.md has the 110 R1 items (P-842; so waves.tsv has exactly 110)" "$([ "$n" = 110 ] && echo 1)" "$n"
 o=$(python3 -I "$W" check 2>&1); ok "design/waves.md's generated block matches waves.py gen" "$([ $? = 0 ] && echo 1)" "$o"
 
 # 2. waves.py on throwaway files: eleven items, wave 1 with 4 unproven (active), wave 2 next (4), wave 3 with a noted exception, wave 4.
