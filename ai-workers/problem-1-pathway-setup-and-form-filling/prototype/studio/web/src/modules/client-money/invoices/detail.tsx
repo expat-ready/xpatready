@@ -16,6 +16,7 @@ import { MONEY_AREA, MoneyMenuSmall } from "../area";
 import { billToWord, day, Detail, INVOICES_HOME, KIND_WORD, money, rateWord, STATUS_HINT, STATUS_TONE } from "./contract";
 import { CreditNotePanel } from "./credit-note-panel";
 import { RecordPaymentPanel } from "../payments/record-payment";
+import { CopyPayLink, payLinkOffered } from "./pay-link";
 
 /** The PDF needs the bearer token, so it is fetched and saved, not linked. */
 async function downloadPdf(id: string, number: string) {
@@ -71,6 +72,7 @@ function DetailBody() {
         </div>
         <div className="flex flex-wrap gap-2">
           {acts.has("RECORD_PAYMENT") && inv.number ? <Button ref={payOpener} className="max-sm:h-11" onClick={() => setPaying(true)} data-action="RECORD_PAYMENT">Record payment…</Button> : null}
+          {payLinkOffered(me.keys, inv) ? <CopyPayLink invoiceId={inv.id} /> : null}   {/* FO-7s2 part 2 */}
           {acts.has("CREDIT_NOTE") ? <Button ref={opener} variant={acts.has("RECORD_PAYMENT") ? "outline" : undefined} className="max-sm:h-11" onClick={() => setCrediting(true)} data-action="CREDIT_NOTE">Use a credit note</Button> : null}
           {acts.has("DOWNLOAD_PDF") ? <Button variant="outline" className="max-sm:h-11" busy={pdfBusy} data-action="DOWNLOAD_PDF" onClick={() => { setPdfBusy(true); setPdfProblem(null); downloadPdf(inv.id, number).catch((e) => { setPdfProblem(e instanceof StaffApiError ? e.message : "Could not download the PDF."); requestAnimationFrame(() => pdfBox.current?.focus()); }).finally(() => setPdfBusy(false)); }}>Download PDF</Button> : null}
         </div>

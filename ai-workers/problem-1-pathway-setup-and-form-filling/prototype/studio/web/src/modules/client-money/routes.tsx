@@ -5,10 +5,13 @@ import { InvoiceDetailPage } from "./invoices/detail";
 import { InvoiceListPage } from "./invoices/list";
 import { PaymentDetailPage } from "./payments/detail";
 import { PaymentListPage } from "./payments/list";
+import { PayDonePage, PayPage } from "./pay/pay-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/money/invoices", element: <InvoiceListPage /> },
   { path: "/money/invoices/:id", element: <InvoiceDetailPage /> },
   { path: "/money/payments", element: <PaymentListPage /> },   // FO-7s3a part 1
   { path: "/money/payments/:id", element: <PaymentDetailPage /> },
+  { path: "/money/pay/:token", element: <PayPage /> },   // FO-7s2 part 2 (public, no login)
+  { path: "/money/pay/:token/done", element: <PayDonePage /> },
 ];
