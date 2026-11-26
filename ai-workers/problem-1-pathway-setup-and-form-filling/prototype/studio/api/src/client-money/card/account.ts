@@ -23,7 +23,7 @@ import { SYSTEM_REPLY_TO } from "../../platform/identity/session/mail.ts";
 import { requireStepUp } from "../../platform/identity/session/step-up.ts";
 import { mailIn, mailReady } from "../../platform/messages/send/mail.ts";
 import { logPort } from "../../platform/observability/log.ts";
-import { PAYMENT_EVENTS, type CardPayments } from "./payments.ts";
+import { CARD_EVENTS, type CardPayments } from "./payments.ts";
 import { RailAccountGone, RailSignatureError, type CardRail, type RailAccount, type RailEvent } from "./rail.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -123,7 +123,7 @@ export class PaymentAccounts {
       if (e instanceof SyntaxError || (e as { name?: string }).name === "ZodError") throw problem(400, "NOT_AN_EVENT", "Not an event", "The body is not an account event.");
       throw e;
     }
-    const payment = PAYMENT_EVENTS.has(ev.type);   // FO-7c part 2b: the same endpoint carries the connected accounts' payment events
+    const payment = CARD_EVENTS.has(ev.type);   // FO-7c parts 2b and 3: the same endpoint carries the connected accounts' payment and refund events
     if ((!HANDLED.has(ev.type) && !payment) || !ev.account) return { received: true };
     const firmId = await this.ports.firmOfAccount(ev.account);
     if (!firmId) { logPort.info("payment_account_event_unmatched", { eventId: ev.id }); return { received: true }; }

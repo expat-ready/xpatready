@@ -1,0 +1,2 @@
+Entry points: card refunds through Stripe (FO-7c part 3, `card/refunds.ts` `CardRefunds`): `POST /api/front-office/money/payments/:paymentId/card-refund` (key `agent/refund:create`, 202 "Refund requested"; 409 `CARD_REFUND_REFUSED` "Record an offline refund instead"), booked on Stripe's `refund.created` / `refund.updated` (money_refund route CARD); left to refund is FO-7b's `Refunds.standing` less open requests.
+Tests: tests/check_fo7c_card_refunds.ts

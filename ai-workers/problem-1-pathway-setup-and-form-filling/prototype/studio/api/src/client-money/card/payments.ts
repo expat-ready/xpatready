@@ -21,9 +21,12 @@ import { firmScope, withFirm } from "../../platform/firm-scope.ts";
 import { logPort } from "../../platform/observability/log.ts";
 import { UUID } from "../invoices/drafts.ts";
 import { codeWord, RailAccountGone, type CardRail, type RailEvent, type RailIntent } from "./rail.ts";
+import { REFUND_EVENTS, type CardRefunds } from "./refunds.ts";
 
 type Tx = Prisma.TransactionClient;
 export const PAYMENT_EVENTS = new Set(["payment_intent.succeeded", "payment_intent.payment_failed"]);
+/** Every connected-account event card money handles: the payments here, the refunds (part 3) in card/refunds.ts. */
+export const CARD_EVENTS = new Set([...PAYMENT_EVENTS, ...REFUND_EVENTS]);
 export const POLL_QUEUE = "client_money.card_poll", POLL_CRON = "17 * * * *", POLL_WINDOW_MS = 72 * 3600_000;   // Sample: hourly, 72 hours
 const RECEIPT_SERVICE = "stripe-connect", ACTOR = "system:stripe-connect";
 
@@ -32,7 +35,7 @@ export interface CardRecorder {
   recordCard(tx: Tx, firmId: string, invoiceId: string, c: { intentId: string; amountMinor: number; currency: "CAD" | "USD" }): Promise<{ paymentId: string; replayed: boolean }>;
   afterCard(firmId: string, paymentId: string): Promise<unknown>;
 }
-export type CardPaymentPorts = { rail: CardRail; audit: AuditPort<Tx>; clock: ClockPort; recorder: CardRecorder };
+export type CardPaymentPorts = { rail: CardRail; audit: AuditPort<Tx>; clock: ClockPort; recorder: CardRecorder; refunds?: CardRefunds | null };
 
 /** The reason a declined card shows (the processor's message to the payer), kept short and on one line. */
 export const reasonOf = (i: Pick<RailIntent, "lastError">) => (i.lastError?.message ?? "The card payment did not go through.").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -42,6 +45,7 @@ export class CardPayments {
 
   /** From the webhook, the signature checked and the firm found from the account (card/account.ts). */
   async onEvent(firmId: string, ev: RailEvent & { account: string }): Promise<{ received: true }> {
+    if (REFUND_EVENTS.has(ev.type)) { if (this.p.refunds) await this.p.refunds.onEvent(firmId, ev); return { received: true }; }   // part 3
     if (!ev.objectId?.startsWith("pi_")) return { received: true };
     let intent: RailIntent;
     try { intent = await this.p.rail.readPaymentIntent(ev.account, ev.objectId); } catch (e) {

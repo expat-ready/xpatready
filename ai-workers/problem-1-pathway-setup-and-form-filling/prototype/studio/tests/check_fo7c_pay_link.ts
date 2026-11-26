@@ -63,7 +63,7 @@ try {
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
   const read = async (r: Response): Promise<Res> => { const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b, headers: r.headers }; };
   const call = async (token: string | undefined, method: string, path: string, body?: unknown, ip?: string) => read(await fetch(`${base}/api${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}), ...(ip ? { "x-forwarded-for": ip } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }));
-  ok("setup: the feature registers the pay link's and the door's controllers and CardPay beside part 1's", feature.controllers.length === 4 && feature.providers.some((p) => (p as { provide: unknown }).provide === CardPay));
+  ok("setup: the feature registers the pay link's and the door's controllers and CardPay beside part 1's (and part 3's card refund)", feature.controllers.length === 5 && feature.providers.some((p) => (p as { provide: unknown }).provide === CardPay));
 
   await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);

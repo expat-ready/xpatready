@@ -5,7 +5,8 @@
 // FO-7c part 2a: the pay link and the client's pay door (card/pay.ts) on the same rail; C5-scoped by PgMoneyVisibility
 // as the other money routes; with no rail the door offers no card (the offline details instead, AG-6-49).
 // FO-7c part 2b: card payments booked from Stripe's events (card/payments.ts) through FO-7b's InvoiceMoney.recordCard, routed
-// from the connected-accounts webhook, and the hourly poll on PF-14's runner.
+// from the connected-accounts webhook, and the hourly poll on PF-14's runner. FO-7c part 3: card refunds (card/refunds.ts) on
+// FO-7b's refund rule (Refunds.standing), booked on Stripe's refund events.
 import { randomBytes } from "node:crypto";
 import type { MailPort } from "../../../ports/mail.ts";
 import { systemClock } from "../../../ports/clock.ts";
@@ -16,9 +17,11 @@ import { PaymentAccounts } from "../client-money/card/account.ts";
 import { fakeCardRail, type CardRail } from "../client-money/card/rail.ts";
 import { CardPay } from "../client-money/card/pay.ts";
 import { CardPayments } from "../client-money/card/payments.ts";
+import { CardRefunds } from "../client-money/card/refunds.ts";
+import { Refunds } from "../client-money/invoices/refunds.ts";
 import { InvoiceMoney } from "../client-money/invoices/money.ts";
 import { PlatformJobs } from "../platform/jobs/platform-jobs.ts";
-import { PayLinkController, PaymentAccountController, PublicPayController, StripeConnectHookController } from "../client-money/card/routes.ts";
+import { CardRefundController, PayLinkController, PaymentAccountController, PublicPayController, StripeConnectHookController } from "../client-money/card/routes.ts";
 import { PgMoneyVisibility } from "../client-money/visibility-adapter.ts";
 import { StripeCardRail } from "../client-money/card/stripe-rail.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
@@ -41,7 +44,7 @@ export function cardRail() {
 const appUrl = () => process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}`;
 
 export default {
-  controllers: [PaymentAccountController, StripeConnectHookController, PayLinkController, PublicPayController],
+  controllers: [PaymentAccountController, StripeConnectHookController, PayLinkController, PublicPayController, CardRefundController],
   providers: [{ provide: PaymentAccounts, useFactory: (db: Db, mail?: MailPort, notifications?: NotificationPort<never>) => {
     const { rail, notReady } = cardRail();
     return new PaymentAccounts(db, { rail, notReady, audit: auditEvent, clock: systemClock, mail: mail ?? null, notifications: notifications ?? null, appUrl: appUrl(), firmOfAccount: firmOfAccount(db) });
@@ -50,10 +53,12 @@ export default {
     const { rail, notReady } = cardRail(), v = new PgMoneyVisibility(db);
     return new CardPay(db, { rail, notReady, audit: auditEvent, clock: systemClock, appUrl: appUrl(), scopeOf: (ctx) => v.scopeOf(ctx) });
   }, inject: [Db] },
-  { provide: CardPayments, useFactory: async (db: Db, accounts: PaymentAccounts, money: InvoiceMoney, jobs?: PlatformJobs) => {
-    const p = new CardPayments(db, { rail: cardRail().rail, audit: auditEvent, clock: systemClock, recorder: money });
+  { provide: CardRefunds, useFactory: (db: Db, refunds: Refunds) => { const v = new PgMoneyVisibility(db);
+    return new CardRefunds(db, { rail: cardRail().rail, audit: auditEvent, clock: systemClock, refunds, scopeOf: (ctx) => v.scopeOf(ctx) }); }, inject: [Db, Refunds] },
+  { provide: CardPayments, useFactory: async (db: Db, accounts: PaymentAccounts, money: InvoiceMoney, refunds: CardRefunds, jobs?: PlatformJobs) => {
+    const p = new CardPayments(db, { rail: cardRail().rail, audit: auditEvent, clock: systemClock, recorder: money, refunds });
     accounts.routePayments(p);
     if (jobs && !cardRail().notReady) await p.register(jobs);   // no rail, no poll (nothing can be paid by card here)
     return p;
-  }, inject: [Db, PaymentAccounts, InvoiceMoney, { token: PlatformJobs, optional: true }] }],
+  }, inject: [Db, PaymentAccounts, InvoiceMoney, CardRefunds, { token: PlatformJobs, optional: true }] }],
 } satisfies Feature;

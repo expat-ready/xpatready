@@ -13,6 +13,7 @@ import { OpenRead } from "../../core.ts";
 import { parseInput, strict } from "../../platform/http/input.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { PaymentAccounts } from "./account.ts";
+import { CardRefunds } from "./refunds.ts";
 import { CardPay, LINK_NOT_WORKING, PAY_TOKEN } from "./pay.ts";
 
 type R = { platform?: StaffContext; body?: unknown };
@@ -94,4 +95,12 @@ export class PublicPayController {
   session(@Param("token") token: string, @Req() r: Rq & { headers?: Record<string, string | string[] | undefined> }, @Res({ passthrough: true }) res: Rs) {
     return this.door(token, r, res, () => { notJson(r.headers); return this.pay.session(token); });
   }
+}
+
+/** FO-7c part 3: a card refund through Stripe (agent/refund:create, AG-6-23 §8); 202: asked of Stripe, booked on its event. */
+@Controller("api/front-office/money/payments")
+export class CardRefundController {
+  constructor(@Inject(CardRefunds) private readonly refunds: CardRefunds) {}
+  @Post(":paymentId/card-refund") @HttpCode(202) @PermissionKeys("agent/refund:create")
+  refund(@Req() r: { platform?: StaffContext }, @Param("paymentId") id: string, @Body() b: unknown) { return this.refunds.request(staffOf(r), id, b); }
 }

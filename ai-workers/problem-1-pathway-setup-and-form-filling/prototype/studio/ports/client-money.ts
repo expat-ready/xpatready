@@ -235,5 +235,11 @@ export const ExtraChoiceView = z.strictObject({
 });
 export type ExtraChoiceView = z.infer<typeof ExtraChoiceView>;
 /** payment.refunded: ids and figures only (no name, no email). */
-export const RefundEventPayload = z.strictObject({ refundId: uuid, paymentId: uuid, invoiceId: uuid, amountMinor: z.number().int(), currency: MoneyCurrency, route: z.literal("OFFLINE"), fromExtra: z.boolean() });
+export const RefundEventPayload = z.strictObject({ refundId: uuid, paymentId: uuid, invoiceId: uuid, amountMinor: z.number().int(), currency: MoneyCurrency, route: z.enum(["OFFLINE", "CARD"]), fromExtra: z.boolean() });   // CARD: FO-7c part 3
+/** POST …/payments/:paymentId/card-refund (FO-7c part 3, AG-6-23 r2, r4, r5): part or full, a reason, its own key. */
+export const CardRefundIn = z.strictObject({ amountMinor: whole("The amount (in cents)", 1, MINOR_MAX), reason: words("The reason", 200), idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -") });
+export type CardRefundIn = z.infer<typeof CardRefundIn>;
+/** What a card refund answers: "Refund requested" until Stripe's event confirms it (then a money_refund row exists). */
+export const CardRefundView = z.strictObject({ paymentId: z.string(), amountMinor: z.number().int(), currency: MoneyCurrency, reason: z.string(), state: z.enum(["REQUESTED", "REFUNDED"]), stateWord: z.string(), replayed: z.boolean(), leftToRefundMinor: z.number().int() });
+export type CardRefundView = z.infer<typeof CardRefundView>;
 export type RefundEventPayload = z.infer<typeof RefundEventPayload>;

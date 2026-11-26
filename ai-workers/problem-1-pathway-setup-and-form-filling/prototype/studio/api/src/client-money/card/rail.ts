@@ -29,7 +29,10 @@ export const codeWord = (c: unknown) => (typeof c === "string" && /^[a-z_]{1,40}
 export const CreateAccountInput = z.strictObject({ firmId: Firm, idempotencyKey: Key });
 export const AccountLinkInput = z.strictObject({ account: AccountId, refreshUrl: Url, returnUrl: Url });
 export const HostedPaymentInput = z.strictObject({ account: AccountId, amountMinor: Minor, currency: Currency, description: z.string().min(1).max(200), metadata: z.record(z.string().max(40), z.string().max(200)), successUrl: Url, cancelUrl: Url, expiresAtSec: z.number().int().positive().optional(), idempotencyKey: Key });
-export const RefundInput = z.strictObject({ account: AccountId, intentId: z.string().regex(/^pi_[A-Za-z0-9_]{1,200}$/), amountMinor: Minor, idempotencyKey: Key });
+export const RefundInput = z.strictObject({ account: AccountId, intentId: z.string().regex(/^pi_[A-Za-z0-9_]{1,200}$/), amountMinor: Minor, idempotencyKey: Key,
+  metadata: z.record(z.string().max(40), z.string().max(200)).optional() });   // part 3: firm_id, payment_id, refund_key
+/** Part 3: a refund as the processor has it now (read back on its event; the event's body is not trusted). */
+export type RailRefund = { id: string; status: string; amountMinor: number; currency: "CAD" | "USD"; intentId: string | null; metadata: Record<string, string> };
 export type CreateAccountInput = z.input<typeof CreateAccountInput>;
 export type AccountLinkInput = z.input<typeof AccountLinkInput>;
 export type HostedPaymentInput = z.input<typeof HostedPaymentInput>;
@@ -61,6 +64,8 @@ export interface CardRail {
   listSucceededIntents(account: string, since: Date): Promise<RailIntent[]>;
   /** Part 3: a refund on the account the payment used. Throws RailRefused when the processor refuses it. */
   refund(input: RefundInput): Promise<{ id: string; status: string }>;
+  /** Part 3: one refund of the firm's account. Throws RailAccountGone when the account cannot be read. */
+  readRefund(account: string, refundId: string): Promise<RailRefund>;
   /** Checks the signature over the exact bytes received, then reads the envelope. Throws RailSignatureError. */
   verifyEvent(rawBody: string, signature: string | undefined): RailEvent;
 }
@@ -81,6 +86,8 @@ export type FakeCardRail = CardRail & {
   /** A declined card on a hosted payment (part 2b): the intent stays unpaid and carries the decline. */
   fail(account: string, paymentId: string, code: string, message: string): RailIntent;
   refuseRefunds(on: boolean): void;
+  /** Part 3: the processor finishing a refund ("succeeded", "failed", "canceled"). */
+  settleRefund(account: string, refundId: string, status: string): RailRefund;
   /** A signature header for a body, as the processor signs it (`t=<seconds>,v1=<hmac>`), with this or another secret. */
   sign(rawBody: string, secret?: string, at?: Date): string;
   calls(): { name: string; key?: string }[];
@@ -93,6 +100,7 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
   const accounts = new Map<string, RailAccount>(), byKey = new Map<string, unknown>(), gone = new Set<string>(), log: { name: string; key?: string }[] = [];
   const payments = new Map<string, { account: string; intent: RailIntent; created: Date; paid: Date | null; expiresAt: number | null; open: boolean }>(), sent = new Map<string, string>();
   let n = 0, refusing = false;
+  const refunds = new Map<string, { account: string; r: RailRefund }>();
   const once = <T>(name: string, key: string, make: () => T): T => { log.push({ name, key }); if (!byKey.has(`${name}:${key}`)) byKey.set(`${name}:${key}`, make()); return byKey.get(`${name}:${key}`) as T; };
   const have = (account: string) => { const a = gone.has(account) ? undefined : accounts.get(AccountId.parse(account)); if (!a) throw new RailAccountGone(); return a; };
   return {
@@ -119,9 +127,12 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
     async listSucceededIntents(account, since) { have(account); return [...payments.values()].filter((p) => p.account === account && p.intent.status === "succeeded" && p.created >= since)   // by creation time, as Stripe lists them (review m6)
       .map((p) => ({ ...p.intent })); },
     async refund(input) {
-      const i = RefundInput.parse(input); have(i.account); if (refusing) throw new RailRefused("the processor refused this refund");
-      return once("refund", i.idempotencyKey, () => ({ id: `re_fake_${++n}`, status: "pending" }));
+      const i = RefundInput.parse(input); have(i.account); if (refusing) { log.push({ name: "refund", key: i.idempotencyKey }); throw new RailRefused("the processor refused this refund"); }
+      const p = [...payments.values()].find((x) => x.account === i.account && x.intent.id === i.intentId);
+      return once("refund", i.idempotencyKey, () => { const id = `re_1Fake${String(++n).padStart(6, "0")}`;   // Stripe's shape (money_refund_route_check)
+        refunds.set(id, { account: i.account, r: { id, status: "pending", amountMinor: i.amountMinor, currency: p?.intent.currency ?? "CAD", intentId: i.intentId, metadata: { ...(i.metadata ?? {}) } } }); return { id, status: "pending" }; });
     },
+    async readRefund(account, refundId) { have(account); const x = refunds.get(refundId); if (!x || x.account !== account) throw new Error("no such refund on this account"); return { ...x.r, metadata: { ...x.r.metadata } }; },
     verifyEvent(rawBody, signature) {
       // Checked by Stripe's own library (its signature rule and 300 seconds' tolerance), so the fake and the adapter cannot
       // read a header differently (round 2 n2).
@@ -136,6 +147,7 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
     fail(account, paymentId, code, message) { const p = payments.get(paymentId); if (!p || p.account !== account) throw new Error("no such hosted payment on this account");
       p.intent.status = "requires_payment_method"; p.intent.lastError = { code, message }; return { ...p.intent }; },
     refuseRefunds(on) { refusing = on; },
+    settleRefund(account, refundId, status) { const x = refunds.get(refundId); if (!x || x.account !== account) throw new Error("no such refund on this account"); x.r.status = status; return { ...x.r }; },
     sign(rawBody, withSecret = signing, at = now()) { return Stripe.webhooks.generateTestHeaderString({ payload: rawBody, secret: withSecret, timestamp: Math.floor(at.getTime() / 1000) }); },
     calls: () => log.map((c) => ({ ...c })),
   };

@@ -84,9 +84,14 @@ export class StripeCardRail implements CardRail {
   async refund(input: RefundInput) {
     const i = RefundInput.parse(input);
     try {
-      const r = await this.stripe.refunds.create({ payment_intent: i.intentId, amount: i.amountMinor }, { stripeAccount: i.account, idempotencyKey: i.idempotencyKey });
+      const r = await this.stripe.refunds.create({ payment_intent: i.intentId, amount: i.amountMinor, ...(i.metadata ? { metadata: i.metadata } : {}) }, { stripeAccount: i.account, idempotencyKey: i.idempotencyKey });
       return { id: r.id, status: r.status ?? "pending" };
-    } catch (e) { if (e instanceof Stripe.errors.StripeInvalidRequestError || e instanceof Stripe.errors.StripeCardError) throw new RailRefused("the processor refused this refund"); throw e; }
+    } catch (e) { if (e instanceof Stripe.errors.StripeInvalidRequestError || e instanceof Stripe.errors.StripeCardError) throw new RailRefused("the processor refused this refund", `stripe ${codeWord(e.code)}`); throw e; }
+  }
+
+  async readRefund(account: string, refundId: string) {
+    const r = await this.stripe.refunds.retrieve(refundId, {}, { stripeAccount: AccountId.parse(account) });
+    return { id: r.id, status: r.status ?? "pending", amountMinor: r.amount, currency: currencyOf(r.currency), intentId: typeof r.payment_intent === "string" ? r.payment_intent : (r.payment_intent?.id ?? null), metadata: { ...(r.metadata ?? {}) } };
   }
 
   verifyEvent(rawBody: string, signature: string | undefined) {
