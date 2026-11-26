@@ -6,7 +6,7 @@ import type { Feature } from "../features.ts";
 import { PlatformClock, identityConfig } from "../platform/identity/port.ts";
 import { MAIL_PORT } from "../platform/identity/session/mail.ts";
 import { CognitoIdentityAdmin, IDENTITY_ADMIN_PORT, LocalIdentityAdmin } from "../platform/identity/session/provider.ts";
-import { PlatformSessionController, PublicInvitationController } from "../platform/identity/session/routes.ts";
+import { PlatformSessionController, PlatformSignInController, PublicInvitationController } from "../platform/identity/session/routes.ts";
 import { PlatformSession } from "../platform/identity/session/service.ts";
 import { LocalSignIn, NotSetUpSignIn, SIGN_IN_BOX, SIGN_IN_PORT, SignInDoor } from "../platform/identity/session/sign-in.ts";
 import { platformConfig } from "../platform/config/settings.ts";
@@ -23,7 +23,7 @@ const adminFrom = (clock: PlatformClock) => { const c = identityConfig(); return
 const signInFrom = (clock: PlatformClock) => { const c = identityConfig(); return c.identity === "local" ? new LocalSignIn(c.localSecret ? createHash("sha256").update(`pf4bs sign-in ${c.localSecret}`).digest() : randomBytes(32), () => clock.now()) : new NotSetUpSignIn(); };
 const boxFrom = () => { const c = platformConfig(); return c.secretBox ? aesGcmSecretBox(c.secretBox) : c.environment === "local" ? aesGcmSecretBox({ current: 1, keys: new Map([[1, new Secret("sign-in attempt key (this run)", randomBytes(32).toString("base64"))]]) }) : null; };
 export default {
-  controllers: [PlatformSessionController, PublicInvitationController, StaffReadController],
+  controllers: [PlatformSessionController, PlatformSignInController, PublicInvitationController, StaffReadController],
   providers: [{ provide: IDENTITY_ADMIN_PORT, useFactory: adminFrom, inject: [PlatformClock] }, { provide: MAIL_PORT, useExisting: MESSAGES_MAIL }, PlatformSession, StaffReads,
     { provide: SIGN_IN_PORT, useFactory: signInFrom, inject: [PlatformClock] }, { provide: SIGN_IN_BOX, useFactory: boxFrom }, SignInDoor],
 } satisfies Feature;

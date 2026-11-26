@@ -95,8 +95,9 @@ export const LIMITS = { email: 5, address: 25, codesPerAttempt: 5 } as const;
 /** The attempt's owner in the secret box: the platform itself (the nil uuid stands for "no firm"), its own purpose. */
 const OWNER = { firmId: "00000000-0000-0000-0000-000000000000", purpose: "sign-in-attempt" } as const;
 const ATTEMPT_MAX = 2000;
-export const SignInInput = strict({ email: z.string().max(320).optional(), password: z.string().max(1000).optional() });
-export const CodeInput = strict({ attempt: z.string().max(ATTEMPT_MAX).optional(), code: z.string().max(20).optional() });
+/** A missing field or a wrong type is 422 naming it (PF-28, the one input rule); an empty password is the door's own 401. */
+export const SignInInput = strict({ email: z.string().max(320), password: z.string().max(1000) });
+export const CodeInput = strict({ attempt: z.string().max(ATTEMPT_MAX), code: z.string().max(20) });
 export const SIGN_IN_WORDS = {
   refused: "That email and password don't match.",
   code: "That code didn't work. Check the code in your authenticator app and try again.",
@@ -139,7 +140,7 @@ export class SignInDoor {
   async password(input: unknown, address: string) {
     const box = this.sealer(), body = parseInput(SignInInput, input), now = this.clock.now();
     if (this.byAddress.over(address, now)) problem(429, "Too many tries", SIGN_IN_WORDS.slow, { code: "TOO_MANY_TRIES" });
-    const email = emailOf(body.email), password = body.password ?? "";
+    const email = emailOf(body.email), password = body.password;
     if (!password) { this.byAddress.add(address, now); return refused(); }
     const p = await this.person(email);
     if (this.byEmail.over(email, now)) { this.byAddress.add(address, now); if (p) await this.refusedLine(p, "too many wrong passwords"); return refused(); }
@@ -156,12 +157,12 @@ export class SignInDoor {
   async code(input: unknown) {
     const box = this.sealer(), body = parseInput(CodeInput, input), now = this.clock.now();
     let a: { s: string; u: string; st: "code" | "set-up"; x: number; n: string };
-    try { a = JSON.parse(box.open(OWNER, body.attempt ?? "")); } catch (e) { if (e instanceof SecretRefused || e instanceof SyntaxError) return refused(); throw e; }
+    try { a = JSON.parse(box.open(OWNER, body.attempt)); } catch (e) { if (e instanceof SecretRefused || e instanceof SyntaxError) return refused(); throw e; }
     if (typeof a?.s !== "string" || typeof a.u !== "string" || (a.st !== "code" && a.st !== "set-up") || typeof a.x !== "number" || typeof a.n !== "string") return refused();
     for (const m of [this.usedNonces, this.wrongCodes] as Map<string, number | { x: number }>[]) for (const [n, v] of m) if ((typeof v === "number" ? v : v.x) <= now) m.delete(n);
     if (this.usedNonces.has(a.n)) return refused();   // an attempt that already signed in, or used up its tries
     if (a.x <= now) return expired();
-    const code = body.code ?? "";
+    const code = body.code;
     const r = /^\d{6}$/.test(code) ? await this.port.code({ session: a.s, username: a.u, step: a.st }, code) : { ok: false as const, why: "code" as const };
     if (!r.ok) {
       if (r.why === "expired") return expired();

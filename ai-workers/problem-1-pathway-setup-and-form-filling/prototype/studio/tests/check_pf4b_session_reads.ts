@@ -88,7 +88,7 @@ try {
   // An invitation whose token the test knows (PF-4 keeps only the hash and emails nothing yet: Question 2 on the PR).
   const invite = (email: string, o: { ageHours?: number; revoked?: boolean } = {}) => { const token = randomBytes(32).toString("base64url"), hash = createHash("sha256").update(token).digest("hex");
     const id = sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, created_at, expires_at, revoked_at) select gen_random_uuid(), '${FIRM_A}', '${email}', '{CASE_OFFICER}', '${hash}', 'staff:${R}', c, c + interval '72 hours', ${o.revoked ? "now()" : "null"} from (select now() - interval '${o.ageHours ?? 0} hours' as c) t returning id`).split("\n")[0]; return { token, id }; };
-  ok("setup: the feature registers its three controllers and the session and reads services", feature.controllers.length === 3 && (feature.providers as unknown[]).includes(PlatformSession) && (feature.providers as unknown[]).includes(StaffReads));
+  ok("setup: the feature registers its four controllers (PF-4bs part 2a: the sign-in doors) and the session and reads services", feature.controllers.length === 4 && (feature.providers as unknown[]).includes(PlatformSession) && (feature.providers as unknown[]).includes(StaffReads));
 
   let tR = await signIn("user-R"); const tO = await signIn("user-O");
   // ------------------------------------------------------------------------------- firm A's list, never firm B's

@@ -16,12 +16,7 @@ export const CallbackInput = strict({ code: z.string().optional() });   // no co
 
 @Controller("api/platform")
 export class PlatformSessionController {
-  constructor(@Inject(PlatformSession) private readonly s: PlatformSession, @Inject(SignInDoor) private readonly door: SignInDoor) {}
-  /** PF-4bs part 2a: our own sign-in page's doors (session/sign-in.ts). */
-  @Post("session/sign-in") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the email and password are the proof: there is no session yet")
-  signIn(@Body() b: unknown, @Req() r: Rq) { return this.door.password(b, ipOf(r)); }
-  @Post("session/sign-in/code") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the sealed attempt and the authenticator code are the proof")
-  signInCode(@Body() b: unknown) { return this.door.code(b); }
+  constructor(@Inject(PlatformSession) private readonly s: PlatformSession) {}
   @Post("session/callback") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the sign-in code is the proof: there is no session yet")
   callback(@Body() b: unknown) { return this.s.callback(parseInput(CallbackInput, b).code); }
   @Post("session/sign-out") @HttpCode(200) @AnyStaff("a person ends their own session")
@@ -30,6 +25,16 @@ export class PlatformSessionController {
   signOutEverywhere(@Req() r: R, @Param("id") id: string) { return this.s.signOutEverywhere(staffOf(r), id); }
   @Post("staff/:id/reset-two-step") @HttpCode(200) @PermissionKeys("agent/staff:manage")
   resetTwoStep(@Req() r: R, @Param("id") id: string) { return this.s.resetTwoStep(staffOf(r), id); }
+}
+
+/** PF-4bs part 2a: our own sign-in page's doors (session/sign-in.ts), a controller of their own. */
+@Controller("api/platform")
+export class PlatformSignInController {
+  constructor(@Inject(SignInDoor) private readonly door: SignInDoor) {}
+  @Post("session/sign-in") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the email and password are the proof: there is no session yet")
+  signIn(@Body() b: unknown, @Req() r: Rq) { return this.door.password(b, ipOf(r)); }
+  @Post("session/sign-in/code") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the sealed attempt and the authenticator code are the proof")
+  signInCode(@Body() b: unknown) { return this.door.code(b); }
 }
 
 @OpenRead("the invitation link itself: the token is the only key (PF-4b, BR-4)")

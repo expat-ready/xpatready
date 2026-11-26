@@ -49,7 +49,7 @@ const { PlatformIdentityController } = await import("../api/src/platform/identit
 const { IDENTITY_ADMIN_PORT, LocalIdentityAdmin } = await import("../api/src/platform/identity/session/provider.ts");
 const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
 const { PlatformSession } = await import("../api/src/platform/identity/session/service.ts");
-const { PlatformSessionController, PublicInvitationController } = await import("../api/src/platform/identity/session/routes.ts");
+const { PlatformSessionController, PlatformSignInController, PublicInvitationController } = await import("../api/src/platform/identity/session/routes.ts");
 const SI = await import("../api/src/platform/identity/session/sign-in.ts");
 const { Secret } = await import("../api/src/platform/config/secret.ts");
 const { aesGcmSecretBox } = await import("../api/src/platform/secret-box/aes-gcm.ts");
@@ -68,7 +68,7 @@ const appOf = async (signIn: unknown, sealer: unknown) => {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: IDENTITY_ADMIN_PORT, useValue: new LocalIdentityAdmin(() => clock.now()) }, { provide: MAIL_PORT, useValue: fakeMail() }, PlatformSession,
     { provide: SI.SIGN_IN_PORT, useValue: signIn }, { provide: SI.SIGN_IN_BOX, useValue: sealer }, SI.SignInDoor];
-  @Module({ controllers: [PlatformIdentityController, PlatformSessionController, PublicInvitationController] as never[], providers: providers as never[] }) class TestApp {}
+  @Module({ controllers: [PlatformIdentityController, PlatformSessionController, PlatformSignInController, PublicInvitationController] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1");
   return { nest, base: `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}` };
 };
@@ -82,7 +82,7 @@ try {
   const audits = (action: string, staffId?: string) => Number(sql(`select count(*) from audit_event where action = '${action}'${staffId ? ` and detail->>'staffId' = '${staffId}'` : ""}`));
   const signIn = (email: string, password = SAMPLE_PW) => call(base, "POST", "/api/platform/session/sign-in", { body: { email, password } });
   const code = (attempt: string, c: string) => call(base, "POST", "/api/platform/session/sign-in/code", { body: { attempt, code: c } });
-  ok("setup: the feature registers the sign-in door, its port and its sealing box", (feature.providers as unknown[]).includes(SI.SignInDoor) && (feature.providers as any[]).some((p) => p?.provide === SI.SIGN_IN_PORT) && (feature.providers as any[]).some((p) => p?.provide === SI.SIGN_IN_BOX));
+  ok("setup: the feature registers the sign-in controller, door, its port and its sealing box", (feature.controllers as unknown[]).includes(PlatformSignInController) && (feature.providers as unknown[]).includes(SI.SignInDoor) && (feature.providers as any[]).some((p) => p?.provide === SI.SIGN_IN_PORT) && (feature.providers as any[]).some((p) => p?.provide === SI.SIGN_IN_BOX));
 
   // ------------------------------------------------------------------ DW1: password (AG-1-40; concept §2 door 1)
   sql(`update platform_staff set last_sign_in_at = null`);
@@ -93,7 +93,8 @@ try {
   ok("PF-4bs DW1 fail: a wrong password and an unknown email get the same 401 SIGN_IN_REFUSED and the same words",
     wrong.status === 401 && unknown.status === 401 && wrong.body.code === "SIGN_IN_REFUSED" && unknown.body.code === "SIGN_IN_REFUSED" && wrong.body.detail === SI.SIGN_IN_WORDS.refused && unknown.body.detail === wrong.body.detail, [wrong.body, unknown.body]);
   const noPw = await signIn(R.email, ""), extra = await call(base, "POST", "/api/platform/session/sign-in", { body: { email: R.email, password: SAMPLE_PW, firmKey: "x" } });
-  ok("PF-4bs DW1 fail: no password → 401 SIGN_IN_REFUSED; an unknown field → 422 (the one input rule)", noPw.status === 401 && noPw.body.code === "SIGN_IN_REFUSED" && extra.status === 422, [noPw.body, extra.status]);
+  const missing = await call(base, "POST", "/api/platform/session/sign-in", { body: { email: R.email } }), missingCode = await call(base, "POST", "/api/platform/session/sign-in/code", { body: {} });
+  ok("PF-4bs DW1 fail: an empty password → 401 SIGN_IN_REFUSED; an unknown field or a missing one → 422 (the one input rule, PF-28)", noPw.status === 401 && noPw.body.code === "SIGN_IN_REFUSED" && extra.status === 422 && missing.status === 422 && missingCode.status === 422, [noPw.body, extra.status, missing.status, missingCode.status]);
 
   // --------------------------------------------------------------- DW2: the code (AG-1-55; concept §2 doors 2, 3)
   const tOld = (await call(base, "POST", "/api/platform/session/local", { body: { firmKey: "sample-firm", actorId: "user-O", secondStep: true } })).body.token as string;
