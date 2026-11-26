@@ -74,26 +74,44 @@ code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:
 </section>
 
 <section>
-  <h2>Forecast, row by row (ETA board, P-338)</h2>
-  <p class="sub">Estimates from this check's PR states, 14:2x IST. Each check marks each line on time or late by N minutes, and why. "Works" means qa-proven on main.</p>
+  <h2>Forecast from first principles (what it should take)</h2>
+  <p><b>One part, end to end, with no waiting:</b> build 1-2 h · Opus review and breaker 30-45 min · PR tests 25 min · merge batch 30 min · qa proof 45 min = <b>3-4 hours</b>. A row is 1-3 parts; parts built side by side, not stacked, so <b>a row is 4-6 hours</b>.</p>
+  <p><b>Capacity:</b> 12 builder lanes + 3 qa lanes (A405). 12 lanes × 1 part per 4 h = <b>72 parts a day ≈ 25 rows a day</b>; 3 qa lanes prove about 4 rows an hour; the merge queue (180 GitHub jobs at once, 24 per batch) takes 7 batches side by side. Tokens are covered by switching accounts. <b>So 15 a day is well inside capacity; the 46 rows left take about 3 days.</b></p>
+  <div class="box"><table>
+    <tr><th>Window (IST)</th><th>What lands</th><th style="width:14%">Works added</th><th style="width:10%">Total</th></tr>
+    <tr><td>Now → 17:30 (switch)</td><td>R1.96 (proof only), R1.112 (#3418 in the queue)</td><td class="num">2</td><td class="num">66</td></tr>
+    <tr><td>18:30 → 27 Nov 07:00</td><td>Rows with their last part in review or the queue: R1.85, R1.79, R1.60, R1.64, R1.58, R1.57</td><td class="num">6</td><td class="num">72</td></tr>
+    <tr><td>27 Nov 07:00 → 28 Nov 07:00</td><td>The other Partials (R1.5, R1.22, R1.76, R1.3, R1.35, R1.95, R1.75, R1.87, R1.34, R1.62, R1.10, R1.55, R1.45) + first shaped Not-built rows</td><td class="num">15</td><td class="num">87</td></tr>
+    <tr><td>28 Nov 07:00 → 29 Nov 07:00</td><td>Not-built rows, R1.113-R1.121 once shaped</td><td class="num">15</td><td class="num">102</td></tr>
+    <tr><td>29 Nov → 30 Nov</td><td>The tail: rows that need Stripe, Google, WhatsApp, Cognito, virus scan live</td><td class="num">8</td><td class="num">110</td></tr>
+  </table></div>
+  <p><b>Why we are slower than this today (seen on today's PRs, not averages):</b></p>
+  <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+    <li><b>Labels taken off for a missing test run:</b> about 8 approved PRs lost their label today because pr-suites or a full run never ran on the latest version (new gates P-822, P-731). Each costs 1-3 hours.</li>
+    <li><b>Lanes cannot start a full run:</b> their "/run full" arrives broken, so every full run waits for the Lead.</li>
+    <li><b>Review rounds 3-7</b> after merging main, from one shared file (OS-85 in review).</li>
+    <li><b>Stacked parts:</b> chains like #3411 → #3650 → #3686 → #3697 run one after another instead of side by side.</li>
+    <li><b>Proof waits:</b> R1.96 merged at 00:31 and had no qa proof 14 hours later.</li>
+    <li><b>Lead reads late, and the 9-hour switch gap.</b></li>
+  </ol>
+  <p><b>The setup that gives the forecast above:</b> 12 builder lanes on the rows nearest Works, parts side by side; 3 qa lanes, proof within 1 hour of a row's last merge; the Lead labels only on green PR tests and reads within 15 minutes; full runs start by themselves after an Approve (OS-87, to the pipeline lane); OS-85 ends the extra rounds; the switch follows A404.</p>
+</section>
+
+<section>
+  <h2>Forecast, row by row (ETA board, P-338: the rows behind the forecast)</h2>
+  <p class="sub">Times assume the setup above from 18:30 IST. Estimates from this check's PR states, 14:2x IST. Each check marks each line on time or late by N minutes, and why. "Works" means qa-proven on main.</p>
   <div class="box"><table>
     <tr><th style="width:24%">Capability</th><th>What is left</th><th style="width:16%">Works by (IST)</th><th style="width:22%">Waits on</th></tr>
     <tr><td>R1.96 refunds, credit notes, plans</td><td>Merged 00:31 (#3792); proof only</td><td class="num">26 Nov 16:00</td><td>qa 2 proof PR</td></tr>
     <tr><td>R1.112 video meeting links</td><td>#3418 in the merge queue now</td><td class="num">26 Nov 17:00</td><td>batch green, then qa</td></tr>
-    <tr><td>R1.85 data-request register</td><td>#3818 merged; #3713 in a batch; #3836 legal holds open</td><td class="num">27 Nov 10:00</td><td>#3836 review</td></tr>
-    <tr><td>R1.79 dashboards and reports</td><td>#3734 in a batch; #3812 money tiles in review</td><td class="num">27 Nov 12:00</td><td>#3812 Approve and read</td></tr>
-    <tr><td>R1.60 deposit on signing</td><td>#3681 full run running; part a2 after it</td><td class="num">27 Nov 14:00</td><td>full run green, then a2</td></tr>
-    <tr><td>R1.64 resumable upload</td><td>#3303 tests re-started; #3698 stacked on it</td><td class="num">27 Nov 16:00</td><td>pr-suites on #3303</td></tr>
-    <tr><td>R1.76 notes and timeline</td><td>#3649 full run; #3822, #3829, #3832 drafts</td><td class="num">27 Nov 20:00</td><td>three drafts to review</td></tr>
-    <tr><td>R1.3 walls between firms</td><td>#3811, #3823 round fixes; #3831 draft; CS-W4</td><td class="num">28 Nov</td><td>CS-W4 walls</td></tr>
+    <tr><td>R1.85 data-request register</td><td>#3818 merged; #3713 in a batch; #3836 legal holds open</td><td class="num">27 Nov 02:00</td><td>#3836 review</td></tr>
+    <tr><td>R1.79 dashboards and reports</td><td>#3734 in a batch; #3812 money tiles in review</td><td class="num">27 Nov 03:00</td><td>#3812 Approve and read</td></tr>
+    <tr><td>R1.60 deposit on signing</td><td>#3681 full run running; part a2 after it</td><td class="num">27 Nov 05:00</td><td>full run green, then a2</td></tr>
+    <tr><td>R1.64 resumable upload</td><td>#3303 tests re-started; #3698 stacked on it</td><td class="num">27 Nov 06:00</td><td>pr-suites on #3303</td></tr>
+    <tr><td>R1.76 notes and timeline</td><td>#3649 full run; #3822, #3829, #3832 drafts</td><td class="num">27 Nov 14:00</td><td>three drafts to review</td></tr>
+    <tr><td>R1.3 walls between firms</td><td>#3811, #3823 round fixes; #3831 draft; CS-W4</td><td class="num">27 Nov 18:00</td><td>CS-W4 walls</td></tr>
   </table></div>
-  <div class="stats">
-    <div class="stat"><b>2</b><span>expected Works by 07:00 27 Nov (R1.96, R1.112)</span></div>
-    <div class="stat"><b>6-8</b><span>expected by 07:00 28 Nov</span></div>
-    <div class="stat"><b>64 → 72</b><span>Works by 28 Nov (estimate)</span></div>
-    <div class="stat warn"><b>~4 Dec</b><span>all 110 at 6-8 a day once the switch settles</span></div>
-  </div>
-  <p class="sub">Why lower than 15 today: the 17:30 switch costs about an hour of lanes, and the near-Works rows each still have 1-3 parts in review. The 15-a-day path is in "The math for 15 a day" below.</p>
+  
 </section>
 
 <section>
