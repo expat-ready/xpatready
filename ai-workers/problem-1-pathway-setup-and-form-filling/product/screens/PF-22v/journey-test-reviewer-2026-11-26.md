@@ -57,3 +57,6 @@ Commit `0cfb49afd19945dd638146427fec577ef8bc47c9`. This part has no screen, so I
 
 ## Round 2 (head 8eccabb30): 7.5 / 10, still below 8
 Journeys 5, 6, 9 (the version half) and 10 now hold. Journey 3 now opens (200), but the source part is dropped whole, so the Agent sees all their leads (review R2-1). Journey 9's retry half fails: the same `requestId` with a two-key filter gets 409 REQUEST_REUSED (review R2-2). The score table is in `review.md`, Round 2.
+
+## Round 3 (head 21fce934c): 9.4 / 10, pass
+Journey 3 now holds: with mixed sources the seen ones apply; with none seen the view says `empty`, "shows nothing for you". Journey 9's retry holds: three keys in another order → same view. Plain words stay at ½ (review R3-2). The score table is in `review.md`, Round 3.

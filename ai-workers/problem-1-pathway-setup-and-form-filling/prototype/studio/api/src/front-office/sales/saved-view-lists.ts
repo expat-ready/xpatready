@@ -39,7 +39,7 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
     this.registry.registerList("fo.prospects", reg(PROSPECTS_QUERY_SHAPE, "fo_prospect"));
   }
 
-  async check(ctx: StaffContext, filter: ViewFilter, kind: "fo_person" | "fo_prospect", fixed?: "INDIVIDUAL" | "CORPORATE", mode: "save" | "read" = "read"): Promise<{ filter: ViewFilter; dropped: DroppedPart[] }> {
+  async check(ctx: StaffContext, filter: ViewFilter, kind: "fo_person" | "fo_prospect", fixed?: "INDIVIDUAL" | "CORPORATE", mode: "share" | "read" = "read"): Promise<{ filter: ViewFilter; dropped: DroppedPart[] }> {
     const out: ViewFilter = { ...filter }, dropped: DroppedPart[] = [];
     const drop = (part: string, label: string) => { delete out[part]; dropped.push({ part, label }); };
     const one = (v: unknown) => (typeof v === "string" ? v : undefined);
@@ -61,11 +61,12 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
     let empty = false;
     const asked = sourcesAsked(filter.source);
     if (asked.length) {
-      // At save a source is judged by the firm's leads (a sharer may name one their own leads lack: break round 2 R2-M1).
-      const vis = mode === "save" ? { seesAll: true, seesUnassigned: true } : await visibilityOf(this.db, ctx), seen = await sourcesSeen(this.db, ctx, vis);
+      // Sharing with the key, a source is judged by the firm's leads (a sharer may name one their own leads lack: break round 2
+      // R2-M1); otherwise by what this person sees, so a save never confirms another person's free text (QA-533; round 3 R3-M1).
+      const vis = mode === "share" ? { seesAll: true, seesUnassigned: true } : await visibilityOf(this.db, ctx), seen = await sourcesSeen(this.db, ctx, vis);
       const gone = asked.filter((x) => !seen.includes(x)), kept = asked.filter((x) => seen.includes(x));
       if (gone.length) {
-        dropped.push({ part: "source", label: `No lead you can see has the source ${gone.map((x) => `“${x}”`).join(", ").slice(0, 200)}${kept.length ? "; the other sources still apply" : ", so the view shows nothing for you"}.` });
+        dropped.push({ part: "source", label: `${mode === "share" ? "No lead in the firm has" : "No lead you can see has"} the source ${gone.map((x) => `“${x}”`).join(", ").slice(0, 200)}${kept.length ? "; the other sources still apply" : ", so the view shows nothing for you"}.` });
         if (kept.length) out.source = kept.length === 1 ? kept[0] : kept; else { delete out.source; empty = true; }
       }
     }
@@ -87,7 +88,9 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
         for (const key of Object.keys(cf)) {
           const why = fields[`cf.${key}`];
           if (why === undefined) continue;
-          drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : /too many/i.test(why) ? `The custom field “${key}” matches too many records to apply.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
+          // Too many matches: the part stays out but the view opens empty, never wider (break round 3 R3-m2).
+          if (/too many/i.test(why)) { empty = true; dropped.push({ part: `cf.${key}`, label: `The custom field “${key}” matches too many records to apply, so the view shows nothing; narrow it.` }); delete out[`cf.${key}`]; continue; }
+          drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
         }
       }
     }

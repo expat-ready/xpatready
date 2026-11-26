@@ -119,3 +119,37 @@ Closing R2-1 and R2-2 raises next step, feedback, correct data and recovery.
 D1 4 · D2 3 · D5 3 · D10 4 · D11 3 · D16 4 (V9 adds a fail test per fix; a multi-key retry and mixed sources are missing). Others as in round 1.
 
 Verdict: Changes 8eccabb30738e88a1df5289078babeb128c58d50
+
+## Round 3 (diff only): head `21fce934c89868b4855446f450c56ec5ac89170b`
+Scope: `git diff 8eccabb30..21fce934c` without the record files. Evidence: the new V9 cases (suite 39/39 per the builder), and my break run `break4.ts` against a scratch database on :54329 (dropped afterwards).
+
+### Round 2 items
+| Item | Now | Evidence |
+|---|---|---|
+| R2-1 source dropped whole | Closed | Only unseen sources are left out ("the other sources still apply"). With none seen, the view answers `empty: true` ("shows nothing for you"), never all of the viewer's leads (V9 mixed and none cases). The screen (and the Board, challenge M1) must honour `empty`, as stated in the PR. A sharer is judged at save by the firm's sources. |
+| R2-2 retry gets 409 | Closed | `canonicalJson` compares regardless of key order (V9, three keys in another order → same id, 201). A replay after a take-back → 409. |
+| R2-3 size limit | Closed | Each ":" and "," counts once more, which is never less than the database's text form. My 36-field × 100-value filter that gave a 500 now gets **422**. |
+| R2-4 words | Closed | One bad date names itself; a reversed range names `to`; the >30,000 case has its own words; literal `\u0000` text is accepted, a real NUL is refused. |
+| DELETE version | Fine | `?version=` → 409 STALE_VERSION when stale (my run); no version → 200, the same optional pattern as PATCH. If-Match on DELETE now gets PF-31's 422, as documented. |
+| Per-view queries on GET (round 1 Minor 2) | Open, follow-up | As before |
+
+### New, Minor only
+**R3-1 Minor (Should): a personal save can confirm that a source another person's leads have exists in the firm.** `saved-view-lists.ts` "save" mode judges sources by the whole firm for every caller. Break run: a `view.own` Agent saves a personal view `{source:"Secret referral"}` (another Agent's lead) and gets **201**, while a made-up source gets 400. No source is named, but a guess is confirmed, which edges against QA-533 (another person's free-text source is never revealed). Fix: judge by the firm only when the caller saves a shared view with the share key, or sees all; otherwise judge by the viewer's own sources.
+
+**R3-2 Minor (Should): a source no lead in the firm has any more opens empty, not dropped with the rest applied (BR-14; challenge M3's last sentence).** Break run: the Admin (everyone-sees-all on) saves `{view:"all", source:"Secret referral"}`. The only such lead's source is then edited. On read: `empty: true`, "…so the view shows nothing for you", and `droppedLine` "1 filter part no longer applies". Nothing is widened, and the result is truthful (no lead has the source). But BR-14 says a removed source is dropped and the rest applied. In the viewer-only case, "no longer applies" is the wording the challenge called wrong. Fix: one firm-wide check. Gone from the firm → drop and apply the rest. Gone only for this viewer → `empty` with "None of the leads you may see match this view" (not counted in `droppedLine`). Or the Lead accepts the current reading.
+
+### Round 3 journey score: 9.4 / 10 (7.5 of 8 scored; pass, no criterion at 0)
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | |
+| Next step obvious | 1 | `empty` and the named sources |
+| Plain words | ½ | R3-2 wording |
+| Feedback and state | 1 | |
+| Correct data | 1 | |
+| Error recovery | 1 | Version, retry, stored filter kept |
+| Speed | 1 | |
+| Trust and sources | 1 | |
+
+D1 4 · D2 4 · D5 4 · D10 4 · D11 4 · D16 4 (a pass and a fail for each round fix). Others as in round 1. No Blocker or Major is open; R3-1, R3-2, the per-view queries and the 400/422 note go to the follow-up and the Lead.
+
+Verdict: Approve 21fce934c89868b4855446f450c56ec5ac89170b

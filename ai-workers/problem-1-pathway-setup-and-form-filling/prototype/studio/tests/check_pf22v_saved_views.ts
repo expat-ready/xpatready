@@ -253,6 +253,8 @@ try {
   const k1 = await call("POST", V, agent.token, { requestId: keyRid, list: "fo.pipeline.individual", name: "Two keys", filter: { stage: "QUALIFIED", owner: agent.id, from: "2026-01-01" } });
   const k2 = await call("POST", V, agent.token, { requestId: keyRid, list: "fo.pipeline.individual", name: "Two keys", filter: { from: "2026-01-01", owner: agent.id, stage: "QUALIFIED" } });
   ok("PF-22v V9 pass (round 2 R2-2): a retry with the filter's keys in another order answers the same view (no 409)", k1.status === 201 && k2.status === 201 && k2.body.id === k1.body.id, [k1.status, k2.status, k2.body]);
+  const guessed = await save(agent, { list: "fo.leads", name: "Guess", filter: { source: "Web form" } });
+  ok("PF-22v V9 fail (break round 3 R3-M1, QA-533): a personal save naming a source only another person's leads have → 400, the same as a made-up one (never confirms it)", guessed.status === 400 && /you can see/.test(guessed.body.fields?.source ?? ""), guessed.body);
   const oneBad = await save(agent, { list: "fo.leads", name: "Half dates", filter: { from: "2026-01-01", to: "2026-13-45" } });
   const reversed = await save(agent, { list: "fo.leads", name: "Backwards", filter: { from: "2026-06-01", to: "2026-01-01" } });
   ok("PF-22v V9 fail (break round 2 R2-m5): a reversed range names the end", reversed.status === 400 && /before the start/.test(reversed.body.fields?.to ?? ""), reversed.body);

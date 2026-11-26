@@ -93,3 +93,31 @@ Result: a double click shows a false error and invites a duplicate save, so STAN
 **Held again:** every round-1 hold re-ran with the same results: injection and wildcards, visibility on both lists, permissions, firm walls, leavers, odd keys and text. The 10× race of delete, take-back and the Agent's rename, now with versions, has one winner each time and no 500. `inlist.mts`: 32,000 ids pass and 33,000 fail, so the 30,000 limit keeps the list under the database's parameter limit.
 
 Verdict: Changes 8eccabb30738e88a1df5289078babeb128c58d50
+
+## Round 3 (diff only, 21fce934c)
+**What was run:** `break-r3.mts` and `inlist-r3.mts`, against a clean `git archive` of 21fce934c (`/tmp/claude-0/pf22v-r3src`). `break-r3.mts` is round 2's script with DELETE switched to `?version=`, plus about 45 new calls. A second Owner with no leads was added, and another Agent's lead with the free-text source "Referral: Acme Holdings". The database was dropped. Rounds 1 and 2 re-ran, and every difference from round 2 is one of the intended fixes.
+
+**Closed**
+* **R2-M1 (read side):** "R2 Phone+Web" now opens for the Agent with `applies {source:"Phone call"}` and 2 rows; only the unseen source is left out and named. "R2 Web form" now gives `empty: true` with the line "…so the view shows nothing for you." An Owner with no leads can share "Web form" (201). A viewer who has the source keeps it (`dropped: []`).
+* **R2-M2:** three identical creates at once → 201 ×3 with one id and one row. Retries that are exact, reordered, or use an upper-case request id → 201.
+* **R2-m1:** sizes up to n=190 (15,994 by the bound, and the same 15,994 in the database) save; n=200 → 422; the round-2 crafted filter → 422. No 500. Literal `\u0000` text saves, a real NUL → 422, and control characters save.
+* **R2-m3 (c):** the two-part filter (31 k each, 12 in common) saves, opens with `dropped: []`, and lists the 1 prospect.
+* **R2-m4:** a replay after another person's take-back → 409. After one's own take-back → 201.
+* **R2-m5:** "2026-03-01..2026-02-01" → `to`: "The end date is before the start date." A bad `to` drops only `to`.
+* **DELETE:** a stale `?version=` → 409 STALE_VERSION. If-Match, a repeated `version` or an extra key → 422. An Agent deleting a shared view → 403.
+
+**R3-M1 (Major, new): saving a view now confirms another person's free-text source to a `view.own` Agent. This undoes QA-533's guarantee.**
+At save, a source is judged against every lead in the firm, for any caller, whether or not they share or hold the key (`saved-view-lists.ts:65`).
+Repro: the Agent's own choices are Phone call and Referral. `GET /prospects?source=Referral: Acme Holdings` → 422, which is the list's deliberate non-answer. But a personal view POSTed with `{list:"fo.leads", filter:{source:"Referral: Acme Holdings"}}` (the other Agent's lead) → **201** (`empty: true`), while `"Referral: Nobody Ltd"` → **400**. So any staff member can test whether a guessed source text exists on leads they may not see, which `source-filter.ts:1-4` (QA-533) promises never to reveal. The 400's words "No lead you can see has … so the view shows nothing for you" are also wrong at save, because there the judgment is firm-wide.
+Fix: judge firm-wide only for a caller who sees all leads, or who is sharing (`shared:true` and the share key). For everyone else, judge by what the viewer sees, as on read.
+
+**Minor**
+* **R3-m1: `applies` alone is not safe to open.** For "R2 Web form" the API returns `applies: {}` with `empty: true`. A client that opens `applies` without reading `empty` gets all 3 of the Agent's prospects (shown). The screen (PF-22s) has to honour `empty`, and its tests should cover it. A sturdier contract would leave in `applies` a part that makes the list return nothing.
+* **R3-m2: an over-limit cf part still widens a view (the stated stop-gap).** "R3 vip three" was saved when it matched 1 prospect. After its field grows past 30 k firm-wide, it opens with `dropped: [cf.vip_three "matches too many records to apply"]`, `empty: false` and `applies: {}`, so the list shows 3 rows instead of 1. This is the same "show everything" outcome that M3 rejected for sources (`saved-view-lists.ts:90`). The count still runs before visibility, as the builder states.
+* **R3-m3: DELETE ignores a body.** `DELETE {version:<stale>}` in the body (round 2's contract) → **200, deleted**: the version is silently not checked. Any other unknown input is a 422 (PF-28), so a body should be refused too.
+* **Trivial:** a retry whose `owner` is in upper case → 409 REQUEST_REUSED, because the filter is compared as sent.
+* **Unchanged and stated:** R2-m2 (optional version) is left for the Lead, and m5 (queries per view) is unchanged.
+
+**Held again:** injection and wildcards, visibility on both lists, permissions (403/404), firm walls, leavers, odd keys and text, and the Prisma limit (32,000 ids pass, 33,000 fail). The 10× race of delete (`?version=`), take-back and the Agent's rename has one winner each time, no 500, and audit lines matching the outcomes.
+
+Verdict: Changes 21fce934c89868b4855446f450c56ec5ac89170b

@@ -26,9 +26,10 @@ export type SavedViewCaller = { firmId: string; staffId: string; keys: readonly 
 export type ListRegistration<C extends SavedViewCaller = SavedViewCaller> = {
   filterSchema: z.ZodType<ViewFilter>;
   shareKey: string;
-  /** The filter as it applies today: the parts that no longer apply removed and named. "save": judged by the firm's
-   *  data (a sharer may name a source their own records lack); "read" (the default): judged for this viewer. */
-  check(ctx: C, filter: ViewFilter, mode?: "save" | "read"): Promise<{ filter: ViewFilter; dropped: DroppedPart[]; empty?: boolean }>;
+  /** The filter as it applies today: the parts that no longer apply removed and named. "share": a holder of the share
+   *  key saving a shared view, judged by the firm's data (they may name a source their own records lack); "read" (the
+   *  default, also every personal save): judged by what this person sees, so a save never confirms data they cannot see. */
+  check(ctx: C, filter: ViewFilter, mode?: "share" | "read"): Promise<{ filter: ViewFilter; dropped: DroppedPart[]; empty?: boolean }>;
 };
 
 export interface SavedViewPort<C extends SavedViewCaller = SavedViewCaller> {

@@ -66,10 +66,11 @@ export class SavedViewsService {
   }
 
   /** The filter as the list's schema reads it, and every part applying today; else 400 INVALID_FILTER naming the part. */
-  private async checked(ctx: StaffContext, reg: ListRegistration<StaffContext>, raw: unknown): Promise<ViewFilter> {
+  private async checked(ctx: StaffContext, reg: ListRegistration<StaffContext>, raw: unknown, shared = false): Promise<ViewFilter> {
     const r = reg.filterSchema.safeParse(raw);
     if (!r.success) return invalid(Object.fromEntries(Object.entries(fieldsOf(r.error)).map(([k, v]) => [k, v])));
-    const c = await reg.check(ctx, r.data, "save");
+    // Firm-wide only for a shared view saved with the share key (break round 3 R3-M1: a personal save is judged by what the saver sees).
+    const c = await reg.check(ctx, r.data, shared && ctx.keys.includes(reg.shareKey) ? "share" : "read");
     if (c.dropped.length) return invalid(Object.fromEntries(c.dropped.map((d) => [d.part, d.label])));
     return r.data;
   }
@@ -115,7 +116,7 @@ export class SavedViewsService {
     const b = parseInput(CreateView, body ?? {});
     const { list, reg } = this.reg(b.list);
     if (b.shared && !ctx.keys.includes(reg.shareKey)) return notShared();
-    const f = await this.checked(ctx, reg, b.filter);
+    const f = await this.checked(ctx, reg, b.filter, b.shared === true);
     const firmId = firmScope(ctx.firmId).firmId;
     const id = idOf(firmId, ctx.staffId, b.requestId);
     const again = await this.d.db.platSavedView.findFirst({ where: firmScope(firmId, { id }) });
@@ -156,7 +157,7 @@ export class SavedViewsService {
     const firmId = firmScope(ctx.firmId).firmId;
     // The filter is checked before the transaction (its check reads with the list's own connection: review minor).
     const seen = await this.mine(this.d.db, ctx, id);
-    const newFilter = b.filter !== undefined ? await this.checked(ctx, seen.reg, b.filter) : undefined;
+    const newFilter = b.filter !== undefined ? await this.checked(ctx, seen.reg, b.filter, b.shared ?? seen.v.ownerStaffId === null) : undefined;
     const v = await this.d.db.$transaction(async (tx) => {
       const { v, reg } = await this.mine(tx, ctx, id, true);
       if (b.version !== undefined && b.version !== v.updatedAt.toISOString()) stale(v);   // review M3
