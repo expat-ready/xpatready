@@ -78,3 +78,35 @@ Screen laws (§7), scored at 1440, 1024 and 375 (I took no 1280 shot): UXL-01 to
 Reviewer: Block a66e6a13a12487ac0e8db6fe283ed92a44cf7ec1
 
 Verdict: Block on a66e6a13a12487ac0e8db6fe283ed92a44cf7ec1. Blockers: none. Majors: M1 (`contract.ts:74-75`, `party.tsx:78`). Minors: m1-m9.
+
+## Round 2: `a327ff37a3988eba1f3463cbdc37890f5cb1ede3` (diff since my Block only: `a66e6a13a..a327ff37a`)
+Same reviewer, 26 Nov 2026. The code diff is limited to `trust/contract.ts`, `trust/home.tsx`, `trust/party.tsx` and the browser check. The commit also adds the review and break records and screenshots.
+
+**Suites on my copy:** `check_fo7s3b_ledger_browser.ts 4761 xr_studio_rv3b` (isolated copy `rv3b`, AI off, US$0) passed **26/26 twice**, on a fresh database and then on the same database. The screenshots it rewrote were restored, and the copy is stopped.
+
+**M1: fixed.**
+* Trust held now uses the server's total. Only parts above zero count as "cases" (`contract.ts:72-78`).
+* A case, or the money before a case, that is below zero gets its own red notice (`party.tsx:84-86`, `:108-114`), with its figure in red and the label beside it.
+* My round-1 state, walked again: CAD 500.00 on a case, and the pre-case cheque refunded and then reversed. The page now reads "Trust held: CAD 300.00 (1 case)", then the notice "Before a case: **−CAD 200.00** (Trust shortfall after a reversal). Your firm needs to put CAD 200.00…" (`r2-A-precase-short-1440`).
+* Total exactly zero (case +200, pre-case −200): the held line reads CAD 0.00 and a red, labelled notice shows the pre-case part.
+* Total below zero (case +100, pre-case −300): one notice reads −CAD 200.00, red and labelled.
+* The DW7 scan found no bare negative figure in any of the three states.
+* The breaker's mirror (a case below zero inside a positive total) is now a test line, and it passes.
+
+**The other changes, each checked in the browser:**
+* **One ledger per currency, newest first in each (breaker M2): met.** There are tables "Trust ledger — CAD" and "Trust ledger — USD", and the suite's new line holds.
+* **Show more (my m5): fixed.** Focus lands on the first new row (row 51), which has a visible 2 px outline. It is still there 3 s later and after a window-focus refetch, and the next Tab goes to Show more.
+* **A failed later page: fixed.** I forced a 500 on the next page: 100 rows stay, "Sample failure" shows under them, Show more is still offered, and a retry loads all 120. axe found 0 issues.
+* **My m1 is fixed** (the server's total). **My m8 is partly fixed:** C5 on the shortfall list and M1's state now have test lines; the finder and the Show more focus still have none.
+* **The finder's hint** now says whom it lists. Long names wrap. There is no sideways scroll at 375.
+
+**New, Should:**
+* **n1:** when a shortfall sits beside money held, the held line counts cases without their amounts, for example "Trust held: CAD 0.00 (1 case)" while that case holds CAD 200.00.
+* When the total is below zero, only the net notice shows; the parts (case +100, pre-case −300) are not listed.
+* Neither shows a bare negative, so BR-3 holds. Fix: show each case's amount in the brackets, or list the parts under the notice.
+
+**Still open from round 1 (Should):** m2 (tooltips), m3 (crumb and tab say "Client"), m4 (UTC date format), m6 (Balance off-screen at 375), m7 (a request per keystroke), m9 (G8 and the refund reference not listed in the PR body). None of them blocks.
+
+Reviewer: Approve a327ff37a3988eba1f3463cbdc37890f5cb1ede3
+
+Verdict: Approve on a327ff37a3988eba1f3463cbdc37890f5cb1ede3. Blockers: none. Majors: none open (M1 fixed). Minors: n1, m2, m3, m4, m6, m7, m8 (part), m9.
