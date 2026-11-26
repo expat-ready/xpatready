@@ -46,18 +46,24 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
     // Each value as the list itself reads it, so a saved view never opens to the list's 422 (review M1, M2).
     if (kind === "fo_person" && one(filter.view) && !(VIEWS as readonly string[]).includes(one(filter.view)!)) drop("view", `“${one(filter.view)}” is not a view of the leads list.`);
     if (kind === "fo_prospect" && !fixed && one(filter.type) && !["INDIVIDUAL", "CORPORATE"].includes(one(filter.type)!.toUpperCase())) drop("type", "The pipeline is Individual or Corporate.");
-    if (filter.from !== undefined || filter.to !== undefined) {
-      try { await dayRange(this.db, ctx.firmId, filter.from, filter.to); } catch (e) {
+    for (const part of ["from", "to"] as const) {   // each side on its own, so one bad date drops only itself (round 2 R2-4)
+      if (filter[part] === undefined) continue;
+      try { await dayRange(this.db, ctx.firmId, part === "from" ? filter.from : undefined, part === "to" ? filter.to : undefined); } catch (e) {
         if (!(e instanceof HttpException)) throw e;
-        for (const part of ["from", "to"]) if (filter[part] !== undefined) drop(part, "This date is not a real day (YYYY-MM-DD).");
+        drop(part, "This date is not a real day (YYYY-MM-DD).");
       }
     }
-    // challenge M3: a source no lead this person can see has is dropped for them (said), never a 422 from the list.
+    // challenge M3: only the sources no lead this person can see has are left out (said); the others still narrow. When
+    // none is left, the view opens empty for them (`empty`), never as every lead they see (round 2 R2-1).
+    let empty = false;
     const asked = sourcesAsked(filter.source);
     if (asked.length) {
       const vis = await visibilityOf(this.db, ctx), seen = await sourcesSeen(this.db, ctx, vis);
-      const gone = asked.filter((x) => !seen.includes(x));
-      if (gone.length) drop("source", `No lead you can see has the source ${gone.map((x) => `“${x}”`).join(", ").slice(0, 200)}.`);
+      const gone = asked.filter((x) => !seen.includes(x)), kept = asked.filter((x) => seen.includes(x));
+      if (gone.length) {
+        dropped.push({ part: "source", label: `No lead you can see has the source ${gone.map((x) => `“${x}”`).join(", ").slice(0, 200)}${kept.length ? "; the other sources still apply" : ", so the view shows nothing for you"}.` });
+        if (kept.length) out.source = kept.length === 1 ? kept[0] : kept; else { delete out.source; empty = true; }
+      }
     }
     if (kind === "fo_prospect" && typeof filter.stage === "string" && filter.stage) {
       const type = fixed ?? (typeof filter.type === "string" && filter.type ? filter.type.toUpperCase() : "INDIVIDUAL");
@@ -72,9 +78,9 @@ export class FrontOfficeSavedViewLists implements OnModuleInit {
       try { await customFieldIdsWhere(this.db, ctx.firmId, kind, { [key]: values }); } catch (e) {
         if (!(e instanceof HttpException)) throw e;
         const why = (e.getResponse() as { fields?: Record<string, string> }).fields?.[`cf.${key}`] ?? "";
-        drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
+        drop(`cf.${key}`, /no such field/i.test(why) ? `The custom field “${key}” was archived.` : /too many/i.test(why) ? `The custom field “${key}” matches too many records to apply.` : `The value no longer fits the custom field “${key}”.`);   // review minor: a reason, not an error
       }
     }
-    return { filter: out, dropped };
+    return { filter: out, dropped, empty };
   }
 }

@@ -59,3 +59,63 @@ Each view then makes its list answer 422 every time it is opened. AG-2-23 says "
 D1 3: B1, M2 and the row met; M3 and "invalid filter refused" are not. · D2 2: a filter that cannot work can be saved; double create makes 2 rows; stale write overwrites. · D3 4: one filter language, one registry; the port is shared by the real adapter and the fake. · D4 3: decimal ranges cannot be expressed. · D5 2: no idempotency, no version; a 500 on oversize. · D6 4: one audit line for each change, filter keys only. · D7 N/A (no AI). · D8, D9 N/A (API). · D10 3: dropped-part words (Minor 3). · D11 3: `droppedLine`, `canChange` and `canShare` are given, but opening a shared source view gets a 422. · D12, D13, D14 N/A. · D15 4: 44 ms for 22 views; N+1 at scale. · D16 4: a pass and a fail for each Done-when; BR-13's pass half is weak. · D17 simulated only · D18 4: owners labelled, a leaver shown as "Former staff member"/inactive, dropped parts named. · D19 N/A (no screen yet) · D20 simulated only.
 
 Verdict: Changes 0cfb49afd19945dd638146427fec577ef8bc47c9
+
+## Round 2 (diff only): head `8eccabb30738e88a1df5289078babeb128c58d50`
+Scope: `git diff 0cfb49afd..8eccabb30` without part 2's files, plus `filter.ts`. Evidence: the new V9 cases, and my break run against the same scratch database on :54329 (`break2.ts`, `break3.ts` in the reviewer's scratchpad; the database was dropped afterwards). The harness has no global `IfMatchVersion`, so I checked If-Match only by reading: the feature `platform-if-match.ts` registers it app-wide.
+
+### Round 1 items
+| Item | Now | Evidence |
+|---|---|---|
+| Major 1 (challenge M3) source for `view.own` | **Partly**: the 422 is gone, but see R2-1 | V9 "Web leads"; my run |
+| Major 2 values checked at save | Closed | view, type, from/to and source → 400 naming the part (V9) |
+| Major 3 version on PATCH/DELETE | Closed | 409 STALE_VERSION with `current` (V9). `version` is optional, as on PF-22a's field PATCH (house pattern). |
+| Major 4 idempotent create | **Partly**: see R2-2 | V9 passes only for an empty filter |
+| Major 5 decimal ranges | Closed | `filter.ts` splits on the first ".." (V9 cases in and out of range) |
+| Major 6 oversized filter gets a 500 | Closed for realistic input; one path is left (R2-3, Minor) | V9 "Huge" → 422 |
+| Minor 1 sort null, Minor 3 words, Minor 4 BR-13 pass half | Closed | V9; `saved-view-lists.ts:75` |
+| Minor 2 per-view queries | Open, deferred by the builder to a follow-up | Acceptable at sample scale (44 ms / 22 views) |
+| Minor 5 400 vs 422 | Stated in the PR; the Lead records it in the row | |
+
+### New and remaining issues
+**R2-1 Major (Must): a source part is dropped whole, so the view widens to every source.** `saved-view-lists.ts:57-60` drops all of `source` when any one value is unseen. Break run:
+- Steps: the Admin shares `{view:"all", source:["Web form","Phone call"]}`. An Agent who has Phone call leads but no Web form lead opens it.
+- Result: `applies` = `{view:"all"}` and `dropped` = source, so the Agent gets all of their leads from every source, not their Phone call leads.
+- This is inside their visibility (BR-13 holds), but the view's meaning is lost.
+
+When no value is seen, the build drops the part and shows all of the Agent's own rows. Challenge M3 names exactly that as wrong ("the source is dropped and the Agent sees **all** their leads. Both are wrong"), and its back-end plan's test says "own rows or empty, never all". The deviation is not recorded in `challenge.md` or in the PR body (CLAUDE.md: never deviate silently).
+
+Fix:
+- Drop only the unseen values and keep the seen ones.
+- For the all-unseen case, either build M3 as written (keep the part; the list answers an empty page when the source exists in the firm), or write the disagreement in `challenge.md`/the PR so the Lead decides. The Lead's confirmation is what M3 asks for.
+- Add a mixed-source pass/fail case.
+
+**R2-2 Major (Must): a real retry gets 409 REQUEST_REUSED (STANDARDS §4 [M] idempotent creates).** `service.ts:131` compares `JSON.stringify(v.filter)` with `JSON.stringify(f)`. PostgreSQL's jsonb stores keys reordered (shorter first, then byte order), so the two strings differ whenever zod's key order differs from jsonb's. Break run:
+- `{view:"all", from:"2026-01-01"}` sent twice with one `requestId` → 201, then **409**. One row was kept.
+- Two parallel POSTs of `{stage:"QUALIFIED", owner:<id>}` (a double click) → **409** and 201.
+
+A client that retries after a timeout is told its request id was misused, and may resend with a new id, which makes the duplicate. Fix: compare key-order-free (sort keys deep, or compare list and name only), and add a V9 case with two or more filter keys.
+
+**R2-3 Minor (Should): the size limit does not measure what the database measures.** `service.ts:33` counts `JSON.stringify` (no spaces). The check counts `filter::text`, and jsonb text adds a space after every ":" and ",". Break run: 36 MULTI_SELECT fields × 100 values, 14,967 characters stringified → **500** (check violation). This is contrived, since it needs 36 fields and a hand-built request. Fix: allow one character per array element and per key in the count, or cap well below the database's limit (for example, 12,000).
+
+**R2-4 Minor (Should): words.**
+- `filter.ts:98`: a cf filter over 30,000 matches, when it happens in a view check, is dropped as "The value no longer fits the custom field" (`saved-view-lists.ts:75`).
+- `saved-view-lists.ts:52`: one bad date drops both `from` and `to`.
+- `service.ts:33`: a filter value containing the literal six characters `\u0000` is refused as a NUL.
+
+### Round 2 journey score: 7.5 / 10 (6 of 8 scored; still below 8)
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | |
+| Next step obvious | ½ | R2-1 |
+| Plain words | 1 | Dropped reasons are now worded as reasons |
+| Feedback and state | ½ | A 409 on a double click (R2-2) |
+| Correct data | ½ | The source part widens the view (R2-1) |
+| Error recovery | ½ | Version is fixed; the retry gets 409 (R2-2) |
+| Speed | 1 | |
+| Trust and sources | 1 | |
+
+Closing R2-1 and R2-2 raises next step, feedback, correct data and recovery.
+
+D1 4 · D2 3 · D5 3 · D10 4 · D11 3 · D16 4 (V9 adds a fail test per fix; a multi-key retry and mixed sources are missing). Others as in round 1.
+
+Verdict: Changes 8eccabb30738e88a1df5289078babeb128c58d50

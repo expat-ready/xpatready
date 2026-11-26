@@ -243,6 +243,19 @@ try {
   const agentOpens = await call("GET", `${FO}/leads?${new URLSearchParams(agentWeb?.applies ?? {})}`, agent.token);
   ok("PF-22v V9 pass (review M1, challenge M3): the Admin shares a source view; for an Agent whose leads lack that source the part is dropped and named, and the rest opens (200)",
     webView.status === 201 && agentWeb?.dropped[0]?.part === "source" && /Web form/.test(agentWeb.dropped[0].label) && agentOpens.status === 200, [webView.body, agentWeb, agentOpens.status]);
+  ok("PF-22v V9 fail (round 2 R2-1, challenge M3): with none of its sources seen, the view opens empty for the Agent (empty: true), never as all their leads", agentWeb?.empty === true && /shows nothing/.test(agentWeb.dropped[0].label), agentWeb);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  const mixed = await save(admin, { list: "fo.leads", name: "Web or phone", filter: { view: "all", source: ["Web form", "Phone call"] }, shared: true });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  const agentMixed = (await call("GET", `${V}?list=fo.leads`, agent.token)).body.shared.find((v: { id: string }) => v.id === mixed.body.id);
+  ok("PF-22v V9 pass (round 2 R2-1): a mixed-source view keeps the sources the Agent sees (Phone call) and names only the unseen one",
+    mixed.status === 201 && agentMixed?.applies.source === "Phone call" && agentMixed.empty === false && /Web form/.test(agentMixed.dropped[0].label) && /still apply/.test(agentMixed.dropped[0].label), agentMixed);
+  const keyRid = randomUUID();
+  const k1 = await call("POST", V, agent.token, { requestId: keyRid, list: "fo.pipeline.individual", name: "Two keys", filter: { stage: "QUALIFIED", owner: agent.id, from: "2026-01-01" } });
+  const k2 = await call("POST", V, agent.token, { requestId: keyRid, list: "fo.pipeline.individual", name: "Two keys", filter: { from: "2026-01-01", owner: agent.id, stage: "QUALIFIED" } });
+  ok("PF-22v V9 pass (round 2 R2-2): a retry with the filter's keys in another order answers the same view (no 409)", k1.status === 201 && k2.status === 201 && k2.body.id === k1.body.id, [k1.status, k2.status, k2.body]);
+  const oneBad = await save(agent, { list: "fo.leads", name: "Half dates", filter: { from: "2026-01-01", to: "2026-13-45" } });
+  ok("PF-22v V9 fail (round 2 R2-4): one bad date names only itself", oneBad.status === 400 && !!oneBad.body.fields?.to && !oneBad.body.fields?.from, oneBad.body);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
   const adminAll = await call("GET", `${FO}/prospects?${new URLSearchParams(seenBy[0].body.shared[0].applies)}`, admin.token);
   ok("PF-22v V9 pass (review minor, BR-13): with everyone-sees-all, the same shared view shows the Admin every open prospect (3)", adminAll.status === 200 && adminAll.body.length >= 3, adminAll.body.length);

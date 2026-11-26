@@ -14,7 +14,8 @@ export const ListKind = z.string().regex(/^[a-z][a-z0-9_.]*$/).max(64);
 export const VIEW_NAME_MAX = 80;
 /** A saved filter: the list's query words (a value is text or a list of text). */
 export type ViewFilter = Record<string, string | string[]>;
-/** A filter part that no longer applies: its query key and the plain words that say why. */
+/** A filter part that no longer applies: its query key and the plain words that say why. A check may also say the view
+ *  opens empty for this viewer (`empty`): a part narrows to nothing they can see, so the list shows nothing, never more. */
 export type DroppedPart = { part: string; label: string };
 /** The words for the parts dropped: "1 filter part no longer applies" (AG-2-23 failure state). */
 export const droppedLine = (n: number) => (n ? `${n} filter part${n === 1 ? "" : "s"} no longer appl${n === 1 ? "ies" : "y"}` : null);
@@ -26,7 +27,7 @@ export type ListRegistration<C extends SavedViewCaller = SavedViewCaller> = {
   filterSchema: z.ZodType<ViewFilter>;
   shareKey: string;
   /** The filter as it applies today: the parts that no longer apply removed and named. */
-  check(ctx: C, filter: ViewFilter): Promise<{ filter: ViewFilter; dropped: DroppedPart[] }>;
+  check(ctx: C, filter: ViewFilter): Promise<{ filter: ViewFilter; dropped: DroppedPart[]; empty?: boolean }>;
 };
 
 export interface SavedViewPort<C extends SavedViewCaller = SavedViewCaller> {

@@ -19,6 +19,7 @@ import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
 import { droppedLine, VIEW_NAME_MAX, type ListRegistration, type SavedViewPort, type ViewFilter } from "../../../../ports/saved-views.ts";
 import { storable, trimText } from "../../../../ports/custom-fields.ts";
 import { firmScope } from "../firm-scope.ts";
+import { canonicalJson } from "../idempotency.ts";
 import { fieldsOf, parseInput, strict } from "../http/input.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
 
@@ -30,7 +31,11 @@ const name = z.string().max(400).refine(storable, "Use letters, digits and punct
 const columns = z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/, "a column name")).max(50).refine((a) => new Set(a).size === a.length, "each column once.");
 const sort = strict({ by: z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/), dir: z.enum(["asc", "desc"]) }).nullable();
 /** At most 16,000 characters as JSON: under the database's 16,384, so a large filter is a 400, never its check's 500 (review M6). */
-const filter = z.record(z.string().max(64), z.unknown()).refine((f) => !JSON.stringify(f).includes("\\u0000"), "Use letters, digits and punctuation only.").refine((f) => JSON.stringify(f).length <= 16000, "The filter is too long (at most 16,000 characters).");
+const strings = (v: unknown): string[] => (typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(strings) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => [k, ...strings(x)]) : []);
+/** The database measures its own text form, a space after each ":" and ","; counting each of those once more is an upper
+ *  bound, so a long filter is a 422 here, never its check's 500 (review M6, round 2 R2-3). No NUL in any value (break m1). */
+const filter = z.record(z.string().max(64), z.unknown()).refine((f) => strings(f).every(storable), "Use letters, digits and punctuation only.")
+  .refine((f) => { const s = JSON.stringify(f); return s.length + (s.match(/[,:]/g)?.length ?? 0) <= 16000; }, "The filter is too long (at most 16,000 characters).");
 const version = z.string().max(80);
 /** A new view names its request (STANDARDS §4): the same request again answers the view it made (review M4). */
 export const CreateView = strict({ requestId: z.string().regex(UUID, "a request id (uuid)"), list: z.string().max(64), name, filter, columns: columns.optional(), sort: sort.optional(), shared: z.boolean().optional() });
@@ -80,7 +85,7 @@ export class SavedViewsService {
     const c = parsed.success ? await reg.check(ctx, parsed.data) : { filter: {}, dropped: Object.keys(stored).map((k) => ({ part: k, label: "This part is no longer understood." })) };
     const canShare = ctx.keys.includes(reg.shareKey);
     return {
-      id: v.id, list: v.listKind, name: v.name, filter: stored, applies: c.filter, dropped: c.dropped, droppedLine: droppedLine(c.dropped.length),
+      id: v.id, list: v.listKind, name: v.name, filter: stored, applies: c.filter, dropped: c.dropped, droppedLine: droppedLine(c.dropped.length), empty: "empty" in c ? c.empty === true : false,
       columns: (v.columns ?? []) as string[], sort: v.sort ?? null, shared: v.ownerStaffId === null,
       owner: v.ownerStaffId ? who.get(v.ownerStaffId) ?? { id: v.ownerStaffId, name: "Former staff member", active: false } : null,
       createdBy: who.get(v.createdBy) ?? { id: v.createdBy, name: "Former staff member", active: false },
@@ -128,7 +133,7 @@ export class SavedViewsService {
 
   /** The same request again: the view it made, or 409 when the request id is reused for another view. */
   private repeat(ctx: StaffContext, v: PlatSavedView, b: z.infer<typeof CreateView>, f: ViewFilter) {
-    if (v.listKind !== b.list || v.name !== trimText(b.name) || JSON.stringify(v.filter) !== JSON.stringify(f)) return problem(409, "Request already used", "This request id already made another view. Send a new one.", { code: "REQUEST_REUSED" });
+    if (v.listKind !== b.list || v.name !== trimText(b.name) || canonicalJson(v.filter) !== canonicalJson(f)) return problem(409, "Request already used", "This request id already made another view. Send a new one.", { code: "REQUEST_REUSED" });
     return this.one(ctx, v);
   }
 

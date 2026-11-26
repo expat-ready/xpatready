@@ -25,10 +25,7 @@ export class SavedViewsController {
   @Patch(":id") @AnyStaff(OWN) @Versioned()
   change(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.change(staffOf(r), id, b); }
 
-  @Delete(":id") @AnyStaff(OWN) @Versioned()
-  /** The version as read: `?version=` or an If-Match header (PF-31 puts it on the request; a DELETE carries no body). */
-  remove(@Req() r: R & { body?: { version?: unknown } }, @Param("id") id: string, @Query() q: unknown) {
-    const { version } = parseInput(DELETE_QUERY, q ?? {});
-    return this.svc.remove(staffOf(r), id, { version: version ?? (typeof r.body?.version === "string" ? r.body.version : undefined) });
-  }
+  @Delete(":id") @AnyStaff(OWN)
+  /** The version as read, as `?version=` (a DELETE carries no body, so it takes no If-Match either: PF-31 answers 422). */
+  remove(@Req() r: R, @Param("id") id: string, @Query() q: unknown) { return this.svc.remove(staffOf(r), id, parseInput(DELETE_QUERY, q ?? {})); }
 }
