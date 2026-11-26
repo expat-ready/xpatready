@@ -89,9 +89,9 @@ REVOKE DELETE, TRUNCATE ON "plat_task" FROM xr_data;
 ALTER TABLE "plat_task" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "plat_task" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "plat_task" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
--- PF-12's rule for a firm table's trigger functions: each runs as xr_wall_reader with its search_path pinned (the assignee
--- check still compares the row's own firm, so it reads only that firm's staff).
-ALTER FUNCTION plat_task_assignee_in_firm() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
-ALTER FUNCTION plat_task_assignee_in_firm() OWNER TO xr_wall_reader;
+-- PF-12: trigger functions run as xr_wall_reader, search_path pinned; PF-8b F4 (RDS): CREATE on public only for the hand-over.
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
+ALTER FUNCTION plat_task_assignee_in_firm() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp; ALTER FUNCTION plat_task_assignee_in_firm() OWNER TO xr_wall_reader;
 ALTER FUNCTION plat_task_write() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION plat_task_write() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
