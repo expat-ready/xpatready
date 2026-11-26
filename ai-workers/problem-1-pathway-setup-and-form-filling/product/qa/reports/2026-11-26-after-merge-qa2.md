@@ -37,3 +37,10 @@ None.
 
 ## Suggestions
 * *Later · Scaffolding:* make `walk.mjs` fall back to trace and screenshots without video when ffmpeg is missing, so cloud qa copies can record a walk.
+
+## Round 2 (main b64135fd2, ~15:0x IST)
+Merged since round 1: #3640 (R1.64 PF-F2 part 1b), #3812 (R1.79 PF-R2cm), #3805 (R1.58 FO-7s3b part 1a), #3818 (R1.85 PF-21rs B1). None was its row's last part.
+* R1.58: j_58 23 PASS, 1 FAIL. Only W3 is red (the move-to-case route answers 404). W5's red shortfall row is now green.
+* R1.85: j_85 20 PASS, 1 FAIL. Only W5 is red (the erasers, #3713). W1-W2 (the console Privacy pages) are now green.
+* R1.79 and R1.64: parts missing as in their rows; no journey on main.
+* R1.96 (the Lead's ask): qa 1b's #3804 is the proof (Works). j_96 was re-run here on main e6c272194: 26/26.
