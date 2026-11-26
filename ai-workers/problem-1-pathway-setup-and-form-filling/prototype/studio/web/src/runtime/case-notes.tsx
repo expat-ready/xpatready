@@ -114,8 +114,9 @@ function Writer({ caseId, share, draft }: { caseId: string; share: boolean; draf
 function Mention({ caseId, token, picked, setPicked }: { caseId: string; token: string | null; picked: { staffId: string; name: string }[]; setPicked: (p: { staffId: string; name: string }[]) => void }) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
+  const me = useMe();
   const people = useQuery({ queryKey: ["pf", "case-note-people", caseId, token], enabled: !!token && open, retry: false, queryFn: async () => CaseNotePeople.parse(await staffApi(`/runtime/cases/${caseId}/notes/people`)) });
-  const list = (people.data?.people ?? []).filter((p) => !picked.some((x) => x.staffId === p.staffId) && p.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const list = (people.data?.people ?? []).filter((p) => p.staffId !== me.data?.staffId && !picked.some((x) => x.staffId === p.staffId) && p.name.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <div className="space-y-2" data-note-mention>
       <div className="flex flex-wrap items-center gap-2">
@@ -129,7 +130,7 @@ function Mention({ caseId, token, picked, setPicked }: { caseId: string; token: 
           {people.isLoading ? <Skeleton className="h-8 w-full" /> : people.isError ? <p className="text-xs text-text-danger">{errWords(people.error, "list")}</p>
             : !list.length ? <p className="px-1 text-xs text-text-muted">No one else to mention.</p>
               : <ul className="max-h-48 overflow-y-auto">{list.map((p) => <li key={p.staffId}><button type="button" className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                onClick={() => { setPicked([...picked, { staffId: p.staffId, name: p.name }]); setQ(""); }} data-note-person={p.staffId}>{p.name}{p.onCase ? <span className="text-xs text-text-muted">On this case</span> : null}</button></li>)}</ul>}
+                onClick={() => { setPicked([...picked, { staffId: p.staffId, name: p.name }]); setQ(""); setOpen(false); }} data-note-person={p.staffId}>{p.name}{p.onCase ? <span className="text-xs text-text-muted">On this case</span> : null}</button></li>)}</ul>}
         </div>) : null}
     </div>
   );
@@ -238,7 +239,7 @@ function Timeline({ caseId }: { caseId: string }) {
         : !shown.length ? <p className="text-sm text-text-muted" data-timeline-empty>Nothing has happened on this case yet.</p>
           : <ol className="space-y-2" data-timeline-lines>{shown.map((l) => (
               <li key={`${l.source}:${l.refId}`} className="flex gap-2 text-sm" data-timeline-line={l.kind} data-timeline-type={l.type}>
-                <Pill className="mt-0.5">{KIND_WORD[l.kind]}</Pill>
+                <Pill className="mt-0.5 w-20 justify-center">{KIND_WORD[l.kind]}</Pill>
                 <div className="min-w-0 flex-1">
                   {l.source === "note" ? <p className="line-clamp-2 whitespace-pre-wrap [overflow-wrap:anywhere]" data-timeline-note><bdi>{l.summary}</bdi></p> : <p>{lineWords(l)}</p>}
                   <p className="text-xs text-text-muted">{who(l.actorName)} · <time dateTime={l.at}>{when(l.at)}</time></p>
