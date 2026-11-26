@@ -45,6 +45,8 @@ const FIRM_ID_ELSEWHERE: Record<string, string> = {
   case_party_index: "case side (CS-W4)", case_stage: "case side (CS-W4)", firm_case_counter: "case side: a firm's case numbers (CS-W4)",
   case_client_counter: "case side: a firm's client numbers, by firm_key (CS-W4)",
   case_note: "case side: notes on a case (CS-NT1 part 1); the firm is checked on insert by its trigger; walled with the case side (CS-W4)",
+  // CS-W2 part links (#3823): the firm column on the link tables, filled from the case or the link and kept once set; walled with the case side (CS-W4)
+  person_link: "case side (CS-W2 links; CS-W4)", person_link_session: "case side (CS-W2 links; CS-W4)", demo_message: "case side (CS-W2 links; CS-W4)",
 };
 const elsewhere = (t: string) => Object.hasOwn(FIRM_ID_ELSEWHERE, t);   // never a prototype name (break m1)
 /** The tables with a firm column: firm_id, or the case side's firm_key (break M2). */
