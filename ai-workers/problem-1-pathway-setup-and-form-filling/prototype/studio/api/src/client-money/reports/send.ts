@@ -93,9 +93,9 @@ export class StatementSend {
     let out: { held: boolean; dispatch: () => Promise<void> };
     try {
       out = await this.db.$transaction(async (tx) => {
-        await this.audit.record(tx, { firmId: f, actor: `staff:${ctx.staffId}`, action: "statement.sent", entity: "money_statement", entityKey: b.party.id,
+        await this.audit.record(tx, { firmId: f, actor: `staff:${ctx.staffId}`, action: "statement.sent", entity: "money_statement", entityKey: b.client.id,
           summary: `Statement sent to ${b.head.billTo} (${b.data.period}).`, ...(b.caseId ? { caseId: b.caseId } : {}),
-          detail: { partyKind: b.party.kind, partyId: b.party.id, from: b.q.from ?? null, to: b.q.to ?? null, caseId: b.caseId ?? null, lines: b.lines, closing },
+          detail: { partyKind: b.client.kind, partyId: b.client.id, from: b.q.from ?? null, to: b.q.to ?? null, caseId: b.caseId ?? null, lines: b.lines, closing },
           before: null, after: { period: String(b.data.period), lines: b.lines, closing } });
         try {
           return await mailIn(mail, tx, { firmId: f, to: b.email!, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: STATEMENT_TEMPLATE, idempotencyKey: `money-statement:${randomUUID()}`,
@@ -124,7 +124,7 @@ export class StatementSend {
       const head = { firmName: firm?.operatingName ?? "", firmAddress: addressOf(firm?.businessAddress), billTo: party.name ?? who.name };
       const label = caseId ? sum.cases.find((c) => c.caseId === caseId)?.caseLabel ?? null : null;
       const view = { accounts: st.accounts, period: { from: q.from ?? null, to: q.to ?? null }, trustShows: showTrust };
-      return { q, party, caseId, accounts: st.accounts, lines: st.items.length, issuedOn, head, email: who.email?.trim() || null,
+      return { q, client: party, caseId, accounts: st.accounts, lines: st.items.length, issuedOn, head, email: who.email?.trim() || null,
         data: statementData(view, st.items, sum, head, issuedOn, caseId ? { caseId, label } : null) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
