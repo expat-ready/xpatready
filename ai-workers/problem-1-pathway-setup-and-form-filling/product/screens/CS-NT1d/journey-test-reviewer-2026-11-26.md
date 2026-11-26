@@ -44,3 +44,18 @@ Commit d4070b586 (PR #3822, stacked on #3649). Tester: the reviewer agent, a fre
 **Total 8/10, pass (no 0).** Most valuable fixes: (1) J5: keep reading pages while a filtered page is empty and `more` is true, and show the empty line only when there is no next page; (2) reserve the kept-short panel's height while loading; (3) let the empty-box reason reach the keyboard (m4).
 
 Could not test: a real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); j_76 W8 (builder's result, not re-run).
+
+## Round 2 (e21943b7a), reviewer, 26 Nov
+I re-walked J2, J4, J5 and part of J6 on a clean copy (:4434), at 1440 and 375 px.
+* J5 (views first): All shows 3 lines. Documents shows the older upload, then the end line. No false "Nothing has happened".
+* J2: the panel holds 1,232 px (1440) and 1,307 px (375) from skeleton to loaded. "Show all 6 notes" scrolls inside a 320 px box, and History opens in place inside it.
+* J4: the empty Add is reachable by Tab and says "Write the note first." On opening Mention, focus goes to Find. After a pick, focus is back on Mention. The box has `dir="auto"`.
+* axe: 0 violations at 1440 and 375 px with notes and History open. No sideways scroll. No page errors.
+
+Changed scores:
+* correct data ½→1 (J5);
+* feedback and state ½→1 (no panel jump; the empty reason is in words);
+* plain words stays ½ ("Other change" ×2 on a new case; the 404 title "Not in your firm");
+* visual quality stays ½ (blank writer room; the panel is taller than one screen).
+
+**Total 9/10, pass (no 0).**

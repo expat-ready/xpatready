@@ -51,3 +51,37 @@ A screen reader; an intended user's walk (D17, D20); j_76 not re-run. `check_c69
 **Verdict: Block** for the `review: approved` label until #1-#3 are fixed (Reviewer: Changes d4070b5862289897f800e5a85f33ce8a92f378a0). The Minors may follow as listed.
 
 Verdict: Changes d4070b5862289897f800e5a85f33ce8a92f378a0
+
+## Round 2 (diff only, d4070b586..e21943b7a): reviewer, 26 Nov
+Reviewed **e21943b7a02bda29cd2a0444113383a567f157a0**. The diff is `case-access.ts` (+`staffWhoMaySee`), `case-notes/service.ts`, `case-notes/timeline.ts`, `case-notes.tsx` and the browser test, plus the records commit 38256f26b. I re-ran everything on clean isolated copies (:4434 and :4435; `git status` empty before and after; both copies stopped):
+* `check_csnt1d_panel_browser` **54/54** (the builder reported 53);
+* `check_csnt1_notes` **56/56** and `check_csnt1_timeline` **36/36**;
+* `j_76`: W8's case-page step **passes**. 25/27 overall: the 2 fails are W5 (CS-NT1t) and W8's prospect page (FO-4 part 2b), both named as missing parts;
+* my own walk script, at 1440 and 375 px.
+
+**Round 1 Majors: all closed.**
+* **#1 (also the breaker's M1) closed.** `timeline.ts` leaves out `case document` lines whose action is in `ACCESS` (`READ_ACTIONS` minus "found changed", the same five types the panel used to drop). It does this in the page query and in the floor query, so a page is never filled by them, and the panel filter is gone. Walk: 120 newer access lines (viewed, previewed, read by AI, checked unchanged) over one older upload. All shows 3 lines. Documents shows "Document uploaded" and then the end line. The API's DOCUMENT page is `["uploaded"]` with `more: false`. DP12 fails if the SQL line is removed (61 views would show).
+* **#2 closed.** The panel's height is constant through loading: 1440 px: skeleton 1,232 = notes loaded 1,232 = timeline loaded 1,232 (timeline read slowed to 2 s); 375 px: 1,307 three times. The page's CLS is still 0.34 at 1440 px and 0.63 at 375 px. Since this panel no longer changes height, that comes from other panels (outside this PR). The new DP check compares the skeleton with the loaded panel at both widths.
+* **#3 closed.** `staffWhoMaySee` is one SQL query.
+  * Its rule matches `caseScope` and `holdsKey`: the same grant and permission join, view.all, or view.own with file owner or team by staff or actor id, ACTIVE only, the case team first.
+  * The mention check uses it inside the add.
+  * The test adds 1,000 staff; the people read and an add with a mention each pass under 1.5 s.
+
+**Minors from round 1:** 4 fixed (Add stays enabled; empty → "Write the note first." on the box, reached by keyboard in my walk) · 5 fixed (cap and "At most 20 people.") · 6 fixed · 7 fixed (`id="notes"`) · 8 partly (exact-time tooltips on timeline lines; Pinned and Edited tooltips; times stay absolute) · 9 fixed (fresh key on any draft change, `useEffect`) · 10 fixed (the pill is compact) · 11: the PR body is to be corrected; DP9's draft-kept still has no test.
+
+**The breaker's items:**
+* M1 closed (above).
+* m1 partly fixed: the words now read "… or your role cannot open it.", but the notice title is still "Not in your firm" for an out-of-scope person in the same firm (`case-notes.tsx:60`).
+* m2 fixed (a 403 names the act). m3 fixed (text, picks and For the client kept in the draft ref). m4 fixed: on open, focus is on Find; after a pick, focus returns to Mention; Escape closes the list (DP7). m5 fixed (no `maxLength`). m6 fixed ("(not: {names})"). m7 fixed ("Replace their words with mine" replaces Save after a conflict; DP5). m11 fixed (`dir="auto"` on both boxes).
+* m8 (bell {name}) is the tech lead's call. m9 and m10 are my #2 and #3, both closed.
+
+**New in this diff (Minor, Should):**
+* **R2-m1. Challenge m3 has regressed.** The notes list is now a `role="region"` named "Notes", so `getByRole("region", { name: /notes/i })` matches 2 regions (measured). j_76 W8 still passes only because `waitFor` runs while the skeleton shows and the inner region is not there yet. *Fix:* give the scroll box a name without "notes" (for example "Saved list"), or point it with `aria-labelledby` at a heading that does not match.
+* **R2-m2. The fixed heights cost space.** The panel is now always about 1,230 px tall at the top of the page, more than one 1440×1000 screen, even on a case with no notes. The writer keeps about 80 px of blank room under Add note (`r2-loaded-1440`). The notes (320 px) and timeline (416 px) scroll inside their own boxes. This is acceptable for "nothing below moves", but it is a BIC-19 Partly. Consider sizing the boxes to the kept-short content.
+
+**Scores changed:** D10 3→4 (refusal words name the act; tooltips) · D11 3→4 · D12 stays 3 (R2-m2) · D15 4→5 (people in one query, 1,000 staff under 1.5 s) · BIC-13 Met · BIC-14 Met (relative times not built; the concept's tooltip asks are met) · BIC-18 Met · BIC-19 Partly (R2-m2). Journey: **9/10, pass** (see Round 2 in `journey-test-reviewer-2026-11-26.md`).
+**Could not check:** CI on e21943b7a; web `tsc` (builder: 0); a screen reader; D17 and D20.
+
+**Verdict: Approve**: no open Blocker or Major. R2-m1, R2-m2 and breaker m1's title stay as Minors, with relative times and the bell's {name} left to the tech lead.
+
+Verdict: Approve e21943b7a02bda29cd2a0444113383a567f157a0
