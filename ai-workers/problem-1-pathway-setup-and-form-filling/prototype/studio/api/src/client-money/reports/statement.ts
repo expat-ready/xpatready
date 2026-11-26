@@ -45,9 +45,17 @@ const Cursor = z.strictObject({ a: z.union([z.literal(0), z.literal(1)]), c: z.e
 /** Trust lines sort by seq alone: one fixed key time (never created_at, the transaction's start: trust/reads.ts's break Major 1). */
 const TRUST_KEY = "2000-01-01 00:00:00+00";
 
+/** The client's issued invoices in the caller's scope (one case's when named): ledgerCtes's set, read first in the caller's
+ *  transaction (repeatable read, one snapshot), so ledgerCtes plans with their real count (break round 3 M1 on #3753). */
+export async function invoiceIdsOf(tx: Tx, f: string, p: Party, scope: MoneyScope, caseId: string | undefined): Promise<string> {
+  const [row] = await tx.$queryRaw<{ ids: string }[]>`select coalesce(string_agg(i.id::text, ','), '') as ids from money_invoice i
+    where i.firm_id = ${f}::uuid and ${partyCol(p, "i")} = ${p.id}::uuid and i.issued_at is not null and ${scopeSql(scope)} ${caseId ? Prisma.sql`and i.case_id = ${caseId}::uuid` : Prisma.empty}`;
+  return row?.ids ?? "";   // one text value (comma-separated uuids), not a row per invoice nor a 10,000-item array to convert
+}
+
 /** The CTEs `inv` (the client's issued invoices in scope) and `l` (every line of the client's accounts the caller may
  *  see, with its sort key (acct, currency, k, o, r, id, inv): r is the fact's own time, so facts moved to the issue time keep their order (break round 2 m1) and signed amount). summary.ts reads the same lines. */
-export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean): Prisma.Sql {
+export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean, invoiceIds: string): Prisma.Sql {
   const IDS = Prisma.sql`(select ids.a from ids)::uuid[]`;
   const onCase = (x: string) => caseId ? Prisma.sql`and ${Prisma.raw(x)}.case_id = ${caseId}::uuid` : Prisma.empty;
   const trust = showTrust ? Prisma.sql`union all
@@ -58,10 +66,14 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
       where e.firm_id = ${f}::uuid and ${partyCol(p, "e")} = ${p.id}::uuid and ${seenSql(scope, "e")} ${onCase("e")}` : Prisma.empty;
   // inv: the client's issued invoices in scope; each later branch is one fact of FACTS_LATERAL, joined to them by invoice
   // the stored total: money_invoice_total's own sum, read for the client's invoices in one grouped (hashed) read
+  // inv0: the invoices invoiceIdsOf read first, in this snapshot, taken by primary key from a bound list, so the planner
+  // knows their real count even when statistics lag a client's new rows (break round 3 M1 on #3753: estimated at one
+  // invoice, every join below became a nested loop rescanning a materialized set per row, a 500 inside the line limit).
+  // Every fact table is read through its (firm, invoice) index for these ids only, so the cost follows the client's facts,
+  // never the firm's (break round 2 M1 of part 1: a hash join read each table of the whole firm).
   return Prisma.sql`with inv0 as materialized (select i.id, i.case_id, i.currency, i.number, i.issued_at, i.due_date from money_invoice i
-      where i.firm_id = ${f}::uuid and ${partyCol(p, "i")} = ${p.id}::uuid and i.issued_at is not null and ${scopeSql(scope)} ${onCase("i")}),
-    -- their ids, once: every fact table is read through its (firm, invoice) index for these ids only, so the cost follows
-    -- the client's facts, never the firm's (break round 2 M1: a hash join read each table of the whole firm)
+      where i.firm_id = ${f}::uuid and i.id = any(string_to_array(${invoiceIds}, ',')::uuid[])),   -- immutable on a bound value: folded to a constant array when planned
+    -- their ids, once, for the fact branches (a sub-select, so the planner weighs the array once, on inv0 alone)
     ids as materialized (select coalesce(array_agg(inv0.id), '{}'::uuid[]) as a from inv0),
     inv as materialized (select inv0.*, coalesce(t.total, 0) as total from inv0 left join (select x.invoice_id, sum(x.amount_minor::bigint + x.tax_minor) as total
         from money_invoice_line x join inv0 on inv0.id = x.invoice_id where x.firm_id = ${f}::uuid and x.invoice_id = any(${IDS}) group by x.invoice_id) t on t.invoice_id = inv0.id),
@@ -114,7 +126,7 @@ export class MoneyStatement {
     return this.db.$transaction(async (tx) => {
       await sortMemory(tx);
       const party = await partyFor(tx, f, kind, id, scope), showTrust = await trustShows(tx, f);
-      return { party, period: { from: q.from ?? null, to: q.to ?? null }, trustShows: showTrust, ...(await read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust)), q.from, q.to, pageSize, after)) };
+      return { party, period: { from: q.from ?? null, to: q.to ?? null }, trustShows: showTrust, ...(await read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust, await invoiceIdsOf(tx, f, party, scope, caseId))), q.from, q.to, pageSize, after)) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 }
@@ -123,7 +135,7 @@ export class MoneyStatement {
  *  caller's transaction: part 2's PDF and Send statement read the whole statement in one query and one snapshot, never
  *  page by page (break M4, m1 on #3753). */
 export async function allLines(tx: Tx, f: string, party: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean, from: string | undefined, to: string | undefined, limit: number) {
-  return read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust)), from, to, limit + 1, null, true);
+  return read(tx, runSql(ledgerCtes(f, party, scope, caseId, showTrust, await invoiceIdsOf(tx, f, party, scope, caseId))), from, to, limit + 1, null, true);
 }
 
 /** The whole statement's SQL (part 2: every line of the period at once): one running sum over every line of each account

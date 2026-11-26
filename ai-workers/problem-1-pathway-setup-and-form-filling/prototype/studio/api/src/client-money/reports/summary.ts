@@ -21,7 +21,7 @@ import { dayOf } from "../invoices/facts.ts";
 import { trustShows } from "../reads/common.ts";
 import { failClosed, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { labelsOf } from "../reads/parties.ts";
-import { ledgerCtes } from "./statement.ts";
+import { invoiceIdsOf, ledgerCtes } from "./statement.ts";
 import { kindOf, partyCol, partyFor, seenSql, sortMemory, type Party } from "./common.ts";
 
 export type Figures = { currency: "CAD" | "USD"; billedMinor: number; paidMinor: number; paidFromTrustMinor: number; creditedMinor: number; writtenOffMinor: number;
@@ -42,8 +42,8 @@ function add(a: Figures, b: Figures): Figures {
 }
 
 /** The per-case, per-currency invoice figures' SQL (exported for the plan check). */
-export function summarySql(f: string, party: Party, scope: MoneyScope, today: string): Prisma.Sql {
-  return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false)},
+export function summarySql(f: string, party: Party, scope: MoneyScope, today: string, invoiceIds: string): Prisma.Sql {
+  return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false, invoiceIds)},
         -- each invoice's facts summed once from the lines (materialized), then joined to the invoices by id: a join of the
         -- invoices straight onto the lines' union re-ran the union per invoice when statistics lagged (break round 2 M1)
         agg as materialized (select l.inv,
@@ -87,7 +87,7 @@ export class MoneySummary {
 export async function summaryIn(tx: Prisma.TransactionClient, f: string, party: Party, scope: MoneyScope, today: string, showTrust: boolean): Promise<Summary> {
       // per invoice from the statement's own lines (ledgerCtes, the INVOICES account: one source for both reads), as
       // FACTS_LATERAL's terms: trust paid is never below zero per invoice (its greatest(…, 0)), and due never below zero
-      const inv = await tx.$queryRaw<Row[]>(summarySql(f, party, scope, today));
+      const inv = await tx.$queryRaw<Row[]>(summarySql(f, party, scope, today, await invoiceIdsOf(tx, f, party, scope, undefined)));
       const held = showTrust ? await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount
         from money_trust_entry e where e.firm_id = ${f}::uuid and ${partyCol(party, "e")} = ${party.id}::uuid and ${seenSql(scope, "e")} group by e.case_id, e.currency` : [];
       const credit = await tx.$queryRaw<{ caseId: string | null; currency: "CAD" | "USD"; amount: string }[]>`select e.case_id::text as "caseId", e.currency::text as currency, sum(e.amount_minor)::text as amount

@@ -219,22 +219,32 @@ try {
   ok(`FO-7r review M1 pass: a 4,000-line statement is sent (${long.body?.lines} lines): the cover note is ${lm?.text.length ?? 0} characters, the PDF holds every line`, long.status === 200 && long.body?.email === "SENT" && long.body?.lines === 4000
     && (lm?.text.length ?? TEXT_MAX) < 2_000 && lText.split("\n").filter((l) => l.includes("  balance CAD")).length === 4000, { long: long.body, len: lm?.text.length });
   ok("FO-7r review M1 fail: the same statement's full text is past the message layer's limit (why the body is a cover note)", lText.length > TEXT_MAX, lText.length);
-  // break round 2 M1: statistics that lag a client's new rows (below autovacuum's re-analyze threshold, as in a real firm):
-  // 20,000 other clients' invoices analyzed, then 1,500 new invoices with a payment each for one client, not analyzed.
-  // The whole-statement read is one running sum and one sort, so it answers in well under the 5 s transaction limit.
-  const PSTALE = person(A, "stale", "fo7r2.stale@example.org");
+  // break round 2 M1 and round 3 M1: statistics that lag a client's new rows (below autovacuum's re-analyze threshold, as in
+  // a real firm): 20,000 other clients' invoices analyzed and autovacuum off on the money tables (this scratch database
+  // only), then, not analyzed, one client with 2,500 invoices and a payment each (5,000 lines, the limit) and one with 5,000
+  // invoices and no payment. Round 3: on the joins of round 2 these took 7.6-8.5 s and 17.8 s, a 500 at the 5 s limit.
+  const PSTALE = person(A, "stale", "fo7r2.stale@example.org"), PNOPAY = person(A, "nopay", "fo7r2.nopay@example.org"), BOUND = 2000;
   sql(`set session_replication_role = replica;
     insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', gen_random_uuid(), 'POP-' || g, 'CAD', date '2026-03-01', now(), 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 20000) g;
-    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 100, 'CAD', 'OPERATING', now(), 'pop-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.number like 'POP-%'; analyze`);
-  sql(`set session_replication_role = replica;
-    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${PSTALE}', 'STALE-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, 1500) g;
-    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${PSTALE}';
-    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'stale-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PSTALE}'`);   // no analyze
-  const ts = performance.now(), staleSum = await call(tA, "GET", `/front-office/money/parties/person/${PSTALE}/summary`), msSum = Math.round(performance.now() - ts);
-  console.log(`  (stale statistics: the summary alone ${msSum} ms, ${staleSum.status})`);
-  const t0 = performance.now(), stale = await call(tA, "GET", `/front-office/money/parties/person/${PSTALE}/statement.pdf`), msStale = Math.round(performance.now() - t0);
-  ok(`FO-7r break R2-M1 pass: 3,000 lines on statistics that lag them print in ${msStale} ms (round 2: 800 lines took 8.5 s and a 500)`, stale.status === 200 && msStale < 3000 && pdfText(stale.bytes).includes(`Closing balance: CAD ${SIGNED(1500 * 600)}`), { status: stale.status, msStale });
-  ok("FO-7r break R2-M1 fail: a time past 3 s fails the same comparison", !(3001 < 3000));
+    insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 100, 'CAD', 'OPERATING', now(), 'pop-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.number like 'POP-%';
+    alter table money_invoice set (autovacuum_enabled = off); alter table money_invoice_line set (autovacuum_enabled = off); alter table money_payment set (autovacuum_enabled = off); analyze`);
+  const seedClient = (pid: string, tag: string, n: number, pay: boolean) => sql(`set session_replication_role = replica;
+    insert into money_invoice (firm_id, person_id, number, currency, due_date, issued_at, issued_by, created_by, updated_at) select '${A}', '${pid}', '${tag}-' || g, 'CAD', date '2026-03-01', now() - interval '1 hour', 'seed:FO-7r-2', 'seed:FO-7r-2', now() from generate_series(1, ${n}) g;
+    insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency) select '${A}', i.id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice i where i.person_id = '${pid}'
+    ${pay ? `; insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), '${tag}-' || i.id, 'seed:FO-7r-2' from money_invoice i where i.person_id = '${pid}'` : ""}`);   // no analyze
+  seedClient(PSTALE, "STALE", 2500, true); seedClient(PNOPAY, "NOPAY", 5000, false);
+  const timed = async (m: string, path: string, body?: unknown) => { const t = performance.now(), r = await call(tA, m, path, body); return { ...r, ms: Math.round(performance.now() - t) }; };
+  const S5 = `/front-office/money/parties/person/${PSTALE}`, N5 = `/front-office/money/parties/person/${PNOPAY}`;
+  const stale = await timed("GET", `${S5}/statement.pdf`), staleSend = await timed("POST", `${S5}/statement/send`, ALL), staleSum = await timed("GET", `${S5}/summary`);
+  const nopay = await timed("GET", `${N5}/statement.pdf`), nopaySum = await timed("GET", `${N5}/summary`);
+  const owed = (r: { body: any }) => r.body?.totals?.find((t: any) => t.currency === "CAD")?.owedMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok(`FO-7r break R3-M1 pass: on lagging statistics 5,000 lines (the limit) print in ${stale.ms} ms and send in ${staleSend.ms} ms; 5,000 unpaid invoices print in ${nopay.ms} ms; the summaries in ${staleSum.ms} and ${nopaySum.ms} ms (each under ${BOUND} ms, the figures right)`,
+    [stale, staleSend, staleSum, nopay, nopaySum].every((r) => r.status === 200 && r.ms < BOUND) && staleSend.body.email === "SENT" && staleSend.body.lines === 5000
+    && pdfText(stale.bytes).includes(`Closing balance: CAD ${SIGNED(2500 * 600)}`) && pdfText(nopay.bytes).includes(`Closing balance: CAD ${SIGNED(5000 * 1000)}`) && owed(staleSum) === 2500 * 600 && owed(nopaySum) === 5000 * 1000,
+    [stale, staleSend, staleSum, nopay, nopaySum].map((r) => [r.status, r.ms]));
+  sql(`set session_replication_role = replica; insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'nopay-one', 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PNOPAY}' limit 1`);
+  const nSent = mail.sent.length, over = await timed("POST", `${N5}/statement/send`, ALL);
+  ok(`FO-7r break R3-M1 fail: one line past the limit (5,001) on lagging statistics → 422 naming to in ${over.ms} ms (never the 5 s limit's 500), nothing sent`, over.status === 422 && JSON.stringify(over.body).includes('"to"') && over.ms < BOUND && mail.sent.length === nSent, [over.status, over.ms]);
   // break round 2 m1: an address MailPort's own schema takes but the message layer's channel refuses (a@b-.example) is 422
   sql(`update fo_person set email = 'a@b-.example', merged_into_id = null, merged_at = null where id = '${PF}'`);
   const dash = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, ALL);
