@@ -31,27 +31,38 @@ if "000-base.sh" not in names: out.append("guards.d/000-base.sh is missing")
 for n in names:
     if not re.fullmatch(r"000-base\.sh|OS-\d+[a-z0-9]*\.sh", n):
         out.append(f"guards.d/{n}: name it OS-<id>.sh (only 000-base.sh and OS-<id>.sh are read in a known order)"); continue
-    L = lines(os.path.join(d, n))
-    if n == "000-base.sh":
-        blocks = sum(1 for l in L if l.strip() == "MUT=\"$MUT\"'") + sum(1 for l in L if l.startswith("MUT='"))
-        rows = sum(1 for l in L if ROW.match(l.strip().rstrip("'")) or ROW.match(l.strip().lstrip("MUT='").rstrip("'")))
+    L = lines(os.path.join(d, n)); base = n == "000-base.sh"
+    if base:   # frozen by size: rows may be fixed or retired, never added
+        blocks = sum(1 for l in L if l.strip() == "MUT=\"$MUT\"'" or l.startswith("MUT='"))
+        rows = sum(1 for l in L if ROW.match(re.sub(r"^MUT='", "", l.strip()).rstrip("'")))
         if blocks > nb: out.append(f"guards.d/000-base.sh has {blocks} MUT blocks, frozen at {nb}: a new item writes guards.d/OS-<id>.sh")
         if rows > nr: out.append(f"guards.d/000-base.sh has {rows} rows, frozen at {nr}: a new item writes guards.d/OS-<id>.sh")
-        continue
+    # The grammar, for every file (sourced by check-guards.sh, so nothing in it may run): comments, blank lines between
+    # blocks, MUT="$MUT"'<rows>' blocks whose rows hold no ' (only the closing one ends the block: a ' inside a row would
+    # leave the quotes and run what follows, round 1 of #3833), TESTS="$TESTS <tests>" lines; 000-base.sh also its first
+    # block MUT='<row> and the two helper lines pyparse() and jsparse() it has always held.
     inside = False; any_row = False
     for i, l in enumerate(L, 1):
         s = l.strip()
         if inside:
             if s.endswith("'"): inside = False; s = s[:-1]
-            if s and not ROW.match(s): out.append(f"guards.d/{n}:{i} is not a row (guard|file|sed edit|test)")
-            elif s: any_row = True
+            if not s: out.append(f"guards.d/{n}:{i}: an empty line inside a MUT block (an empty row)")
+            elif "'" in s or not ROW.match(s): out.append(f"guards.d/{n}:{i} is not a row (guard|file|sed edit|test, no ' in it)")
+            else: any_row = True
             continue
         if not s or s.startswith("#"): continue
         if s == "MUT=\"$MUT\"'": inside = True; continue
+        if base and l.startswith("MUT='"):
+            r = l[len("MUT='"):]
+            if r.endswith("'"): r = r[:-1]
+            else: inside = True
+            if "'" in r or not ROW.match(r.strip()): out.append(f"guards.d/{n}:{i} is not a row (guard|file|sed edit|test, no ' in it)")
+            continue
+        if base and re.fullmatch(r'(py|js)parse\(\) \{ (python3 -I -c "import ast,sys; ast\.parse\(open\(sys\.argv\[1\]\)\.read\(\)\)"|node --check) "\$\{@: -1\}"; \}(\s+#.*)?', s): continue
         if re.fullmatch(r"TESTS=\"\$TESTS( [\w.-]+\.(sh|py))+\"(\s+#.*)?", s): continue
         out.append(f"guards.d/{n}:{i} is neither a comment, a MUT=\"$MUT\"' block nor a TESTS=\"$TESTS ...\" line: {s[:60]!r}")
     if inside: out.append(f"guards.d/{n}: a MUT block is not closed with '")
-    if not any_row and not any(l.strip().startswith("TESTS=") for l in L): out.append(f"guards.d/{n}: no row and no test")
+    if not base and not any_row and not any(l.strip().startswith("TESTS=") for l in L): out.append(f"guards.d/{n}: no row and no test")
 print("\n".join(out))
 PY
 }
@@ -74,6 +85,12 @@ mk; printf 'MUT="$MUT"'"'"'\nOSX a|product/tools/x.sh|s/a/b/|check-x.sh'"'"'\nrm
 ok "an item file that runs a command fails" "$(judge "$T/c" | grep -q 'OS-99.sh:3 is neither' && echo 1)" "$(judge "$T/c")"
 mk; printf 'MUT="$MUT"'"'"'\nnot a row\n'"'"'\n' > "$T/c/guards.d/OS-99.sh"
 ok "a line in a block that is not a row fails" "$(judge "$T/c" | grep -q 'OS-99.sh:2 is not a row' && echo 1)" "$(judge "$T/c")"
+mk; printf 'MUT="$MUT"'"'"'\nOS99 a|product/tools/x.sh|s/a/b/'"'"'"$(echo INJECTED >\&2)"'"'"'|check-x.sh'"'"'\n' > "$T/c/guards.d/OS-99.sh"
+ok "a row holding a quote (it would leave the quotes and run a command when sourced) fails" "$(judge "$T/c" | grep -q "OS-99.sh:2 is not a row" && echo 1)" "$(judge "$T/c")"
+mk; printf "pyparse() { true; }; echo RAN\n" >> "$T/c/guards.d/000-base.sh"
+ok "a command added to 000-base.sh fails (the grammar holds there too)" "$(judge "$T/c" | grep -q '000-base.sh:.* is neither' && echo 1)" "$(judge "$T/c")"
+mk; printf 'MUT="$MUT"'"'"'\nOS99 a|product/tools/x.sh|s/a/b/|check-x.sh\n\nOS99 b|product/tools/x.sh|s/a/b/|check-x.sh'"'"'\n' > "$T/c/guards.d/OS-99.sh"
+ok "an empty line inside a block (an empty row) fails" "$(judge "$T/c" | grep -q 'OS-99.sh:3: an empty line' && echo 1)" "$(judge "$T/c")"
 mk; printf '# OS-99: an item\nMUT="$MUT"'"'"'\nOS99 a|product/tools/x.sh|s/a/b/|check-x.sh\nOS99 b|../../.github/workflows/x.yml|s/a/b/|check-x.sh'"'"'\nTESTS="$TESTS check-x.sh"   # its test\n' > "$T/c/guards.d/OS-99.sh"
 ok "a well-formed item file (comment, a block of rows, a TESTS line) passes" "$([ -z "$(judge "$T/c")" ] && echo 1)" "$(judge "$T/c")"
 # The real files.

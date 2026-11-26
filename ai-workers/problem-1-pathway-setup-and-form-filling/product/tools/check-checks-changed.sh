@@ -22,7 +22,7 @@ F
 printf 'ok("B1 pass: one", one === 1);\n' > "$R/$D/check_b.ts"; printf 'expect(x).toBe(1);\n' > "$R/$P/prototype/studio/acceptance/C1.1.test.ts"
 printf 'ok "S1 pass: exit 0" "$([ $r = 0 ] &&\n  [ "$n" = 3 ] && echo 1)" "$o"\n[ $r = 0 ] || { echo "FAIL x"; fail=1; }\n' > "$R/$K/check-s.sh"
 printf 'b = f()\nassert b == 2\nt("seven", 7)\n' > "$R/$P/prototype/tests/check_p.py"
-printf '1|product/tools/x.sh|s/a/b/|check-s.sh\n' > "$R/$K/check-guards.sh"; printf 'ok() { [ "$2" = 1 ]; }\n' > "$R/$K/guard-test-lib.sh"
+printf '1|product/tools/x.sh|s/a/b/|check-s.sh\n' > "$R/$K/check-guards.sh"; mkdir -p "$R/$K/guards.d"; printf "MUT='OS1 row|product/tools/x.sh|s/a/b/|check-s.sh'\n" > "$R/$K/guards.d/000-base.sh"; printf 'ok() { [ "$2" = 1 ]; }\n' > "$R/$K/guard-test-lib.sh"
 printf 'needs\t2\nwindow\t7\n' > "$R/$K/flaky-ledger.tsv"; printf 'SKIP="check_z.ts"\nQUARANTINE="check_a.ts check_b.ts"\n' > "$R/$K/run-suites.sh"; echo 'ok("not a test file", true)' > "$R/$P/prototype/studio/api/src/x.ts"
 }
 mkdir -p "$R/$P/prototype/studio/acceptance" "$R/$P/prototype/tests" "$R/$D/qa"
@@ -60,6 +60,7 @@ lists "a bare Python assert" 'sub "$R/$P/prototype/tests/check_p.py" "b == 2" "T
 lists "a Python t()" 'sub "$R/$P/prototype/tests/check_p.py" "\"seven\", 7" "\"seven\", None"' '1 existing test lines' 'was: t("seven", 7)'
 lists "an acceptance expect" 'sub "$R/$P/prototype/studio/acceptance/C1.1.test.ts" "toBe(1)" "toBeDefined()"' '1 existing test lines' 'was: expect(x).toBe(1);'
 lists "a guard row emptied" ': > "$R/$K/check-guards.sh"' '2 existing test lines' 'was: 1|product/tools/x.sh'
+lists "a guard row removed from guards.d (OS-85: the rows moved there)" ': > "$R/$K/guards.d/000-base.sh"' '1 existing test lines' 'was: MUT='"'"'OS1 row|product/tools/x.sh'
 lists "the test library" 'sub "$R/$K/guard-test-lib.sh" "[ \"\$2\" = 1 ]" "true"' '1 existing test lines' 'guard-test-lib.sh'
 lists "a skip added" 'sub "$A" "const helper" "it.skip(\"x\");
 const helper"' '1 switched off' 'switched off? prototype/studio/tests/check_a.ts: it.skip("x");'
