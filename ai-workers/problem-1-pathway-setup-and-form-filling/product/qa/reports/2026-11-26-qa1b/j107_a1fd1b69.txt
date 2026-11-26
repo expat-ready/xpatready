@@ -1,0 +1,20 @@
+PASS  setup: Demo › Reset to the six loads the Sample programs; the Sample firms are seeded — {"status":201}
+FAIL  R1.107 W1 Ontario (AS-2d1): the stream is listed by the door as assessment only — {"file":"missing samples/provincial-streams/on.json (AS-2d1)","listed":[]}
+FAIL  R1.107 W2 Ontario (AS-2d1): the eligible profile is Likely eligible, every rule met and cited — "no release"
+FAIL  R1.107 W3 Ontario (AS-2d1): the "not" profile is Not eligible, naming its cited rule — "no release"
+FAIL  R1.107 W1 British Columbia (AS-2d1): the stream is listed by the door as assessment only — {"file":"missing samples/provincial-streams/bc.json (AS-2d1)","listed":[]}
+FAIL  R1.107 W2 British Columbia (AS-2d1): the eligible profile is Likely eligible, every rule met and cited — "no release"
+FAIL  R1.107 W3 British Columbia (AS-2d1): the "not" profile is Not eligible, naming its cited rule — "no release"
+FAIL  R1.107 W1 Saskatchewan (AS-2d1): the stream is listed by the door as assessment only — {"file":"missing samples/provincial-streams/sk.json (AS-2d1)","listed":[]}
+FAIL  R1.107 W2 Saskatchewan (AS-2d1): the eligible profile is Likely eligible, every rule met and cited — "no release"
+FAIL  R1.107 W3 Saskatchewan (AS-2d1): the "not" profile is Not eligible, naming its cited rule — "no release"
+FAIL  R1.107 W1 Alberta (AS-2d2): the stream is listed by the door as assessment only — {"file":"missing samples/provincial-streams/ab.json (AS-2d2)","listed":[]}
+FAIL  R1.107 W2 Alberta (AS-2d2): the eligible profile is Likely eligible, every rule met and cited — "no release"
+FAIL  R1.107 W3 Alberta (AS-2d2): the "not" profile is Not eligible, naming its cited rule — "no release"
+FAIL  R1.107 W1 Manitoba (AS-2d2): the stream is listed by the door as assessment only — {"file":"missing samples/provincial-streams/mb.json (AS-2d2)","listed":[]}
+FAIL  R1.107 W2 Manitoba (AS-2d2): the eligible profile is Likely eligible, every rule met and cited — "no release"
+FAIL  R1.107 W3 Manitoba (AS-2d2): the "not" profile is Not eligible, naming its cited rule — "no release"
+FAIL  R1.107 W4: Open a case on a provincial release is refused, in the words "Assessment only: no forms" — {"status":0,"body":"no provincial combination (AS-2d1)"}
+FAIL  R1.107 W5 (missing: FO-15a, FO-15b the lead's stored assessment; AS-2c, AS-2cs the client copy): a reviewed assessment on a prospect gives a client copy with the disclaimer, sent only by a person — {"share":false,"tables":"none"}
+
+1/18 passed

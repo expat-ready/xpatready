@@ -20,6 +20,7 @@ import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
 import { IDENTITY_ADMIN_PORT, LocalIdentityAdmin, type IdentityAdminPort } from "./provider.ts";
 import { requireStepUp } from "./step-up.ts";
+import { BUSY_WORDS_INVITEE, busyOnLockTimeout, FIRM_TX, lockFirm, roomForProvider, SIGN_OUT_TX, txClock } from "./firm-lock.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,16 +42,19 @@ export class PlatformSession {
     @Inject(PlatformClock) private readonly clock: PlatformClock, @Inject(PlatformIdentity) private readonly id: PlatformIdentity) {}
 
   /** One transaction holding the firm's row lock; the actor is checked again under it (PF-4's break m2). */
-  async inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  /** `bounded` (the default) for the changes that call the sign-in provider: lockFirm inside FIRM_TX, a lock wait that runs
+   *  out answering 503 FIRM_BUSY. A person's own sign-out calls no provider and passes `{ bounded: false }` (#3217 r3-m2). */
+  async inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>, o: { bounded: boolean } = { bounded: true }): Promise<T> {
     const firmId = firmScope(actor.firmId).firmId;
-    return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as PF-4's inFirm (J-5 B1)
+    return this.db.$transaction(async (tx) => txClock(async () => {
+      if (o.bounded) await lockFirm(tx, firmId);   // as PF-4's inFirm (J-5 B1); PF-4bc: a bounded wait
+      else await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as PF-4's inFirm
       const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
       if (me.grants.map((g) => g.role).sort().join() !== [...actor.roles].sort().join()) problem(409, "Your roles changed", "Your roles changed while this was being sent. Nothing was saved; try again.", { code: "ROLES_CHANGED" });
       return fn(tx);
-    });
+    }), o.bounded ? FIRM_TX : SIGN_OUT_TX).catch((e: unknown) => (o.bounded ? busyOnLockTimeout(e) : Promise.reject(e)));
   }
 
   private async target(tx: Tx, firmId: string, id: string) {
@@ -107,9 +111,9 @@ export class PlatformSession {
     // email is checked across every firm (one account, one firm) by the yes-or-no lookup platform_staff_email_taken.
     const firmId = await this.invitationFirm(token);
     if (!firmId) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
-    return withFirm(firmId, () => this.db.$transaction(async (tx) => {
+    return withFirm(firmId, () => this.db.$transaction(async (tx) => txClock(async () => {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
-      if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for no key update`;   // as inFirm (J-5 B1)
+      if (pre) await lockFirm(tx, pre.firm_id);   // as inFirm (J-5 B1); PF-4bc: a bounded wait
       // PF-11c (break M3): a firm closed on day 90 takes no new staff member; read under the firm's lock the close also takes.
       if (pre && (await tx.platformFirm.findFirst({ where: { id: pre.firm_id }, select: { status: true } }))?.status === "DELETED")
         problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
@@ -140,12 +144,15 @@ export class PlatformSession {
       await tx.$executeRaw`update platform_invitation set accepted_at = now() where id = ${inv.id}::uuid`;
       await auditEvent.record(tx, { firmId: inv.firm_id, actor: "system:invitation-accept", action: "platform.invitation.accepted", entity: "platform_invitation", entityKey: inv.id, summary: `an invitation was accepted; a staff member joined (${inv.roles.join(", ")})`, detail: { invitationId: inv.id, staffId: staff.id, roles: inv.roles },
         before: { status: "PENDING" }, after: { status: "ACCEPTED", staffId: staff.id, email: staff.email, displayName: staff.displayName, roles: inv.roles } });
-      // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS).
+      // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS). The lock bound
+      // ends here (review m1): what follows waits within FIRM_TX as before; a refusal after it is safe (createUser is idempotent).
+      roomForProvider(tx, BUSY_WORDS_INVITEE);   // breaker m1: never a provider change that cannot commit in time
+      await tx.$executeRawUnsafe("set local lock_timeout to default");
       const { subject } = await this.admin.createUser(inv.email);
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
       await tx.moduleEvent.create({ data: { firmId: inv.firm_id, type: EVENT.STAFF_JOINED, subjectId: staff.id, payload: StaffJoinedPayload.parse({ staffId: staff.id, invitationId: inv.id }) } });   // last (PF-3 m8)
       return { staffId: staff.id, firmKey: inv.firm_key, roles: inv.roles, handOff: await this.admin.handOff(inv.firm_key, inv.email) };
-    }).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
+    }), FIRM_TX).catch((e: unknown) => busyOnLockTimeout(e, BUSY_WORDS_INVITEE)).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
   }
 
   /** PF-6m2: why the inviter (`invited_by`) may no longer hand this invitation out, else null. The same rule as invite
@@ -180,7 +187,7 @@ export class PlatformSession {
     await this.inFirm(actor, async (tx) => {
       await this.endSessions(tx, actor, actor.staffId, "signed-out");
       await this.audit(tx, actor, "platform.staff.signed_out", actor.staffId, "a staff member signed out", { staffId: actor.staffId }, null, { sessionsEnded: "signed-out" });
-    });
+    }, { bounded: false });   // #3217 r3-m2: no provider call, so the firm lock is waited for as before PF-4bc
     return { signedOut: true };
   }
 
@@ -192,6 +199,7 @@ export class PlatformSession {
       if (t.grants.some((g) => g.role === "OWNER") && t.id !== actor.staffId && !actor.roles.includes("OWNER")) forbidden("Only an Owner signs an Owner out everywhere.", "OWNER_ONLY");
       await this.endSessions(tx, actor, t.id, "signed-out-everywhere");
       await this.audit(tx, actor, "platform.staff.signed_out_everywhere", t.id, "a staff member was signed out everywhere (every session ended)", { staffId: t.id }, null, { sessionsEnded: "signed-out-everywhere" });
+      roomForProvider(tx);   // breaker m1
       await this.admin.signOutEverywhere({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id, signedOutEverywhere: true };
     });
@@ -224,6 +232,7 @@ export class PlatformSession {
       }
       // A security notice is never left for tomorrow (break M1): the firm's daily email limit holds it, so nothing changes.
       if (held) problem(409, "Daily email limit reached", "Your firm has sent its email limit for today, so the notice to this person could not go now and their two-step sign-in was not reset. Try again tomorrow.", { code: "NOTICE_HELD_DAILY_LIMIT" });
+      roomForProvider(tx);   // breaker m1
       await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id, twoStep: { method: null }, notified: true };
     });
