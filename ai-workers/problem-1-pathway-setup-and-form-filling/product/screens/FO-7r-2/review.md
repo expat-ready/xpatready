@@ -221,3 +221,47 @@ I reviewed only `git diff 6434d8e3..67c4afd3`: `statement.ts`, `summary.ts` and 
 **Journey (this head):** 8/10, a pass. Speed goes back to 1 (a statement at the limit on stale statistics prints in about 200 ms). Part 1's page staying within its budget is R4-1.
 
 Reviewer: Changes 67c4afd3af33a03e600f4fd8d52af98cf2c0cc63
+
+## Round 5 (diff-only, 2eaba6c…)
+**Verdict: Approve. Head `2eaba6c704955b7fedb47659762dde81389f3943`.** No Blocker or Major is open.
+
+I reviewed only `git diff 67c4afd3..2eaba6c7`: `statement.ts`, `summary.ts` and the check. I ran both heads from archived copies, on scratch databases that the checks drop themselves. :4400 was not used.
+
+* **R4-1 closed.** `check_fo7r_statement` S8, run alternately with 6434d8e on this machine under the same load:
+
+  | Run | This head: page route | This head: result | 6434d8e: page route | 6434d8e: result |
+  |---|---|---|---|---|
+  | 1 | 264 ms | 46/46 | 295 ms | 46/46 |
+  | 2 | 283 ms | 46/46 | 270 ms | 46/46 |
+  | 3 | 281 ms | 46/46 | 279 ms | 46/46 |
+
+  The two heads are level. The summary route takes 218–236 ms on this head and 225–256 ms on 6434d8e.
+* **R3-1 still fixed.** `check_fo7r_statement_send`: 34 passed, 0 failed.
+  * On stale statistics: 5,000 lines print in 240 ms and send in 221 ms; 5,000 unpaid invoices print in 218 ms; 5,001 lines get 422 in 127 ms.
+  * The new pass/fail pair is a real test. On lagging statistics, 2,500 ids are bound and a small client gets null. After `analyze`, the same client gets null.
+* **The threshold is sound.** Probe: a client analyzed with k invoices, then grown to 2,500 paid or 5,000 unpaid invoices, not analyzed. Every request answered 200.
+
+  | k analyzed | Grown to | Estimate | List sent | PDF | Summary | Page | Send |
+  |---|---|---|---|---|---|---|---|
+  | 60 | 5,000 unpaid | 68 | yes | 204 ms | 73 ms | 59 ms | 203 ms |
+  | 88 | 5,000 unpaid | 99 | yes | 200 ms | 77 ms | 60 ms | 202 ms |
+  | 95 | 5,000 unpaid | 113 | no | 208 ms | 87 ms | 74 ms | 224 ms |
+  | 100 | 5,000 unpaid | 107 | no | 199 ms | 69 ms | 57 ms | 321 ms |
+  | 110 | 2,500 paid | 133 | no | 177 ms | 53 ms | 49 ms | 198 ms |
+  | 150 | 5,000 unpaid | 174 | no | 248 ms | 95 ms | 75 ms | 240 ms |
+  | 150 | 2,500 paid | 155 | no | 193 ms | 68 ms | 58 ms | 180 ms |
+  | 300 | 5,000 unpaid | 344 | no | 310 ms | 75 ms | 89 ms | 243 ms |
+  | 400 | 2,500 paid | 419 | no | 219 ms | 57 ms | 54 ms | 188 ms |
+  | 600 | 5,000 unpaid | 665 | no | 257 ms | 77 ms | 62 ms | 343 ms |
+
+  * No estimate from 100 to several hundred, with a real count far above it, brought back the per-row nested loop.
+  * Under 100, the rule is in effect "count over 500".
+  * At that floor (estimate 1, 500 real invoices, no list): PDF 314–321 ms, page 163–165 ms, Send 322–729 ms. That is within the budgets; an observation, not a finding.
+* **Snapshot and scope unchanged.**
+  * `invoicesWhere` is 6434d8e's inv0 filter (firm, party, issued, scope, case), shared by `invoiceIdsOf` and `ledgerCtes`.
+  * The `EXPLAIN` reads no rows. The count and the id list run on the caller's repeatable-read transaction, and both paths give the same set in that snapshot.
+  * The cost on each read is one extra plan, plus a count only when the estimate is under 100.
+
+**Journey:** 8/10, unchanged from round 4.
+
+Reviewer: Approve 2eaba6c704955b7fedb47659762dde81389f3943
