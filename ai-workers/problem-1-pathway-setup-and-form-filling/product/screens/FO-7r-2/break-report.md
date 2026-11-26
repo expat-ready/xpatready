@@ -162,3 +162,63 @@ Head tested: `6434d8e31accb76362c7e07f9170a823d0836461`, only `git diff bbeb2bd7
 - **Overlong addresses:** a 65-character local part and 64-character labels are SENT, because the channel's own rule takes them.
 
 Verdict (round 3): Changes 6434d8e31accb76362c7e07f9170a823d0836461
+
+## Round 4 (diff-only, 67c4afd3a)
+
+**Head tested:** `67c4afd3af33a03e600f4fd8d52af98cf2c0cc63`. I looked only at `git diff 6434d8e3..67c4afd3`.
+- **Copy:** isolated copy `brk4fo7r` on :4434, with `PLATFORM_IDENTITY=local` and the app's real mail stack. Live AI was off (US$0). I stopped the copy afterwards and its database was dropped.
+- **Fixtures:** real routes plus SQL in replica mode, as in round 3. Autovacuum was off on the money, case and party tables.
+- **Old-head comparison:** a git worktree of `6434d8e3`, removed afterwards.
+- **The PR's own check:** 32/32 pass. The type check could not run here, because `tsc` ran out of memory.
+- **Uncommitted edits:** at 16:05 UTC, after my runs, someone else started editing `statement.ts`, `summary.ts` and the send check in this checkout. Those edits are not tested here. Every number below is from the committed head; the copy and both checks had loaded that code before 16:05.
+
+**R4-M1 (Major; the reviewer's R4-1, reproduced independently). Part 1's S8 budget passes on the base and fails on this head.**
+- **Repro:** run `tests/check_fo7r_statement.ts` on each head in turn, under the same load:
+
+  | Head | Page-1 route | Result | Summary route |
+  |---|---|---|---|
+  | `6434d8e3` (base) | 240 ms, 258 ms | pass (2 of 2) | 206 ms, 203 ms |
+  | `67c4afd3` (this head) | 317 ms, 335 ms, 326 ms | **FAIL** (3 of 3) | 240 ms, 232 ms, 250 ms |
+
+  The S8 case is 10,000 analyzed invoices, and its page-1 route must answer within 300 ms (STANDARDS §9). The 3,333-invoice S8 case and the other 44 checks pass on both heads.
+- **Cause, measured in psql on 10,000 ids:** the new step adds an extra round trip and planning for a statistics problem that this case does not have. Three costs:
+  - `invoiceIdsOf` (`statement.ts:50-55`) builds a 370 KB text value in 10–17 ms.
+  - The same 370 KB goes back as a bound parameter.
+  - Planning inv0's 10,000-element constant array (`statement.ts:74`) takes 8 ms.
+  - The summary (`summary.ts:90`) reads the ids again in its own query.
+- **Expected:** S8 passes on this head wherever it passes on the base.
+
+**What held**
+- **R3-M1 is fixed, measured on lagging statistics** (80,000 analyzed other-client invoices; each new client was not analyzed):
+
+  | Lines | PDF | Send | Summary | Part 1 JSON |
+  |---|---|---|---|---|
+  | 800 | 68 ms | 84 ms | 28 ms | 47 ms |
+  | 2,000 | 111 ms | 126 ms | 39 ms | 47 ms |
+  | 4,000 | 180 ms | 234 ms | 61 ms | 72 ms |
+  | 5,000 | 240 ms | 272 ms | 67 ms | 80 ms |
+  | 5,000 invoices, no payments | 215 ms | 230 ms | 76 ms | 96 ms |
+  | 6,000 lines | 422 in 159 ms | 422 in 129 ms | 71 ms (200) | 69 ms (200) |
+  | 20,000 invoices | 422 in 332 ms | – | 312 ms | 241 ms |
+  | 100,000 invoices | 422 in 1.27 s | 422 in 1.20 s | 1.0–1.2 s | 0.8–0.9 s |
+
+  - Round 3 measured 7.6–18 s with 500s for the same cases.
+  - The same 5,000-line PDF called 10 times: 179–230 ms each, so the plan holds when repeated.
+  - A company with 5,000 lines on lagging statistics: PDF 266 ms, Send 328 ms (to its primary contact).
+  - No 500 anywhere.
+- **The id read at firm scale:** it uses the `(firm_id, person_id)` and `(firm_id, company_id)` indexes, and takes 7.6 ms for 20,000 ids and 1 ms for 2,500.
+- **Figures** (round 3's client, the same dates): every period gives the same lines, balances, openings, closings and audit `closing` as round 3. They also match part 1's JSON, read in pages of 7. The closing is CAD 1,805.50.
+- **Many cases:** 40 cases on one client.
+  - The Owner's whole statement covers 55 lines, CAD 5,505.50. A case narrows to that case alone, with or without dates. An upper-case `caseId` works.
+- **Many cases at scale:** 6,600 invoices, 60 cases with 100 invoices each, plus 600 with no case.
+  - Everything gives 422.
+  - One case gives 200 lines, CAD 600.00, in 129 ms. The JSON is the same.
+- **Case Officer C5 scope** (I removed `agent/case:view.all` in the scratch database and put the Officer on case 0's team):
+  - **Small client:** the Officer sees case 0 plus the invoices and trust with no case: 13 lines, CAD 1,405.50, with the same USD and TRUST. Another case gives 404 on the PDF.
+  - **6,600-invoice client:** the Officer sees 700 invoices, 1,400 lines, CAD 4,200.00. The summary says billed CAD 7,000.00, owed CAD 4,200.00, 2 case rows. The JSON shows the same.
+- **No issued invoices:** a client with nothing, a draft only, or trust only gets an empty JSON and summary, "No entries" in the PDF, and Send 200. Trust only shows TRUST CAD 70.00. An empty `string_to_array` gives an empty set, not a 500.
+
+**Notes, not findings**
+- Part 1's JSON answers 200 for a case outside the Officer's scope, while the PDF answers 404. Both behave as before this diff.
+
+Verdict (round 4): Changes 67c4afd3af33a03e600f4fd8d52af98cf2c0cc63

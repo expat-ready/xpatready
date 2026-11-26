@@ -168,3 +168,56 @@ Every scratch database I made has been dropped.
 **Verdict: Block.** To fix: R3-1, with R3-2's test.
 
 Reviewer: Changes 6434d8e31accb76362c7e07f9170a823d0836461
+
+## Round 4 (diff-only, 67c4afd…)
+**Verdict: Changes. Head `67c4afd3af33a03e600f4fd8d52af98cf2c0cc63`.** R3-1 and R3-2 are fixed. One new Major: part 1's S8 read budget passes on the base and fails on this head, on the same machine.
+
+I reviewed only `git diff 6434d8e3..67c4afd3`: `statement.ts`, `summary.ts` and the check. I ran everything on archived copies of both heads, on scratch databases that the checks drop themselves. :4400 was not used.
+
+**Checks**
+* `check_fo7r_statement_send`: 32 passed, 0 failed.
+* The new stale-statistics test, against this head's code:
+  * 5,000 lines: PDF 202 ms, Send 175 ms.
+  * 5,000 unpaid invoices: 203 ms.
+  * Summaries: 54 ms and 76 ms.
+  * 5,001 lines: 422 in 120 ms.
+* The same test against 6434d8e's code fails: four 500s (7.7–17.4 s), and the 5,001-line case takes 17 s. **R3-2 is closed:** this is a real fail test, and with autovacuum off the stale state is fixed.
+* No type errors in the changed files.
+
+**What holds**
+* **Snapshot.** `invoiceIdsOf` runs on the caller's `tx`, inside the repeatable-read transaction, after `partyFor`. Each route reads its id list and its lines in that one snapshot:
+  * the JSON statement;
+  * the PDF and Send (`allLines` and `summaryIn` both run in `build`'s transaction);
+  * the summary route (repeatable read, `summary.ts:77-81`).
+* **Case.** The id list applies `i.case_id = caseId`, as `onCase("i")` did before. The trust branch still applies `onCase("e")`. Break M2's case statement passes (CAD 1,655.50, no USD).
+* **Empty list.** A client with no invoices gets 200 everywhere: the statement, the PDF ("No entries"), the summary (`[]`) and Send (SENT, 0 lines). A client with trust only gets the TRUST account (closing 25,000, 1 line) and "CAD 250.00" in the PDF.
+* **Figures are unchanged.** Probe: 30 back-dated invoices with payments, plus one draft. I compared these periods: from+to, from only, to only, and Everything.
+  * In every period, each PDF line equals part 1's JSON, and opening and closing are the same.
+  * The 10–20 Jan closing is 14,759, the same figure as on 6434d8e.
+  * The draft never appears.
+  * The summary's owed (23,790) equals Σ facts computed in SQL.
+* **The planner sees the real count.** The plan estimates `rows=2500` for inv0 (it was 1).
+
+**R4-1 (Major, Must): part 1's S8 budget now fails.** `check_fo7r_statement` S8: the page-1 route must answer within 300 ms (STANDARDS §9) for 10,000 analyzed invoices. I ran the two heads alternately, under the same load:
+
+| Run | This head: page route | This head: result | 6434d8e: page route | 6434d8e: result |
+|---|---|---|---|---|
+| 1 | 322 ms | 45/46 | 268 ms | 46/46 |
+| 2 | 367 ms | 45/46 | 275 ms | 46/46 |
+| 3 | 314 ms | 45/46 | 248 ms | 46/46 |
+
+* **Where the time goes** (`EXPLAIN` at 10,000 invoices):
+  * the id read: 6–11 ms, a 370 KB text value;
+  * planning the 10,000-element constant: 11–16 ms (4 ms before);
+  * execution: 239–272 ms (236–257 ms before).
+  * The rest of the gap through the route is the 370 KB value going from Node back to the database.
+* The PDF and Send read the id list twice: once in `allLines` and once in `summaryIn`.
+* **Fix:** reduce the cost; do not raise the budget. Options:
+  * read the list once per request and share it;
+  * keep the ids inside the database instead of sending them out and back;
+  * or take the bound list only when the client's count calls for it.
+* **Done when:** S8 passes on the head on a machine where the base passes. The builder's own machine misses S8 on both heads, so judge it on a machine where the base passes, or on CI.
+
+**Journey (this head):** 8/10, a pass. Speed goes back to 1 (a statement at the limit on stale statistics prints in about 200 ms). Part 1's page staying within its budget is R4-1.
+
+Reviewer: Changes 67c4afd3af33a03e600f4fd8d52af98cf2c0cc63

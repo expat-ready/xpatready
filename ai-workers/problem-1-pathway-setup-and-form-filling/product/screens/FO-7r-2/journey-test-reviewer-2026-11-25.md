@@ -102,3 +102,13 @@ I ran the check on an archived copy of the head (32/32), with my probes on scrat
 | Visual quality | ½ | ½ | unchanged |
 | Trust and sources | 1 | 1 | unchanged |
 | **Total** | 8 | **7.5 / 10** | **Below pass.** Fix review R3-1 (with R3-2's test) to bring speed back to 1 |
+
+## Round 4 (2026-11-26, head `67c4afd3af33a03e600f4fd8d52af98cf2c0cc63`)
+* **J6 now holds on stale statistics too:**
+  * 5,000 lines: PDF 202 ms and Send 175 ms (SENT, 5,000 lines).
+  * 5,000 unpaid invoices: 203 ms.
+  * 5,001 lines: 422 "choose a shorter period" in 120 ms, nothing sent.
+* **J11 still holds**, with the period rules unchanged.
+* **New, an empty client:** the statement, the PDF ("No entries"), the summary and Send all answer 200. A client with trust only shows the TRUST account.
+* **Score: 8/10, Pass.** Speed goes from ½ back to 1; every other criterion is as in round 3.
+* **Not part of this journey:** part 1's 10,000-invoice page budget (review R4-1).
