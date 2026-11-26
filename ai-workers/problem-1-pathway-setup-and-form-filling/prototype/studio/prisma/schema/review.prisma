@@ -265,3 +265,15 @@ model ReviewCheck {
   @@index([firmId, caseId])
   @@map("review_check")
 }
+
+/// CS-W2 part review (breaker M2, round 2): which review_round_filing rows had their firm filled in which transaction
+/// (xact = pg_current_xact_id()), so C8.3's "written in this transaction" opening does not open a decided row that a firm
+/// fill rewrote. Written and read only by two SECURITY DEFINER functions (case_review_mark_fill, case_review_filled_now);
+/// the app holds no right on it, and finished transactions' rows are cleared on the next mark. No relation: never queried.
+model CaseReviewFillMark {
+  xact  BigInt
+  rowId String @map("row_id") @db.Uuid
+
+  @@id([xact, rowId])
+  @@map("case_review_fill_mark")
+}
