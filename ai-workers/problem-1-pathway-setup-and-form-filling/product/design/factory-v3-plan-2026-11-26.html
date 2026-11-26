@@ -135,6 +135,53 @@ code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);paddin
 </section>
 
 <section>
+  <div class="eyebrow">A414 · The factory model: two repositories</div>
+  <h2>The product stays public; the factory moves to your private repository</h2>
+  <p>You decided the product repository stays public, which keeps the free test machines and the free security scanning. Only the factory moves out. I checked every standard mechanism against GitHub's, Claude's and Mergify's documentation, and kept only the ones that work from a public repository to a private one. Nothing here is home-made.</p>
+  <div class="two">
+    <div class="card now"><h3>expat-ready/xpatready · public · the product</h3><ul>
+      <li>The app, its tests, and the CI scripts the required checks run</li>
+      <li>The config files GitHub, Mergify and Claude only read from here: workflows, <code>.mergify.yml</code>, CODEOWNERS, <code>dependabot.yml</code>, <code>REVIEW.md</code>, <code>.claude/approvals.yml</code>, <code>CLAUDE.md</code></li>
+      <li>The builders' skills and agents: build, review, breaker, journey test, qa. Cloud builders only see what is in this repository.</li>
+      <li>Short proof summaries per row (the "Works" record)</li>
+    </ul></div>
+    <div class="card later"><h3>expat-ready/private · private · the factory</h3><ul>
+      <li>Records and memory: STATE, DECISIONS, BACKLOG, history, lanes, inbox, reports, research notes, design pages. Rule P-557 still holds: always committed and pushed, just here.</li>
+      <li>The Lead's own skills and tools: lead, lead-watch, strategy desk, CTO review, the board, flow measures</li>
+      <li>Bulky evidence (about 1 GB of screenshots and qa files), once the 3 checks that read it are rewired</li>
+      <li>The Lead works from a clone of both repositories, side by side</li>
+    </ul></div>
+  </div>
+  <div class="board"><table>
+    <thead><tr><th>Standard mechanism</th><th>Works public → private?</th><th>What the documentation says</th><th>Use it?</th></tr></thead>
+    <tbody>
+      <tr><td>Keep the factory in a separate private repository; the Lead clones both</td><td>Yes</td><td>The ordinary multi-repository setup. Nothing in the product depends on it.</td><td><span class="chip do">Yes: the core of the model</span></td></tr>
+      <tr><td>A CI job checks out the private repository using a GitHub App token</td><td>Yes, for our own branches</td><td>GitHub: "secrets are not passed to the runner" for pull requests from forks. Dependabot pull requests count as forks.</td><td><span class="chip later">Only for jobs that aren't required checks</span></td></tr>
+      <tr><td>Reusable workflows or actions stored in the private repository</td><td>No</td><td>GitHub: "Access is allowed only from private repositories."</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>Organisation "required workflows" stored in the private repository</td><td>No</td><td>GitHub: "a private workflow can only run on private repositories."</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>Mergify sharing its config from the private repository</td><td>No</td><td>Mergify: "The source repository must be at least as visible as yours."</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>A git submodule pointing at the private repository</td><td>No, for forks and Dependabot</td><td>They can't fetch it without secrets. Claude Approvals never auto-approves a submodule change.</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>Claude Code plugin marketplace in the private repository</td><td>Yes, on the Mac</td><td>Claude: "The repository can be private." For cloud sessions it works only through a Team organisation's plugin sync.</td><td><span class="chip later">Later, for the Lead's skills, once there is a Team organisation</span></td></tr>
+      <tr><td>A cloud session working on both repositories</td><td>Yes, if both are attached</td><td>With several repositories, the project's hooks and settings aren't loaded.</td><td><span class="chip later">Lead only; builders stay single-repo</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="mea"><b>One honest limit:</b> moving files hides them from now on, but past commits stay visible in the public repository's history. Rewriting history is forbidden by our own rule (AGENTS.md rule 1) and would break every open clone, so we don't do it. Nothing secret is in those files. They show how we work, which becomes invisible going forward.</div>
+  <h3>Steps, effort and rollback</h3>
+  <div class="board"><table>
+    <thead><tr><th>#</th><th>Step</th><th>Who · effort</th><th>Product impact</th><th>Rollback</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Limit the Mac runner to the one workflow that needs it (security, already flagged)</td><td>You · 10 min</td><td>None</td><td>Change the setting back</td></tr>
+      <tr><td>1</td><td>Set up the folder layout in <code>expat-ready/private</code> and give the Lead a clone of it</td><td>Lead · 1 h</td><td>None</td><td>Nothing to undo</td></tr>
+      <tr><td>2</td><td>Move the records (STATE, DECISIONS, BACKLOG, history, lanes, inbox, reports, notes, design). Point the Lead's local checks and stop hooks at the new place. Update the paths in CLAUDE.md and AGENTS.md.</td><td>Lead · 3–4 h</td><td>None: no workflow reads these files</td><td>One revert pull request in each repository</td></tr>
+      <tr><td>3</td><td>Move the Lead-only skills and tools (lead, lead-watch, board, flow measures)</td><td>Lead · 3–4 h</td><td>None: builders don't use them</td><td>Revert</td></tr>
+      <tr><td>4</td><td>Evidence: keep a short proof summary per row in public, move the bulky screenshots and qa files private, and rewire the 3 checks that read them (pr-rules, item-proof, test-graph)</td><td>1 builder · 1–2 days</td><td>Small: one row of tooling work</td><td>Revert the rewiring pull request</td></tr>
+      <tr><td>5</td><td>CI scripts stay public. Required checks must work for Dependabot and fork pull requests, so they can't depend on the private repository. They shrink through the Factory v3 deletions instead.</td><td>Within Factory v3</td><td>None extra</td><td>n/a</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Total:</b> about 1–1.5 days of Lead time plus 1–2 builder days, done alongside product work. <b>Speed gain:</b> about 40% of merges last week (261 of 651) were records or tooling only. After steps 2 and 3, most of them stop using the product queue and its test machines.</p>
+</section>
+
+<section>
   <div class="eyebrow">The target factory</div>
   <div class="legend"><span><i class="dot" style="background:var(--accent-soft)"></i>Claude provides</span><span><i class="dot" style="background:var(--part-soft)"></i>GitHub or Mergify provides</span><span><i class="dot" style="background:var(--yes-soft)"></i>Ours, kept because it's unique</span></div>
   <div class="lane"><div class="row">
