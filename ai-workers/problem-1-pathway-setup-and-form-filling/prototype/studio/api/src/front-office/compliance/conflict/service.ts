@@ -34,6 +34,8 @@ const LIMIT = 5001, STORED = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The result's refusal in plain words (FO-13s review M1: no internal codes on a screen). */
 export const CHOOSE_RESULT = "Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.";
+/** The disclosure's length rule in words (also read at the parse by routes.ts, PF-28 A3). */
+export const DISCLOSURE_MAX = 10_000, DISCLOSURE_RULE = "The disclosure is at most 10,000 characters of visible text, with no control or direction characters.";
 export const NOT_SEARCHED = "Other parties on cases are not searched yet (the case side's party search is not connected).";
 export const HIDDEN_LINE = "Matches with records you cannot open: a manager who may see them confirms this check.";
 /** A field error: 422, the field named (PF-28 part 3b moves it from 400; Lead B rev 17.21). */
@@ -140,7 +142,7 @@ export class ConflictChecks {
     if (b.disclosureText !== undefined && b.disclosureText !== null && typeof b.disclosureText !== "string") bad("disclosureText", "The disclosure is text.");
     if (result === "POTENTIAL_CONFLICT" && !d) bad("disclosureText", "A potential conflict needs the disclosure text the client will read in the retainer (Code s. 15(1), 24(3)(o)).");
     if (result !== "POTENTIAL_CONFLICT" && d) bad("disclosureText", "A disclosure belongs to a POTENTIAL_CONFLICT result.");
-    if (d && ([...d].length > 10000 || !longTextOk(d))) bad("disclosureText", "The disclosure is at most 10,000 characters of visible text, with no control or direction characters.");
+    if (d && ([...d].length > DISCLOSURE_MAX || !longTextOk(d))) bad("disclosureText", DISCLOSURE_RULE);
     return { result, disclosureText: d };
   }
 

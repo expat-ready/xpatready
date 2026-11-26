@@ -48,7 +48,7 @@ export async function seedSampleSettingValues(tx: Tx, firmId: string, values: Re
   return n;
 }
 
-const SaveBody = z.strictObject({ years: z.unknown(), reason: z.unknown().optional() });
+const SaveBody = z.strictObject({ years: z.unknown().optional(), reason: z.unknown().optional() });   // R1.10 A4: years is checked below with the reason, so both are named at once
 const REASON_MAX = 500;
 const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
 
@@ -128,6 +128,13 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
     const b = SaveBody.safeParse(body ?? {});
     if (!b.success) problem(FIELD_ERROR_STATUS, "Not saved", "Send the number of years (and a reason when it is below 6); nothing else.", { code: "INVALID_BODY", fields: fieldsOf(b.error) });   // PF-28 part 2b: 422, fields named
     const years = b.data.years;
+    // R1.10 A4: a reason that is not text is named with the years, never hidden behind them (every field that needs a change, at once).
+    const badReason = b.data.reason !== undefined && b.data.reason !== null && typeof b.data.reason !== "string";
+    const badYears = typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success;
+    if (badReason) problem(FIELD_ERROR_STATUS, "Not saved", badYears ? "Enter a whole number of years from 1 to 50, and the reason as text." : "The reason is a sentence of text.", { code: badYears ? "INVALID_YEARS" : "INVALID_REASON", fields: { ...(badYears ? { years: "A whole number of years from 1 to 50." } : {}), reason: "This must be text." } });
+    // R1.10 A2: an over-long reason is named with the years too (reasonOf's own count and words), never hidden behind them.
+    const longReason = typeof b.data.reason === "string" && [...b.data.reason.trim()].length > REASON_MAX;
+    if (longReason && badYears) problem(FIELD_ERROR_STATUS, "Not saved", `Enter a whole number of years from 1 to 50, and keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_YEARS", fields: { years: "A whole number of years from 1 to 50.", reason: `This is too long: at most ${REASON_MAX} characters.` } });
     if (typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success) problem(FIELD_ERROR_STATUS, "Not saved", "Enter a whole number of years from 1 to 50.", { code: "INVALID_YEARS", fields: { years: "A whole number of years from 1 to 50." } });
     const below = years < COLLEGE_CLIENT_FILE_YEARS;
     const reason = reasonOf(b.data.reason);

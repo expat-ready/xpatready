@@ -20,6 +20,7 @@ import { z } from "zod";
 import { idParam, list, parseInput, strict } from "../../platform/http/input.ts";
 import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Activity } from "./calls.ts";
+import { textUpTo } from "./common.ts";
 import { Leads } from "./leads.ts";
 import { Prospects } from "./prospects.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
@@ -29,8 +30,11 @@ import { readWebForms, saveAllowedSites, saveEnabled } from "./web-form-settings
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
 
-/** Outer bounds (characters): an id, a one-line field (the services allow at most 254), a long note (at most 5000). */
-const ID = 100, LINE = 1000, LONG = 20_000;
+/** Outer bounds (characters): an id, a one-line field (the services allow at most 254). A note or reason takes its
+ *  service's own length (textUpTo, PF-28 A3): 5000 for a lead's or a call's note and a note, 2000 for a close, lost,
+ *  reopen or undo note or reason. */
+const ID = 100, LINE = 1000;
+const NOTE_MAX = 5000, REASON_MAX = 2000;
 const s = (max: number) => z.string().max(max).nullish();
 /** A prospect's version as read: a whole number, or its digits as text (the service checks it). */
 const version = z.union([z.number(), z.string().max(40)], { error: "Send the prospect's version as read." }).nullish();
@@ -38,16 +42,16 @@ const version = z.union([z.number(), z.string().max(40)], { error: "Send the pro
 const sources = z.union([z.string().max(500), list(z.string().max(500), 50)]).optional();
 const LEADS_QUERY = strict({ view: z.string().max(500).optional(), source: sources, owner: z.string().max(500).optional(), from: z.string().max(500).optional(), to: z.string().max(500).optional() });
 const PROSPECTS_QUERY = strict({ type: z.string().max(500).optional(), stage: z.string().max(500).optional(), owner: z.string().max(500).optional(), source: sources, from: z.string().max(500).optional(), to: z.string().max(500).optional() });
-const ADD_LEAD = strict({ requestId: s(ID), givenNames: s(LINE), familyName: s(LINE), email: s(LINE), phone: s(LINE), source: s(LINE), note: s(LONG), interestedIn: s(ID), personId: s(ID), confirmedNew: z.boolean().nullish() });
+const ADD_LEAD = strict({ requestId: s(ID), givenNames: s(LINE), familyName: s(LINE), email: s(LINE), phone: s(LINE), source: s(LINE), note: textUpTo(NOTE_MAX).nullish(), interestedIn: s(ID), personId: s(ID), confirmedNew: z.boolean().nullish() });
 const ASSIGN = strict({ staffId: s(ID), expectedOwnerStaffId: z.string().max(ID).nullable() });   // the owner the list showed, or null: required
-const CLOSE = strict({ reasonId: z.string().max(ID), note: s(LONG) });
-const REOPEN = strict({ reason: z.string().max(LONG) });
+const CLOSE = strict({ reasonId: z.string().max(ID), note: textUpTo(REASON_MAX).nullish() });
+const REOPEN = strict({ reason: textUpTo(REASON_MAX) });
 const MOVE = strict({ stageId: s(ID), version, cause: s(LINE) });
-const LOST = strict({ reasonId: s(ID), note: s(LONG), version });
+const LOST = strict({ reasonId: s(ID), note: textUpTo(REASON_MAX).nullish(), version });
 const CONVERT = strict({ version });   // {} is a valid Convert (the suites and callers send no version), so not required
-const UNDO_CONVERT = strict({ reason: s(LONG), version });
-const CALL = strict({ direction: s(LINE), outcome: s(LINE), when: s(LINE), seconds: z.number().nullish(), notes: s(LONG) });
-const NOTE = strict({ text: s(LONG), visibility: s(LINE) });
+const UNDO_CONVERT = strict({ reason: textUpTo(REASON_MAX).nullish(), version });
+const CALL = strict({ direction: s(LINE), outcome: s(LINE), when: s(LINE), seconds: z.number().nullish(), notes: textUpTo(NOTE_MAX).nullish() });
+const NOTE = strict({ text: textUpTo(NOTE_MAX).nullish(), visibility: s(LINE) });
 const SITES = strict({ sites: list(z.string().max(LINE), 100).optional(), version: s(LINE) });
 const ENABLED = strict({ enabled: z.boolean().optional(), version: s(LINE) });
 

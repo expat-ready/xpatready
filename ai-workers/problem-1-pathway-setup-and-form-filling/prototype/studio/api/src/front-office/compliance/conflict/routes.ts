@@ -8,14 +8,17 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req } from "@nest
 import { z } from "zod";
 import { idParam, parseInput, strict } from "../../../platform/http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../../platform/identity/keys.ts";
-import { ConflictChecks } from "./service.ts";
+import { ConflictChecks, DISCLOSURE_MAX, DISCLOSURE_RULE } from "./service.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
 const s = (max: number) => z.string().max(max).nullish();
+/** PF-28 A3: the disclosure's own length here (the service's count, characters after trim, and its words), so an over-long one
+ *  is named before the requestId's rule (record) or the check's look-up (confirm); the service keeps its other rules. */
+const disclosure = z.string().refine((t) => [...t.trim()].length <= DISCLOSURE_MAX, { error: DISCLOSURE_RULE }).nullish();
 const PREVIEW = strict({ prospectId: s(100) });
-const RECORD = strict({ requestId: s(100), prospectId: s(100), result: s(100), disclosureText: s(40_000) });
-const CONFIRM = strict({ result: s(100), disclosureText: s(40_000) });
+const RECORD = strict({ requestId: s(100), prospectId: s(100), result: s(100), disclosureText: disclosure });
+const CONFIRM = strict({ result: s(100), disclosureText: disclosure });
 
 @Controller("api/front-office")
 export class ConflictChecksController {

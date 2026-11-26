@@ -11,7 +11,10 @@ import { currentFirm, firmScope, withFirm } from "../../platform/firm-scope.ts";
 import { NOTIFICATION_KIND, type NotificationPort } from "../../../../ports/notifications.ts";
 import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
 import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
+import { notePairs } from "../duplicates/merge/review.ts";
+import { logPort } from "../../platform/observability/log.ts";
 import { livePersonId } from "../duplicates/merge/follow.ts";
+import { queueArrivalMerge, type AutoMergeQueue } from "../duplicates/merge/at-arrival.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -33,6 +36,7 @@ export type ArrivalIn = {
   onOpenProspectPersonId?: string;
   ipHash?: string | null;
   existingPersonId?: string;   // Add a lead for a person already on file (the known-person check): no new person
+  addedAsNew?: boolean;   // FO-9b part 2: Add a lead's "Add as new" (confirmedNew): the new person's pairs are written Kept separate
   ownerStaffId?: string | null;   // the adder (AG-2-4 rule 8); none for a form lead, except a one-user firm's one user (X-4)
   /** FO-10 part 2 (AG-2-85 rule 1(b)): the host of the booking that brought the person; BOOKING door only. */
   bookingHostStaffId?: string;
@@ -62,7 +66,7 @@ function placedWords(p: Placement, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null
   return `, left in Unassigned leads: ${p.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : p.fallback === "POSSIBLE_MATCH" ? "a possible match waits for a person" : "no one in the rule's turn is active"}`;
 }
 
-export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx>; notifications?: NotificationPort<Tx> | null }): Promise<ArrivalOut> {
+export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx>; notifications?: NotificationPort<Tx> | null; autoMerge?: AutoMergeQueue | null }): Promise<ArrivalOut> {
   const firmId = firmScope(a.firmId).firmId;
   // The receipt first (AG-2-84 rule 3). A second post with the same key waits on the unique key until the first commits,
   // then finds its receipt and makes nothing.
@@ -102,6 +106,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     match = await possibleMatch(tx, firmId, a.person);
     personId = randomUUID();
     await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
+    // FO-9b part 2 (concept M8): the new person's pairs go on the duplicate review list; a failure never refuses the arrival.
+    await tx.$executeRaw`savepoint fo_dup_pairs`; try { await notePairs(tx, firmId, personId, a.addedAsNew ? { by: a.actor } : null); await tx.$executeRaw`release savepoint fo_dup_pairs`; } catch (e) { await tx.$executeRaw`rollback to savepoint fo_dup_pairs`; logPort.error("fo9b_note_pairs_failed", e); }
   }
   let owner = a.ownerStaffId ?? null, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null = null;
   // FO-10 part 2 (AG-2-85 rules 1(b), 18): a lead born from a one-to-one booking is its host's, whatever any rule says;
@@ -142,6 +148,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   // user; a booking's host only once the booking door passes the port: booking/runtime-ports.ts passes none yet, a
   // follow-up for the booking module) is told, in this transaction; an adder who owns their own lead (a.ownerStaffId) is not.
   if (owner && !a.ownerStaffId) await tellAssigned(tx, ports.notifications, firmId, owner, lead.id);
+  // FO-9b part 2b (P-574 (2)): a new person's safe duplicate is merged by itself, by a job after this commits (at-arrival.ts).
+  if (!a.existingPersonId) await queueArrivalMerge(tx, ports.autoMerge, firmId, personId);
   return { leadId: lead.id, personId, created: true };
 }
 

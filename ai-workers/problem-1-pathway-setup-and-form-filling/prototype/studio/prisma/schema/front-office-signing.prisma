@@ -116,6 +116,11 @@ model FoSigner {
   consentedAt        DateTime?    @map("consented_at") @db.Timestamptz
   signedAt           DateTime?    @map("signed_at") @db.Timestamptz
   declinedAt         DateTime?    @map("declined_at") @db.Timestamptz
+  /// FO-5d: the client's own reason for declining (1-500 characters, trimmed), only beside declined_at and never changed.
+  declineReason      String?      @map("decline_reason")
+  /// FO-6 part 4b: the door's session, bound to one browser (the sha256 of its http-only cookie's token; both or neither).
+  sessionSha256      String?      @map("session_sha256")
+  sessionExpiresAt   DateTime?    @map("session_expires_at") @db.Timestamptz
 
   request FoSignatureRequest @relation(fields: [firmId, requestId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   staff   PlatformStaff?     @relation("FoSignerStaff", fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)

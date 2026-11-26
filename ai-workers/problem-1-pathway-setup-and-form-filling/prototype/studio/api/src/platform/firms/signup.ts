@@ -28,6 +28,7 @@ import type { MailPort } from "../../../../ports/mail.ts";
 import { asBypass, firmScope, touchFirm, touchFirms, touchPlatform } from "../firm-scope.ts";
 import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
+import { currentVersions } from "../terms/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
 import { SIGNUP_LINK_USE } from "./signup-link.bypass.ts";
 
@@ -72,11 +73,14 @@ const parse = <S extends z.ZodType>(schema: S, value: unknown, refuse: (e: z.Zod
 /** QA-484: an empty field answers in plain words on its field, never the validator's. */
 export const EMPTY = { email: "email: Enter your work email.", password: "password: Choose a password.", firmName: "firmName: Enter your firm's name." } as const;
 const filled = (words: string, blank = (s: string) => s.trim() === "") => z.string({ error: words }).check(z.refine((s) => !blank(s), { error: words, abort: true }));
+/** PF-28 A2 (R1.10): an email over 254 characters (emailOf's own limit) is refused at the parse, on its field and in the
+ *  form's words; emailOf keeps every other rule. The trap field takes any text up to 1000, as the web form's (A3). */
+const EMAIL = filled(EMPTY.email).check(z.maxLength(254, "email: at most 254 characters"));
 const Body = z.strictObject({
-  email: filled(EMPTY.email), password: filled(EMPTY.password, (s) => s === "").check(z.minLength(12, "password: at least 12 characters"), z.regex(/\S/, "password: not only spaces"), z.maxLength(256, "password: at most 256 characters")),
+  email: EMAIL, password: filled(EMPTY.password, (s) => s === "").check(z.minLength(12, "password: at least 12 characters"), z.regex(/\S/, "password: not only spaces"), z.maxLength(256, "password: at most 256 characters")),
   firmName: filled(EMPTY.firmName).transform((s) => s.trim()).pipe(z.string().min(2, "firmName: 2 to 120 characters").max(120, "firmName: 2 to 120 characters").refine((s) => !/[\p{Cc}\p{Cf}]/u.test(s), "firmName: no control characters")),
-  countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().default("team"), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
-  acceptedTerms: z.array(z.string()).default([]), website: z.string().optional(), formStamp: z.string().max(200).default(""),
+  countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().max(40, "planCode: at most 40 characters").default("team"), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
+  acceptedTerms: z.array(z.string()).default([]), website: z.string().max(1000, "website: at most 1000 characters").optional(), formStamp: z.string().max(200).default(""),
 });
 /** A refusal in the door's words: ours as written, any other (a wrong type, an unknown key) without the validator's text. */
 const words = (i: z.core.$ZodIssue) => {
@@ -91,7 +95,7 @@ const VerifyBody = z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$
 const InvitedBody = Body.pick({ password: true, firmName: true, acceptedTerms: true }).extend({ planCode: z.string().min(1).max(40).optional(), period: z.enum(["MONTHLY", "YEARLY"]).optional() });
 /** R1.90: our staff's request for a private link (PF-4s's guard reads `reason` and writes it on our staff's audit line). */
 export const LinkBody = z.strictObject({
-  email: filled(EMPTY.email), countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().min(1).max(40), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
+  email: EMAIL, countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().min(1).max(40), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
   reason: z.string().max(500).optional(),
 });
 /** A private sign-up link lives 14 days (PF-3's table and its check). */
@@ -120,9 +124,10 @@ export class FirmSignUp {
   }
 
   /** The current version of each kind: its newest published one that is not in the future. */
+  /** PF-5tv: the gate's own rule (terms/service.ts currentVersions), so a firm signs up to exactly the versions the gate
+   *  calls current, even when two share a publish time. */
   async currentTerms(db: Tx | PrismaClient = this.db) {
-    const rows = await db.platformTermsVersion.findMany({ where: { publishedAt: { lte: this.ports.clock.now() } }, orderBy: { publishedAt: "desc" } });
-    return [...new Map(rows.map((r) => [r.kind, r] as const).reverse()).values()].sort((a, b) => a.kind.localeCompare(b.kind));
+    return currentVersions(db, this.ports.clock.now().getTime());
   }
 
   async plans() {

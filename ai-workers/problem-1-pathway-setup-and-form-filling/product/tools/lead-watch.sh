@@ -37,8 +37,9 @@ if [ "${1:-}" = gap ]; then
 fi
 mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
-SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN" "$GH_TLS_NOTE_ONCE"' EXIT   # B202: lines step 12 reuses
+SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN" "$GH_TLS_NOTE_ONCE"; type pre_off >/dev/null 2>&1 && pre_off' EXIT   # B202: lines step 12 reuses
 export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"; rm -f "$GH_TLS_NOTE_ONCE"   # ENF-761 part 5: gh.sh's curl notice once per run
+GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN" ]; then export GH_TOKEN; else unset GH_TOKEN; fi   # the token is read once a run, not once a call
 . "$TOOLS/fresh-lib.sh"   # ENF-803 (P-803): every section says when and from where it read; cached answers over 10 min refused
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
@@ -52,6 +53,32 @@ if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
 fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"   # atomic: the standby never reads a half-written stamp
 fresh "the clock and $stamp"
+
+# 0b. Speed (Lead 26, 24 Nov): the steps' own commands, started together after one fetch; each step below still runs its
+# command as written and is given this run's answer (lead-watch-pre.sh). A line here that matches no step only costs time.
+# The private sync (6b) is not among them: it writes, and its own 90 s limit must outlive a check that dies.
+PRE_T0=$SECONDS; early=""; git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin 2>/dev/null || early="not started early, origin was not fetched: each step reads at its own turn, after its own fetch"
+export FLOW_TOKEN="${FLOW_TOKEN:-${GH_TOKEN:-}}"; [ -n "$FLOW_TOKEN" ] || unset FLOW_TOKEN
+. "$TOOLS/lead-watch-pre.sh"; [ -z "$early" ] || pre_off   # no folder: every pre below starts nothing, and the steps run as they did before
+pre python3 -I "$TOOLS/proof-number.py"
+pre python3 -I "$TOOLS/capacity-watch.py" --state "$STATE_DIR"
+pre python3 -I "$TOOLS/queue-batches.py" ${QB_PULLS:+--pulls "$QB_PULLS"} ${QB_CHECKS:+--checks "$QB_CHECKS"}
+pre python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"}
+pre python3 -I "$TOOLS/nightly-watch.py"
+pre python3 -I "$TOOLS/proof-read-watch.py"
+pre python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json"
+pre python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR"
+pre python3 -I "$TOOLS/same-cause.py" --state "$STATE_DIR"
+pre python3 -I "$TOOLS/queue-blocked.py"
+pre bash "$TOOLS/lead-queue.sh"
+SWEEP_STATE_DIR="$STATE_DIR" after bash "$TOOLS/lead-queue.sh" -- bash "$TOOLS/branch-sweep.sh"   # reads the items.json that lead-queue.sh writes
+pre python3 -I "$TOOLS/flow-measure.py" --since today --lead
+pre python3 "$TOOLS/library-freshness.py"
+pre python3 -I "$TOOLS/conformance-check.py" --quiet
+pre python3 -I "$TOOLS/lane-cleanup.py"
+pre python3 -I "$TOOLS/queue-depth.py" ${QUEUE_DEPTH_RUNS:+--runs "$QUEUE_DEPTH_RUNS"} ${QUEUE_DEPTH_MERGIFY:+--mergify "$QUEUE_DEPTH_MERGIFY"}
+pre python3 -I "$TOOLS/cycle-timeline.py"
+fresh "git fetch origin; the slow reads below: ${early:-start now, together, so a stamp further down can be later than its read by the length of the run}"
 
 # 1. Disk and test databases (P-308 disk rule: under 10 GB the Lead frees space, under 4 GB Mac suites pause).
 free=$(df -g / | awk 'NR==2 {print $4}')
@@ -148,20 +175,24 @@ qb=$(python3 -I "$TOOLS/queue-blocked.py" 2>&1); echo "$qb"; seen "$qb"; act=$((
 fresh "queue-blocked.py: GitHub open PRs, their comments and labels, and the guards and ci runs (gh)"
 
 # 3. Questions for the tech lead in the window.
-qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
-for n in $qs; do
-  hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"Question for the tech lead\"))]|length")
-  [ "${hit:-0}" -gt 0 ] && ACT "#$n has a new question for the tech lead"
-done
-fresh "GitHub: open PRs with "Question for the tech lead" and their comments (gh.sh)"
+# One read of every comment since the window's start, for 3 and 3b (Lead 26, 24 Nov): it was two searches and one read per PR
+# found, and a search can lag or stop at 30. Only open PRs count, as before; an unreadable answer is an ACT.
+cm=$(gh api "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --paginate -q ".[] | select(.created_at >= \"$since\") | {n: (.issue_url | split(\"/\") | last), b: .body, id: .id} | @json" 2>/dev/null) || ACT "comments since $since unreadable: questions and lane reports (3, 3b) not read this check"
+jq -e . >/dev/null 2>&1 <<<"${cm:-null}" || [ -z "$cm" ] || ACT "comments since $since cut short (a line of the answer is not whole): some questions and lane reports (3, 3b) may be missing this check"
+asked() { grep . <<<"$cm" | jq -r --arg re "$1" 'select((.b // "") | test($re)) | .n' 2>/dev/null | sort -un | while read -r n; do
+  # dropped only when the open-PR list was read and does not hold it; an unreadable list keeps every PR
+  jq -e --argjson n "$n" 'type == "array" and length > 0 and (any(.[]; .number == $n) | not)' "$STATE_DIR/prs-body.json" >/dev/null 2>&1 || echo "$n"; done; }
+for n in $(asked 'Question for the tech lead'); do ACT "#$n has a new question for the tech lead"; done
+# 3a (OS-06, design/os-backlog.md; P-439, P-731): a question that asks for the full run gets "/run full" posted once on its
+# PR (comment-run.yml starts the run and replies), so the lane does not wait for a Lead turn. LEAD_WATCH_FULL_RUN_POST=0: ACT only.
+grep . <<<"$cm" > "$STATE_DIR/comments.jsonl" 2>/dev/null || : > "$STATE_DIR/comments.jsonl"
+fa=$(python3 -I "$TOOLS/full-run-ask.py" --comments "$STATE_DIR/comments.jsonl" --prs "$STATE_DIR/prs-body.json" --state "$STATE_DIR" $([ "${LEAD_WATCH_FULL_RUN_POST:-1}" = 0 ] || echo --post) 2>&1)
+farc=$?; [ -n "$fa" ] && echo "$fa"; seen "$fa"; act=$((act + $(grep -c '^ACT' <<<"$fa"))); [ "$farc" = 0 ] || ACT "full-run ask: full-run-ask.py exit $farc ($(tail -1 <<<"$fa"))"
+fresh "GitHub: comments since the window's start on open PRs, \"Question for the tech lead\" (gh.sh)"
 # 3b. Lane reports to the Lead (A85, 15 Nov: board v61 reported "ready for Lead 54 to merge" on records PR #1796 at
 # 11:19 IST and waited 1.5 h unseen across a hand-over). Any open PR comment in the window addressed to a Lead that is
 # not a question, and any lane branch the Lead merges here (board/*) with commits not on this branch.
-rs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "ready for Lead" --json number -q '.[].number' 2>/dev/null)
-for n in $rs; do
-  hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"(?i)ready for (the )?(tech )?lead|for the (tech )?lead to merge|Lead [0-9]+ to merge\"))]|length")
-  [ "${hit:-0}" -gt 0 ] && ACT "#$n has a lane report for the Lead (merge or publish it now)"
-done
+for n in $(asked '(?i)ready for (the )?(tech )?lead|for the (tech )?lead to merge|Lead [0-9]+ to merge'); do ACT "#$n has a lane report for the Lead (merge or publish it now)"; done
 git fetch -q origin 2>/dev/null
 here=$(git rev-parse --abbrev-ref HEAD)
 for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/board/*' 'refs/remotes/origin/tools/*'); do
@@ -169,7 +200,7 @@ for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/boa
   age=$(( ( $(date +%s) - $(git log -1 --format=%ct "$b") ) / 60 ))
   [ "${n:-0}" -gt 0 ] && [ "$age" -le 1440 ] && ACT "$b has $n commit(s) not on $here (last push ${age} min ago): merge, test, publish"
 done
-fresh "GitHub: open PRs with "ready for Lead" and their comments; origin board/* and tools/* after git fetch"
+fresh "GitHub: the same comments, \"ready for Lead\" and the like; origin board/* and tools/* after git fetch"
 # 3c. The "needs Lead" queue (P-611 (2), row G-1): LANE-REPORT first lines on open PRs and on #1796 (look-back 24 h,
 # idempotent) go into product/state/items.json; open and not acked over 10 min = ACT (P-798), over 90 min = FOUNDER line. 3b stays the
 # fallback for reports in free text. Ack with: python3 product/tools/items.py ack <id> --by "Lead N"; commit items.json.
@@ -193,6 +224,19 @@ alive=$(git for-each-ref --sort=-committerdate --format='%(committerdate:unix) %
   | awk -v t="$(date -u -v-90M +%s)" '$1>=t {print $2}' | grep -v -e 'origin/main' -e 'mergify/' -e 'origin/HEAD' -e '^origin$' | sed 's#origin/##')
 say "lanes pushed in 90 min: $(echo "$alive" | grep -c .)"; [ -n "$alive" ] && echo "$alive" | head -12 | sed 's/^/      /'
 fresh "origin after git fetch, local-lanes.sh"
+
+# 4b. Wake on merge (24 Nov, design option A): an open PR whose "Waits on: #n" are all on main. OS-49: the wake is posted once
+# as a comment on that PR (its cloud lane is subscribed to it), an ACT again only if not taken in 60 min; LEAD_WATCH_WAKE_POST=0: report only.
+wpost=(); [ "${LEAD_WATCH_WAKE_POST:-1}" = 0 ] || wpost=(--post --state "$STATE_DIR")
+mw=$(python3 -I "$TOOLS/merge-wake.py" --prs "$STATE_DIR/prs-body.json" ${wpost[@]+"${wpost[@]}"} 2>&1); echo "$mw"; act=$((act + $(grep -c '^ACT' <<<"$mw"))); seen "$mw"
+grep -qE '^(wake |ACT   wake)' <<<"$mw" || ACT "wake: merge-wake.py did not run ($(head -1 <<<"$mw"))"
+fresh "merge-wake.py: main's merges and branch tips (fetched in step 4), open PRs read in 2b (gh.sh), the app view saved in step 10's file"
+
+# 4c (OS-52, design/os-backlog.md; full-power #158): runs since the window's start that ended startup_failure ran no job (a
+# broken workflow file, so its check never reports): one ACT per workflow.
+sf=$(python3 -I "$TOOLS/startup-failures.py" --since "$since" 2>&1); sfrc=$?; echo "$sf"; seen "$sf"
+act=$((act + $(grep -c '^ACT' <<<"$sf"))); [ "$sfrc" = 0 ] && grep -q '^startup failures: ' <<<"$sf" || ACT "startup failures: startup-failures.py did not run ($(tail -1 <<<"$sf"))"
+fresh "startup-failures.py: GitHub Actions runs created since the window's start (gh.sh)"
 
 # 5. The founder's five changes, kept (founder 4 Nov ~10:50 IST "Go, start now"; "Yes, two standby"): builders in the
 # cloud, machine testing on GitHub, the Mac copy cap, and four numbers every check. A rule nobody measures drifts (the
@@ -348,6 +392,12 @@ fresh "owed-watch.py lanes: the board's data.json as step 11 accepted it (over 1
 so=$(python3 -I "$TOOLS/owed-watch.py" starts --state "$TOOLS/../STATE.md" 2>&1); echo "$so"; act=$((act + $(grep -c '^ACT' <<<"$so"))); seen "$so"
 fresh "owed-watch.py starts: STATE.md in this copy"
 
+# 13d (OS-18, P-530): a red "Waiting on the founder" line atop STATE or in its Start here: one ACT to re-send the push once
+# it has waited 30 min, then at most once an hour (founder-wait.py remembers each line in $STATE_DIR); a plain line between.
+fw=$(python3 -I "$TOOLS/founder-wait.py" --state "$TOOLS/../STATE.md" --memory "$STATE_DIR/founder-wait.json" 2>&1); fwrc=$?; echo "$fw"; seen "$fw"
+act=$((act + $(grep -c '^ACT' <<<"$fw"))); [ "$fwrc" = 0 ] && grep -qE '^(ACT   )?founder wait: ' <<<"$fw" || ACT "founder wait: founder-wait.py did not run ($(tail -1 <<<"$fw"))"
+fresh "founder-wait.py: STATE.md in this copy, its memory in $STATE_DIR (13d)"
+
 # 16. The focus list stays true (ENF-733b, founder A261): main's focus-list.md against qa's file on main (step 11's copy).
 git show origin/main:ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md > "$STATE_DIR/focus-main.md" 2>/dev/null; ft=$(python3 -I "$TOOLS/focus-truth.py" --list "$STATE_DIR/focus-main.md" --caps "$STATE_DIR/caps-main.md" 2>&1); ftrc=$?; [ "$ftrc" = 1 ] && ACT "focus list: $(grep -c '^drop:' <<<"$ft") proven lines, $(grep -c '^missing:' <<<"$ft") Partial items missing (focus-truth.py --md)"; [ "$ftrc" -gt 1 ] && ACT "focus list not checked: $(tail -1 <<<"$ft")"
 fresh "focus-truth.py: focus-list.md and qa/CAPABILITIES.md on origin/main (fetched in step 4; qa's file read in step 5, saved in step 11)"
@@ -359,4 +409,5 @@ fresh "focus-truth.py: focus-list.md and qa/CAPABILITIES.md on origin/main (fetc
 cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "$BOARD" \
   --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
 fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board as step 11 accepted it (over $FRESH_MAX_MIN min: not measured)"
+echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
 exit "$act"
