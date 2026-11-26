@@ -6,6 +6,9 @@
 /// (partial unique index in the migration); superseded_at is for C9.2 (steps re-opened after a fact changes).
 model SignStep {
   id           String    @id @default(uuid()) @db.Uuid
+  /// CS-W2 part submission (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else
+  /// the parent's through case_submission_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId  String    @map("workspace_id") @db.Uuid
   caseId       String    @map("case_id") @db.Uuid
   itemId       String    @map("item_id") @db.Uuid
@@ -19,7 +22,11 @@ model SignStep {
   item FilingItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
   copy FormInstance? @relation(fields: [copyId], references: [id], onDelete: Restrict)
 
+  caseFirm Case? @relation("SignStepCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  itemFirm FilingItem? @relation("SignStepItemFirm", fields: [itemId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([itemId])
+  @@index([firmId, caseId])
   @@map("sign_step")
 }
 
@@ -27,6 +34,9 @@ model SignStep {
 /// checked by its sha256 before it is read (as C6.4's case_document; stand-in SI-14).
 model SignedScan {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part submission (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else
+  /// the parent's through case_submission_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   caseId      String   @map("case_id") @db.Uuid
   itemId      String   @map("item_id") @db.Uuid
@@ -41,7 +51,11 @@ model SignedScan {
   case Case       @relation(fields: [caseId], references: [id], onDelete: Cascade)
   item FilingItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
+  caseFirm Case? @relation("SignedScanCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  itemFirm FilingItem? @relation("SignedScanItemFirm", fields: [itemId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([itemId])
+  @@index([firmId, caseId])
   @@map("signed_scan")
 }
 
@@ -50,6 +64,9 @@ model SignedScan {
 /// was filed with, so a later change reads "Filed with an earlier value" (BR-12).
 model FilingRecord {
   id                String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part submission (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else
+  /// the parent's through case_submission_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId       String   @map("workspace_id") @db.Uuid
   caseId            String   @map("case_id") @db.Uuid
   filingId          String   @unique @map("filing_id") @db.Uuid
@@ -70,7 +87,14 @@ model FilingRecord {
   group  SubmissionGroup @relation(fields: [submissionGroupId], references: [id], onDelete: Restrict)
   feeReceipts FeeReceiptFile[] // B149
 
+  caseFirm Case? @relation("FilingRecordCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingFirm Filing? @relation("FilingRecordFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  groupFirm SubmissionGroup? @relation("FilingRecordGroupFirm", fields: [submissionGroupId, firmId], references: [id, firmId], onDelete: Restrict, onUpdate: Restrict)
+  feeReceiptsFirm FeeReceiptFile[] @relation("FeeReceiptFileRecordFirm")
+
   @@index([caseId])
+  @@unique([filingId, firmId])
+  @@index([firmId, caseId])
   @@map("filing_record")
 }
 
@@ -80,6 +104,9 @@ model FilingRecord {
 /// file is in the working files (var/), named by the row id, checked by its sha256, as C8.1's signed_scan.
 model FeeReceiptFile {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part submission (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else
+  /// the parent's through case_submission_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   caseId      String   @map("case_id") @db.Uuid
   filingId    String   @map("filing_id") @db.Uuid
@@ -94,13 +121,20 @@ model FeeReceiptFile {
   case   Case         @relation(fields: [caseId], references: [id], onDelete: Cascade)
   record FilingRecord @relation(fields: [filingId], references: [filingId], onDelete: Cascade)
 
+  caseFirm Case? @relation("FeeReceiptFileCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  recordFirm FilingRecord? @relation("FeeReceiptFileRecordFirm", fields: [filingId, firmId], references: [filingId, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([filingId])
+  @@index([firmId, filingId])
   @@map("fee_receipt_file")
 }
 
 /// C8.2: the UCI IRCC gave one person on a recorded filing; only `uci` changes, through a correction (trigger).
 model FilingPersonRecord {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part submission (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else
+  /// the parent's through case_submission_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   filingId    String   @map("filing_id") @db.Uuid
   subjectId   String   @map("subject_id") @db.Uuid
@@ -110,7 +144,10 @@ model FilingPersonRecord {
 
   filing Filing @relation(fields: [filingId], references: [id], onDelete: Cascade)
 
+  filingFirm Filing? @relation("FilingPersonRecordFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@unique([filingId, subjectId])
+  @@index([firmId, filingId])
   @@map("filing_person_record")
 }
 
@@ -118,6 +155,9 @@ model FilingPersonRecord {
 /// person; a UCI added later has no before) before and after, with the reason. Append-only (trigger).
 model FilingRecordCorrection {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part submission (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else
+  /// the parent's through case_submission_firm_fill); kept once set. Nullable until CS-W1 part 2 (see the migration).
+  firmId String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   filingId    String   @map("filing_id") @db.Uuid
   field       String   @default("application_number")
@@ -130,6 +170,9 @@ model FilingRecordCorrection {
 
   filing Filing @relation(fields: [filingId], references: [id], onDelete: Cascade)
 
+  filingFirm Filing? @relation("FilingRecordCorrectionFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([filingId])
+  @@index([firmId, filingId])
   @@map("filing_record_correction")
 }

@@ -34,6 +34,8 @@ model SubmissionGroup {
   caseFirm Case? @relation("SubmissionGroupCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
   filingsFirm Filing[] @relation("FilingGroupFirm")
 
+  recordsFirm FilingRecord[] @relation("FilingRecordGroupFirm")
+
   @@index([caseId])
   @@index([stageId])
   @@unique([id, firmId])
@@ -85,6 +87,15 @@ model Filing {
   applicantsFirm FilingApplicant[]    @relation("FilingApplicantFilingFirm")
   itemsFirm      FilingItem[]         @relation("FilingItemFilingFirm")
   additionsFirm  FilingFormAddition[] @relation("FilingFormAdditionFilingFirm")
+
+  reviewsFirm FilingReview[] @relation("FilingReviewFilingFirm")
+  passesFirm ReadinessPass[] @relation("ReadinessPassFilingFirm")
+  reviewRoundsFirm ReviewRoundFiling[] @relation("ReviewRoundFilingFilingFirm")
+  reviewFormsFirm ReviewRoundForm[] @relation("ReviewRoundFormFilingFirm")
+
+  recordsFirm FilingRecord[] @relation("FilingRecordFilingFirm")
+  personRecordsFirm FilingPersonRecord[] @relation("FilingPersonRecordFilingFirm")
+  correctionsFirm FilingRecordCorrection[] @relation("FilingRecordCorrectionFilingFirm")
 
   @@unique([caseId, stageId, subjectId])
   @@index([stageId])
@@ -151,9 +162,15 @@ model FilingItem {
   caseFirm   Case?   @relation("FilingItemCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
   filingFirm Filing? @relation("FilingItemFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
 
+  reviewFormsFirm ReviewRoundForm[] @relation("ReviewRoundFormItemFirm")
+
+  signStepsFirm SignStep[] @relation("SignStepItemFirm")
+  signedScansFirm SignedScan[] @relation("SignedScanItemFirm")
+
   @@unique([filingId, kind, itemKey, subjectId])
   @@index([caseId])
   @@index([firmId, caseId])
+  @@unique([id, firmId])
   @@map("filing_item")
 }
 

@@ -49,6 +49,13 @@ const FIRM_ID_ELSEWHERE: Record<string, string> = {
   submission_group: "case side (CS-W2 filings; CS-W4)", filing: "case side (CS-W2 filings; CS-W4)", filing_applicant: "case side (CS-W2 filings; CS-W4)",
   filing_item: "case side (CS-W2 filings; CS-W4)", assessment: "case side (CS-W2 filings; CS-W4)", assessment_override: "case side (CS-W2 filings; CS-W4)",
   assessment_review: "case side (CS-W2 filings; CS-W4)", filing_change: "case side (CS-W2 filings; CS-W4)", filing_form_addition: "case side (CS-W2 filings; CS-W4)",
+  // CS-W2 part review (#3831): the firm column on the seven review tables; walled with the case side (CS-W4)
+  review_finding: "case side (CS-W2 review; CS-W4)", filing_review: "case side (CS-W2 review; CS-W4)", readiness_pass: "case side (CS-W2 review; CS-W4)",
+  review_round: "case side (CS-W2 review; CS-W4)", review_round_filing: "case side (CS-W2 review; CS-W4)", review_round_form: "case side (CS-W2 review; CS-W4)",
+  review_check: "case side (CS-W2 review; CS-W4)",
+  // CS-W2 part submission: the firm column on the six submission tables; walled with the case side (CS-W4)
+  sign_step: "case side (CS-W2 submission; CS-W4)", signed_scan: "case side (CS-W2 submission; CS-W4)", filing_record: "case side (CS-W2 submission; CS-W4)",
+  fee_receipt_file: "case side (CS-W2 submission; CS-W4)", filing_person_record: "case side (CS-W2 submission; CS-W4)", filing_record_correction: "case side (CS-W2 submission; CS-W4)",
 };
 const elsewhere = (t: string) => Object.hasOwn(FIRM_ID_ELSEWHERE, t);   // never a prototype name (break m1)
 /** The tables with a firm column: firm_id, or the case side's firm_key (break M2). */
