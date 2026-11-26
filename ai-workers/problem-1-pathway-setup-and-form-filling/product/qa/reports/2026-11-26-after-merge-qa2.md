@@ -44,3 +44,7 @@ Merged since round 1: #3640 (R1.64 PF-F2 part 1b), #3812 (R1.79 PF-R2cm), #3805 
 * R1.85: j_85 20 PASS, 1 FAIL. Only W5 is red (the erasers, #3713). W1-W2 (the console Privacy pages) are now green.
 * R1.79 and R1.64: parts missing as in their rows; no journey on main.
 * R1.96 (the Lead's ask): qa 1b's #3804 is the proof (Works). j_96 was re-run here on main e6c272194: 26/26.
+
+## Round 3 (main e673b5701, ~14:2x IST)
+* R1.85: PF-21d part 2b-1 (#3713) merged. j_85 is **21/21 on GitHub** (walks run 45785023537 on e13169736, walk on merge) and 21/21 here. One named part is still open: 2b-2 (the insert-only tables, filed mail), which #3713 itself defers. Partial, with a question to the Lead: if 2b-2 is outside R1.85, it becomes Works on that run.
+* R1.79: PF-R2fo (#3734) merged. Only PF-R3 (the Reports page) is left.
