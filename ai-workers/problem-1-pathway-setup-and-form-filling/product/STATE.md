@@ -2,7 +2,7 @@
 
 current_lead: local_a579023a Lead 7 · 27 Nov 00:1x IST (after Lead 6 local_33c127af at about 225k, ~185k past its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-27 00:1x IST (clock): **Lead 6 hands over to Lead 7; read the hand-over block first.** 66/110 Works on main (+2 on 26 Nov). Weekly 77%.
+updated: 2026-11-27 00:5x IST (clock): **Lead 7 running (check 61414802; watch re-armed).** Overnight: Lead reads + rounds on #3822, #3633, #3639, #3647; #3639 labelled; P-846 size exception for #3822 in records PR #3879 (label when CI allows); morning plan https://claude.ai/artifact/G7rHHAZQhi2ZRHaJDCoXQa and the 27 Nov block in RESUME. 66/110 Works. Weekly 84%. Standby: none (start refused). claude.ai signed out until the founder's morning switch.
 
 ## Hand-over Lead 6 → Lead 7, 00:1x IST 27 Nov (Lead 6 at ~225k, ~185k past its start read, P-446; the earlier block and Lead 6's lines, word for word: `history/STATE-2026-11-27-0015-lead6-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 6's a1b9cf16 is deleted. Re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). No standby after you: start one at the founder's next typed turn (P-286).
