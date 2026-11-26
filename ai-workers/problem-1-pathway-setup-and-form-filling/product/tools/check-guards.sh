@@ -714,8 +714,8 @@ P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
 # OS-50 (P-733, P-820): near-Proven product PRs first in the product queue, never interrupting a running batch
 MUT="$MUT"'
-OS50 interrupt|../../.mergify.yml|s/        allow_checks_interruption: false/        allow_checks_interruption: true/|check-mergify-scopes.sh
-OS50 rule|../../.mergify.yml|s/      - name: near-proven/      - name: near-proven-off/|check-mergify-scopes.sh'
+OS50 interrupt|../../.mergify.yml|s/^    allow_checks_interruption: false/    allow_checks_interruption: true/|check-mergify-scopes.sh
+OS50 rule|../../.mergify.yml|s/^  - name: near-proven$/  - name: near-proven-off/|check-mergify-scopes.sh'
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
