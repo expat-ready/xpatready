@@ -44,3 +44,29 @@ UXL (375 px): 09 Show older is 32 px (secondary, ≥24 met) · 10 no sideways sc
 A real screen reader; an intended user's unaided walk (D17, D20); the breaker's personal-data pass (the row says breaker: yes). There is no screen in the product to write a person's note (part 3 is API only, outside this row). So the person notes in the demo come from the API or tests, and that belongs to the Lead to place, not to this PR (P-26). Screenshots are in the reviewer's scratch folder and not committed. The builder's `client-timeline-{1440,375}.png` match what I saw.
 
 **Verdict: Changes 3069120aee22938a2c5b3d7ff8b0ae52c9c1e163.** Fix Majors #1 and #2. Fix Minors #3-#8 or give each a follow-up row.
+
+## Round 2 (diff only): 3069120ae..79676e3ccb7897639c094b711ad4f25b8bf15166
+Scope: `person-timeline.ts`, `case-notes.tsx`, `contracts/runtime.ts` (additive: `caseNumber`, `prospectOlderHidden`), and the check. The breaker's round-1 Majors (`break-report.md`) are checked here too, so one verdict covers both. Copy `rv_csnt1t` on :4434 only, stopped afterwards; no `prisma generate`. My runs at 79676e3cc: `check_csnt1t_person_timeline.ts` **33/33**; `check_csnt1d_panel_browser.cjs` **53/53** (the case panel shares the changed `Timeline`); plus my own browser walk at 1440 and 375 px, and API probes.
+
+**Closed**
+* **Review M1, prospect lines in words: closed.** Audit and event lines keep their type and are sent with an empty summary, so no staff id leaves the server (`person-timeline.ts:85`). Calls and notes are sent as types "call" and "note" with their words. `LINE_WORDS` gains the front-office names, and unknown ones read "Prospect updated" or "Contact details changed". Walk: "Engaged as a prospect · Prospect" (`r2-first-1440`); across all 628 lines no prospect line reads "Other change". The "Other change" lines that remain are case audit lines, part 4's words (its review, D10), not this PR's. PT3 fails if summaries are sent again.
+* **Review M2, long notes: closed.** A note or call over 2 lines or 200 characters folds, with a real button "Show all of it" / "Show less" that has `aria-expanded` and a 2 px focus outline. Enter unfolds it, at 1440 and 375 px (`r2-showall-375`). A shorter note is never clamped, so no text is hidden without a button. PT7 checks folded, then unfolded.
+* **Breaker M1, prospect key: closed.** Source 3 is read only when `ctx.keys` holds `agent/prospect:show`. The route's `@OwnOrAll` is metadata only (`keys.ts:32-38`), and `Prospects.read` applies it, so the person timeline now matches the front-office route. PT3 removes the key from Case manager: 200, the person's note, no prospect line.
+* **Breaker M2, more than 500 prospect lines lost silently: closed as a Major.** Walk with 600 extra prospect notes: 14 Show older clicks, 628 lines, 498 bulk notes. The last page carries `prospectOlderHidden`, and the end line no longer claims "everything" (`r2-end-1440`). PT4 covers it. The wording is not exact: see m-b.
+* **Minors closed:**
+  * #3 / breaker m4: lines carry the case number, or "Prospect" for prospect lines.
+  * #4 / breaker m5: the 404 now reads "This client is not in the firm…". With no connection it reads "Could not reach the server. Try again." Try again recovers after a 500 (walk).
+  * #5: PT4 now checks that no `source:refId` repeats.
+  * #6 / breaker m1: only a 404 or 403 skips the prospect source; anything else throws.
+  * #7: the key check above.
+  * #8: the empty words now say what will appear.
+  * Breaker m3: 40 cases on one person read in 160-218 ms.
+  * Breaker m2, at the API: an empty page now returns the floor as its cursor. The repro (600 planted firm-B lines naming the case) gives page 1: 0 lines, more, a cursor; page 2: the real note. Firm B's lines are never shown.
+
+**Open (both Minor, Should; neither blocks)**
+* **m-a, breaker m2 on the screen: still a false empty.** The `Timeline` component shows "Nothing has happened for this client yet." whenever the lines shown are empty, and Show older needs at least one line (`case-notes.tsx:268`, `:280`). So an empty first page that has more lines still shows nothing, and the real note cannot be reached from the screen (same repro; `r2-m2-false-empty.png`). It is rare: it needs over 500 hidden rows newer than everything else. *Fix:* when the shown lines are empty and `hasNextPage`, fetch the next page, or show Show older. Add a PT case.
+* **m-b, the cap words promise a page that does not show those lines.** The end line says "Older lines of the prospect are on the prospect's own page". The prospect page has no timeline yet (FO-4 part 2b, j_76 W8), and the front office's own read keeps the same newest 500 (`sales/timeline.ts:17`), so even that page would not show them. *Fix:* "Only the prospect's newest 500 lines are shown here."
+
+Graph and kill checks: removing the key check, sending the summaries again, or removing the fold each makes a named PT fail. Journey score this round: 9/10 (plain words ½ for m-b and the inherited case words, visual quality ½ for the inherited grey tiles; the rest 1). Screenshots are in the reviewer's scratch folder and not committed.
+
+**Verdict: Approve 79676e3ccb7897639c094b711ad4f25b8bf15166.** No Blocker or Major is open from the review or the break report. m-a and m-b are Minors to fix or give a follow-up row.
