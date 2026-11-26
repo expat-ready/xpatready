@@ -121,3 +121,37 @@ I did not re-run c95 and A24-3: this range does not touch their files.
 **Still open, unchanged (Minor, Should; not blocking):** m-a (an empty first page with more lines shows the false empty) and m-b (the cap words point to a prospect page with no timeline).
 
 **Verdict: Approve 4d584155fe34de599c2f77b00b8834f79bc57ed6.** No Blocker or Major is open.
+
+## Round 4 (fresh reviewer, diff only): 47b0210ce..4d584155fe34de599c2f77b00b8834f79bc57ed6
+Reviewer: a fresh context that had not seen this PR before. The Lead allowed it at 23:01Z: diff only, with a breaker on the census entry. I reviewed the code range only, not records commit fa957ddfc. Copy `rv4f_csnt1t` ran on :4434 only (never :4400, no `prisma generate`, Postgres :54329) and was stopped afterwards: database and files removed, :4434 free.
+
+**1. The merge, 46fa048e0.** `git show --cc 46fa048e0` prints only the header, with no diff hunks, so nothing was resolved by hand. I also checked independently that the studio diff of `main...46fa048e0` matches the studio diff of `139a34847...47b0210ce` line for line, ignoring `index` lines. So the merge changed none of the code reviewed in round 3. `46fa048e0..4d584155f` touches one file, `tests/check_csw3_firm_scope.ts` (+5 / -2).
+
+**2. The census entry, 4d584155f.** The commit adds `case-notes/person-timeline` to the allow-list with a three-line comment and moves the count from 59 to 60. I checked whether the entry is truly firm-scoped, in this order:
+* **The client gate comes first.** `PersonTimeline.read` (`person-timeline.ts:51`) runs `this.notes.subjectFor(ctx, "client", clientId)` before any case read. The `db.case.findMany({ where: { clientId: s.id } })` is at :65 and uses `s.id`, the id the gate returned, not the raw path value. `subjectOf` (`service.ts:135-144`):
+  * rejects an id that is not a UUID;
+  * finds `case_client` by `{ id, firmKey: ctx.firmKey }`;
+  * resolves the firm by key and requires `firm.id === ctx.firmId`.
+
+  Anything else gets a 404 before any case is touched.
+* **The case read is bounded by the database.** `runtime_case` has two composite foreign keys to `case_client`, both `ON UPDATE RESTRICT` (`20261118230000_csk1_case_client/migration.sql:177,180`): `(client_id, workspace_id, firm_key)` and `(client_id, firm_id)`. With the ALWAYS trigger `case_firm_fixed` on top, every case whose `client_id` is a firm-A client is itself a firm-A case, in both firm columns.
+* **Each case passes the caseScope gate.** Cases are read only through `CaseTimeline.pageAfter` → `keyed` (`timeline.ts:134-141`), whose first statement is `subjectFor(ctx, "case", caseId)`. That calls `subjectOf` with `{ id, firmKey: ctx.firmKey }` AND `caseScopeWhere(caseScope(db, { firmId: ctx.firmId, staffId: ctx.staffId }))`, plus the same firm-id check. The 404 handling (`person-timeline.ts:67`) works like this:
+  * a 404 drops the case: no line, no `caseId`, no `caseNumber`;
+  * any other error is thrown, so a failure is never hidden as an empty result.
+
+  `caseNumber` is selected at :65 but used only for cases whose page came back.
+* **The comment's claim matches the code.** The census line for the file is `person-timeline.ts 0 0 0` (no `$transaction`, no raw SQL, no firm set). That fits: it reads only through Prisma and the two gated services.
+
+Conclusion: the entry is truly firm-scoped. Two independent gates protect it: the client gate before the query, and the per-case firm + caseScope gate after it. Database constraints bound the query between them.
+
+**3. The breaker's n1, weighed.** Adding `firmId: s.firmId` to the `where` at :65 would make the query scoped on its face. Today it relies on the composite foreign key for that, and on `pageAfter` to drop anything the key did not stop. The breaker's 1a and 3d show the second gate holds even with the keys turned off. So this is defence in depth only, with no reachable leak. I rate it a **Nit (Could)**: worth one line the next time this file is touched, because the CS-W3 allow-list is per file and a self-scoped query makes the file's entry easier to defend. It is not a condition of this commit. The breaker's m1 (the `timeline.ts:112` audit source does not check `r.firm_id`) is outside this range and unreachable without turning off an ALWAYS trigger. I agree it is a Minor for a follow-up row on the case timeline. It is not this PR's.
+
+**4. Re-run at 4d584155f** (worktree at fa957ddfc, whose only difference is the records commit):
+* `check_csw3_firm_scope.ts 4434 xr_studio_rv4f_csnt1t`: **48/48**. This includes "census pass … 60 with CS-NT1t" and "census fail: a new case-side file with an unscoped case query, not on the list, fails the census". `csw3-spike.sh census` reports `files: 60`.
+* `check_csnt1t_person_timeline.ts 4434 xr_studio_rv4f_csnt1t`: **32 passed, 0 failed**, on the same copy after CS-W3. The builder's 33rd is the conditional checkpoint-load setup step, as the earlier round-4 reviewer explained.
+
+**5. Journey.** This range has no user-facing change: one test file, plus a merge that changes no PR code. So I did not run a new journey. The score of record is still the reviewer's round-2 score, **9/10**. The first journey report is `journey-test-reviewer-2026-11-26.md` (8/10 at round 1).
+
+**Open, unchanged, not blocking:** m-a and m-b (Minor, Should) from rounds 2–3, the breaker's m1 (follow-up, case timeline) and n1 (Nit, above). No Blocker or Major is open.
+
+**Verdict: Approve 4d584155fe34de599c2f77b00b8834f79bc57ed6**
