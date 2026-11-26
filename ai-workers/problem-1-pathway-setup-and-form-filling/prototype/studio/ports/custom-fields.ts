@@ -33,6 +33,9 @@ export const trimText = (s: string) => s.normalize("NFC").replace(EDGES, "");
 /** The form two choices or labels are compared in: trimmed, NFC, lower case. */
 export const sameForm = (s: string) => trimText(s).toLowerCase();
 
+/** Text the database can store: no NUL and no lone surrogate (break m1). */
+export const storable = (s: string) => !s.includes("\u0000") && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
+
 /** A field's key from its label: lower-case letters, digits and "_", starting with a letter, at most 40; "_2", "_3", …
  *  when the key is taken (archived fields keep theirs, so archive-and-re-add gets a new one; challenge M4). */
 export function keyFromLabel(label: string, taken: Iterable<string>): string {
@@ -84,6 +87,7 @@ export function readValue(f: FieldShape, raw: unknown): { value: string | number
     }
   }
   if (typeof raw !== "string") return { issue: `Type text for ${f.label}.` };
+  if (!storable(raw)) return { issue: `Use letters, digits and punctuation only in ${f.label}.` };   // the database cannot store these (break m1)
   const s = trimText(raw);
   if (!s) return { value: null };
   const n = [...s].length;
@@ -95,7 +99,7 @@ export function readValue(f: FieldShape, raw: unknown): { value: string | number
     case "PHONE": { const d = s.replace(/[^0-9]/g, "").length; return PHONE.test(s) && d >= 4 && d <= 20 ? { value: s } : { issue: "Type a phone number with its area code, for example 416 555 0142." }; }
     case "URL": { const u = /^https?:\/\//i.test(s) ? s : `https://${s}`; return [...u].length <= LIMITS.url && URL_.test(u) ? { value: u } : { issue: "Type a web address, for example example.com." }; }
     case "DATE": {
-      const d = DATE.test(s) ? new Date(`${s}T00:00:00Z`) : null;
+      const d = DATE.test(s) && s >= "0001-01-01" ? new Date(`${s}T00:00:00Z`) : null;   // year 0 is no date to the database (break m2)
       return d && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s ? { value: s } : { issue: "Pick a real date, for example 2026-12-15." };
     }
     default: return { issue: `Type a value for ${f.label}.` };
