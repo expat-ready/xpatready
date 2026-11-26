@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_33c127af Lead 6 · 26 Nov 22:3x IST (after Lead 5 local_1c8b2ecd at about 295k, ~190k past its start read, P-446; Opus 5.5 medium, P-788)
+current_lead: local_33c127af Lead 6 · 26 Nov 22:33 IST (after Lead 5 local_1c8b2ecd at about 295k, ~190k past its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 22:3x IST (clock): **Lead 5 hands over to Lead 6; read the hand-over block first.** 66/110 Works on main. Weekly ~75%.
+updated: 2026-11-26 22:4x IST (clock): **Lead 6 running (check a1b9cf16, cron 3,33; lane-watch re-armed).** #3697 CI running on bf7d190e (Approve posted): label when green. #3753 red for real (port contract for StatementDocuments; send.ts not through MessagePort): fixes posted on the PR, card task_a54c1612 for a cloud builder awaits the founder. 66/110 Works on main. Weekly ~75%.
 
 ## Hand-over Lead 5 → Lead 6, 22:3x IST 26 Nov (Lead 5 at ~295k, P-446; the earlier block word for word: `history/STATE-2026-11-26-2235-lead5-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 5's 2ee5c4a4 is deleted. Re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Start one more standby at the founder's next typed turn (P-286).
@@ -11,7 +11,7 @@ updated: 2026-11-26 22:3x IST (clock): **Lead 5 hands over to Lead 6; read the h
 **Owed by the founder:** #3733 Convert to draft, then Ready for review (the tool's safety check refused the Lead's toggle; never route around it).
 **Queue and next steps (all answered on GitHub by Lead 5):**
 * #3697 (R1.22 firm lock): round 4 allowed and Lead read posted (identity); reopened at 22:3x to run ci and pr-suites (skipped while draft). **Label it when green.**
-* #3753 (R1.111 statements): lane ended; reopened, pr-suites was running at 22:05. **Label it when green.**
+* #3753 (R1.111 statements): lane ended; pr-suites red on 9e9ee41a for two real failures (Lead 6, 22:4x: StatementDocuments runs no DocumentRenderPort contract; `client-money/reports/send.ts` mail not through MessagePort). Fixes on the PR (comment 7198470565); needs a builder (card task_a54c1612).
 * #3808 (R1.57 card payments): money read done; pr-suites red, the lane fixes it; label when green.
 * #3831 (R1.3 review tables): labelled, in the queue.
 * #3814, #3825 (OS-PM 4): conflicts after #3810; steps on the PRs; the Lead labels after a diff-only Approve.
