@@ -49,19 +49,12 @@ How I tested: scratch scripts `/tmp/claude-0/pf22a-break/break{,2,3}.mts`, model
 `PATCH {position: 3}` on an archived field returns 200 and writes a `custom_field.changed` line, but nothing changed. `place()` is skipped for an archived field, while `moved` is still computed (`service.ts:186-187`).
 
 ## What held
-- **Walls:** Owner B gets 404 on firm A's values (GET and PUT) and on PATCH of A's field. B's list shows 0 of A's fields. A's key used on B's prospect gives 422 "not on this record".
-- **Own vs all:** Other gets 404 on Agent's prospect and person (GET and PUT). A person id under `fo_prospect` gives 404. A company with no prospects is visible to its creator (200) and gives 404 to Other and to Read-only.
-- **Roles:** Read-only PUT gives 404 (sees-all off); Read-only POST and Agent PATCH give 403.
-- **Races:** two PUTs on one version give 200 and 409 STALE_VERSION. Four adds at 48 active fields give two 201s and two 422 LIMIT_REACHED (exactly 50). Two adds with the same label give 201 and 422.
-- **More races:** in 20 tries each of type change vs first value and option removal vs PUT, no row was left that fails `pf_custom_value_ok`. Answers were 409 STALE_VERSION, 409 OPTION_IN_USE or 422, never a 500 or a deadlock. In 20 tries of value update vs option change, there was no deadlock. Clear vs archive gave 409 FIELD_ARCHIVED.
-- **Value checks:** 2025-02-29 and `+02026-01-01` refused; 2024-02-29 and 9999-12-31 accepted. Numbers: `1e-7`, 0.1+0.2, `5e-324`, 999999999999999 and -0 accepted; `"1e3"`, Arabic digits and 20-digit strings refused. Strings with many decimals round to a double, consistently on both sides. Text: 500 emoji accepted, 501 refused; 500 NFD "é" accepted after NFC.
-- **Choices:** SELECT with NBSP padding is trimmed to "Gold". MULTI_SELECT duplicates are de-duplicated; a case mismatch, a nested list and a number for SELECT are refused; NFD "café" matches its option.
-- **Other inputs:** fullwidth phone digits refused. `constructor`, `toString` and `hasOwnProperty` keys are named in the 422. A 300 KB body gives 413. Options over 80 characters give 422.
-- **Labels and keys:** labels that differ only by case or a trailing ZWSP give 422. Re-adding a label after archive gets a new key (`notes_3`). Un-archiving while the label is taken gives 422. An archived key in a PUT gives 422.
-- **Position:** position -1 or 1.5 gives 422; 1000 clamps to the end and the list renumbers 0..n.
+- **Walls:** Owner B gets 404 on firm A's values (GET and PUT) and on PATCH of A's field. B's list shows 0 of A's fields. A's key used on B's prospect gives 422 "not on this record". **Own vs all:** Other gets 404 on Agent's prospect and person (GET and PUT). A person id under `fo_prospect` gives 404. A company with no prospects is visible to its creator (200) and gives 404 to Other and to Read-only. **Roles:** Read-only PUT gives 404 (sees-all off); Read-only POST and Agent PATCH give 403.
+- **Races:** two PUTs on one version give 200 and 409 STALE_VERSION. Four adds at 48 active fields give two 201s and two 422 LIMIT_REACHED (exactly 50). Two adds with the same label give 201 and 422. **More races:** in 20 tries each of type change vs first value and option removal vs PUT, no row was left that fails `pf_custom_value_ok`. Answers were 409 STALE_VERSION, 409 OPTION_IN_USE or 422, never a 500 or a deadlock. In 20 tries of value update vs option change, there was no deadlock. Clear vs archive gave 409 FIELD_ARCHIVED.
+- **Value checks:** 2025-02-29 and `+02026-01-01` refused; 2024-02-29 and 9999-12-31 accepted. Numbers: `1e-7`, 0.1+0.2, `5e-324`, 999999999999999 and -0 accepted; `"1e3"`, Arabic digits and 20-digit strings refused. Strings with many decimals round to a double, consistently on both sides. Text: 500 emoji accepted, 501 refused; 500 NFD "é" accepted after NFC. **Choices:** SELECT with NBSP padding is trimmed to "Gold". MULTI_SELECT duplicates are de-duplicated; a case mismatch, a nested list and a number for SELECT are refused; NFD "café" matches its option. **Other inputs:** fullwidth phone digits refused. `constructor`, `toString` and `hasOwnProperty` keys are named in the 422. A 300 KB body gives 413. Options over 80 characters give 422.
+- **Labels and keys:** labels that differ only by case or a trailing ZWSP give 422. Re-adding a label after archive gets a new key (`notes_3`). Un-archiving while the label is taken gives 422. An archived key in a PUT gives 422. **Position:** position -1 or 1.5 gives 422; 1000 clamps to the end and the list renumbers 0..n.
 - **Audit:** the summary never holds a value. Values sit in `detail` as `<key>_before/_after`, the platform's R1.8 shape, not a leak.
 - **Budgets:** 50 fields × 400 records (20,000 values): GET list 45–67 ms, PATCH 54–99 ms, reorder 78–161 ms, one record's values 12–16 ms.
-
 Round 1 verdict: Changes 614a425d9
 
 ## Round 2 (diff `614a425d9..80ff11890`, head 80ff11890)
@@ -85,15 +78,21 @@ How I tested: the same harness. I re-ran all round 1 scripts against the new hea
 
 **Round 1 fixes re-checked**
 - **M1 held:** all eight secret-looking labels ("Educational credential assessment", "Salt Lake office", …) now save with 200. Audit keys are `cf_<hex>`, and `detail.fieldIds` holds no values.
-- **M2:** held for ASCII and BMP text. The residue above remains.
-- **m1 held:** NUL or lone surrogates in a value, label, option or help text are now 422 at the named field. **m2 held:** `0000-01-01` gives 422.
+- **M2:** held for ASCII and BMP text. The residue above remains. **m1 held:** NUL or lone surrogates in a value, label, option or help text are now 422 at the named field. **m2 held:** `0000-01-01` gives 422.
 - **m3 held:** archive-without-confirm vs first value gave 0 confirm bypasses in 40 jittered rounds (`200/409 FIELD_IN_USE` or `422/200`). Type change and option removal vs PUT now give a clean 422, and no row fails `pf_custom_value_ok`.
-- **m4 held:** an Agent's list has no counts; managers still get them.
-- **m5 held:** nested `__proto__` gives 422 (wording issue above); 101 keys give 422 "At most 100 fields"; 9,000 keys give a 260-byte 422.
+- **m4 held:** an Agent's list has no counts; managers still get them. **m5 held:** nested `__proto__` gives 422 (wording issue above); 101 keys give 422 "At most 100 fields"; 9,000 keys give a 260-byte 422.
 - **m7 held:** a position change on an archived field writes no audit line. **m6:** not changed, as agreed.
 
 **What held in the new code**
-- **Raw `::jsonb` writes:** hostile choices (`a"b\c`, `'); drop table x; --`, `$1`, `::jsonb`) are stored exactly. **Numbers:** 0.1+0.2 → 0.30000000000000004, 123456789012345.67, 1e-7 and 1/3 all come back identical. 2^52+0.5 is refused (422).
-- **Field version:** a version read before another field's reorder gives 409 STALE_VERSION with `current`; of two PATCHes on one version, one gets 200 and the other 409. If-Match: a fresh tag gives 200 with an ETag, replaying it gives 409. Walls, own-vs-all and roles unchanged.
+- **Raw `::jsonb` writes:** hostile choices (`a"b\c`, `'); drop table x; --`, `$1`, `::jsonb`) are stored exactly. **Numbers:** 0.1+0.2 → 0.30000000000000004, 123456789012345.67, 1e-7 and 1/3 all come back identical. 2^52+0.5 is refused (422). **Field version:** a version read before another field's reorder gives 409 STALE_VERSION with `current`; of two PATCHes on one version, one gets 200 and the other 409. If-Match: a fresh tag gives 200 with an ETag, replaying it gives 409. Walls, own-vs-all and roles unchanged.
+Round 2 verdict: Changes 80ff11890a475870eb49be1aedb5ab78e91c8856
 
-Verdict: Changes 80ff11890a475870eb49be1aedb5ab78e91c8856
+## Round 3 (diff `80ff11890..cd73d1b74`, head cd73d1b74)
+How I tested: I re-ran `break.mts`, `break2.mts`, `break4.mts` and `break5.mts` against the new head, plus a new `break6.mts` that mixes every field change with saves. All databases are dropped.
+- **R2-M1 fixed:** saves now take the kind's advisory lock in shared mode, and every field change holds it exclusive (locks always go record, then kind). Repros now pass: one reorder vs one PUT is 40/40 clean (3.3 s, it was 23 failures in 26 s); two reorders and two PUTs per round is 160/160 clean (4.8 s, it was 50 failures in 29.7 s). **No deadlock in a harder mix (`break6.mts`):** 40 rounds of five calls each: archive+place, un-archive+place, rename+place or help text+place, a second reorder, an add, and two PUTs that each set one field and clear another, one of them writing the field being archived. No 500 and no 40P01. The other answers were all expected: 200 or 201, 422 INVALID for the archived field's key, and 422 LIMIT_REACHED once the adds reached 50.
+- **The m3 races still hold under the new lock:** 0 confirm bypasses in 40 jittered archive-vs-first-value rounds; type change vs first value gives 422 or 409 TYPE_FROZEN; option removal vs PUT gives 422. No row fails `pf_custom_value_ok`. Two PUTs on one version give 200 and 409.
+- **R2-m1 fixed:** `"😀".repeat(2001)`, 3,950 ASCII plus 30 emoji, 5,000 emoji and 4,500 CJK Extension B characters all save (200). The audit line is written, and jsonb would have refused it if it held a lone surrogate. ASCII at 4,000, 4,001 and 5,000 characters still saves. **R2-n1 fixed:** a nested `__proto__` now gives 422 with `fields: {"__proto__": "This is not a field."}` and the detail "One field needs a change".
+- **No regressions:** the eight secret-looking labels save; audit keys are `cf_<hex>`; an Agent's list has no counts; 101 keys give 422; field version and If-Match behave as in round 2. **Dropping `changed` from the 409:** the 409 still carries `current`, and I found nothing new in that change.
+Nothing new found. The open items are only those already accepted: m6 (invisible-only text), plus round 1's m6 and the related note on look-alike characters in emails and URLs.
+
+Verdict: Approve cd73d1b7444fd2f1b7a367a56d785f656721ab5e

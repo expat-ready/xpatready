@@ -111,3 +111,8 @@ Reviewer: Changes 614a425d935902897d5c31e343d664384055f289
 **Journey score, round 2:** 6.5/8 = 8.1 at 80ff11890 (task ½ and feedback ½ for the two 500s; trust ½ for r2-2). 7/8 = 8.75 at 71ce172e3. The pass needs 8; with r2-2 open, trust stays at ½.
 
 Reviewer: Changes 80ff11890a475870eb49be1aedb5ab78e91c8856
+
+## Round 3 (diff-only): `71ce172e3..cd73d1b7444fd2f1b7a367a56d785f656721ab5e`
+**Ship (Approve).** r2-1 is fixed: the 409 `STALE_VERSION` now carries only `current` (the house shape), and the unused `byKeyOf` helper is removed. The test now checks `current.values` and that `current.version` differs from the version first read. The suite at cd73d1b74 is **50/50**. The rest of the diff is only my round-2 records. No Blocker or Major is open. r2-2 (the Activity log shows `cf_<id>`; needs AUD-4's owner) and r2-3 (race tests that depend on timing) stay open as Minors; the coordinator says the PR lists them as known.
+
+Reviewer: Approve cd73d1b7444fd2f1b7a367a56d785f656721ab5e
