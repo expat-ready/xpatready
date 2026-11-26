@@ -4,6 +4,8 @@ import { Navigate } from "react-router-dom";
 import type { ModuleRoute } from "@/modules";
 import { BreachesPage } from "./privacy/breaches-page";   // PF-21rs A1: the Privacy group's pages
 import { BreachPage } from "./privacy/breach-page";   // PF-21rs A2
+import { RequestPage } from "./privacy/request-page";   // PF-21rs B1
+import { RequestsPage } from "./privacy/requests-page";   // PF-21rs B1
 import { FirmsPage } from "./firms-page";
 import { SupportPage } from "./support-page";
 
@@ -11,6 +13,8 @@ export const routes: ModuleRoute[] = [
   { path: "/system", element: <Navigate to="/system/firms" replace /> },
   { path: "/system/privacy/breaches", element: <BreachesPage /> },
   { path: "/system/privacy/breaches/:id", element: <BreachPage /> },
+  { path: "/system/privacy/requests", element: <RequestsPage /> },
+  { path: "/system/privacy/requests/:id", element: <RequestPage /> },
   { path: "/system/firms", element: <FirmsPage /> },
   { path: "/system/support", element: <SupportPage /> },
 ];

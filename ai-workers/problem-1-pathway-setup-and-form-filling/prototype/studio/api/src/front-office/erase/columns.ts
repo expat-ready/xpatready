@@ -23,7 +23,7 @@ export const ERASE_COLUMNS: Readonly<Record<string, readonly [EraseTreatment, st
   "fo_prospect.subject_person_id": ["ERASE", "the person's own prospects: lost_note cleared"],
   "fo_prospect.primary_contact_person_id": ["LINK", "the contact of a company's prospect: an id only (its words are about the company)"],
   "fo_prospect.subject_company_id": ["NOT-PERSON", "names a company"],
-  "fo_booking.person_id": ["ERASE", "the person's bookings: cancel_reason cleared, visitor_time_zone set to UTC; their consult records' notes cleared and recommended emptied"],
+  "fo_booking.person_id": ["ERASE", "the person's bookings: cancel_reason cleared (the booker's required IANA zone is kept: no words); their consult records' notes cleared and recommended emptied"],
   "msg_consent.subject_id": ["KEEP", "consent: proof of consent is kept (Sample, P-819)"],
   "msg_consent_withdrawal.subject_id": ["KEEP", "consent: proof of a withdrawal is kept (Sample, P-819)"],
   "fo_person.merged_into_id": ["ERASE", "a record merged into this person keeps its own old words (a merge only marks it): anonymised too; the person record itself is anonymised in place (PERSON_ERASED)"],
