@@ -116,8 +116,17 @@ try {
     A.err(`update person_link set superseded_by_id = '${L2}' where id = '${u(70)}'`),
     A.err(`begin; ${link(u(82), K1, S1, 501, L2)}; rollback;`),
   ];
-  ok("CS-W2 DW2.3 fail (supersededBy, held by a trigger, not a key): a link cannot be superseded by another firm's link, on update or insert",
-    sup.every((e) => /case_links_firm_match: a link can only be superseded by a link of its own firm/.test(e)), sup.map((e) => e.slice(0, 120)));
+  ok("CS-W2 DW2.3 fail (supersededBy, held by a trigger, not a key): a link cannot be superseded by another firm's (another case's) link, on update or insert",
+    sup.every((e) => /case_links_firm_match: a link can only be superseded by a link of its own case/.test(e)), sup.map((e) => e.slice(0, 120)));
+  // Breaker M-1: while one side's firm is empty (the ghost case), a pair across cases is refused too, so the follow can
+  // never store a cross-firm pair; and a link cannot move to another case while another link names it.
+  const ghost = [
+    A.err(`update person_link set superseded_by_id = '${u(33)}' where id = '${u(70)}'`),
+    A.err(`update person_link set superseded_by_id = '${L1}' where id = '${u(33)}'`),
+    A.err(`update person_link set case_id = '${K2}' where id = '${L1}'`),
+  ];
+  ok("CS-W2 DW2.3 fail (breaker M-1): a firm A link superseded by a firm-less case's link (and back) is refused, and a superseding link cannot move to another case",
+    ghost.every((e) => /case_links_firm_match: a link can only be superseded by a link of its own case/.test(e)), ghost.map((e) => e.slice(0, 100)));
   ok("CS-W2 DW2.3 pass: a link superseded by a link of its own firm is allowed, and the SetNull on delete still works",
     A.err(`begin; update person_link set superseded_by_id = '${L1}' where id = '${u(70)}'; delete from person_link_session where link_id = '${L1}'; delete from demo_message where link_id = '${L1}'; delete from person_link where id = '${L1}'; select 1 / (count(*) filter (where superseded_by_id is null))::int from person_link where id in ('${u(21)}', '${u(70)}'); rollback;`) === "");
   // Breaker M1 on part filings: emptying firm_id would skip the keys (MATCH SIMPLE); the keep refuses it and any change.
@@ -148,8 +157,18 @@ try {
     update person_link set superseded_by_id = '${u(32)}' where id = '${u(21)}';`);
   let stop = "";
   try { B.file(join(MIG, NEW, "migration.sql")); } catch (e) { stop = String((e as { stderr?: string }).stderr ?? e); }
-  ok("CS-W2 DW2.1 fail: a sample-firm link superseded by a sample-solo link stops the migration, naming the link", /CS-W2 links stopped: .*person_link 00000000-0000-4000-8000-000000000021/.test(stop), stop.slice(0, 300));
+  ok("CS-W2 DW2.1 fail: a sample-firm link superseded by a sample-solo link stops the migration, naming the link", /CS-W2 links stopped: .*person_link 00000000-0000-4000-8000-000000000021 \(superseded by a link of another case\)/.test(stop), stop.slice(0, 300));
 } finally { B.drop(); }
+
+// A session whose link is missing (a forced restore) stops the migration with words (brief DW2.1).
+const C = scratch("orphan");
+try {
+  C.sql(seedBase + caseRows(1, "sample-firm", F1) + `
+    insert into person_link_session (id, link_id, token_hash, expires_at) values ('${u(48)}', '${u(99)}', '${h(900)}', now());`);
+  let stop = "";
+  try { C.file(join(MIG, NEW, "migration.sql")); } catch (e) { stop = String((e as { stderr?: string }).stderr ?? e); }
+  ok("CS-W2 DW2.1 fail: a session whose link is missing stops the migration, naming the row", /CS-W2 links stopped: .*person_link_session 00000000-0000-4000-8000-000000000048 \(no such link\)/.test(stop), stop.slice(0, 300));
+} finally { C.drop(); }
 
 // ------------------------------------------------------------------------------------------ 2. W2 on the copy (API)
 if (!copySql(`select 1 from combination c join config_release r on r.combination_id = c.id where c.combination_key = 'vv.single' limit 1`)) {

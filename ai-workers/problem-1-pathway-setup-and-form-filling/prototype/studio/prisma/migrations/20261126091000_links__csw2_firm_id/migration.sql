@@ -14,7 +14,8 @@
 --     RESTRICT. person_link → runtime_case (case_id, firm_id) and → answer_subject go to part "keys" (runtime_case's
 --     (id, firm_id) unique comes with #3811 on cases.prisma, a file this part does not touch).
 --   * supersededBy (an optional SetNull self-relation: a composite key would null firm_id on delete) is held by a match
---     trigger instead (brief point 2): case_links_firm_match refuses a link whose superseded_by_id names another firm's link.
+--     trigger instead (brief point 2): case_links_firm_match refuses a link superseded by a link of another case
+--     (so of another firm, even while a firm is still empty), from both ends.
 --   * the keep: BEFORE UPDATE OF firm_id, case_links_firm_keep refuses a firm emptied or changed once set (the keys skip
 --     a null firm; breaker M1 on #3811).
 --   * the follow: AFTER UPDATE OF firm_id on runtime_case and person_link, case_links_firm_follow fills the children still
@@ -62,14 +63,20 @@ END $fn$;
 REVOKE ALL ON FUNCTION case_links_firm_backfill() FROM PUBLIC;
 SELECT case_links_firm_backfill();
 
--- A link superseded by another firm's link cannot be held by the match trigger below once it exists: stop with words.
+-- Stop with words, before the triggers and keys: a link superseded by a link of another case (breaker M-1 on #3823: the
+-- firm follows the case, so the same case is the rule that holds whichever side's firm is still empty), and a session or
+-- message whose link is missing, or a link whose case is missing (a forced restore; brief DW2.1).
 DO $chk$
 DECLARE bad text;
 BEGIN
-  SELECT string_agg('person_link ' || l.id, ', ') INTO bad FROM person_link l JOIN person_link s ON s.id = l.superseded_by_id
-   WHERE l.firm_id IS NOT NULL AND s.firm_id IS NOT NULL AND l.firm_id IS DISTINCT FROM s.firm_id;
+  SELECT string_agg(x, ', ') INTO bad FROM (
+    SELECT 'person_link ' || l.id || ' (superseded by a link of another case)' x FROM person_link l JOIN person_link s ON s.id = l.superseded_by_id WHERE s.case_id <> l.case_id
+    UNION ALL SELECT 'person_link ' || l.id || ' (no such case)' FROM person_link l WHERE NOT EXISTS (SELECT 1 FROM runtime_case k WHERE k.id = l.case_id)
+    UNION ALL SELECT 'person_link_session ' || s.id || ' (no such link)' FROM person_link_session s WHERE NOT EXISTS (SELECT 1 FROM person_link l WHERE l.id = s.link_id)
+    UNION ALL SELECT 'demo_message ' || d.id || ' (no such link)' FROM demo_message d WHERE NOT EXISTS (SELECT 1 FROM person_link l WHERE l.id = d.link_id)
+    LIMIT 20) q;
   IF bad IS NOT NULL THEN
-    RAISE EXCEPTION 'CS-W2 links stopped: these links are superseded by another firm''s link: %', bad USING ERRCODE = '23514';
+    RAISE EXCEPTION 'CS-W2 links stopped: %', bad USING ERRCODE = '23514';
   END IF;
 END $chk$;
 
@@ -78,20 +85,27 @@ CREATE TRIGGER case_links_firm_fill BEFORE INSERT ON "person_link" FOR EACH ROW 
 CREATE TRIGGER case_links_firm_fill BEFORE INSERT ON "person_link_session" FOR EACH ROW EXECUTE FUNCTION case_firm_fill('person_link', 'link_id');
 CREATE TRIGGER case_links_firm_fill BEFORE INSERT ON "demo_message" FOR EACH ROW EXECUTE FUNCTION case_firm_fill('person_link', 'link_id');
 
--- supersededBy: the link it names must be of the same firm. Named case_links_firm_match_* so it fires after the fill
--- (BEFORE triggers run in name order: case_links_firm_fill < case_links_firm_match), and checks the filled firm.
+-- supersededBy: the link it names must be of the same case, so of the same firm whichever side's firm is still empty
+-- (breaker M-1 on #3823: a firm check alone let a pair through while one side had no firm, and the follow then stored a
+-- cross-firm pair). Checked from both ends: the row naming a link, and a link whose case changes while others name it.
+-- A resend always supersedes the same person's link on the same case (C6.16), so the app is unchanged.
 CREATE FUNCTION case_links_firm_match() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
   SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE other uuid;
 BEGIN
-  IF NEW.superseded_by_id IS NULL THEN RETURN NEW; END IF;
-  SELECT firm_id INTO other FROM person_link WHERE id = NEW.superseded_by_id;
-  IF NEW.firm_id IS NOT NULL AND other IS NOT NULL AND other IS DISTINCT FROM NEW.firm_id THEN
-    RAISE EXCEPTION 'case_links_firm_match: a link can only be superseded by a link of its own firm' USING ERRCODE = '23514';
+  IF NEW.superseded_by_id IS NOT NULL THEN
+    SELECT case_id INTO other FROM person_link WHERE id = NEW.superseded_by_id;
+    IF other IS NOT NULL AND other IS DISTINCT FROM NEW.case_id THEN
+      RAISE EXCEPTION 'case_links_firm_match: a link can only be superseded by a link of its own case' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.case_id IS DISTINCT FROM OLD.case_id
+     AND EXISTS (SELECT 1 FROM person_link p WHERE (p.superseded_by_id = NEW.id OR p.id = NEW.superseded_by_id) AND p.id <> NEW.id AND p.case_id IS DISTINCT FROM NEW.case_id) THEN
+    RAISE EXCEPTION 'case_links_firm_match: a link can only be superseded by a link of its own case' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
 END $fn$;
-CREATE TRIGGER case_links_firm_match BEFORE INSERT OR UPDATE OF superseded_by_id, firm_id ON "person_link" FOR EACH ROW EXECUTE FUNCTION case_links_firm_match();
+CREATE TRIGGER case_links_firm_match BEFORE INSERT OR UPDATE OF superseded_by_id, case_id ON "person_link" FOR EACH ROW EXECUTE FUNCTION case_links_firm_match();
 
 -- A firm once set stays (breaker M1 on part filings, #3811): the keys skip a row whose firm_id is null (MATCH SIMPLE), so
 -- emptying it would let one statement move a session or message under another firm's link; a change is refused too.
