@@ -12,7 +12,7 @@
 //   PT7 by screens: the client page shows the Timeline with the person's note, a case's note and the prospect's note, at
 //       1440 and 375 px, axe clean, no sideways scroll; another firm's Owner sees no such client
 // No model call, US$0, never :4400.
-//   zsh studio/tools/isolated.sh csnt1t 4432 start --ttl 60 AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_csnt1t_person_timeline.ts 4432 xr_studio_csnt1t
+//   zsh studio/tools/isolated.sh csnt1t 4432 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx studio/tests/check_csnt1t_person_timeline.ts 4432 xr_studio_csnt1t
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
