@@ -223,7 +223,7 @@ export function reviewCounts(x: { hashEqual: boolean; reviewedAt: Date; pinnedAt
 }
 
 /** BR-7: why a move is refused, nothing changed (null: it may go ahead). Checked in this order, the first one named. */
-export type Refusal = { code: "recorded" | "fill_running" | "type_mismatch"; reason: string; item?: string };
+export type Refusal = { code: "recorded" | "fill_running" | "type_mismatch" | "assessment_only"; reason: string; item?: string };
 export function moveRefusal(x: { recorded: string[]; running: { form: string; person: string }[]; mismatches: { label: string; person: string; expects: string }[]; current: string }): Refusal | null {
   if (x.recorded.length) return { code: "recorded", reason: `Can't move: ${x.recorded[0]}'s filing is recorded as submitted; this case's filings stay on ${x.current}. Nothing was changed.`, item: x.recorded[0] };
   if (x.running.length) return { code: "fill_running", reason: `Can't move yet: a copy of ${x.running[0].form} for ${x.running[0].person} is being filled. Wait for it, then move. Nothing was changed.`, item: x.running[0].form };
