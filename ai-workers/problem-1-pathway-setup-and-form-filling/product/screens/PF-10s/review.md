@@ -53,3 +53,36 @@ BIC-11 Met (one filled button per step) · BIC-13 Partly (errors on the field wi
 A real screen reader; an Admin account (none in the Sample data; the check stubs it); a 5,000-row file's timing; two tabs re-previewing at once (server guard reviewed in PF-10b). My screenshots are in the session scratchpad (`rev10s/shots/`), not committed. j_35 overwrote the committed J-35 screenshots on my copy; I restored them with `git checkout`.
 
 **Verdict: Block** (not approved: one open Major; on the screen-review scale this is Ship after fixes, `Changes`). Fix list: M1 (with its failing test). S1–S5 should be fixed or given a follow-up row.
+
+## Round 2: diff only, `git diff e069de2ca..89e2d149c`, head 89e2d149c5b4539785b49074ae7a5b4ab2a87e80
+Fresh copy `rev10s` on :4433, stopped after. Ran **j_35 17/17** first on the fresh copy, then **check_pf10s_import_browser.ts 21/21**. Restored the committed J-35 screenshots with `git checkout`. I judged it together with `break-report.md`.
+
+**Round 1 issues**
+* **M1 fixed.** Changing an "Import as" select so that no consent column is mapped now clears `declared` (import-flow.tsx:307). The check's new browser test fails without that line (raw `declared` stays true, so `runBlocked` returns stale). Walked: tick, unmap, re-map → the box is back unticked, and Preview refuses on the field. Unmap → Import enabled. Tick after a preview → the true stale reason, then Preview again enables Import.
+* **S1 fixed.** One tick records the attestation, with no Confirm button. If recording fails, the box unticks and shows the error. Walked with the solo Owner: tick → attestation row 1 → Preview → Import enabled → "Done: 1 created…".
+* **S3 fixed.** At 375 px the first values sit under the column name, every "Import as" is on screen, and there is no sideways scroll (my `shots2/columns-375.png`; the check covers it too).
+* **S4 fixed.** The title is one line, with the full text in its `title`.
+* **S5 fixed.** axe runs on the file, columns and preview steps at 1440 and 375 px in the check, with 0 violations.
+* **Minor fixed.** Merged rows on the result read "Filled only empty fields".
+* **S2 ("By" column): not fixed, follow-up row proposed.** The list answers a staff id only. That is acceptable for a Should (EXPERIENCE §6: fixed or a follow-up row).
+
+**Breaker's findings**
+* **M1 (`constructor` column) fixed.** The batch query uses `structuralSharing: false` (import-flow.tsx:334). Each 2 s poll then hands React a new object, but every effect and query key below it uses plain values, so nothing re-runs or resets. Tested: the column previews and imports, with no "could not load".
+* **m2 fixed.** The file is checked for `.csv` before upload, with focus on the invalid field.
+* **m4 fixed.** Focus moves to the h1 on each step change; I saw it after Preview and after Import.
+* **m5 fixed.** The not-found page has an h1, "No such import", and Back to imports.
+* **m8 fixed.** The template is the header only (downloaded: `Given names,…,Email marketing consent\r\n`).
+* **m9 fixed.** The live region now holds only the count line.
+* **m10 fixed.** First values show on phones.
+* **Follow-up rows, all Minor:**
+  * m1: a mapped `__proto__` column gives a 500 from part 1's engine. That file is outside this diff, and nothing is written.
+  * m3: the MAPPING_REFUSED faults are not shown per column. It is reachable only by forging the DOM.
+  * m6: the "By" column and the list's page in the address.
+  * m7: source names are not normalised.
+  None is a Blocker or Major.
+
+**New in this diff:** nothing found. No page errors in my walk.
+
+**Journey score, round 2: 9.5 / 10, a pass.** Next step: ½ → 1 (no second button). Error recovery: ½ → 1 (no dead end). Screen sizes stay at ½ because the shared 36 px primary buttons at 375 px (UXL-09) are not this diff.
+
+**Verdict: Approve** (Ship). No open Blocker or Major. The Shoulds and Minors left are follow-up rows: S2/m6, break m1, m3 and m7.
