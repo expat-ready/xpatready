@@ -84,11 +84,15 @@ ALTER FUNCTION fo_dup_merge_write() SECURITY DEFINER SET search_path = pg_catalo
 CREATE OR REPLACE FUNCTION msg_write_once() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
   -- PF-21d 2b-2: the erasure of the person a message was sent to clears its events' detail, nothing else.
-  IF TG_TABLE_NAME = 'msg_event' AND TG_OP = 'UPDATE' AND NEW."detail" IS NULL
-     AND (NEW."id", NEW."firm_id", NEW."outbox_id", NEW."kind", NEW."created_at", NEW."occurred_at", NEW."provider_event_id")
-         IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."outbox_id", OLD."kind", OLD."created_at", OLD."occurred_at", OLD."provider_event_id")
-     AND fo_erasure_names(OLD."firm_id", (SELECT o."subject_id" FROM "msg_outbox" o WHERE o."id" = OLD."outbox_id" AND o."firm_id" = OLD."firm_id" AND o."subject_kind" = 'FO_PERSON')) THEN
-    RETURN NEW;
+  -- Nested (review M1): PL/pgSQL resolves NEW's fields for a whole expression, so only msg_event's branch may name detail;
+  -- the other tables using this function keep their own refusal and error code.
+  IF TG_TABLE_NAME = 'msg_event' AND TG_OP = 'UPDATE' THEN
+    IF NEW."detail" IS NULL
+       AND (NEW."id", NEW."firm_id", NEW."outbox_id", NEW."kind", NEW."created_at", NEW."occurred_at", NEW."provider_event_id")
+           IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."outbox_id", OLD."kind", OLD."created_at", OLD."occurred_at", OLD."provider_event_id")
+       AND fo_erasure_names(OLD."firm_id", (SELECT o."subject_id" FROM "msg_outbox" o WHERE o."id" = OLD."outbox_id" AND o."firm_id" = OLD."firm_id" AND o."subject_kind" = 'FO_PERSON')) THEN
+      RETURN NEW;
+    END IF;
   END IF;
   RAISE EXCEPTION '% is write-once: % refused', TG_TABLE_NAME, TG_OP USING ERRCODE = 'restrict_violation';
 END $fn$;

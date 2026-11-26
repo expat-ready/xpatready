@@ -121,7 +121,7 @@ export const KEPT_WORDS: Readonly<Record<string, readonly [string, "sample" | "f
   consent: ["consent proof", "sample"], signing: ["signing evidence", "sample"], retainer: ["retainer agreements", "sample"], identity_check: ["identity checks", "sample"],
   conflict_check: ["conflict checks", "sample"], do_not_contact: ["do-not-contact address", "sample"], client_financial: ["money records (7 years)", "floor"],
   activity_log: ["activity log lines (7 years)", "floor"], awaiting_other_eraser: ["case or complaint rows", "other"], insert_only_records: ["notes, attribution, merge and message records", "later"],
-  message_addresses: ["message addresses (whom each was sent to)", "sample"],
+  message_addresses: ["message addresses (whom each was sent to)", "later"],   // review m4: as 2b-1 agreed, not a new Sample class
   mail_not_yet_erasable: ["filed mail", "later"],
 };
 const GROUP_WORDS = { sample: "Sample, Unconfirmed: no counsel", floor: "kept by a floor", other: "waiting for another module's eraser", later: "not yet erasable" } as const;

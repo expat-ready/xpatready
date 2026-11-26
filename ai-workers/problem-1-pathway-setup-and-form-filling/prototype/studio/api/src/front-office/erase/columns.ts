@@ -34,7 +34,7 @@ export const ERASE_COLUMNS: Readonly<Record<string, readonly [EraseTreatment, st
   "fo_retainer.signer_person_id": ["KEEP", "retainer: the agreement names who signed it (Sample, P-819)"],
   "fo_retainer.company_id": ["NOT-PERSON", "names a company"],
   "fo_signer.person_id": ["KEEP", "signing: signing evidence names who signed (Sample, P-819)"],
-  "msg_outbox.subject_id": ["KEEP", "message_addresses: a message's address must stay a valid address (msg_address_ok); it says whom the message was sent to (Sample, P-819); its events' detail is cleared"],
+  "msg_outbox.subject_id": ["KEEP", "message_addresses: a message's address must stay a valid address (msg_address_ok); it says whom the message was sent to; named as not yet erasable; its events' detail is cleared"],
   "plat_complaint.subject_id": ["ELSEWHERE", "the platform's eraser (part 2c); until it is registered the front office counts these rows as KEPT (awaiting_other_eraser)"],
   "plat_data_request.person_id": ["ELSEWHERE", "the register of requests is our record of the request, kept (part 2c, SA-11-28)"],
   "case_client.fo_person_id": ["ELSEWHERE", "the case side's eraser (CS-X2); until it is registered the front office counts these rows as KEPT (awaiting_other_eraser)"],
