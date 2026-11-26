@@ -141,3 +141,47 @@ Details: Round 2 in `screens/PF-4bc-minors/journey-test-reviewer-2026-11-24.md`.
 A live Cognito pool; a real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); `tsc`. Two databases named `xr_studio_pf4bc_scratch_13331` and `_13458`, with no live process behind them, were on :54329 after my runs. I could not tell whether they are mine, so I left them for `tools/prune-test-dbs.sh`.
 
 Verdict: Approve b902813c001a0b5747564f0a2c2a80f85abe9e34
+
+## Round 3 (diff-only, 53e603a8)
+
+Head 53e603a8ed33169ebbf4f2f704c9f60d8f855f96 (checked). The changes since my round-2 Approve (code at b902813c0, records at 611d0027e) are two pure merges: origin/main (c60972ea8), then #3217's new head 2242c776 (records only). `git diff 611d0027e HEAD -- <#3479's own files>` is empty, and the code is unchanged since b902813c0. **Scope:** only whether main's changes break #3479's code or interact with it.
+
+### What I ran (on 53e603a8, Postgres :54329)
+* check_pf4bc_cognito_admin **56/0** · check_pf4b_session_reads **55/0** (part A; part B needs a port) · check_tx_end_guard **21/0** and check_pool_tx_return **16/0** (main's pool guards, in this tree) · `tsc -p api/tsconfig.json --noEmit` **0 errors**. I did not re-run pf4dn, pf4r, pf11c or pf6m2 (they need an isolated copy each). The builder's runs are taken as given.
+* **Probe through main's real pool** (scratchpad `probe_pf4bc_realpool.mts`). It used a scratch database with every migration and the sample seed, and `core.ts` Db as it is: `walledPool` + `oneQueryPerCaller`, xr_app under RLS. Each lock was held from a second connection. 10/11 checks passed; the one failure is R2-m1 (below).
+  * Reset two-step with T's staff row held **FOR KEY SHARE** (the lock main's new foreign keys to platform_staff take) gives **503 FIRM_BUSY at 1558 ms**. Held **FOR SHARE** instead (the lock `pf_import_attestation_owner` takes), it gives **503 at 1524 ms**. In both cases there was no provider call, and the revocation and audit counts were unchanged, so nothing was committed.
+  * Sign-out everywhere with the same hold gives 503 FIRM_BUSY at 1527 ms, with no provider call.
+  * Own sign-out (unbounded) with its own row held FOR KEY SHARE for 2.5 s waits past the bound and **completes at 2524 ms**: 200, and the revocation is written.
+  * Accept with the invitation row held FOR UPDATE (taken after the firm lock, so the kept bound applies) gives **503 FIRM_BUSY at 1517 ms with the invitee's words**. Accept with the firm row held gives 503 at 1506 ms. In both cases there was no createUser and no staff row, and the invitation stayed unaccepted. The retry afterwards accepts, with one createUser.
+  * **The connections are clean:** 10 concurrent transactions on the pool (10 distinct backends) all read `lock_timeout = 0`, and none is idle in a transaction. **Main's pool guards stayed silent:** no `platform_pool_open_transaction` line and no "query after COMMIT/ROLLBACK" refusal.
+
+### The interactions asked about
+* **walledPool / oneQueryPerCaller.** All of #3479's transactions are interactive (no array batch, so M2's refusal does not apply). `set local lock_timeout …` and `… to default` are not transaction ends for `endsTransaction` (firm-scope.ts:542), so M1's guard leaves them alone. After a 55P03 the callback throws, Prisma's ROLLBACK returns the connection 'I' and idle, and the checkout and release checks pass. The `set local` value dies with the transaction, and the pool's session-level `set_config` for firm and role is untouched. The probe above shows all of this.
+* **The four new tables with a foreign key to platform_staff** (msg_mailbox, plat_import_batch/mapping/attestation). `endSessions` takes FOR UPDATE on the person's row (service.ts:69). That conflicts with the FOR KEY SHARE their inserts take and with the attestation trigger's FOR SHARE. Under #3479 the wait is now bounded: 503 FIRM_BUSY in about 1.5 s, before any provider call. Without #3479 it would have waited unbounded, past the provider change. That is the intended direction, and nothing breaks. No API code writes these tables yet (grep), so today this is latent. A note for the PF-10/PF-19m builders, not a finding here: a long import or mailbox transaction will make that person's reset and sign-out-everywhere answer "try again" for as long as it runs.
+* **Web sign-out (`signOutHere`, frame.tsx:91).** It is client-only: it broadcasts and forgets locally before the same POST. Other windows only end locally (drafts.tsx:76) and send no extra server sign-out, so nothing new hits the unbounded path.
+* **accept-page.tsx's 503.** The file is unchanged by main. A 5xx goes to `setError` and keeps Continue, while a 4xx closes the link (:74-75). Journey 2 (below) confirms this on 53e603a8.
+
+### Blockers
+None.
+
+### Majors
+None.
+
+### Minors (carried, unchanged since round 2; not caused by the merges)
+* **R2-m1 is still open, and reconfirmed through main's real pool.** When accept meets a busy firm row, the invitee is shown the staff wording: "Someone else in your firm is changing staff right now…".
+  * Why: `lockFirm` maps its own timeout with the default words (firm-lock.ts:46). Accept's outer `busyOnLockTimeout(e, BUSY_WORDS_INVITEE)` (service.ts:155) then gets an HttpException and passes it on unchanged. The invitee's words appear only for later lock waits (the invitation row: probe), a room refusal or a P2028.
+  * Fix as in round 2: pass the words through `lockFirm` from service.ts:116, and pin `detail` with the firm row held.
+* **R2-m2** (the room check's fail-closed behaviour and its per-transaction clock are not pinned) and **R2-m3** (an own sign-out behind a firm-lock holder of more than 15 s gives a 500 and leaves the token live): both unchanged.
+
+### Dimensions
+These are as in round 2. Main's merge changes none of them.
+
+### Journey score: 9.5/10, a pass (none at 0)
+Re-walked on 53e603a8 on an isolated copy on :4436, twice. Details are under "Round 3" in `screens/PF-4bc-minors/journey-test-reviewer-2026-11-24.md`.
+
+### Could not check
+A live Cognito pool; a real screen reader; an intended user's unaided walk (D17 and D20 stay with the founder); pf4dn, pf4r, pf11c and pf6m2 on my side. Six `xr_studio_pf4b_scratch_*` databases are on :54329. That test drops its own database on exit, and I cannot tell whose these are, so I left them for `tools/prune-test-dbs.sh`. `break-report.md` in this folder was being changed by another session while I worked. I did not touch it.
+
+Verdict: Approve 53e603a8ed33169ebbf4f2f704c9f60d8f855f96
+
+Reviewer: Approve 53e603a8ed33169ebbf4f2f704c9f60d8f855f96

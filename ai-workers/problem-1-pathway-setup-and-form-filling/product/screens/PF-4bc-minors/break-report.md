@@ -97,3 +97,42 @@ Diff `git diff e83c22ccd..b902813c0` (firm-lock.ts, service.ts, provider.ts comm
 - **No 500 on the bounded paths** in any run (A2, A4, A6, B3, B4).
 
 Verdict: Approve b902813c001a0b5747564f0a2c2a80f85abe9e34
+
+## Round 3 (diff-only, 53e603a8)
+Head `53e603a8ed33169ebbf4f2f704c9f60d8f855f96`. #3479's own code diff (`git diff origin/claude/runtime-cognito-admin HEAD`: firm-lock.ts, service.ts, the provider.ts comment, the PR test) is unchanged since round 2. origin/main (97ea7bbe6) is only 3 tools commits ahead, so the API at this head is current main plus the PR.
+How I ran it: the real `PlatformSession` and PF-4's `PlatformIdentity` over HTTP, with main's `Db` (walledPool, oneQueryPerCaller, the transaction-end guard), on the fake Cognito, with fakeMail. Scratch databases `xr_studio_brk3479r3_*` on :54329 got every migration and were all dropped. Script: `scratchpad/r3_3479/r3.mts` (`CASES=E1,…`). The key-share holders are real inserts into main's new tables: `msg_mailbox` (owner_staff_id) and `plat_import_mapping` (saved_by), each with a foreign key to platform_staff. No network, no AWS.
+
+**Minor**
+
+**m1. Accept behind a busy firm lock shows the staff words, not the invitee words.** Review m3 is fixed on one path only.
+- Why: `lockFirm` maps its own 55P03 with the default words: `catch (e) { busyOnLockTimeout(e); }` (firm-lock.ts:46). accept calls `lockFirm(tx, pre.firm_id)` (service.ts:116). The `.catch(… busyOnLockTimeout(e, BUSY_WORDS_INVITEE))` at service.ts:155 then sees an HttpException, not a lock timeout, so it rethrows it unchanged.
+- Repro E5: a firm-lock holder for 2.5 s, then an invitee accepts. Result: 503 FIRM_BUSY at 1541 ms with detail "Someone else in your firm is changing staff right now. Try again in a moment." The accept page shows that detail under "Not done" (accept-page.tsx:73, :88). Nothing was changed: no Cognito user, 0 staff rows.
+- Round 2's B3 tested only the event-lock and P2028 path, which does get the invitee words. The PR's pin (tests/check_pf4bc_cognito_admin.ts:264) only looks for the constant's name in accept's source.
+- Fix: give `lockFirm` a words parameter and have accept pass `BUSY_WORDS_INVITEE`. Test it over HTTP: an accept behind a firm-lock holder gets the invitee words.
+
+**m2 (carried from round 2's m1, unchanged). A person's own sign-out can still answer a bare 500 and leave its token live.**
+- Why: on the unbounded path the `.catch` is `Promise.reject(e)` (service.ts:57), so P2028 is never mapped. Main's new tables make the key shares easy to produce: any write to `msg_mailbox` or `plat_import_*` that names the person.
+- Repro E3: overlapping `msg_mailbox` inserts on T's own row for 17 s, then T signs out. Result: **500 "Internal server error" at 17257 ms**, 0 revocations, T's token still works. The browser forgets it (frame.tsx).
+- With a 6 s stream: 200, and the token ends.
+- It needs more than 15 s of overlapping holds on one person's row, so Minor, as in round 2.
+
+**What held (attack → result)**
+- **Key shares from main's new tables, before the provider call (E1).** One `msg_mailbox` insert held 2.5 s on T. Reset and sign-out everywhere both answer 503 FIRM_BUSY at 1.52–1.56 s. Cognito untouched (totp true, signOuts 0), 0 revocations.
+- **Overlapping key-share streams past the 12 s limit (E2).** `plat_import_mapping` streams of 9.8 s and 12.5 s, and a `msg_mailbox` stream of 17 s, with Cognito at 0.9 s per call. Reset and sign-out everywhere: always **503 FIRM_BUSY** (10.2–17.3 s), never a 500. Cognito unchanged every time, 0 revocations, 0 audit lines, and the person's token still works, so nothing split. After each run:
+  - 0 connections idle in transaction, 0 pool destroys, 0 refusals by the transaction-end guard;
+  - `lock_timeout` reads `0` on every pooled connection (`set local` never leaks);
+  - firm B's staff list then answers 200 with no firm-A rows (walledPool scope held).
+- **Deactivate against reset and sign-out everywhere (E4), in three orders.**
+  - Reset first: both 200, deactivate waits for the firm lock, 2 revocations.
+  - Deactivate first: reset gets 409 STAFF_NOT_ACTIVE with Cognito untouched.
+  - Sign-out everywhere first: both 200, and Cognito signOuts matches the revocation.
+  - Never a 500. Deactivate during a 5 s `msg_mailbox` stream answers 200 in 32 ms (E8): FOR NO KEY UPDATE does not conflict with key shares.
+- **Accept (E5).** Behind a firm-lock holder: 503 before createUser, with no Cognito user (only the wording is wrong, m1). During a 9.8 s key-share stream on the inviter's row: 200, 1 Cognito user, 1 staff row (accept takes no lock on the inviter).
+- **Pool full: 10 transactions holding the pool 3.5 s (E6).** Sign-out everywhere 200 and own sign-out 200. No 500, no idle-in-transaction connection, no destroys.
+- **The budget.** roomForProvider refuses past 7 s, then at most 3 s with the provider, then nothing but the commit in reset and sign-out everywhere. No run reached the provider late.
+- **The PR's own test:** 56 passed, 0 failed. Its scratch database was dropped.
+- **No secret or provider text in the logs.**
+
+Not run: B3 (another firm holds the global event lock for 14 s after createUser). It is the documented trade-off from round 2's m2, and this head does not change it.
+
+Verdict: Approve 53e603a8ed33169ebbf4f2f704c9f60d8f855f96

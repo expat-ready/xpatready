@@ -83,3 +83,31 @@ Not tested: a real screen reader, an intended user's unaided walk (D17/D20 stay 
 | Trust and sources | 1 | No AI output; limits stated in the code header and PR |
 
 **9.5/10, a pass, none at 0.** To raise it: pass the invitee's words through `lockFirm` (R2-m1). Not tested: a real screen reader, an intended user's unaided walk (D17/D20 stay with the founder), a live Cognito pool.
+
+## Round 3 (head 53e603a8ed33169ebbf4f2f704c9f60d8f855f96, 26 Nov 2026; diff-only: merges of main and #3217)
+
+**How I tested:** I started an isolated copy, rv3479, on :4436 (runtime lane) with PLATFORM_IDENTITY=local and the sample seed. I walked the journeys in headless Chromium (Playwright), ran them **twice** with the same results both times, read the database underneath, and then stopped the copy and dropped its database. Locks were held from a second connection. Script: scratchpad `journey3479.mts`. Screenshots: scratchpad `shots3479/j2-busy-{400,1024,1440}-r{1,2}.png`.
+
+1. **Invitee, main path:** Continue goes to `/sign-in/callback` in 76-79 ms, and 1 staff row is written. Held.
+2. **Invitee, firm busy for 4 s, keyboard only:**
+   * Refused after 1799-1812 ms. The notice is `role="alert"`, **Continue stays**, and no "link cannot be used" notice appears.
+   * axe (WCAG 2.2 A/AA) finds 0 violations. 400, 1024 and 1440 px: no sideways scroll.
+   * The retry goes through in 42-44 ms. Data: 1 staff row, 1 accepted invitation, 1 accepted audit line, 1 staff.joined. The only console line is the expected 503.
+   * The words are still the staff wording (R2-m1). Focus still leaves Continue after the refusal (outside the diff).
+3. **Owner signs a person out everywhere while the firm is busy:** 503 FIRM_BUSY "Try again shortly" at 1518-1523 ms; the retry gives 200 in 30-32 ms. **New this round: with the person's row held FOR KEY SHARE** (what main's new foreign keys take), the answer is 503 FIRM_BUSY at 1521-1524 ms. Held.
+4. **Own sign-out with a 3 s firm-lock holder:** 200 at 3013-3019 ms, a revocation row is written, and the old token gets 401. Held.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | Journeys 1-4 complete; 2 and 3 on retry |
+| Next step obvious | 1 | Continue stays under the 503 (journey 2) |
+| Plain words | ½ | The invitee is still told "someone else in your firm" (journey 2, R2-m1) |
+| Feedback and state | 1 | Refusals are stated; a sign-out waits and really ends the session (journey 4) |
+| Correct data | 1 | Exact rows after each retry; refused tries commit nothing |
+| Error recovery | 1 | Every refusal rolls back and the retry works |
+| Accessibility and screen sizes | 1 | axe 0; 400/1024/1440 px; keyboard path completes |
+| Speed | 1 | Refusals in about 1.5-1.8 s; successes under 100 ms |
+| Visual quality | 1 | Team notice and button unchanged (`shots3479/j2-busy-1024-r1.png`) |
+| Trust and sources | 1 | No AI output; limits stated in the code header |
+
+**9.5/10, a pass, none at 0.** To raise it: pass the invitee's words through `lockFirm` (R2-m1). Not tested: a real screen reader, an intended user's unaided walk (D17/D20 stay with the founder), a live Cognito pool, and the Sign out button in the browser (the request is unchanged; frame.tsx:91-92).
