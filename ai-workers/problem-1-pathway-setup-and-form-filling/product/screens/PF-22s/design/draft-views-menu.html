@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Saved views menu draft</title>
+<!-- PF-22s draft board 3 (drafter, 25 Nov): the Views menu and the custom-field filter on the Leads and Pipeline filter bars
+     (web/src/modules/platform/saved-views/, one embed line in leads-page.tsx and pipeline-page.tsx). AG-2-23 rules 5, 6, 9,
+     failure state and edge cases. Self-contained; colours from web/src/styles/tokens.css. All names Sample. -->
+<style>/* Colours copied from web/src/styles/tokens.css (light sheet; text-muted per index.css = neutral-700). Sizes 12/14/16/18/24 only. */
+:root{--primary:#0862c5;--primary-t:#e6f4ff;--surface:#f7f7f7;--raised:#fff;--text:#2d2d2d;--muted:#595959;--link:#054e9c;--border:#d9d9d9;--strong:#bfbfbf;--danger:#991b1b;--danger-fill:#dc2626;--warn:#663200;--warn-t:#fff3e0;--ok:#0f5c2e;--ok-t:#eaf6ee;--ring:#0862c5;font-family:'Inter Variable',Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--text);font-size:14px;line-height:1.45}
+.board{display:grid;gap:32px;padding:24px 16px;max-width:1440px;margin:auto}
+.intro{background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:16px 20px}.intro h1{font-size:24px;margin:0 0 4px}.intro p{margin:4px 0;color:var(--muted)}
+h2.b{font-size:16px;margin:0 0 8px}h2.b small{font-size:12px;color:var(--muted);font-weight:400;margin-left:8px}
+.frame{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--raised);border-bottom:1px solid var(--border);font-size:14px}.top b{color:var(--primary)}.top .sp{flex:1}.crumb{color:var(--muted)}
+.main{padding:20px;min-width:0;position:relative}.page h1{font-size:24px;margin:0}.sub{color:var(--muted);margin:4px 0 16px}
+.hd{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.chip{min-height:32px;border:1px solid var(--border);border-radius:999px;padding:5px 12px;background:var(--raised);font-size:14px}.chip.on{border-color:var(--primary);background:var(--primary-t);color:var(--link);font-weight:600}
+.fchip{display:inline-flex;align-items:center;gap:4px;min-height:32px;border:1px solid var(--primary);background:var(--primary-t);color:var(--link);border-radius:999px;padding:4px 6px 4px 12px;font-weight:600}.fchip i{font-style:normal;padding:0 6px}
+table{border-collapse:collapse;width:100%;background:var(--raised);border:1px solid var(--border);border-radius:8px;overflow:hidden}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;height:44px}th{font-size:12px;color:var(--muted);font-weight:600}td small{display:block;color:var(--muted);font-size:12px}
+button,.btn{font:inherit;font-size:14px;border-radius:8px;padding:7px 14px;border:1px solid var(--strong);background:var(--raised);color:var(--text);cursor:pointer}button.p{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600}button.sm{padding:4px 10px}button.ln{border:0;background:none;color:var(--link);padding:4px;text-decoration:underline}button.d{color:var(--danger);border-color:#e8b4b4}button[disabled]{opacity:.5;cursor:not-allowed}button.ic{padding:4px 8px}
+.card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--raised)}.card h2{font-size:14px;margin:0 0 8px}.card h3{font-size:12px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+dl.kv{display:grid;grid-template-columns:12rem 1fr;gap:6px 12px;margin:0}dl.kv dt{color:var(--muted)}dl.kv dd{margin:0;overflow-wrap:anywhere}
+.notice{border-radius:8px;padding:10px 12px;margin-bottom:12px;border:1px solid}.notice b{display:block}.n-info{background:#eef4fc;border-color:#c7d9f2}.n-warn{background:var(--warn-t);border-color:#f2d39b;color:var(--warn)}.n-danger{background:#fdecec;border-color:#f0c4c0;color:var(--danger)}.n-ok{background:var(--ok-t);border-color:#b8dcc4;color:var(--ok)}
+.pill{display:inline-block;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted);background:var(--surface)}.pill.req{border-color:var(--strong);color:var(--text)}.pill.warn{border-color:#f2d39b;color:var(--warn);background:var(--warn-t)}.pill.arch{border-style:dashed}
+.empty{border:1px dashed var(--border);border-radius:12px;padding:32px 16px;text-align:center;color:var(--muted);background:var(--raised)}
+.skel{height:14px;border-radius:6px;background:linear-gradient(90deg,#eee,#f7f7f7,#eee);margin:10px 0}
+.panelwrap{display:grid;grid-template-columns:1fr 560px;min-height:520px}.panelwrap .dim{background:rgba(45,45,45,.25)}
+.panel{background:var(--raised);border-left:1px solid var(--border);display:flex;flex-direction:column}.panel header{padding:16px 20px;border-bottom:1px solid var(--border)}.panel header h2{font-size:18px;margin:0}.panel header p{margin:4px 0 0;color:var(--muted)}.panel .body{padding:16px 20px;flex:1}.panel footer{display:flex;justify-content:space-between;gap:8px;padding:12px 20px;border-top:1px solid var(--border)}
+.dlg{max-width:480px;margin:24px auto;border:1px solid var(--border);border-radius:12px;padding:20px;background:var(--raised);box-shadow:0 8px 24px rgba(0,0,0,.12)}.dlg h2{font-size:18px;margin:0 0 8px}.dlg .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.field{margin-bottom:14px}.field label,.field .lb{display:block;font-weight:600;margin-bottom:4px}.field .lb small,.field label small{font-weight:400;color:var(--muted)}.hint{font-size:12px;color:var(--muted);margin-top:4px}.err{font-size:12px;color:var(--danger);margin-top:4px;font-weight:600}.err::before{content:"⚠ "}
+input,select,textarea{width:100%;font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--strong);border-radius:8px;background:var(--raised);color:var(--text)}input.bad,select.bad,textarea.bad{border-color:var(--danger);border-width:2px}input[type=checkbox],input[type=radio]{width:auto;margin-right:6px}
+.opt{display:flex;gap:8px;align-items:center;margin-bottom:6px}.opt input{flex:1}
+.preview{border:1px dashed var(--strong);border-radius:8px;padding:12px;background:var(--surface)}.preview .t{font-size:12px;color:var(--muted);margin-bottom:6px}
+.spec{background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:14px}.spec h3{font-size:14px;margin:8px 0 4px}.spec ul{margin:4px 0;padding-left:20px}.spec td,.spec th{height:auto;padding:6px 8px}
+.menu{position:absolute;z-index:5;width:340px;background:var(--raised);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px}.menu .sec{font-size:12px;color:var(--muted);font-weight:600;padding:8px 8px 4px}.menu .row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;min-height:36px}.menu .row:hover,.menu .row.f{background:#f0f4fa}.menu .row .n{flex:1}.menu .row small{display:block;color:var(--muted);font-size:12px}.menu hr{border:0;border-top:1px solid var(--border);margin:6px 0}
+.toast{position:absolute;right:16px;bottom:16px;background:var(--raised);border:1px solid #b8dcc4;border-left:4px solid var(--ok-t);border-left-color:#16a34a;border-radius:8px;padding:10px 14px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.row-a{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.sample{font-size:12px;color:var(--warn);font-weight:600}
+@media (max-width:1100px){.panelwrap{grid-template-columns:1fr}.panelwrap .dim{display:none}.grid2{grid-template-columns:1fr}dl.kv{grid-template-columns:1fr}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}code{font-size:12px;background:var(--surface);padding:1px 4px;border-radius:4px}
+</style></head><body><div class="board">
+
+<section class="intro"><h1>Views menu and custom-field filter <span class="sample">(draft board, Sample data)</span></h1>
+<p>Lists: Leads (<code>fo.leads</code>) and Pipeline, Board and List (<code>fo.pipeline.individual</code>). An applied view is kept in the address as <code>?saved=&lt;id&gt;</code> (<code>?view=</code> is already the Board/List switch and the Leads chip).</p>
+<p>Rules here: BR-11 personal or shared, BR-12 share key, BR-13 never more than the viewer sees, BR-14 dropped part said, BR-15 same names and leavers, BR-16 filter by a custom field.</p></section>
+
+<section><h2 class="b">A. Pipeline List with a view applied, and a custom-field filter <small>1440 px</small></h2>
+<div class="frame"><div class="top"><b>ExpatReady</b><span class="crumb">Pipeline</span><span class="sp"></span><span>Agent ▾</span></div>
+<div class="main">
+<div class="hd"><div><h1 style="font-size:24px;margin:0">Pipeline</h1><p class="sub">Prospects you are working, by stage.</p></div><div class="chips"><button class="chip">Board</button><button class="chip on">List</button></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px">
+<button aria-expanded="false" aria-haspopup="true">▸ Views: My Maple Law consults</button>
+<span class="pill">Yours</span>
+<span style="width:1px;height:24px;background:var(--border)"></span>
+<button class="sm">Stage: Consult ▾</button><button class="sm">Owner: Me ▾</button><button class="sm">Source: all ▾</button>
+<span class="fchip">Referral partner: Maple Law <i role="button" aria-label="Remove filter: Referral partner">×</i></span>
+<button class="sm">+ More filters</button>
+</div>
+<table><thead><tr><th>Prospect</th><th>Stage</th><th>Referral partner</th><th>Value</th><th>Engaged</th></tr></thead><tbody>
+<tr><td><a href="#">Client A</a><small>P-2026-0042</small></td><td><span class="pill">Consult</span></td><td>Maple Law</td><td>$3,500.00 CAD</td><td>18 Nov 2026</td></tr>
+<tr><td><a href="#">Client C</a><small>P-2026-0051</small></td><td><span class="pill">Consult</span></td><td>Maple Law</td><td><span class="hint" style="font-size:14px">Not set</span></td><td>21 Nov 2026</td></tr></tbody></table>
+</div></div></section>
+
+<section class="grid2">
+<div><h2 class="b">B. Menu open <small>popover; Escape closes, focus returns to Views</small></h2>
+<div class="frame main" style="min-height:470px"><button aria-expanded="true">▾ Views</button>
+<div class="menu" role="menu" style="top:60px;left:20px">
+<div class="row f" role="menuitem"><span class="n"><b>Save current filters as a view…</b></span></div>
+<hr><div class="sec">Your views</div>
+<div class="row"><span class="n">My Maple Law consults ✓<small>Stage, owner, referral partner</small></span><button class="ic" aria-label="More for My Maple Law consults">⋯</button></div>
+<div class="row"><span class="n">Unassigned leads<small>Yours</small></span><button class="ic" aria-label="More">⋯</button></div>
+<hr><div class="sec">Shared with the firm</div>
+<div class="row"><span class="n">Unassigned leads<small>Shared · made by Admin</small></span><button class="ic" aria-label="More">⋯</button></div>
+<div class="row"><span class="n">All open, by referral partner<small>Shared · made by a former staff member</small></span><button class="ic" aria-label="More">⋯</button></div>
+<hr><div class="row"><span class="n hint">No view: show the default list</span></div>
+</div></div>
+<p class="hint">Two “Unassigned leads” are both kept, each labelled with its owner (BR-15). A leaver's shared view stays with the firm. From 10 views a “Find a view” box sits at the top.</p></div>
+<div><h2 class="b">C. Row menu (⋯) <small>items by right</small></h2>
+<div class="frame main" style="min-height:300px"><div class="menu" role="menu" style="top:20px;left:20px;width:300px">
+<div class="row">Rename…</div><div class="row">Replace with current filters</div><div class="row">Share with the firm…</div><hr><div class="row" style="color:var(--danger)">Delete…</div></div></div>
+<p class="hint">Own personal view: all four. Shared view: Rename, Replace, Delete for holders of <code>agent/prospect:configure-pipeline</code> (question 3); others see only “Open”. Without the key “Share with the firm” is absent from the row menu and off in the Save panel with the reason.</p></div>
+</section>
+
+<section class="grid2">
+<div><h2 class="b">D. Save a view: right panel (BR-11, BR-12)</h2>
+<div class="frame"><aside class="panel" style="border:0"><header><h2>Save as a view</h2><p>Saves the filters now on the Pipeline List.</p></header>
+<div class="body"><div class="field"><label for="vn">Name</label><input id="vn" class="bad" value=""><div class="err">Give the view a name, for example My open consults.</div></div>
+<div class="field"><span class="lb">Filters saved</span><p style="margin:0">Stage is Consult · Owner is me · Referral partner is Maple Law</p></div>
+<fieldset class="field" style="border:0;padding:0"><legend class="lb">Who sees it</legend>
+<label style="font-weight:400"><input type="radio" name="w" checked>Only me</label>
+<label style="font-weight:400;opacity:.6"><input type="radio" name="w" disabled aria-describedby="sh">Everyone in the firm</label><div class="hint" id="sh">Sharing with the firm needs an Owner or Admin.</div>
+<div class="hint">A shared view never shows anyone more than they may already see.</div></fieldset></div>
+<footer><button>Cancel</button><button class="p">Save view</button></footer></aside></div></div>
+<div><h2 class="b">E. Filters changed after opening a view</h2>
+<div class="frame main"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button>▸ Views: My Maple Law consults</button><span class="pill warn">● Changed</span><button class="sm">Replace view</button><button class="sm">Save as a new view</button><button class="ln">Discard changes</button></div>
+<p class="hint">Shown only when the filters differ from the saved ones. Replace is offered only to whoever may change the view.</p></div>
+<h2 class="b" style="margin-top:16px">F. Delete confirm</h2>
+<div class="frame" style="padding:8px"><div class="dlg" role="alertdialog"><h2>Delete the view “Unassigned leads”?</h2><p>Only the saved filters go. No lead or prospect changes.</p><div class="ft"><button autofocus>Keep the view</button><button class="p">Delete view</button></div></div></div>
+<p class="hint">For a shared view the body adds: “Everyone in the firm loses it.”</p></div>
+</section>
+
+<section class="grid2">
+<div><h2 class="b">G. A part no longer applies (BR-14)</h2><div class="frame main"><div class="notice n-warn" role="status"><b>1 filter part no longer applies</b>The stage “Consult” was removed. The other filters are applied. <button class="ln">Replace the view to drop it</button></div><p class="hint">Same words for a removed source or label, or an archived custom field (“The field “Referral partner” was archived.”). Two parts: “2 filter parts no longer apply”, each named.</p></div></div>
+<div><h2 class="b">H. Shared view opened with view.own (BR-13)</h2><div class="frame main"><div class="notice n-info"><b>This view shows only the prospects you may see.</b>It was shared by Admin; your role shows your own prospects.</div></div></div>
+<div><h2 class="b">I. No views yet</h2><div class="frame main"><div class="menu" style="position:static;width:auto"><div class="row f"><b>Save current filters as a view…</b></div><hr><p class="hint" style="padding:0 8px">No saved views yet. Set the filters you use often, then save them here to come back in one click.</p></div><p class="hint">With no filter set, Save is off: “Choose a filter first.”</p></div></div>
+<div><h2 class="b">J. Loading and error in the menu</h2><div class="frame main"><div class="menu" style="position:static;width:auto"><div class="skel"></div><div class="skel" style="width:60%"></div></div><p role="alert" style="color:var(--danger)">Could not load your views. <button class="ln">Try again</button> The filters still work.</p></div></div>
+<div><h2 class="b">K. More filters: a custom field (BR-16)</h2>
+<div class="frame main"><div class="menu" style="position:static;width:auto;padding:12px">
+<div class="field"><label>Field</label><select><option>Referral partner (prospect)</option><option>Budget for fees (prospect)</option><option>Has a job offer (person)</option><option>Intake deadline (prospect)</option></select></div>
+<div class="field"><span class="lb">Is any of</span><label style="font-weight:400"><input type="checkbox" checked>Maple Law</label><label style="font-weight:400"><input type="checkbox">Northgate Legal</label><label style="font-weight:400"><input type="checkbox">Not filled in</label></div>
+<div style="display:flex;justify-content:flex-end;gap:8px"><button>Cancel</button><button class="p">Apply filter</button></div></div>
+<p class="hint">By type: Short/Long text, Email, Phone, Web address “contains”; Number “between”; Date “from / to”; Choose one and Choose several “is any of”; Yes / no “Yes”, “No”, “Not filled in”. Archived fields are not listed. Kept in the address as <code>cf.referral_partner=Maple Law</code>.</p></div></div>
+<div><h2 class="b">L. Server refused the filter (400 INVALID_FILTER)</h2><div class="frame main"><div class="notice n-danger" role="alert"><b>This filter could not be used.</b>“Budget for fees” needs numbers. The other filters are applied. <button class="ln">Remove it</button></div></div>
+<h2 class="b" style="margin-top:16px">M. Board with a view that has List-only parts</h2><div class="frame main"><div class="notice n-info"><b>Opened in the List</b>This view filters by stage and owner, which the Board does not show. <button class="ln">Back to the Board</button></div></div></div>
+</section>
+
+<section class="spec"><h3>Contract used (shape only; PF-22v builds it)</h3>
+<ul><li><code>GET /api/platform/saved-views?list=fo.pipeline.individual</code> → <code>{ personal[], shared[], canShare }</code>; each <code>{ id, name, filter, owner, createdBy, dropped[] }</code> (<code>dropped</code>: Ask).</li>
+<li><code>POST { list, name, filter, shared }</code> → 201 · 400 INVALID_FILTER · 403 SHARE_NOT_ALLOWED. <code>PATCH /:id { name? | filter? | shared? }</code>. <code>DELETE /:id</code>. Shared-view changes audited.</li>
+<li>List routes take <code>cf.&lt;key&gt;=</code> (FO-2's prospects and leads queries; Ask of their owner).</li></ul>
+<h3>Tests on this board</h3><table><tr><th>BR</th><th>Pass</th><th>Fail</th></tr>
+<tr><td>11</td><td>Agent saves “My open consults”: under Your views</td><td>a second Agent's menu does not list it; GET by id → 404</td></tr>
+<tr><td>12</td><td>Admin shares: every staff member sees it under Shared</td><td>Agent: “Everyone in the firm” off (frame D); POST shared → 403</td></tr>
+<tr><td>13</td><td>Admin opens shared “All open”: all prospects</td><td>view.own Agent: only their own, frame H line</td></tr>
+<tr><td>14</td><td>stage Consult + source Web form: both applied</td><td>Consult removed: source applied, frame G</td></tr>
+<tr><td>15</td><td>two “Unassigned leads” both listed with owners</td><td>a leaver's shared view must still list (fails if it goes)</td></tr>
+<tr><td>16</td><td>Referral partner is Maple Law: only those rows, chip removable</td><td>unknown <code>cf.</code> key in the address → 400, frame L</td></tr></table>
+<h3>Keyboard and size</h3><ul><li>Views opens with Enter or ↓; ↑/↓ move, Enter opens a view, Shift+F10 or the ⋯ button opens the row menu; Escape closes back to Views.</li><li>375 px: Views takes the full row above the filters; the menu becomes a bottom sheet; chips wrap and show they scroll.</li></ul></section>
+</div></body></html>
