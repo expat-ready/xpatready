@@ -8,12 +8,22 @@ import { MAIL_PORT } from "../platform/identity/session/mail.ts";
 import { CognitoIdentityAdmin, IDENTITY_ADMIN_PORT, LocalIdentityAdmin } from "../platform/identity/session/provider.ts";
 import { PlatformSessionController, PublicInvitationController } from "../platform/identity/session/routes.ts";
 import { PlatformSession } from "../platform/identity/session/service.ts";
+import { LocalSignIn, NotSetUpSignIn, SIGN_IN_BOX, SIGN_IN_PORT, SignInDoor } from "../platform/identity/session/sign-in.ts";
+import { platformConfig } from "../platform/config/settings.ts";
+import { Secret } from "../platform/config/secret.ts";
+import { aesGcmSecretBox } from "../platform/secret-box/aes-gcm.ts";
+import { createHash, randomBytes } from "node:crypto";
 import { StaffReadController } from "../platform/staff-read/routes.ts";
 import { StaffReads } from "../platform/staff-read/service.ts";
 import { MESSAGES_MAIL } from "./platform-messages.ts";
 
 const adminFrom = (clock: PlatformClock) => { const c = identityConfig(); return c.identity === "local" ? new LocalIdentityAdmin(() => clock.now()) : new CognitoIdentityAdmin(c.cognito); };
+// PF-4bs part 2a: the sign-in page's provider side (the stand-in; elsewhere 503 until part 2b) and the box that seals its
+// attempts: the server's key ring, or on a local server without one a random key for this run (an attempt is 15 minutes).
+const signInFrom = (clock: PlatformClock) => { const c = identityConfig(); return c.identity === "local" ? new LocalSignIn(c.localSecret ? createHash("sha256").update(`pf4bs sign-in ${c.localSecret}`).digest() : randomBytes(32), () => clock.now()) : new NotSetUpSignIn(); };
+const boxFrom = () => { const c = platformConfig(); return c.secretBox ? aesGcmSecretBox(c.secretBox) : c.environment === "local" ? aesGcmSecretBox({ current: 1, keys: new Map([[1, new Secret("sign-in attempt key (this run)", randomBytes(32).toString("base64"))]]) }) : null; };
 export default {
   controllers: [PlatformSessionController, PublicInvitationController, StaffReadController],
-  providers: [{ provide: IDENTITY_ADMIN_PORT, useFactory: adminFrom, inject: [PlatformClock] }, { provide: MAIL_PORT, useExisting: MESSAGES_MAIL }, PlatformSession, StaffReads],
+  providers: [{ provide: IDENTITY_ADMIN_PORT, useFactory: adminFrom, inject: [PlatformClock] }, { provide: MAIL_PORT, useExisting: MESSAGES_MAIL }, PlatformSession, StaffReads,
+    { provide: SIGN_IN_PORT, useFactory: signInFrom, inject: [PlatformClock] }, { provide: SIGN_IN_BOX, useFactory: boxFrom }, SignInDoor],
 } satisfies Feature;

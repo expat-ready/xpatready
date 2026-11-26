@@ -205,6 +205,20 @@ export class PlatformIdentity implements OnModuleInit {
     return { token: this.port.issue(staff.id, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600, staffId: staff.id, firmKey: firm.key };
   }
 
+  /** PF-4bs part 2a: after the sign-in page's password and code (session/sign-in.ts), the local stand-in's session. The
+   *  sign-in is recorded as at the local door (older session ended, one audit line), read as the person's firm. */
+  async localSessionAfterCode(staffId: string) {
+    if (!(this.port instanceof LocalIdentity)) return problem(403, "Not available", "The local sign-in stand-in is off on this server (PLATFORM_IDENTITY is not local).", { code: "LOCAL_SIGN_IN_OFF" });
+    const firmId = UUID.test(staffId) ? (await this.db.$queryRaw<{ f: string | null }[]>`select platform_staff_firm(${staffId}::uuid, null::text)::text as f`)[0]?.f : null;
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { id: firmId }, select: { id: true, key: true, status: true } })) : null;
+    if (!firm) return unauthorized("That email and password don't match.", "SIGN_IN_REFUSED");
+    if (firm.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
+    const authMs = await withFirm(firm.id, () => this.recordSignIn(firm.id, firm.key, staffId, "sign-in page, local stand-in", (last, revoked) => Math.max(this.clock.now(), (last ?? 0) + 1, (revoked ?? 0) + 1)));
+    if (authMs === "inactive") return unauthorized("This staff account is not active. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
+    if (authMs === null) return unauthorized("That email and password don't match.", "SIGN_IN_REFUSED");
+    return { token: this.port.issue(staffId, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600 };
+  }
+
   async me(s: StaffContext) {
     const staff = await this.db.platformStaff.findFirst({ where: firmScope(s.firmId, { id: s.staffId }), include: { credential: { select: { id: true } } } });
     if (!staff) return notInFirm("staff member");
