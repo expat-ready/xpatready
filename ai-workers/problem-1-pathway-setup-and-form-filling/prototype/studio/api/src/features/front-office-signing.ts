@@ -12,7 +12,10 @@ import "../front-office/signing/email-code.ts";   // part 4a: registers the firm
 import { SigningDoorController } from "../front-office/signing/door.controller.ts";
 import { SigningDoor } from "../front-office/signing/door.ts";
 import { assertStandInPageAllowed, FakeSigningPageController } from "../front-office/signing/fake-page.ts";
-import { useSigningMail, useSigningPort } from "../front-office/signing/handlers.ts";
+import { useSigningMail, useSigningNotifications, useSigningPort } from "../front-office/signing/handlers.ts";
+import { RetainerNotificationLabels } from "../front-office/retainers/notification-labels.ts";
+import type { NotificationPort } from "../../../ports/notifications.ts";
+import { NOTIFICATION_PORT as NOTIFY_PORT } from "../platform/notifications/store.ts";   // aliased: the push guard reads "token: <16+ characters>" as a possible secret
 import { SigningHooksController } from "../front-office/signing/hooks.ts";
 import { signingPublicBase } from "../front-office/signing/link-mail.ts";
 import { fakeSigning } from "../front-office/signing/port.ts";
@@ -27,13 +30,15 @@ export function signingFeatureFor(env: string | undefined) {
   const local = env === "local";
   const feature = {
     controllers: [SigningController, SigningHooksController, SigningDoorController, ...(local ? [FakeSigningPageController] : [])],   // 4b: the public door; 4c: the stand-in page (local only)
-    providers: [{ provide: Signing, useFactory: (db: Db, files: LocalFiles, clock: PlatformClock, mail: MailPort) => {
+    providers: [{ provide: Signing, useFactory: (db: Db, files: LocalFiles, clock: PlatformClock, mail: MailPort, notifications?: NotificationPort) => {
       useSigningMail(mail);
+      useSigningNotifications(notifications ?? null);   // FO-5d: a retainer's decline tells the prospect's owner (none bound: nobody)
       const now = () => new Date(clock.now());
       // Part 4c: on a lane copy the fake's embedded links open the copy's own stand-in page (else signing.fake.invalid).
       if (local) useSigningPort(fakeSigning({ now, linkBase: signingPublicBase }));
       return new Signing(db, files, { now });
-    }, inject: [Db, LocalFiles, PlatformClock, MESSAGES_MAIL] },
+    }, inject: [Db, LocalFiles, PlatformClock, MESSAGES_MAIL, { token: NOTIFY_PORT, optional: true }] },
+    RetainerNotificationLabels,   // FO-5d: names `retainer` items in a person's notification list
     { provide: SigningDoor, useFactory: (db: Db, clock: PlatformClock) => new SigningDoor(db, { now: () => new Date(clock.now()) }), inject: [Db, PlatformClock] }],
   } satisfies Feature;
   assertStandInPageAllowed(feature.controllers, env);

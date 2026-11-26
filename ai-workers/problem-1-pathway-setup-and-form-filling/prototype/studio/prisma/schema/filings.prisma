@@ -6,6 +6,9 @@
 /// and the filing record attach to it). Derived from the case's people and release; nobody creates one by hand.
 model SubmissionGroup {
   id          String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId String   @map("workspace_id") @db.Uuid
   caseId      String   @map("case_id") @db.Uuid
   /// FAMILY (one submission at the same time and place) · SEPARATE (a filing split out, with its reason)
@@ -28,8 +31,13 @@ model SubmissionGroup {
   filings Filing[]
   records FilingRecord[] // C8.2
 
+  caseFirm Case? @relation("SubmissionGroupCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingsFirm Filing[] @relation("FilingGroupFirm")
+
   @@index([caseId])
   @@index([stageId])
+  @@unique([id, firmId])
+  @@index([firmId, caseId])
   @@map("submission_group")
 }
 
@@ -37,6 +45,9 @@ model SubmissionGroup {
 /// same person keeps the same filing when they apply again.
 model Filing {
   id                String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId       String   @map("workspace_id") @db.Uuid
   caseId            String   @map("case_id") @db.Uuid
   submissionGroupId String   @map("submission_group_id") @db.Uuid
@@ -69,13 +80,24 @@ model Filing {
   decisions    CaseDecision[]      // CS-C1a
   reviewForms  ReviewRoundForm[]   // C8.3
 
+  caseFirm  Case?            @relation("FilingCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  groupFirm SubmissionGroup? @relation("FilingGroupFirm", fields: [submissionGroupId, firmId], references: [id, firmId], onDelete: Restrict, onUpdate: Restrict)
+  applicantsFirm FilingApplicant[]    @relation("FilingApplicantFilingFirm")
+  itemsFirm      FilingItem[]         @relation("FilingItemFilingFirm")
+  additionsFirm  FilingFormAddition[] @relation("FilingFormAdditionFilingFirm")
+
   @@unique([caseId, stageId, subjectId])
   @@index([stageId])
+  @@unique([id, firmId])
+  @@index([firmId, caseId])
   @@map("filing")
 }
 
 model FilingApplicant {
   id        String @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   filingId  String @map("filing_id") @db.Uuid
   subjectId String @map("subject_id") @db.Uuid
   role      String
@@ -84,7 +106,10 @@ model FilingApplicant {
 
   filing Filing @relation(fields: [filingId], references: [id], onDelete: Cascade)
 
+  filingFirm Filing? @relation("FilingApplicantFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@unique([filingId, subjectId])
+  @@index([firmId, filingId])
   @@map("filing_applicant")
 }
 
@@ -92,6 +117,9 @@ model FilingApplicant {
 /// case within what IRCC accepts (C11.6). Inactive while the form does not apply, so it keeps its id and channel.
 model FilingItem {
   id            String         @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId   String         @map("workspace_id") @db.Uuid
   caseId        String         @map("case_id") @db.Uuid
   filingId      String         @map("filing_id") @db.Uuid
@@ -120,8 +148,12 @@ model FilingItem {
   tasks       CaseTask[]   // C8.2
   reviewForms ReviewRoundForm[] // C8.3
 
+  caseFirm   Case?   @relation("FilingItemCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingFirm Filing? @relation("FilingItemFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@unique([filingId, kind, itemKey, subjectId])
   @@index([caseId])
+  @@index([firmId, caseId])
   @@map("filing_item")
 }
 
@@ -130,6 +162,9 @@ model FilingItem {
 /// (migration 20261102120000_c69_eligibility); review and override are rows of their own. Written from part 2.
 model Assessment {
   id              String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId     String   @map("workspace_id") @db.Uuid
   caseId          String   @map("case_id") @db.Uuid
   subjectId       String   @map("subject_id") @db.Uuid
@@ -145,13 +180,22 @@ model Assessment {
   overrides AssessmentOverride[]
   review    AssessmentReview?
 
+  caseFirm Case? @relation("AssessmentCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  overridesFirm AssessmentOverride[] @relation("AssessmentOverrideFirm")
+  reviewFirm    AssessmentReview[]   @relation("AssessmentReviewFirm")
+
   @@index([caseId, subjectId, createdAt])
+  @@unique([id, firmId])
+  @@index([firmId, caseId, subjectId, createdAt])
   @@map("assessment")
 }
 
 /// C6.9 (BR-15, AG-03 AssessmentOverride): an officer's label and reason beside an engine result; the result never changes.
 model AssessmentOverride {
   id           String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   assessmentId String   @map("assessment_id") @db.Uuid
   programKey   String   @map("program_key")
   fromOutcome  String   @map("from_outcome")
@@ -164,13 +208,19 @@ model AssessmentOverride {
 
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 
+  assessmentFirm Assessment? @relation("AssessmentOverrideFirm", fields: [assessmentId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([assessmentId])
+  @@index([firmId, assessmentId])
   @@map("assessment_override")
 }
 
 /// C6.9 (BR-16, AG-3-34): "Reviewed by" / "Seen by" on a run, once per run.
 model AssessmentReview {
   assessmentId String   @id @map("assessment_id") @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   reviewedBy   String   @map("reviewed_by")
   reviewedAt   DateTime @default(now()) @map("reviewed_at") @db.Timestamptz
   note         String?
@@ -179,6 +229,9 @@ model AssessmentReview {
 
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 
+  assessmentFirm Assessment? @relation("AssessmentReviewFirm", fields: [assessmentId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([firmId, assessmentId])
   @@map("assessment_review")
 }
 
@@ -186,6 +239,9 @@ model AssessmentReview {
 /// reason (typed changes), the roles around it and the preview basis it was applied over. Append-only (trigger).
 model FilingChange {
   id             String   @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId    String   @map("workspace_id") @db.Uuid
   caseId         String   @map("case_id") @db.Uuid
   /// make_principal · remove_filing · add_back · travelling_flag
@@ -202,7 +258,10 @@ model FilingChange {
 
   case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
+  caseFirm Case? @relation("FilingChangeCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([caseId, changedAt])
+  @@index([firmId, caseId, changedAt])
   @@map("filing_change")
 }
 
@@ -212,6 +271,9 @@ model FilingChange {
 /// removed mark only (a trigger refuses any other change); the row is kept when removed (BR-8).
 model FilingFormAddition {
   id            String        @id @default(uuid()) @db.Uuid
+  /// CS-W2 part filings (contract §8 steps 2, 2a): the platform firm, filled by the database (the session's firm, else the
+  /// parent's through case_filings_firm_fill); a differing one is refused. Nullable until CS-W1 part 2 (see the migration).
+  firmId String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   workspaceId   String        @map("workspace_id") @db.Uuid
   caseId        String        @map("case_id") @db.Uuid
   filingId      String        @map("filing_id") @db.Uuid
@@ -243,6 +305,10 @@ model FilingFormAddition {
   case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
   filing Filing @relation(fields: [filingId], references: [id], onDelete: Cascade)
 
+  caseFirm   Case?   @relation("FilingFormAdditionCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+  filingFirm Filing? @relation("FilingFormAdditionFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
+
   @@index([caseId])
+  @@index([firmId, caseId])
   @@map("filing_form_addition")
 }

@@ -14,7 +14,7 @@
 //     client and nobody signs without recorded consent (part 4's door records it), else the event is stored, refused
 //     and the state unchanged; `completed` fetches the sealed and audit files, stores and hashes them, moves the request
 //     and the retainer to SIGNED, makes the prospect WON through the retainers module, writes `signing.completed` last,
-//     then emails each client signer "Your signed agreement" once. `declined` is stored and left to FO-5d. A CONSULTATION
+//     then emails each client signer "Your signed agreement" once. `declined` ends the request for everyone (FO-5d, ./decline.ts). A CONSULTATION
 //     request goes to the handler its module registered (./handlers.ts), else is stored and answered "no handler".
 // Every value is Sample. Legal points (e-signature identity, D-6): Unconfirmed: no counsel.
 import { HttpException } from "@nestjs/common";
@@ -27,7 +27,8 @@ import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { asBypass, touchFirms, withFirm } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { onSigningCompleted, SIGNING_ACTOR } from "../retainers/on-signing-completed.ts";
-import { signingHandlerFor, signingMail, signingPort } from "./handlers.ts";
+import { applyDecline } from "./decline.ts";
+import { signingHandlerFor, signingMail, signingNotifications, signingPort } from "./handlers.ts";
 import { sendPleaseSign } from "./link-mail.ts";
 import { SIGNING_WEBHOOK } from "./webhook.bypass.ts";
 import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent } from "./port.ts";
@@ -97,6 +98,83 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
   };
 }
 
+/** Review round 1 m2: the provider's cancel inside a transaction answers within this (Prisma's interactive transaction
+ *  ends at 5 s), else it counts as no answer: 503 "Try again", rolled back. */
+const CANCEL_MS = 3_000;
+class CancelTimeout extends Error { constructor() { super("the signing provider did not answer in time"); this.name = "CancelTimeout"; } }
+function withinMs<T>(ms: number, p: Promise<T>): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<never>((_, no) => { t = setTimeout(() => no(new CancelTimeout()), ms); })]).finally(() => clearTimeout(t));
+}
+
+/** Review round 1 m1: the retainer's live signing requests are locked first, in the order the webhook takes them (the
+ *  request, then the retainer), so Withdraw, Edit and Signed offline never deadlock against a provider event. Call it as
+ *  the first statement of their transaction. */
+export async function lockRetainerSigning(tx: Tx, firmId: string, retainerId: string) {
+  await tx.$queryRaw`select id from fo_signature_request where firm_id = ${firmId}::uuid and document_kind = 'RETAINER' and document_id = ${retainerId}::uuid
+    and status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') order by id for update`;
+}
+
+/** QA-770 (R1.55 W1; FO-5d (2), (3)): Withdraw, Edit and Signed offline end the retainer's live signing request in their
+ *  own transaction (CANCELLED with WITHDRAWN, UPDATED or SIGNED_OFFLINE, one `signing.request_cancelled` line each).
+ *  `cancelNow()` cancels the envelopes at the provider before the commit (Withdraw and Edit, FO-5d (2)): a failed cancel
+ *  throws 503 "Try again", so the transaction rolls back; an envelope the provider has already ended or does not know is
+ *  no change. `afterCommit()` cancels any envelope still owed (Signed offline: a paper signature is never held up by the
+ *  provider; logged, never thrown), then, after a withdraw only, emails each client signer "Agreement withdrawn" once
+ *  (AG-5-34 r3). The door then reads the link ended, and a late provider event is refused (the request is not live). */
+export async function endRetainerSigning(tx: Tx, ctx: StaffContext, retainerId: string, reason: "WITHDRAWN" | "UPDATED" | "SIGNED_OFFLINE", o: { db: PrismaClient; audit?: AuditPort<Tx>; now: Date }) {
+  const firmId = ctx.firmId, audit = o.audit ?? auditEvent;
+  const live = await tx.foSignatureRequest.findMany({ where: { firmId, documentKind: "RETAINER", documentId: retainerId, status: { in: ["SENT", "VIEWED", "CLIENT_SIGNED"] } },
+    select: { id: true, providerDocumentId: true, documentVersion: true, status: true, signers: { where: { role: "CLIENT" }, select: { personId: true } } } });
+  const why = { WITHDRAWN: "the agreement was withdrawn", UPDATED: "the agreement was edited", SIGNED_OFFLINE: "the agreement was signed on paper" }[reason];
+  for (const s of live) {
+    const n = await tx.foSignatureRequest.updateMany({ where: { firmId, id: s.id, status: s.status }, data: { status: "CANCELLED", cancelReason: reason, endedAt: o.now } });
+    if (n.count !== 1) conflict("This agreement's signing changed at the same time. Open it again.", "CHANGED");
+    await audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.request_cancelled", entity: "fo_signature_request", entityKey: s.id,
+      summary: `Signing request for version ${s.documentVersion} ended: ${why}`,
+      detail: { requestId: s.id, retainerId, version: s.documentVersion, reason }, before: { status: s.status }, after: { status: "CANCELLED", cancelReason: reason } });
+  }
+  const owed = live.map((s) => s.providerDocumentId);
+  // Ended at the provider already: cancelled, declined or unknown is no change; *completed* (everyone signed there and its
+  // event is on its way) is never undone by a withdraw or an edit (AG-5-34: refused once executed; review round 1 M1).
+  const ended = (e: unknown) => (e instanceof SigningEnded && e.state !== "completed") || e instanceof SigningNotFound;
+  return {
+    ended: live.length,
+    async cancelNow() {
+      const port = signingPort();
+      for (const d of owed.splice(0)) {
+        try { await withinMs(CANCEL_MS, port.cancel(firmId, d)); } catch (e) {
+          if (ended(e)) continue;
+          if (e instanceof SigningEnded) conflict("Everyone has signed this agreement at the signing service; the signed copy is on its way. It can no longer be withdrawn or changed.", "SIGNED_AT_PROVIDER");
+          console.error(`[fo-signing] the provider did not cancel the envelope: ${(e as Error)?.name ?? "error"}`);
+          problem(503, "Try again", "The signing service did not answer, so nothing changed. Try again in a minute.", { code: "SIGNING_UNAVAILABLE" });
+        }
+      }
+    },
+    async afterCommit() {
+      if (owed.length) {
+        const port = signingPort();
+        for (const d of owed.splice(0)) { try { await port.cancel(firmId, d); } catch (e) { if (!ended(e)) console.error(`[fo-signing] cancel after the commit did not finish: ${(e as Error)?.name ?? "error"}`); } }
+      }
+      if (reason === "WITHDRAWN") for (const s of live) for (const c of s.signers) if (c.personId) await sendWithdrawn(o.db, { firmId, requestId: s.id, personId: c.personId, version: s.documentVersion });
+    },
+  };
+}
+
+/** "Agreement withdrawn", once per client signer and request (after the commit; a failure is logged, the withdraw stands). */
+async function sendWithdrawn(db: PrismaClient, o: { firmId: string; requestId: string; personId: string; version: number }) {
+  const mail = signingMail();
+  if (!mail) { console.warn("[fo-signing] no MailPort set: the withdrawn notice was not emailed"); return; }
+  try {
+    const firm = await db.platformFirm.findFirstOrThrow({ where: { id: o.firmId }, select: { operatingName: true, contactEmail: true } });
+    const p = await db.foPerson.findFirst({ where: { firmId: o.firmId, id: o.personId }, select: { id: true, email: true, givenNames: true } });
+    if (!p?.email) return;
+    await mail.send({ firmId: o.firmId, to: p.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: p.id }, templateKey: "signing.withdrawn",
+      idempotencyKey: `signing:${o.requestId}:withdrawn:${p.id}`, subject: `Agreement withdrawn: ${firm.operatingName}`.slice(0, 200),
+      text: `Hello${p.givenNames ? ` ${p.givenNames}` : ""},\n\n${firm.operatingName} has withdrawn the retainer agreement (version ${o.version}) it sent you to sign. The signing link no longer works and there is nothing for you to do.\n\nReply to this email to reach ${firm.operatingName}.` });
+  } catch (e) { console.error(`[fo-signing] the withdrawn notice's email failed: ${(e as Error)?.name ?? "error"}`); }
+}
+
 /** The signing module's reads and its webhook door. */
 export class Signing {
   constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly o: { audit?: AuditPort<Tx>; now?: () => Date } = {}) {}
@@ -116,7 +194,7 @@ export class Signing {
       signed: `${signedCount} of ${q.signers.length} signed`, signedCount, signerCount: q.signers.length,
       signers: q.signers.map((s) => {
         const p = people.find((x) => x.id === s.personId), st = staff.find((x) => x.id === s.staffId);
-        return { role: s.role, name: p ? nameOf(p) || "Client" : st?.displayName ?? "Representative", personId: s.personId, staffId: s.staffId, viewedAt: s.viewedAt, signedAt: s.signedAt, declinedAt: s.declinedAt };
+        return { role: s.role, name: p ? nameOf(p) || "Client" : st?.displayName ?? "Representative", personId: s.personId, staffId: s.staffId, viewedAt: s.viewedAt, signedAt: s.signedAt, declinedAt: s.declinedAt, declineReason: s.declineReason };   // FO-5d: the client's own words, for staff who may read the retainer
       }),
       evidence: q.evidence ? { storedAt: q.evidence.storedAt, sealedSha256: q.evidence.sealedSha256, auditSha256: q.evidence.auditSha256, consentTextVersion: q.evidence.consentTextVersion } : null,
     };
@@ -196,8 +274,18 @@ export class Signing {
       // Break M1: a refusal that a later event can lift (the firm before the clients, no consent yet) keeps nothing and
       // answers 409, so the provider's redelivery applies once the order or the consent is right.
       const notYet = (reason: string): never => conflict(`${reason}. The provider may send the event again.`, "NOT_YET");
-      if (ev.type === "declined" || ev.type === "other") return refuse(ev.type === "declined" ? "a decline is applied by FO-5d" : "nothing to apply");
+      if (ev.type === "other") return refuse("nothing to apply");
       if (!live) return refuse(`the request is ${q.status.toLowerCase()}`);
+      // FO-5d (1): the provider's decline is applied as the door's, with no reason (./decline.ts); the provider ended its
+      // envelope itself. A signer who signed or declined already is refused, stored once.
+      if (ev.type === "declined") {
+        const s = signers.find((x) => x.id === ev.signerId);
+        if (!s) return refuse("no such signer on this request");
+        if (s.signedAt || s.declinedAt) return refuse("this signer has answered already");
+        await applyDecline(tx, { firmId, request: { id: q.id, documentKind: "RETAINER", documentId: q.document_id, documentVersion: q.document_version, status: q.status }, signer: { id: s.id, role: s.role },
+          reason: null, actor: SIGNING_ACTOR, audit: this.audit, now, notifications: signingNotifications() });
+        return { received: true as const, applied: true };
+      }
       // Part 4c (QA-770's signing path; Lead 29, answer 1): a view or a signature on an agreement that was withdrawn, signed
       // on paper, declined, expired or replaced by a newer version is refused, stored once and never applied. The retainer's
       // row is locked here, so a withdraw cannot slip in between (challenge m9). FO-5d ends the request itself.

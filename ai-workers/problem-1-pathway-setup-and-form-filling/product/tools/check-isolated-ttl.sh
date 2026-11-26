@@ -42,7 +42,8 @@ case "$q" in
   *shobj_description*) db=${q##*datname = \'}; cat "$FAKE/db/${db%\'*}" 2>/dev/null;;
 esac; exit 0
 EOF
-printf '#!/bin/bash\nfor a; do db=$a; done; rm -f "$FAKE/db/$db"; echo "dropdb $db" >> "$FAKE/log"\n' > "$F/bin/dropdb"
+# A stop's dropdb (the one with --force) sleeps $FAKE/slow-dropdb seconds while that file exists: a loaded runner (OS-78).
+printf '#!/bin/bash\nfor a; do db=$a; case "$a" in --force) [ -f "$FAKE/slow-dropdb" ] && sleep "$(cat "$FAKE/slow-dropdb")";; esac; done; rm -f "$FAKE/db/$db"; echo "dropdb $db" >> "$FAKE/log"\n' > "$F/bin/dropdb"
 printf '#!/bin/bash\nfor a; do db=$a; done; echo "createdb $db" >> "$FAKE/log"\n' > "$F/bin/createdb"
 printf '#!/bin/bash\nexit 0\n' > "$F/bin/pg_ctl"
 chmod +x "$F/bin/"* "$S/tools/"*.sh "$S/node_modules/.bin/"*
@@ -51,11 +52,19 @@ live() { [ -n "$1" ] && ps -o stat= -p "$1" 2>/dev/null | grep -qv Z; }   # a zo
 up() { live "$(cat "$F/listen/$1" 2>/dev/null)"; }
 waitfor() { local i; for i in $(seq 1 "$2"); do eval "$1" && return 0; sleep 1; done; return 1; }
 timer() { cat "$S/var/isolated-ttl/$1.pid" 2>/dev/null; }
+# OS-78: wait on the copy's own completion, not a fixed time (25 Nov: a fixed 20 s for the second dropdb failed on a
+# loaded runner, #3715 and #3696). $1 name, $2 its timer's pid: the timer fires (it removes its pid file; at most 30 s),
+# then the timer process ends, which is when its stop has finished (at most 60 s).
+selfstopped() { waitfor "[ ! -e \"\$S/var/isolated-ttl/$1.pid\" ]" 30 && waitfor "! live $2" 60; }
+dropped() { [ "$(grep -c "dropdb xr_studio_$1\$" "$F/log")" = 2 ] && [ ! -d "$S/var/isolated-$1" ]; }   # start's dropdb and stop's
 
-iso qa_a 4471 start --ttl 3
-ok "a copy started with --ttl 3 answers and names its stop time" "$([ $r = 0 ] && up 4471 && echo "$out" | grep -q 'stops itself in 3 min' && echo 1)" "exit $r: $out"
-waitfor '! up 4471' 30; ok "... and stops itself when its ttl is reached" "$( ! up 4471 && echo 1)" "still listening on 4471"
-waitfor '[ "$(grep -c "dropdb xr_studio_qa_a" "$F/log")" = 2 ]' 20; ok "... dropping its database and files" "$([ "$(grep -c 'dropdb xr_studio_qa_a' "$F/log")" = 2 ] && [ ! -d "$S/var/isolated-qa_a" ] && echo 1)" "$(cat "$F/log")"
+iso qa_a 4471 start --ttl 3; t=$(timer qa_a)
+ok "a copy started with --ttl 3 answers and names its stop time" "$([ $r = 0 ] && [ -n "$t" ] && up 4471 && echo "$out" | grep -q 'stops itself in 3 min' && echo 1)" "exit $r: $out"
+selfstopped qa_a "$t"; ok "... and stops itself when its ttl is reached" "$( ! up 4471 && ! live "$t" && echo 1)" "still listening on 4471, or its timer $t still runs"
+ok "... dropping its database and files" "$(dropped qa_a && echo 1)" "$(cat "$F/log")"
+echo 25 > "$F/slow-dropdb"; iso qa_s 4476 start --ttl 3; t=$(timer qa_s)
+selfstopped qa_s "$t"; rm -f "$F/slow-dropdb"
+ok "a copy whose dropdb takes 25 s still stops itself and drops its database and files (OS-78)" "$([ -n "$t" ] && ! up 4476 && ! live "$t" && dropped qa_s && echo 1)" "timer $t; $(cat "$F/log")"
 
 iso qa_b 4472 start; t=$(timer qa_b)
 ok "with no --ttl the timer is set to 60 minutes" "$([ $r = 0 ] && ps -p "$t" -o command= | grep -q 'isolated-ttl 60 ' && echo 1)" "timer $t: $(ps -p "$t" -o command= 2>/dev/null)"

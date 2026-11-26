@@ -77,6 +77,30 @@ def t_records_pr(F, row, arg):
     return len(big), (f"#{big[0]['number']} {big[0]['additions'] + big[0]['deletions']} lines" if big else "none")
 
 
+def t_records_age(F, row, arg, now):
+    """OS-17 (P-526c: no ruling lives only in an unmerged PR; records PRs over 24 h are merged or closed): every open
+    records PR, draft or not, opened more than `threshold` hours ago; named oldest first (the first 5, then a count).
+    Reads step 2b's list (prs_all, up to 200) when present, else step 2's (prs, up to 80). GitHub lists the newest first,
+    so a full page means the oldest PRs, the ones this looks for, were not read: said, never a pass (#3699 review)."""
+    prs, cap = (F.get("prs_all"), F.get("prs_all_limit")) if isinstance(F.get("prs_all"), list) else (F.get("prs"), F.get("prs_limit"))
+    if prs is None:
+        raise NotRead("open PRs not read")
+    if not isinstance(prs, list) or not all(isinstance(p, dict) for p in prs):
+        raise NotRead("open PRs are not a list of PRs")
+    if cap and len(prs) >= int(cap):
+        raise NotRead(f"a full page of {len(prs)} open PRs: the oldest were not read")
+    lim = float(row["threshold"])
+    if not lim == lim or lim in (float("inf"), float("-inf")):
+        raise ValueError("threshold is not a number of hours")
+    recs = [p for p in prs if is_records(p)]
+    if any(not p.get("createdAt") for p in recs):
+        raise NotRead("a records PR read without createdAt")
+    hours = lambda p: (now - ts(p["createdAt"])).total_seconds() / 3600
+    old = sorted((p for p in recs if hours(p) > lim), key=lambda p: ts(p["createdAt"]))
+    names = [f"#{p['number']} open {age_h(now, p['createdAt']):g} h" for p in old[:5]]
+    return len(old), ("; ".join(names) + (f"; +{len(old) - 5} more" if len(old) > 5 else "") if old else "none")
+
+
 def board_part(F, *path):
     b = F.get("board")
     if not isinstance(b, dict):
@@ -142,6 +166,8 @@ def check(F, rows, now=None):
                 n, item = t_size(F, r, arg)
             elif kind == "records-pr-lines":
                 n, item = t_records_pr(F, r, arg)
+            elif kind == "records-pr-age":
+                n, item = t_records_age(F, r, arg, now)
             elif kind == "proving":
                 n, item = t_proving(F, r, arg)
             elif kind == "feeding":

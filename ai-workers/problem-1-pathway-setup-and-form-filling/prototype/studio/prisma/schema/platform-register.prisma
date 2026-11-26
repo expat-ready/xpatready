@@ -334,6 +334,8 @@ model PlatDataRequest {
   eraseOn        DateTime?             @map("erase_on") @db.Date
   /// PF-21d part 1b: the erasure job's claim while it erases (set and cleared by its definers only).
   erasingSince   DateTime?             @map("erasing_since") @db.Timestamptz
+  /// PF-21d part 2a (R7-1): a run retook a claim, so an earlier run may have erased; cancel refuses from then on.
+  mayHaveErased  Boolean               @default(false) @map("may_have_erased")
 
   events PlatDataRequestEvent[]
 
@@ -386,4 +388,20 @@ model PlatSwitchEvent {
 
   @@unique([key, seq])
   @@map("plat_switch_event")
+}
+
+/// PF-21d part 2a: each module's result for one run (claim) of an approved erasure, written inside the erasers' own firm
+/// transaction (so a mark exists exactly when they committed); insert-only, reached only through its two definers. No
+/// foreign key to the request on purpose (its key-share lock would make a cancel mid-run wait for the erasers).
+model PlatDataRequestErasureMark {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId String   @map("request_id") @db.Uuid
+  claim     DateTime @db.Timestamptz
+  module    String
+  outcome   String
+  note      String
+  markedAt  DateTime @default(now()) @map("marked_at") @db.Timestamptz
+
+  @@unique([requestId, claim, module])
+  @@map("plat_data_request_erasure_mark")
 }

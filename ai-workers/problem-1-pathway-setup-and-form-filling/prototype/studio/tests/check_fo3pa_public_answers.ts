@@ -64,19 +64,22 @@ try {
   const N = await db.platformFirm.create({ data: { key: "fo3pa-n", operatingName: "Sample No Address", countryCode: "CA", status: "ACTIVE", contactEmail: "hello@fo3pa-n.example" } });
   const host = await db.platformStaff.create({ data: { firmId: A.id, email: "host@staff.example", displayName: "Sample Host" } });
   const hostN = await db.platformStaff.create({ data: { firmId: N.id, email: "hostn@staff.example", displayName: "Sample Host N" } });
-  await copyFirmHoursTo(db, A.id, [host.id]);
+  // FO-3v part 1: the join link is the host's own My meeting link (the type's meetingLink is not a source, AG-16-73).
+  const linked = await db.platformStaff.create({ data: { firmId: A.id, email: "linked@staff.example", displayName: "Sample Linked Host" } });
+  await db.foVideoPref.create({ data: { firmId: A.id, staffId: linked.id, myMeetingLink: LINK, sourceChoice: "MY_LINK" } });
+  await copyFirmHoursTo(db, A.id, [host.id, linked.id]);
   await copyFirmHoursTo(db, N.id, [hostN.id]);
   const type = (firmId: string, hostId: string, slug: string, name: string, extra: Record<string, unknown> = {}) =>
     db.foConsultationType.create({ data: { firmId, slug, name, modes: ["VIDEO", "PHONE"], hostStaffIds: [hostId], minutes: 30, ...extra } });
   const T = {
     free: await type(A.id, host.id, "free", "Free consultation"),
-    noCancel: await type(A.id, host.id, "no-cancel", "Assessment call", { allowCancel: false, meetingLink: LINK }),
+    noCancel: await type(A.id, linked.id, "no-cancel", "Assessment call", { allowCancel: false }),
     noMove: await type(A.id, host.id, "no-move", "Business call", { allowReschedule: false }),
     hidden: await type(A.id, host.id, "hidden", "Hidden call", { showOnBookingPage: false }),
     retired: await type(A.id, host.id, "retired", "Retired call", { active: false }),
     n: await type(N.id, hostN.id, "free", "Free consultation"),
   };
-  const ALL_IDS = [A.id, N.id, host.id, hostN.id, ...Object.values(T).map((t) => t.id)];
+  const ALL_IDS = [A.id, N.id, host.id, hostN.id, linked.id, ...Object.values(T).map((t) => t.id)];
   const noIds = (x: unknown) => { const j = JSON.stringify(x); return !ALL_IDS.some((id) => j.includes(id)) && !/"(id|firmId|staffId|typeId|personId|prospectId)"/.test(j); };
 
   app = await NestFactory.create(TestApp, { logger: false });
@@ -270,7 +273,7 @@ try {
   ok("FO-3pa DW8 pass: the confirmation and the manage answer of a confirmed video booking carry the join link", nc.body.joinLink === LINK && ncView.body.joinLink === LINK, [nc.body.joinLink, ncView.body.joinLink]);
   const phone = await book("fo3pa-a", "no-cancel", "2026-10-30 16:00", "phone", { mode: "PHONE", phone: "+1 416 555 0199" });
   const freeNoLink = strip(noTick.body);
-  ok("FO-3pa DW8 fail: a phone booking, and a type with no link, answer joinLink null", phone.status === 201 && phone.body.joinLink === null && freeNoLink.joinLink === null, [phone.body.joinLink, freeNoLink.joinLink]);
+  ok("FO-3pa DW8 fail: a phone booking, and a video booking whose host has no link, answer joinLink null", phone.status === 201 && phone.body.joinLink === null && freeNoLink.joinLink === null, [phone.body.joinLink, freeNoLink.joinLink]);
   ok("FO-3pa DW8 fail: a cancelled booking's answer carries no join link", okCancel.body.joinLink === null && rcCancel.body.joinLink === null, [okCancel.body.joinLink]);
 
   // ---------------------------------------------------------------------------- the new routes are rate-limited

@@ -50,6 +50,8 @@ try {
 
   const cs = readFileSync(join(STUDIO, "..", "..", "product", "tools", "cloud-setup.sh"), "utf8");
   ok("D9 cloud-setup.sh installs through deps-fresh.sh (the stamp start.sh reads), never its own node_modules check", /bash "\$STUDIO\/tools\/deps-fresh\.sh" "\$STUDIO"/.test(cs) && !/node_modules\/\.bin" \] && echo "already installed"/.test(cs), "cloud-setup.sh");
+  // D9b (Lead's ruling on #3569): under set -e, "deps-fresh.sh … && echo" goes on after a failed install; "|| exit 1" stops.
+  ok("D9b cloud-setup.sh stops when deps-fresh.sh fails: `|| exit 1` on its line, never `&&` after it", /^bash "\$STUDIO\/tools\/deps-fresh\.sh" "\$STUDIO" \|\| exit 1$/m.test(cs) && !/deps-fresh\.sh" "\$STUDIO" &&/.test(cs), "cloud-setup.sh");
   const h = copy(); const nosha = join(tmp, "nosha"); mkdirSync(nosha);
   for (const b of ["bash", "node", "npm", "cut", "cat", "mkdir", "dirname"]) { const w = spawnSync("bash", ["-c", `command -v ${b}`], { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } }).stdout.trim(); if (w && w.startsWith("/")) writeFileSync(join(nosha, b), `#!/bin/sh\nexec ${w} "$@"\n`), chmodSync(join(nosha, b), 0o755); }
   r = run(h, { PATH: nosha });
