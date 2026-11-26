@@ -4,6 +4,7 @@
 // the start itself (POST: one transaction under the case's row lock), and a stage's key details (PUT, done-before stages).
 // Case staff of the case's firm only: a client and configuration people 403, another firm 404 (Runtime.reach). Rules
 // only, identical with AI off; no model call (US$0). Every route, key detail and deadline is Sample (P-412 F13).
+import { ASSESSMENT_ONLY_CASE_WORDS } from "../../engine/programs.ts";
 import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post, Put } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -107,7 +108,8 @@ export class CaseStagesService {
     if (combination.retiredAt) return { release, why: `Cannot start yet: "${combination.label}" was retired by a release.` };
     if (!release) return { release: null, why: `Cannot start yet: "${combination.label}" has no released version.` };
     const missing = await this.programs.startableMissing(combinationId, release);
-    return { release, why: missing.length ? `Cannot start yet: its release is not ready for cases (${missing.length === 1 ? "1 item" : `${missing.length} items`}).` : null };
+    // AS-2a, review m4: an assessment-only release is never for a case, so its words say so (not "items").
+    return { release, why: missing.some((m) => m.code === "assessment_only") ? `Cannot start: ${ASSESSMENT_ONLY_CASE_WORDS}` : missing.length ? `Cannot start yet: its release is not ready for cases (${missing.length === 1 ? "1 item" : `${missing.length} items`}).` : null };
   }
 
   private async views(c: Reached): Promise<CaseStageView[]> {

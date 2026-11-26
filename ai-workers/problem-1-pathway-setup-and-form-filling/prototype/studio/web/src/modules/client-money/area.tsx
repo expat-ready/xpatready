@@ -5,9 +5,10 @@ import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import type { Area } from "@/modules/platform/frame";
 import { INVOICES_HOME, LIST_KEY } from "./invoices/contract";
+import { PAYMENTS_HOME, PAYMENTS_KEY } from "./payments/contract";
 
 const item = ({ isActive }: { isActive: boolean }) => cn("flex min-h-9 items-center rounded-lg px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-text/5");
-const ITEMS = [{ label: "Invoices", to: INVOICES_HOME, key: LIST_KEY }];
+const ITEMS = [{ label: "Invoices", to: INVOICES_HOME, key: LIST_KEY }, { label: "Payments", to: PAYMENTS_HOME, key: PAYMENTS_KEY }];   // FO-7s3a part 1: Payments
 
 const shownFor = (keys: readonly string[]) => ITEMS.filter((i) => keys.includes(i.key));
 const linksOf = (keys: readonly string[]) => shownFor(keys).map((i) => <NavLink key={i.to} to={i.to} className={item} data-money-menu={i.label}>{i.label}</NavLink>);

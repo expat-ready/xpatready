@@ -269,6 +269,7 @@ model PlatformStaff {
 
   // back-relation slot: messages (PF-19a)
   msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma (the person's own in-app notifications)
+  msgMailboxes MsgMailbox[] // PF-19m: platform-messages.prisma (the person's own connected mailboxes)
 
   // back-relation slot: money (FO-7a)
 

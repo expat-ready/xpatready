@@ -298,6 +298,7 @@ export class CaseChecklists {
   /** C6.14 BR-6 (SA-1B-214 rule 2): the case officer changes who provides a shared line, or goes back to the type's
    *  defaults (providers null), always with a reason. Each provider is a person on the case, 18 or older (BR-4), once. */
   async providers(actor: Actor, lineId: string, body: unknown) {
+    if (!UUID.test(lineId)) fail("No such checklist line.", HttpStatus.NOT_FOUND);   // R1.10 A5 (W5): before the body
     const b = parse(ChangeProviders, body);
     const { c, row, shown, person, id } = await this.line(actor, lineId, "officer");
     if (b.version !== undefined && b.version !== row.version) fail(`${shown.label} for ${person.label} changed after you opened it: read the checklist again, then try again. Nothing was changed.`, HttpStatus.CONFLICT);
