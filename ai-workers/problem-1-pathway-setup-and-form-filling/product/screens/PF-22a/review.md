@@ -219,3 +219,15 @@ Reviewer: Approve b736f58eeee1f9b5b524562744d631fd60262b35
 
 **Verdict: Approve**
 * Blockers: none. Majors: none. Minors: none.
+
+## Round 6 (diff-only, 26 Nov 2026): head `560e9b8200488d76d6560afa5a9c24c726ac9e29`
+Scope: the PR's own files (`git diff --stat origin/main...560e9b820`, 15 files; the merge base is origin/main's tip a1fd1b69e) from a3bd7eb2c (records after the round 5 Approve of b736f58ee) to 560e9b820. That is the merge of origin/main 4cc9abef3 and the re-stamp 20261126063100 to 20261126155300. The re-stamp was needed: main now has its own `20261126063100_shared__fo3v_video`. The screen walk and the journey test were not re-run, because nothing on screen or in behaviour changed; round 3's journey score stands.
+* **migration.sql is byte-identical.** It is blob `8e399d712267` at both a3bd7eb2c and 560e9b820 (`R100`, only the folder name changed).
+* **Every reference is renamed:** rollback.sql (the `psql -f` path and the `_prisma_migrations` delete), the platform-custom.prisma header, MODULE.rows/PF-22a.md, and `NEW` in check_pf22a_custom_schema.ts. Nothing else changed in those files. `git grep 20261126063100` at 560e9b820 finds only main's fo3v_video folder and this file's own dated round 5 notes.
+* **The merge keeps both sides.** Each side's change from its merge base was compared. platform.prisma has the same two PF-22a slot blocks (firm, staff), with main's PF-20 `autoRecipes` slot kept below the firm one. .mergify.yml has the same `mig-platform-custom` scope and capacity, placed after main's new `mig-platform-automation`. check_pf3_platform_schema.ts has the same one line; main's copy did not change.
+* **Migration slots, run by me:** `migration-slots.py check origin/main..560e9b820` gave PASS (1 new migration against main's newest 20261126100000). `migration-slots.py mergify --check .mergify.yml` gave PASS (36 area scopes, 4 barrier areas). The coordinator ran the suites: check_pf22a_custom_schema 86/86, check_prisma_schema 8/8.
+
+Reviewer: Approve 560e9b8200488d76d6560afa5a9c24c726ac9e29
+
+**Verdict: Approve**
+* Blockers: none. Majors: none. Minors: none.
