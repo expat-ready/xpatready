@@ -9,6 +9,7 @@ import * as React from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Notice, Pill, Textarea } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FoldArrow, FoldOut } from "@/components/fold-out";
 import { staffApi, StaffApiError, useMe, useStaffToken } from "@/modules/platform/session";
 import { SignInCard } from "@/modules/platform/frame";
 import { CaseNote, CaseNoteHistory, CaseNotePeople, CaseNotesView, CaseTimelinePage } from "../../../contracts/runtime";
@@ -136,7 +137,7 @@ function Mention({ caseId, token, picked, setPicked }: { caseId: string; token: 
   return (
     <div className="space-y-2" data-note-mention>
       <div className="flex flex-wrap items-center gap-2">
-        <Button ref={opener} size="sm" variant="secondary" disabled={full && !open} aria-expanded={open} aria-controls="note-mention-list" title="The people you pick are told in their notifications." onClick={() => setOpen(!open)} data-note-mention-open>Mention</Button>
+        <Button ref={opener} size="sm" variant="secondary" disabled={full && !open} aria-expanded={open} aria-controls="note-mention-list" title="The people you pick are told in their notifications." onClick={() => setOpen(!open)} data-note-mention-open><FoldArrow open={open} />Mention</Button>
         {picked.map((p) => <span key={p.staffId} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs" data-note-mentioned={p.staffId}>{p.name}
           <button type="button" className="rounded px-1 text-text-muted hover:text-text focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-label={`Remove ${p.name}`} onClick={() => setPicked(picked.filter((x) => x.staffId !== p.staffId))}>×</button></span>)}
       </div>
@@ -211,7 +212,7 @@ function NoteCard({ caseId, note, mayEdit, share }: { caseId: string; note: Case
       ) : (
         <>
           <p className={`whitespace-pre-wrap text-sm [overflow-wrap:anywhere] ${lines && !long ? "line-clamp-6" : ""}`} data-note-words><bdi>{note.text}</bdi></p>
-          {lines ? <button type="button" className="text-xs font-medium text-text-link underline" onClick={() => setLong(!long)}>{long ? "Show less" : "Show all"}</button> : null}
+          {lines ? <button type="button" className="text-xs font-medium text-text-link underline" aria-expanded={long} onClick={() => setLong(!long)}><FoldArrow open={long} />{long ? "Show less" : "Show all"}</button> : null}
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <span data-note-by>{who(note.author.name)} · <time dateTime={note.writtenAt} title={new Date(note.writtenAt).toString()}>{when(note.writtenAt)}</time></span>
             {note.pinned ? <Pill tone="info" title="Pinned notes stay at the top for everyone.">Pinned</Pill> : null}
@@ -221,7 +222,7 @@ function NoteCard({ caseId, note, mayEdit, share }: { caseId: string; note: Case
             {mayEdit ? <Button size="sm" variant="ghost" busy={busy} onClick={() => void put("pin", { pinned: !note.pinned })} data-note-pin>{note.pinned ? "Unpin" : "Pin"}</Button> : null}
             {mayEdit && note.canEditText && (share || note.visibility !== "CLIENT_VISIBLE") ? <Button size="sm" variant="ghost" onClick={() => { setEditing(note.text); setBase(note.version); }} data-note-edit>Edit</Button> : null}
             {share ? <Button size="sm" variant="ghost" busy={busy} onClick={() => void put("visibility", { visibility: note.visibility === "CLIENT_VISIBLE" ? "INTERNAL" : "CLIENT_VISIBLE" })} data-note-visibility>{note.visibility === "CLIENT_VISIBLE" ? "Make internal" : "Show to the client"}</Button> : null}
-            <Button size="sm" variant="ghost" aria-expanded={history} onClick={() => setHistory(!history)} data-note-history>History</Button>
+            <Button size="sm" variant="ghost" aria-expanded={history} onClick={() => setHistory(!history)} data-note-history><FoldArrow open={history} />History</Button>
           </div>
           {error ? <p role="alert" className="mt-1 text-xs text-text-danger">{error}</p> : null}
           {history ? <div className="mt-2 border-l-2 border-border pl-3" data-note-versions>
@@ -264,7 +265,7 @@ function Timeline({ caseId }: { caseId: string }) {
                 <div className="min-w-0 flex-1">
                   {l.source === "note" ? <p className="line-clamp-2 whitespace-pre-wrap [overflow-wrap:anywhere]" data-timeline-note><bdi>{l.summary}</bdi></p> : <p>{lineWords(l)}</p>}
                   <p className="text-xs text-text-muted">{who(l.actorName)} · <time dateTime={l.at} title={new Date(l.at).toString()}>{when(l.at)}</time></p>
-                  {l.source === "audit" ? <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary><span className="[overflow-wrap:anywhere]">{l.summary}</span></details> : null}
+                  {l.source === "audit" ? <FoldOut className="text-xs text-text-muted" summary="Details"><span className="[overflow-wrap:anywhere]">{l.summary}</span></FoldOut> : null}
                 </div>
               </li>))}</ol>}
       {shown.length && (lines.length > limit || q.hasNextPage) ? <Button size="sm" variant="secondary" busy={q.isFetchingNextPage} onClick={() => void older()} data-timeline-older>Show older</Button>
