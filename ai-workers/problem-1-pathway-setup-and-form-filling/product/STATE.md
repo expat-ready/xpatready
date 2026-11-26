@@ -2,7 +2,7 @@
 
 current_lead: local_b2e5d43a Lead 4 · 26 Nov 15:1x IST (after Lead 3 local_adad5033 at about 245k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 15:1x IST (clock): **Lead 4 takes over from Lead 3; read the hand-over block first. The founder said GO for Factory v2 (A410).** 64/110 Works (main). Weekly 62% at 15:0x.
+updated: 2026-11-26 15:2x IST (clock): **Lead 4 running (check fb75f702, cron 3,33; 3-minute watch armed).** #3846 labelled 15:1x after Lead 4's read (P-214). Factory v2 step 1 for the founder, exact links and buttons from Claude's pages: `design/factory-v2-step1-founder-links-2026-11-26.md` (Code Review first; Steward and Approvals need a ruleset with 1 approval, put to him then). Switch PR (draft) and unused-tools removal PR are being prepared by Lead 4's background agents. 64/110 Works (main). Weekly 62% at 15:0x.
 
 ## Hand-over Lead 3 → Lead 4, 15:1x IST 26 Nov (Lead 3 at ~245k, P-446; Lead 2's block and Lead 3's lines word for word: `history/STATE-2026-11-26-1510-lead3-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 3's b2f38ec4 is deleted. Re-arm the 3-minute watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Standbys after you: Lead 5 local_1c8b2ecd, Lead 6 local_33c127af (idle).
