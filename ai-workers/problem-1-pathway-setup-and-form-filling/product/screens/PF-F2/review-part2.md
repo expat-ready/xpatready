@@ -212,3 +212,62 @@
 - **From earlier rounds, already recorded as follow-ups in the PR:** while a chunk is in flight, the percent counts bytes sent, not bytes the server kept (in R1 the page said "42%" when the server held 21 %).
 
 **Verdict: Approve.** There is no open Blocker or Major at `24a72150ec7bd312c222e7c64408bca9472d6bc6`.
+
+---
+
+# Round 5 (diff-only, 73a7f219 onward)
+
+**Reviewed head:** `b3ef75bb06705e13cb2ad06b3809ace6a83398b7`. The Lead allowed a diff-only read of `73a7f219` onward (P-277). What I read: `git show 73a7f219`, which changes `tryAgain` in `web/src/lib/resumable-upload.ts` and adds one DW8e assertion to `tests/check_pff2_resume_browser.ts`. I did not re-review the rest of the PR.
+
+**The merges change none of the PR's files.** `git diff 73a7f219 HEAD -- $(git diff --name-only origin/main...HEAD)` is empty (0 lines over the PR's 8 files). So the merges `172bf2de1` and `b3ef75bb0` touch nothing in this PR.
+
+**How I checked it.**
+- **The suite at this head:** passed 32, failed 0. `tus-js-client` 4.3.1 was declared but not installed in this copy's ignored `node_modules`. I added it there; no tracked file changed.
+- **Probes:** three scratch probes (R5-A, R5-B, R5-C) went into copies of the suite in the session scratchpad, never into the repository. I ran them twice:
+  - **At this head:** passed 35, failed 0.
+  - **With the client from before `73a7f219` (`73a7f219^`):** passed 33, failed 2.
+- **Ports:** everything used `listen(0)`. Nothing used :4400. I dropped the one scratch database that a first failed run left behind.
+
+## The four checks
+1. **The server's real body matches after trimming.**
+   - `@tus/utils` 0.7.3 (`dist/constants.js`) defines `INVALID_OFFSET` as `{ status_code: 409, body: 'Upload-Offset conflict\n' }`. `@tus/server` 2.4.7's `PatchHandler` throws it when `upload.offset !== offset`.
+   - The rail's `onResponseError` (`#words`) returns `undefined` for any error that carries `status_code` and `body`, so tus's own body is sent unchanged.
+   - Probe R5-A recorded the body the browser received from the real rail: exactly `"Upload-Offset conflict\n"`. Trimmed, it equals the literal in `tryAgain`.
+2. **The body reaches `tryAgain` on both paths.**
+   - **tus-js-client (`onError`):** a non-2xx PATCH goes to `_emitHttpError(req, res, …)`, so `DetailedError.originalResponse` is set. The browser `XHRHttpStack.getBody()` returns `xhr.responseText`, and no `responseType` is set, so the text is there. `onError` passes `res.getBody?.()` to `lost`, and `lost` passes `res?.body` to `tryAgain`.
+   - **`confirm()`:** passes `r.text()` as `body` to `lost`.
+   - The probes prove both paths. R5-A covers `onError` with a real rail 409. R5-B covers `confirm()` with a stubbed 409 carrying tus's body.
+3. **A genuine offset conflict is still tried again, but no test in the PR proves it.**
+   - **R5-A (onError path).** It resends the second chunk's PATCH to the real rail with a stale `Upload-Offset`, and the rail answers its own 409. Requests: `POST, PATCH:0, PATCH:262144 (409), HEAD, PATCH:262144, …, PATCH:1048576`. The upload ends done, with the original sha256.
+   - **R5-B (confirm path).** The last PATCH's answer loses `Upload-File-Id`. The empty PATCH at the end then gets `409 text/plain "Upload-Offset conflict\n"` once. Requests: `… PATCH:1228787 (409), HEAD, PATCH:1228787`. The upload ends done with the stored file's id.
+   - The one mention of "Upload-Offset conflict" in the suite is a comment. See r5-m1 below for the severity I give this gap.
+4. **Narrowing the retry causes no regression I would count. Only the behaviour changed.**
+   - **R5-C:** a proxy-style `409 text/plain "Conflict"` mid-upload now ends at its first answer. There is no HEAD, and the page says "Conflict". `retry()` then resumes the same upload and finishes it.
+   - **With the old client,** R5-C failed my "final at first answer" check: it retried the 409 silently and completed.
+   - **Why I accept the change:**
+     - It matches rule 3: "A refusal (4xx) is final".
+     - The upload address is kept.
+     - 409 is an answer about the application, not something a proxy normally sends.
+     - The rail's own plain-text 409s ("This file is already stored.", a plan limit) are now final, which is the point of the fix.
+   - **The new DW8e assertion has teeth.** Against the old client it fails, with `HEAD, PATCH:1228787, HEAD, PATCH:1228787` after the refused finish. That matches the commit message.
+
+## Blocker
+None.
+
+## Major
+None.
+
+## Minor
+- **r5-m1. No test pins the one 409 that is still retried.**
+  - **The risk:** the retry depends on an exact string from a transitive dependency (`@tus/utils` `^0.7.3`, through `@tus/server` 2.4.7). If tus ever changes that text, genuine offset conflicts quietly become final refusals and CI stays green. Until `retry()` is pressed, the page would show the tus jargon "Upload-Offset conflict".
+  - **Why it is Minor, not Major:**
+    - This head behaves correctly (R5-A and R5-B).
+    - The failure mode is safe: the upload is kept, `retry()` resumes from HEAD, and nothing is stored wrongly.
+    - The case is rare: every attempt starts with HEAD, so a conflict needs a stale offset, for example after a stall cut while the server is still writing.
+  - **Fix:** add R5-A as a named DW8e pass test. It bends one PATCH's `Upload-Offset` through `route.continue`, the real rail answers 409, and the test expects HEAD, then done with the original sha256.
+
+## nit
+- **r5-n1. A stale test name.** The existing DW8e test name still says "a refused finish (409 problem+json)". The answer is actually text/plain: tus's `write` sends a string body, and `refusalWords` takes the `text/plain` branch. The new comment right below it says so correctly. **Fix:** rename it to "(409 plain text)".
+- **Outside this diff, not counted:** a genuine conflict that outlasts the delay list is refused with the raw words "Upload-Offset conflict". The pre-fix client did the same.
+
+Verdict: Approve b3ef75bb06705e13cb2ad06b3809ace6a83398b7
