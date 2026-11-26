@@ -55,3 +55,7 @@ Merged since round 1: #3640 (R1.64 PF-F2 part 1b), #3812 (R1.79 PF-R2cm), #3805 
 
 ## Round 5 (main a1fd1b69e, 21:2x IST; Lead 5: no account switch, carry on)
 Merged since 724e65631: #3649 and #3832 (R1.76), #3852 (records). None touches my rows; no change to any verdict. Next to land: #3841 (R1.85's last part, approved); still open: #3675, #3633, #3692, #3808, #3681, #3303, #3217, #3815, #3733, #3753.
+
+## Round 6 (main fc1bac6e1, ~22:2x IST)
+* R1.5: #3217 (PF-4bc) and #3479 merged. j_5 28/28 on a fresh copy, no regression. Still Partial: #3815 (the sign-in page), PF-4s part 2, the real-pool lines (AWS) and QA-643.
+* #3804 (qa 1b) merged and overlapped R1.85, R1.58 and R1.107; both lanes' lines are kept on each row.
