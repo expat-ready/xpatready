@@ -41,7 +41,7 @@ code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:
 </style>
 <div class="wrap">
 <header style="display:flex;flex-direction:column;gap:8px">
-  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 2 · version 3 · 26 Nov 2026, 14:3x IST · from lead-watch at 13:33 IST and GitHub at 14:2x IST</div>
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 2 · version 4 · 26 Nov 2026, 15:0x IST · from lead-watch at 13:33 IST and GitHub at 14:2x IST</div>
   <h1>Release 1 Recovery Control Room</h1>
   <p class="sub"><b>This is the one page we keep (A401).</b> Every report uses its order: Needs you, Headline, capabilities, pipeline, how it is watched, the 15-a-day math, operating system, Lead scorecard, plan. No new formats. One page for the founder: where Release 1 stands, what is moving, what is stuck, what is enforced, and the recovery plan. Every number comes from GitHub or main's <code>qa/CAPABILITIES.md</code> at 12:19 IST; estimates say so. The detailed plan is in <a href="https://claude.ai/artifact/PgnAemZQEb3FnbM9DTYaXX">Release 1 Plan of Attack</a>.</p>
 </header>
@@ -50,7 +50,7 @@ code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:
   <h2 style="border:none;padding:0">🔴 Needs you</h2>
   <ol>
     <li><b>Hand check R1.24 and R1.109</b> (asked 25 Nov 16:31 IST). I bring each with a link when you have 10 minutes.</li>
-    <li><b>Have the next account ready by 17:30 IST</b> (you said yes). Lanes push and leave hand-over notes by 17:25.</li>
+    <li><b>Have the next account ready by 17:30 IST</b> (you said yes). Lanes push and leave hand-over notes by 17:25. <b>Or</b> turn on usage credits with a monthly cap (Settings › Usage) and skip the switch: see "Account switch" below.</li>
   </ol>
   <p class="sub">🟡 Decide when you can: nothing. Clicks on GitHub (Ready, labels) I now do myself in the built-in browser (P-752). The six old idle sessions I archive myself.</p>
 </section>
@@ -190,6 +190,48 @@ code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:
     <tr><td>Quality held</td><td>All reviews on Opus, no Blocker on main; nightly run red since 08:24, not fixed</td><td class="num"><span class="chip warn">6</span></td></tr>
     <tr><td>Always resumable</td><td>STATE pushed after every step; the page size limit was crossed twice and fixed</td><td class="num"><span class="chip ok">8</span></td></tr>
     <tr><th>Overall</th><th>Biggest misses: reads on time, proven rate, one format</th><th class="num">4.3</th></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Scorecard below 8: why, and the fix</h2>
+  <p>Rule (A402): any measure under 8 gets its cause and a fix with an owner and a time, every check, until it is 8 or more.</p>
+  <div class="box"><table>
+    <tr><th style="width:22%">Measure (score)</th><th>Why</th><th>Fix · owner · by (IST)</th></tr>
+    <tr><td>Proven rate (3)</td><td>Rows wait 3-5 days on rounds, labels and reads; only 17 rows are Partial</td><td>Reads ≤30 min, rounds ≤2 (OS-85), qa proof ≤2 h after a row's last merge · Lead · from now</td></tr>
+    <tr><td>Reads and answers (3)</td><td>20 lanes reached review at once while the Lead planned; no read target was enforced</td><td>Each check: every approved PR read or ruled before anything else (OS-02 by hand) · Lead · every check</td></tr>
+    <tr><td>One format (3)</td><td>Each Lead wrote its own report shape</td><td>This page is the only format; STATE "Start here" says so; the next Lead is told in the hand-over · Lead · done 14:3x</td></tr>
+    <tr><td>Tokens per proven row (3)</td><td>20 Opus lanes, repeated review rounds, label churn</td><td>Wind down to ~12 lanes; OS-85; one comment batch per PR · Lead + pipeline lane · 27 Nov 07:00</td></tr>
+    <tr><td>Checks on time (4)</td><td>Watchers live only inside a Lead session; the switch left 9 hours unwatched</td><td>pipeline-watch and heartbeat in GitHub (#3819, #3817 queued); switch plan below · pipeline lane · tonight</td></tr>
+    <tr><td>OS moving (4) · Lanes healthy (4)</td><td>Pipeline chain held for Lead reads; lanes over cap; quiet PRs unseen between checks</td><td>Chain read in order; manual P1 steps each check; quiet PRs (no push in 90 min) get "continue" or a new owner · Lead · every check</td></tr>
+    <tr><td>Founder asks (5)</td><td>Lead asked for clicks it could do in the browser</td><td>Every GitHub click done in the built-in browser (P-752) · Lead · done 14:1x</td></tr>
+    <tr><td>Quality held (6)</td><td>Nightly full run red since 08:24, not read</td><td>Read the red part, fix or quarantine with a row · Lead · next check</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Account switch: what carries over, and the simpler way</h2>
+  <p><b>What the official docs say (checked 26 Nov, code.claude.com and support.claude.com):</b> nothing moves a live session to another account. Cloud sessions stay with the account that started them ("You must be authenticated to the same claude.ai account used in the cloud session"). Session check-ins (crons, watches) "only fire while Claude Code is running". Only files carry over: the repository, its STATE and RESUME, skills, hooks and memory files on the Mac.</p>
+  <div class="box"><table>
+    <tr><th style="width:26%">Option</th><th>What it changes</th><th style="width:18%">Verdict</th></tr>
+    <tr><td><b>Usage credits on the same account</b> (Settings › Usage, a monthly cap you set)</td><td>When the weekly limit is reached, the same sessions keep working on pay-as-you-go up to your cap. No switch, no stranded cloud lanes, no 9-hour gap, no re-briefing. Cost: pay-as-you-go above the plan, capped by you.</td><td><span class="chip ok">recommended</span></td></tr>
+    <tr><td>Switch accounts (today's way)</td><td>Old cloud lanes are stranded; every lane is re-started from its PR and hand-over comment; checks and watches are re-created; context is rebuilt from STATE. This morning it cost about 9 hours with no merges.</td><td><span class="chip warn">works, with loss</span></td></tr>
+    <tr><td>Team or Enterprise plan</td><td>Per-seat allowances (the docs mention no pooling); cleaner billing, same limit per person</td><td><span class="chip idle">not the fix</span></td></tr>
+    <tr><td>API key billing</td><td>Removes cloud sessions and Remote Control, which the factory runs on</td><td><span class="chip bad">no</span></td></tr>
+  </table></div>
+  <p><b>If we still switch (17:30 today):</b> 1) every lane pushes, comments a hand-over on its PR and stops by 17:25; 2) STATE and RESUME pushed by 17:15; 3) the new account connects GitHub once; 4) the new Lead re-creates the check (cron 3,33) and the event watch, then re-starts lanes from each PR's hand-over comment; 5) old-account lanes are archived, never driven twice. The page and its order stay the same across accounts.</p>
+</section>
+
+<section>
+  <h2>Where it can go wrong next, and what we do first</h2>
+  <div class="box"><table>
+    <tr><th style="width:24%">Risk</th><th>Early sign</th><th>What we do</th></tr>
+    <tr><td>Account switch at 17:30 loses work or context</td><td>Lanes mid-step at 17:25; old-account cloud sessions can't be driven</td><td>16:47 reminder: every lane pushes and comments a hand-over on its PR; STATE and RESUME pushed by 17:15; the new account's first Lead reads PR comments, not memory</td></tr>
+    <tr><td>Lead gap (switch, crash, context)</td><td>No check for 35+ min</td><td>Standby Lead takes over at once; GitHub watchers (#3817, #3819) cover the gap once live</td></tr>
+    <tr><td>Review rounds keep multiplying</td><td>Round 3+ asked on a merge of main</td><td>Allow only diff-only rounds for main merges; OS-85 removes the shared-file clash</td></tr>
+    <tr><td>Merge queue jams</td><td>Labelled PR in no batch over 60 min; a third of batches fail</td><td>Read Mergify's reason; covered line by hand (P-731); requeue once</td></tr>
+    <tr><td>Drift from founder decisions</td><td>A brief or report that paraphrases a rule</td><td>Briefs quote decision ids; asks logged in STATE the moment they arrive; this page's order every report</td></tr>
+    <tr><td>Tail rows never start</td><td>R1.113-R1.121 unshaped; 6 rows wait on outside accounts</td><td>Shape the nine in the next quiet hour; staging restart onto the new keys (approved)</td></tr>
   </table></div>
 </section>
 
