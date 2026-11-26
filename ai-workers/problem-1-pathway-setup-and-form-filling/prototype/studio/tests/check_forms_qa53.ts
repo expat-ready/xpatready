@@ -107,7 +107,8 @@ const SYSTEM_DOORS: Record<string, number> = { "POST /api/system/session/local":
 /** PF-4f m2: the sign-in doors (@StaffSignIn: no session yet) are a reviewed list, each with the exact status it answers
  *  here (m1). This copy starts without PLATFORM_IDENTITY (the usage line), so the local stand-in's door refuses every
  *  caller with 403 LOCAL_SIGN_IN_OFF (service.ts localSignIn). A new door fails the list check until reviewed. */
-const DOORS: Record<string, number> = { "POST /api/platform/session/local": 403, "POST /api/platform/session/callback": 401 };   // PF-4b: no code → 401
+const DOORS: Record<string, number> = { "POST /api/platform/session/local": 403, "POST /api/platform/session/callback": 401,   // PF-4b: no code → 401
+  "POST /api/platform/session/sign-in": 503, "POST /api/platform/session/sign-in/code": 503 };   // PF-4bs part 2a: no PLATFORM_IDENTITY here → 503 SIGN_IN_NOT_SET_UP, before the body
 /** A platform answer that gives something away: not 401 (a sign-in door: not its exact status in DOORS, so a 2xx, 404
  *  or 5xx is caught), or a body with more than a problem's own fields. */
 const PROBLEM_FIELDS = new Set(["type", "title", "status", "detail", "message", "code"]);
@@ -298,7 +299,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok("PF-4f m1 fail: a sign-in door answering 404, 500, 401 or 400 instead of its exact status is caught (status < 400 let 404 and 5xx pass)",
     [404, 500, 503, 401, 400].every((st) => platformWrong({ status: st, body: { type: "t", title: "t", status: st, detail: "d" } }, DOORS["POST /api/platform/session/local"])));
   ok("PF-4f m2 pass: the sign-in doors in the code are exactly the reviewed list [\"POST /api/platform/session/local\"]",
-    JSON.stringify(doorsOf(platformWrites)) === JSON.stringify(Object.keys(DOORS).sort()) && JSON.stringify(Object.keys(DOORS)) === JSON.stringify(["POST /api/platform/session/local", "POST /api/platform/session/callback"]), doorsOf(platformWrites));
+    JSON.stringify(doorsOf(platformWrites)) === JSON.stringify(Object.keys(DOORS).sort()) && JSON.stringify(Object.keys(DOORS)) === JSON.stringify(["POST /api/platform/session/local", "POST /api/platform/session/callback", "POST /api/platform/session/sign-in", "POST /api/platform/session/sign-in/code"]), doorsOf(platformWrites));
   // Review m-1: a door the line scan cannot see (@StaffSignIn on its own line, or on a GET) is still counted here: every
   // @StaffSignIn( mark in api/src (keys.ts, where it is defined and documented, aside) must be a door the scan found.
   const doorMarks = (dir: string) => tsFiles(dir).filter((f) => f !== "platform/identity/keys.ts").reduce((n, f) => n + (readFileSync(join(dir, f), "utf8").match(/@StaffSignIn\(/g) ?? []).length, 0);

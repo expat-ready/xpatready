@@ -116,7 +116,12 @@ export class SignInDoor {
   constructor(@Inject(SIGN_IN_PORT) private readonly port: SignInPort, @Inject(SIGN_IN_BOX) private readonly box: SecretBoxPort | null,
     @Inject(Db) private readonly db: Db, @Inject(PlatformClock) private readonly clock: PlatformClock, @Inject(PlatformIdentity) private readonly id: PlatformIdentity) {}
 
-  private sealer() { return this.box ?? problem(503, "Sign-in not set up", "Sign-in is not set up on this server yet (no sealing key).", { code: "SIGN_IN_NOT_SET_UP" }); }
+  /** The doors' own gate first, whatever the body (as the local door's, check_forms_qa53 DOORS): the provider side is set up
+   *  and a sealing key is held, else 503 SIGN_IN_NOT_SET_UP. */
+  private sealer() {
+    if (this.port instanceof NotSetUpSignIn) return problem(503, "Sign-in not set up", NOT_SET_UP_WORDS, { code: "SIGN_IN_NOT_SET_UP" });
+    return this.box ?? problem(503, "Sign-in not set up", "Sign-in is not set up on this server yet (no sealing key).", { code: "SIGN_IN_NOT_SET_UP" });
+  }
 
   /** The staff member the email names, read as their firm (PF-12's walls), or null. */
   private async person(email: string): Promise<Person | null> {
@@ -172,8 +177,9 @@ export class SignInDoor {
 }
 
 /** Until part 2b (the Cognito adapter on recorded answers): every sign-in on a server not on the stand-in answers 503. */
+const NOT_SET_UP_WORDS = "Signing in with a password on this server comes with the next change (PF-4bs part 2b).";
 export class NotSetUpSignIn implements SignInPort {
   readonly via = "cognito" as const;
-  async password(): Promise<PasswordAnswer> { return problem(503, "Sign-in not set up", "Signing in with a password on this server comes with the next change (PF-4bs part 2b).", { code: "SIGN_IN_NOT_SET_UP" }); }
-  async code(): Promise<CodeAnswer> { return problem(503, "Sign-in not set up", "Signing in with a password on this server comes with the next change (PF-4bs part 2b).", { code: "SIGN_IN_NOT_SET_UP" }); }
+  async password(): Promise<PasswordAnswer> { return problem(503, "Sign-in not set up", NOT_SET_UP_WORDS, { code: "SIGN_IN_NOT_SET_UP" }); }
+  async code(): Promise<CodeAnswer> { return problem(503, "Sign-in not set up", NOT_SET_UP_WORDS, { code: "SIGN_IN_NOT_SET_UP" }); }
 }
