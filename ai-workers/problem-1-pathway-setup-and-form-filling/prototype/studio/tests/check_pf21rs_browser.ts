@@ -16,7 +16,7 @@
 //         1024 and 1440 px (j_86 W9) with the dialog open too; no sideways page scroll.
 // Sample firms and Sample staff only; US$0, no model call, live AI off. Screenshots (deviceScaleFactor 1) in
 // product/screens/PF-21rs/screenshots/. Run from prototype/:
-//   zsh studio/tools/isolated.sh pf21rs 4434 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && tsx studio/tests/check_pf21rs_browser.ts 4434 xr_studio_pf21rs
+//   zsh studio/tools/isolated.sh pf21rs 4434 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf21rs_browser.ts 4434 xr_studio_pf21rs
 // (the form run-suites.sh reads; it starts and stops the copy itself. By hand, stop it after: isolated.sh pf21rs 4434 stop)
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -26,6 +26,7 @@ import { client, recorder } from "./runtime/api.ts";
 import { SESSION_KEY } from "../web/src/modules/system/contract.ts";
 import { COPY, fieldErrors, firmsText, firmWords, fromLocalBox, noticesText, recordBody, STATUS_WORDS, statusOf, whenWords } from "../web/src/modules/system/privacy/contract.ts";
 import { dueWords, logBody, REQUEST_COPY, stepWords } from "../web/src/modules/system/privacy/requests.ts";
+import { coversWords, HOLD_COPY, holdBody, holdFieldErrors } from "../web/src/modules/system/privacy/holds.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [PORT, DBNAME] = [Number(process.argv[2] ?? 4434), process.argv[3] ?? "xr_studio_pf21rs"];
@@ -77,6 +78,13 @@ const BREACHES = "/system/register/breaches";
   ok("PF-21rs B1 P pass/fail: the log body sends the firm and person together or not at all; steps read in words (Logged, A → B, the daily check's alert)",
     !("firmId" in lb) && !("subject" in lb) && lp.firmId === "f" && JSON.stringify(lp.subject) === JSON.stringify({ kind: "PERSON", id: "p" })
       && stepWords({ kind: "RECEIVED", from: null, to: "PENDING" }) === "Logged" && stepWords({ kind: "STATUS_CHANGED", from: "PENDING", to: "IN_PROGRESS" }) === "Pending → In progress" && stepWords({ kind: "OVERDUE_ALERTED", from: null, to: null }).startsWith("Overdue"));
+}
+
+{
+  ok("PF-21rs B2 P pass/fail: what a hold covers reads in words; the body holds the whole firm unless narrowed; scope field errors land on their fields",
+    coversWords({ kind: "FIRM" }) === "All of the firm's data" && coversWords({ kind: "PERSON", id: "3f2a0000-0000-0000-0000-00000000c91e" }) === "Person record 3f2a…c91e" && coversWords({ kind: "CATEGORY", category: "case_notes" }) === "Case notes"
+      && JSON.stringify(holdBody({ firmId: "f", kind: "FIRM", id: "x", category: "case_notes", from: "", to: "", reason: "r" }).scope) === JSON.stringify({ kind: "FIRM" })
+      && JSON.stringify(holdFieldErrors({ "scope.id": "a uuid", firmId: "x", "scope.kind": "y", z: "w" })) === JSON.stringify({ id: "a uuid", firmId: "x", kind: "y", other: "w" }));
 }
 
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
@@ -427,6 +435,88 @@ try {
   await p1.setViewportSize({ width: 1440, height: 900 });
   ok("PF-21rs B1 W6 pass: Enter on \"Log a request\" opens it on its first field; both pages at 1440, 1024 and 400 px (the dialog open too): axe-core 0 serious, no sideways page scroll",
     reqFirst === "type" && !axeLog.length && Object.values(rw).every((x) => !x.axe.length && !x.sideways), { reqFirst, axeLog, rw });
+
+  // ---------------------------------------------------------------------------------------- B2 legal holds (row W3)
+  const HOLDS = "/system/register/holds", holdsHeading = (p: Page) => p.getByRole("heading", { level: 1, name: HOLD_COPY.title });
+  sql(`insert into fo_sales_setup (firm_id) values ('${A}') on conflict do nothing`);
+  const heldPerson = sql(`insert into fo_person (id, firm_id, given_names, family_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Held${run}', 'Sample', 'seed:pf21rs', now()) returning id`);
+  await import("reflect-metadata");   // the keep-period service is a Nest provider
+  const { KeepPeriods } = await import("../api/src/platform/keep-period/service.ts");
+  const { PgLegalHolds } = await import("../api/src/platform/register/holds/adapter.ts");
+  const { PrismaClient } = await import("@prisma/client"), { PrismaPg } = await import("@prisma/adapter-pg");
+  const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
+  // The app's one delete check (AUD-5's KeepPeriods.check, which asks LegalHoldPort first; as j_85 W4).
+  const verdictFor = async (person: string) => { const keep = new KeepPeriods(owner as never, new PgLegalHolds() as never); let v = "", why = "";
+    await owner.$transaction(async (tx) => { const r = await keep.check(tx as never, { firmId: A, class: "client_financial" as never, startedAt: new Date("2010-01-01"), subject: { kind: "PERSON", id: person } as never, recordDates: [new Date("2010-01-01")] }) as { verdict: string; holds?: { reason: string }[] }; v = r.verdict; why = JSON.stringify(r); }); return { v, why }; };
+  const free = await verdictFor(heldPerson);
+  await p1.goto(`${BASE}/system/privacy/holds`);
+  const holdsIn = await holdsHeading(p1).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  ok("PF-21rs B2 W3 pass: the Privacy group links \"Legal holds\"; the page is headed with \"Hold a firm's data\"; before any hold the delete check does not answer HELD",
+    holdsIn && (await p1.getByRole("navigation", { name: "Console" }).getByRole("group", { name: "Privacy" }).getByRole("link", { name: "Legal holds" }).count()) === 1 && (await p1.getByRole("button", { name: "Hold a firm's data" }).count()) === 1 && free.v !== "HELD", free);
+  const holdCount = () => sql(`select count(*) from plat_legal_hold`), h0 = holdCount();
+  await p1.getByRole("button", { name: "Hold a firm's data" }).click();
+  const hd = p1.getByRole("dialog", { name: HOLD_COPY.placeTitle }); await hd.waitFor();
+  await hd.getByRole("button", { name: "Place the hold" }).click();
+  await hd.locator("[role=alert]").first().waitFor({ timeout: 5000 }).catch(() => undefined);
+  const holdErrs = await hd.locator("[role=alert]").allInnerTexts();
+  ok("PF-21rs B2 W3 fail (review M1): no firm chosen and no reason → each refusal in plain words saying what to do, nothing placed",
+    holdErrs.includes(HOLD_COPY.firmNotChosen) && holdErrs.includes(HOLD_COPY.reasonNeeded) && holdCount() === h0, holdErrs);
+  // Typing the firm's name without choosing it, and an id that is not one: said in plain words, nothing sent.
+  await hd.locator("[data-firm-search]").fill(nameA); await hd.locator("[data-advanced]").check(); await hd.getByLabel("Covers").selectOption("PERSON");
+  await hd.getByLabel("Person record id").fill(nameA); await hd.getByLabel("Reason for the hold").fill("Sample"); await hd.getByRole("button", { name: "Place the hold" }).click();
+  const slipErrs = await hd.locator("[role=alert]").allInnerTexts();
+  ok("PF-21rs B2 W3 fail (review M1): a firm name typed but not chosen, and a person id that is not one, each say what to do; nothing placed",
+    slipErrs.includes(HOLD_COPY.firmNotChosen) && slipErrs.includes(HOLD_COPY.idWords) && holdCount() === h0, slipErrs);
+  await hd.locator("[data-advanced]").uncheck(); await hd.getByLabel("Reason for the hold").fill("");
+  await hd.locator("[data-firm-search]").fill(nameA); await hd.locator(`[data-add-firm="${A}"]`).click({ timeout: 10_000 });
+  await hd.locator("[data-advanced]").check(); await hd.getByLabel("Covers").selectOption("PERSON"); await hd.getByLabel("Person record id").fill(heldPerson);
+  await hd.getByLabel("Reason for the hold").fill(`Sample litigation (PF-21rs ${run})`); await hd.getByRole("button", { name: "Place the hold" }).click();
+  await hd.waitFor({ state: "hidden", timeout: 15_000 }).catch(() => undefined);
+  const holdId = sql(`select id from plat_legal_hold where target_id = '${heldPerson}'`) || sql(`select id from plat_legal_hold where reason = 'Sample litigation (PF-21rs ${run})'`);
+  await p1.locator(`[data-hold-row="${holdId}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const rowText = await p1.locator(`[data-hold-row="${holdId}"]`).innerText().catch(() => "");
+  const held = await verdictFor(heldPerson);
+  ok("PF-21rs B2 W3 pass: a person hold placed on screen (firm by search, Advanced → one person record, a reason) is listed Active with the firm's name, what it covers and who placed it",
+    !!holdId && rowText.includes(nameA) && rowText.includes(coversWords({ kind: "PERSON", id: heldPerson })) && rowText.includes("Platform Owner (Sample)") && (await p1.locator("[data-done]").innerText().catch(() => "")) === HOLD_COPY.placed, { holdId, rowText });
+  ok("PF-21rs B2 W3 pass (j_85 W4): the app's delete check now answers HELD for that person, with the hold's reason (shown in our console only)", held.v === "HELD" && held.why.includes(`Sample litigation (PF-21rs ${run})`), held);
+  await p1.screenshot({ path: join(SHOTS, "b2-01-holds-active-1440.png"), fullPage: true });
+  await p1.locator(`[data-release="${holdId}"]`).click();
+  const rd = p1.getByRole("dialog", { name: HOLD_COPY.releaseTitle }); await rd.waitFor();
+  const relWords = await rd.getByText(`Sample litigation (PF-21rs ${run})`).count();   // break m3: the dialog names the matter
+  await rd.getByRole("button", { name: "Release the hold" }).click();
+  const relErr = await rd.locator("[role=alert]").first().innerText({ timeout: 5000 }).catch(() => "");
+  ok("PF-21rs B2 W3 fail (BR-6): Release without a reason → refused under the field; the hold stays active and the check still HELD", relErr === HOLD_COPY.releaseReasonNeeded && relWords > 0 && sql(`select released_at is null from plat_legal_hold where id = '${holdId}'`) === "t" && (await verdictFor(heldPerson)).v === "HELD", relErr);
+  await rd.getByLabel("Reason for the release").fill("Sample: the matter settled"); await rd.getByRole("button", { name: "Release the hold" }).click();
+  await rd.waitFor({ state: "hidden", timeout: 15_000 }).catch(() => undefined);
+  await p1.locator('[data-hold-chip="released"]').click(); await p1.locator(`[data-hold-row="${holdId}"] [data-released]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const after = await verdictFor(heldPerson);
+  ok("PF-21rs B2 W3 pass: released on screen with its reason → listed under Released with who and why; the same delete check proceeds (no longer HELD)",
+    sql(`select released_at is null from plat_legal_hold where id = '${holdId}'`) === "f" && (await p1.locator(`[data-hold-row="${holdId}"]`).innerText().catch(() => "")).includes("the matter settled") && after.v !== "HELD", after);
+  await owner.$disconnect();
+  // W5 on this page: a firm's token is refused on every route and nothing is written; the Auditor (no hold key) reads the API's 403 words.
+  const firmEmailH = sql(`select email from platform_staff where actor_id = 'user-R'`);
+  const tFirmH = (await api(null, "/platform/session/local", "POST", { firmKey: "sample-firm", email: firmEmailH, secondStep: true })).body?.token as string;
+  const h1 = holdCount();
+  const holdTries = [await api(tFirmH, HOLDS), await api(tFirmH, HOLDS, "POST", { firmId: A, scope: { kind: "FIRM" }, reason: "x" }), await api(tFirmH, `${HOLDS}/${holdId}/release`, "POST", { reason: "x" })];
+  ok("PF-21rs B2 W5 fail (a): a firm Owner's token → 403 on the hold list, place and release; nothing written", holdTries.every((r) => r.status === 403) && holdCount() === h1, holdTries.map((r) => r.status));
+  const ph = await signedIn(await ourToken(AUDITOR)); await ph.goto(`${BASE}/system/privacy/holds`);
+  const audHold = await ph.locator("[data-holds-error]").innerText({ timeout: 15_000 }).catch(() => "");
+  ok("PF-21rs B2 W5 fail (c, BR-8): our Auditor on Legal holds reads the API's 403 words: no table, no \"Hold a firm's data\", no Legal holds link",
+    audHold.length > 0 && (await ph.getByRole("table").count()) === 0 && (await ph.getByRole("button", { name: "Hold a firm's data" }).count()) === 0 && (await ph.getByRole("link", { name: "Legal holds" }).count()) === 0, audHold);
+  await ph.context().close();
+  // W6: keyboard opens the dialog on its first field; axe-core 0 serious, no sideways scroll at 1440, 1024 and 400 px (the dialog open too).
+  await p1.goto(`${BASE}/system/privacy/holds`); await holdsHeading(p1).waitFor({ timeout: 15_000 });
+  await p1.getByRole("button", { name: "Hold a firm's data" }).focus(); await p1.keyboard.press("Enter"); await hd.waitFor();
+  const holdFirst = await p1.evaluate(() => document.activeElement?.hasAttribute("data-firm-search") ?? false);
+  await hd.locator("[data-advanced]").check(); const axeHold = await serious(p1); await hd.getByRole("button", { name: "Cancel" }).click(); await hd.waitFor({ state: "hidden", timeout: 5000 }).catch(() => undefined);
+  const hw: Record<number, { axe: string[]; sideways: boolean }> = {};
+  for (const w of [1440, 1024, 400]) { await p1.setViewportSize({ width: w, height: 900 }); await p1.goto(`${BASE}/system/privacy/holds`); await holdsHeading(p1).waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await p1.locator('[data-hold-chip="all"]').click(); await p1.locator("[data-hold-row]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+    hw[w] = { axe: await serious(p1), sideways: await p1.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth > 1) };
+    if (w === 400) await p1.screenshot({ path: join(SHOTS, "b2-02-holds-400.png"), fullPage: true }); }
+  await p1.setViewportSize({ width: 1440, height: 900 });
+  ok("PF-21rs B2 W6 pass: Enter on \"Hold a firm's data\" opens it on the firm search; the page at 1440, 1024 and 400 px (the dialog open too): axe-core 0 serious, no sideways page scroll",
+    holdFirst && !axeHold.length && Object.values(hw).every((x) => !x.axe.length && !x.sideways), { holdFirst, axeHold, hw });
 
   // ---------------------------------------------------------------------------------------- W5 the walls (A1's page)
   const firmEmail = sql(`select email from platform_staff where actor_id = 'user-R'`);
