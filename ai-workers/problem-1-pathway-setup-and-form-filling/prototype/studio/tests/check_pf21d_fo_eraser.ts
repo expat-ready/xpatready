@@ -282,6 +282,7 @@ try {
     mergeOther: asApp(A, flags(rX, claimOf(rX)), `update fo_dup_merge set loser_snapshot = '{"erased": true}', survivor_before = '{"erased": true}', reason = 'x' where id = '${mergeId}'`),
     delete: asApp(A, flags(rX, claimOf(rX)), `delete from fo_note where person_id = '${X.p}'`),
     oneMsOff: asApp(A, flags(rX, new Date(Date.parse(claimOf(rX)) + 1).toISOString()), noteSql),   // review m6
+    duringMerge: asApp(A, `${flags(rX, claimOf(rX))} select set_config('fo_dup.merging', 'on', true);`, noteSql),   // break m3
   };
   // Review M2: the same refusal set on the other three insert-only tables.
   const attrSql = `update fo_lead_attribution set click_id = null, landing_page = null, referrer_url = null, platform_lead_id = null, utm_source = null, utm_medium = null, utm_campaign = null, utm_term = null, utm_content = null where lead_id = '${X.lead}'`;
@@ -300,7 +301,7 @@ try {
   // Review M1: the other tables sharing msg_write_once keep their own refusal and error code (restrict_violation).
   const wording = asApp(A, "", `update msg_consent_wording set id = id where false or true`);
   ok("PF-21d 2b-2 fail (review M1): msg_consent_wording still refuses with its own words (write-once), never a missing-field error", /is write-once/.test(wording) && !/has no field/.test(wording), wording);
-  ok("PF-21d 2b-2 fail: the insert-only rows refuse the eraser's update without a claim, with a forged request, a wrong claim time, another person's claim, another column or other words, and a delete; nothing changed",
+  ok("PF-21d 2b-2 fail: the insert-only rows refuse the eraser's update without a claim, with a forged request, a wrong claim time or 1 ms off, another person's claim, another column or other words, during a merge, and a delete; nothing changed",
     Object.values(refusals).every((r) => r !== "changed") && one(`select text from fo_note where person_id = '${X.p}'`) === "Sample note", refusals);
   asApp(B, flags(rX, claimOf(rX)), noteSql);
   ok("PF-21d 2b-2 fail: another firm's session with this claim changes nothing (the firm wall hides the rows; the definer also asks the session's firm)", one(`select text from fo_note where person_id = '${X.p}'`) === "Sample note");

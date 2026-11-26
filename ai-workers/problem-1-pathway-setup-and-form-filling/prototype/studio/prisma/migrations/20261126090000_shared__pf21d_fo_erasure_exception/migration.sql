@@ -24,6 +24,8 @@ BEGIN
   EXCEPTION WHEN others THEN RETURN false;   -- a setting that is not a request id or a time opens nothing
   END;
   IF req IS NULL OR at IS NULL OR p_firm IS NULL OR p_person IS NULL OR p_firm IS DISTINCT FROM platform_session_firm() THEN RETURN false; END IF;
+  -- Break m3: never while a merge runs in this transaction (a merge could first move another person's row onto this one).
+  IF current_setting('fo_dup.merging', true) = 'on' THEN RETURN false; END IF;
   SELECT x.person_id INTO who FROM plat_data_request x WHERE x.id = req AND x.erasing_since = at AND x.firm_id = p_firm AND x.type = 'DELETION';
   IF who IS NULL THEN RETURN false; END IF;
   RETURN p_person = who OR EXISTS (

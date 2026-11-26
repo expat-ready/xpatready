@@ -53,3 +53,9 @@ END $function$
 
 ;
 DROP FUNCTION fo_erasure_names(uuid, uuid);
+-- Break m1: so prisma migrate deploy applies it again after this rollback.
+DO $pm$ BEGIN
+  IF to_regclass('"_prisma_migrations"') IS NOT NULL THEN   -- a database migrated by psql alone (the tests) has no such table
+    DELETE FROM "_prisma_migrations" WHERE migration_name = '20261126090000_shared__pf21d_fo_erasure_exception';
+  END IF;
+END $pm$;
