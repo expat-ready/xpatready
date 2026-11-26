@@ -73,7 +73,7 @@ code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);paddin
 <div class="wrap">
 
 <header class="hero">
-  <div class="eyebrow">Plan for the founder · Lead 3 · 26 Nov 2026, 16:3x IST</div>
+  <div class="eyebrow">Plan for the founder · Lead 3 · 26 Nov 2026, 15:0x IST</div>
   <h1>Factory v2: use what Claude Code and GitHub already give us</h1>
   <p class="thesis">My recommendation: <b>stop building our own machinery around merging</b>. Hand reviewing, fixing and approving to Claude's agents, and merging to GitHub's own queue. Keep the parts that are ours and work: our tests, our qa proof, our product rules. About <b>three quarters</b> of our tooling code then goes. Account switching ends too, because the agents belong to an organisation, not to one login.</p>
 </header>
@@ -176,7 +176,7 @@ code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);paddin
   <div class="eyebrow">The switch-over</div>
   <h2>About two days, product building continues</h2>
   <ol class="steps">
-    <li><div><h3>Sign up for Claude Team and set the caps</h3><p class="who"><span class="you">You, ~20 min</span> (payment and admin clicks are yours)</p><p>Two premium seats, usage credits on, a monthly cap. Install the Claude GitHub App on <code>xpatready</code>. Turn on Code Review, PR Steward (with a cap) and Approvals in watch-only mode. I'll give you each link and the exact button.</p></div></li>
+    <li><div><h3>Sign up for Claude Team and set the caps</h3><p class="who"><span class="you">You, ~20 min</span> (payment and admin clicks are yours)</p><p>A small Team organisation (2 standard seats), used only to switch on the agents. Builders stay on your Ultra accounts. Set a monthly cap on agent spend. Install the Claude GitHub App on <code>xpatready</code>. Turn on Code Review, PR Steward (with a cap) and Approvals in watch-only mode. I'll give you each link and the exact button.</p></div></li>
     <li><div><h3>Empty the current queue</h3><p class="who">Lead, ~2–3 h</p><p>Let the green product pull requests merge through Mergify as they do now. Builders keep building; nothing new joins the old queue.</p></div></li>
     <li><div><h3>One switch, then GitHub's queue goes live</h3><p class="who">Lead, ~half a day</p><p>Set up the branch rule and merge queue on <code>main</code>, add the approvals policy and our review checklist for Code Review, and switch off Mergify and the label scripts, all in the same switch. This is a tooling change, merged first.</p></div></li>
     <li><div><h3>Delete what is replaced</h3><p class="who">Lead + 2 builders, ~1 day</p><p>Remove the guard tests, the board, flaky quarantine, the fallbacks and the watch scripts. Cut the lead, lead-watch and next skills and RULES down to one page each of what is ours.</p></div></li>
@@ -186,6 +186,9 @@ code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);paddin
 
 <section>
   <div class="eyebrow">Cost, and what I don't know yet</div>
+  <div class="note" style="background:var(--yes-soft)">
+    <p><b>Your worry, answered (26 Nov 15:1x IST): don't move the builders to Team.</b> Per dollar, a Team premium seat gives less usage than Ultra ("5x" a standard seat, at $125 a month, against Ultra's $200). But Claude's agents aren't paid from seat usage. They are billed by use from organisation credits. So the best mix is a <b>small Team organisation (2 standard seats, about $50 a month) only to switch the agents on, with builders staying on Ultra</b>. Account switching for builders then hurts much less, because the agents keep fixing their pull requests after a switch. To stop switching entirely, turn on Ultra usage credits with a cap.</p>
+  </div>
   <div class="note">
     <p><b>Known (claude.com/pricing, today):</b> Team premium seat $125 a month ($100 if paid yearly), so two seats are about $250 a month. Code Review, PR Steward and extra usage are billed by use against organisation credits, with no flat price published.</p>
     <p style="margin-top:8px"><b>Unknown:</b> what 12 builders cost past the seat allowance. I recommend a first-week cap (you pick the number), then I report the real daily spend so we can size it. Team has no "Projects" feature yet; we don't use it today. Your Ultra accounts can stay active as a fallback during the first week.</p>
