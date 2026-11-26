@@ -59,3 +59,7 @@ Merged since 724e65631: #3649 and #3832 (R1.76), #3852 (records). None touches m
 ## Round 6 (main fc1bac6e1, ~22:2x IST)
 * R1.5: #3217 (PF-4bc) and #3479 merged. j_5 28/28 on a fresh copy, no regression. Still Partial: #3815 (the sign-in page), PF-4s part 2, the real-pool lines (AWS) and QA-643.
 * #3804 (qa 1b) merged and overlapped R1.85, R1.58 and R1.107; both lanes' lines are kept on each row.
+
+## Round 7 (main a616591ec, 27 Nov ~00:1x IST)
+* R1.111: FO-7r part 2 (#3753) merged. Only FO-7s5 (screens, not built) is left. Partial.
+* R1.85: proof PR #3869 (Works on 0c47ce729), CI green, waiting for its label.
