@@ -443,7 +443,7 @@ class Heartbeat(unittest.TestCase):
             self.skipTest("no manifest in this copy (check-guards' throwaway copy holds tools/ only)")
         with open(path) as fh:
             real = json.load(fh)["heartbeat"]
-        self.assertEqual(set(HB), set(real) - {"note", "red_rule"})   # the tool reads exactly these keys
+        self.assertEqual(set(HB), set(real) - {"note", "red_rule", "events_required"})   # the tool reads exactly these keys (events_required: conformance-check.py, OS-83)
         self.assertEqual(ids(hb.evaluate(base(), real)), [])
 
 

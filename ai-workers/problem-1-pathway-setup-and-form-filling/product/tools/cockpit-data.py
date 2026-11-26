@@ -1048,7 +1048,9 @@ def heartbeat_read(gh):
     if at and NOW - at <= timedelta(minutes=ENFORCE_STALE_MIN):
         try:
             arts = gh.get(f"/actions/runs/{r['id']}/artifacts?per_page=20").get("artifacts") or []
-            a = next((x for x in arts if x.get("name") == "pipeline-heartbeat" and not x.get("expired")), None)
+            # OS-83: a run started by a push or a full run on main uploads "pipeline-heartbeat-event" (the heartbeat's own
+            # next run never reads it, so only a scheduled run marks an alarm seen); the board reads either.
+            a = next((x for x in arts if x.get("name") in ("pipeline-heartbeat", "pipeline-heartbeat-event") and not x.get("expired")), None)
             if a:
                 import io, zipfile
                 gh.count(a["archive_download_url"])
