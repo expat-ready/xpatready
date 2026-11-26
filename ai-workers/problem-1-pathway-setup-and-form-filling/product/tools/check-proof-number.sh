@@ -25,7 +25,7 @@ rows Works Works Partial Works; com 2026-11-24T00:30:00       # 00:30 IST = 19:0
 o=$(run 2026-11-24T08:00:00)
 ok "today starts at 00:00 IST: 00:30 counts, 23:30 the evening before does not (+1)" "$(has 'Proven today +1 (since 00:00 IST, net)' "$o")" "$o"
 ok "the last 24 h counts both (+2), 3 of 4 proven, forecast 1 left at +2 a day" "$(has 'last 24 h +2 · 3 of 4 · forecast 24 Nov 2026' "$o")" "$o"
-ok "the needed rate is to the committed date, 29 Nov (A350): 1 left in 5.7 days" "$(has 'needed 0.2 a day to 29 Nov 2026' "$o")" "$o"
+ok "the needed rate is to the committed date, 12 Dec (P-815, the Lead's ruling 25 Nov): 1 left in 18.7 days" "$(has 'needed 0.1 a day to 12 Dec 2026' "$o")" "$o"
 ok "pass: no app code merged, no ACT" "$(none "$o")" "$o"
 rows Works Works Partial Partial; com 2026-11-24T08:30:00
 o=$(run 2026-11-24T09:00:00); ok "net: one gained and one reopened today is +0" "$(has 'Proven today +0' "$o")" "$o"
