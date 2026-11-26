@@ -7,6 +7,8 @@
 //   PA3 the timeline reads newest first in plain words (no staff id, no audit summary); "Engaged as a prospect" shows
 //   PA4 firm B's note never shows on firm A's prospect; firm B opening A's prospect sees no line
 //   PA5 without agent/prospect:edit there is no Add note; without agent/prospect:log-call no Log a call
+//   PA6 (round 1) the page's own Move adds its line to the timeline without a reload; a long note reads in full after
+//       "Show all of it"; the Log a call panel gives focus back to its button, and asks before throwing typed data away
 // Firm keys are put back at the end. No model call, US$0, never :4400.
 //   zsh studio/tools/isolated.sh fo4p2b 4433 start --ttl 60 AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo4p2b_prospect_activity_browser.ts fo4p2b 4433
 import "reflect-metadata";
@@ -100,6 +102,41 @@ try {
       const ats = await section.locator("[data-prospect-line] time").evaluateAll((els) => els.map((e) => e.getAttribute("datetime") ?? ""));
       ok("PA3 pass: newest first", ats.every((a, i) => i === 0 || ats[i - 1] >= a), ats);
       await axe("the section with a note and a call");
+      // ---- PA6 (round 1 fixes) ----------------------------------------------------------------------------------------
+      const linesBefore = await section.locator("[data-prospect-line]").count();
+      await p.locator("[data-move]").first().click();
+      await p.locator("[data-move-to]").first().click();
+      const moved = await p.waitForFunction(([n]) => document.querySelectorAll("[data-prospect-activity] [data-prospect-line]").length > n, [linesBefore], { timeout: 15000 }).then(() => true, () => false);
+      ok("PA6 fail (review M1): the page's own Move adds its line to the timeline without a reload", moved && /Moved to another stage/.test(await section.locator("[data-prospect-line]").first().innerText()));
+      const longText = Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of a long note ${run}`).join("\n");
+      await section.locator("[data-prospect-note-text]").fill(longText);
+      await section.locator("[data-prospect-note-add]").click();
+      const longLine = section.locator("[data-prospect-line='NOTE']").filter({ hasText: `Line 1 of a long note ${run}` }).first();
+      await longLine.waitFor({ timeout: 30000 });
+      ok("PA6 pass: after a save, focus is back in the note box and a polite line says so", await section.locator("[data-prospect-note-text]").evaluate((e) => e === document.activeElement) && /Note added\./.test(await section.locator("[data-prospect-said]").innerText()));
+      const clamped = async () => longLine.locator("[data-prospect-words]").evaluate((e) => e.scrollHeight > e.clientHeight + 2);
+      ok("PA6 fail (review M2, break M3): a 12-line note starts folded, with \"Show all of it\"", await clamped() && (await longLine.locator("[data-prospect-show-more]").count()) === 1);
+      await longLine.locator("[data-prospect-show-more]").click();
+      ok("PA6 pass: \"Show all of it\" shows every line", !(await clamped()));
+      await section.locator("[data-log-call]").focus();
+      await p.keyboard.press("Enter");
+      await p.getByRole("dialog").waitFor();
+      await p.keyboard.press("Escape");
+      await p.getByRole("dialog").waitFor({ state: "detached", timeout: 10000 });
+      await p.waitForFunction(() => document.activeElement?.hasAttribute("data-log-call"), null, { timeout: 5000 }).catch(() => undefined);
+      ok("PA6 fail (break M1, review M3): Escape closes the empty panel and focus is back on Log a call", await section.locator("[data-log-call]").evaluate((e) => e === document.activeElement));
+      await section.locator("[data-log-call]").click();
+      const dlg = p.getByRole("dialog");
+      await dlg.locator("[data-log-call-outcome]").selectOption("CONNECTED");
+      await dlg.getByLabel("Notes (optional)").fill("typed, not saved");
+      p.once("dialog", (d) => void d.dismiss());
+      await p.keyboard.press("Escape");
+      await p.waitForTimeout(400);
+      ok("PA6 fail (break M2): Escape with typed data asks first; on No the panel stays with what was typed", (await dlg.count()) === 1 && (await dlg.getByLabel("Notes (optional)").inputValue()) === "typed, not saved");
+      p.once("dialog", (d) => void d.accept());
+      await p.keyboard.press("Escape");
+      await dlg.waitFor({ state: "detached", timeout: 10000 });
+      ok("PA6 pass: on Yes it closes and logs nothing", sql(`select count(*) from fo_call where prospect_id = '${PA}'`) === "1");
     }
     // ---- PA4 ------------------------------------------------------------------------------------------------------------
     ok(`PA4 fail at ${width}: firm B's note never shows on firm A's prospect`, !(await section.innerText()).includes(`Firm B note ${run}`));
