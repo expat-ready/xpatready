@@ -109,3 +109,51 @@ Reviewed **139a348470cca9a302af979c77905276a4046752**.
 **Verdict: Approve**: no open Blocker or Major.
 
 Verdict: Approve 139a348470cca9a302af979c77905276a4046752
+
+## Round 4 (diff only, a0bbd3adf..4e8d59b69): reviewer, 26 Nov
+Reviewed **4e8d59b6969aa8ee2769d84283c5a97b075ee4a6**. a0bbd3adf is 139a34847 plus the round 3 records only. The range touches 4 code and test files: `status.tsx`, `filing-changes.tsx`, `check_csw3_firm_scope.ts` and the panel test. The screenshots: 411d59b77 rewrote 17 of them and ed07578ae puts all 17 back, so the **net change in `A24-3/` and `B145/` across a0bbd3adf..4e8d59b69 is empty** (`git diff --stat` shows nothing).
+
+**Ran at 4e8d59b69** (fresh isolated copies on :4434, stopped after each run; no prisma generate, since the client was newer than every schema file; wt4 clean before and after):
+* `check_csnt1d_panel_browser` **56/56**, including both round 4 checks;
+* `check_csw3_firm_scope` **48/48** on its own fresh copy (census 59, and the planted-file check still fails as it should);
+* `check_bk2_fold_outs` **16/16**;
+* web `tsc` 0 errors.
+
+Not re-run: c95 and A24-3; their suites write screenshots into the tree. The builder reports 36/36 and 41/41.
+
+**Lead condition (1): the census entry is truly firm-scoped, not merely allow-listed. Confirmed.**
+* **Code.** Every table `staffWhoMaySee` reads is tied to one firm:
+  * `platform_staff s` is limited to `s.firm_id = firmScope(firmId)`, and `firmScope` throws on a non-UUID.
+  * `runtime_case c` is joined `on c.id = $case and c.firm_id = s.firm_id`.
+  * `case_client` is reached only through `c.client_id`, and `case_team_member` only through `t.case_id = c.id`.
+  * Role grants are read with `g.firm_id = s.firm_id`.
+  * Its one caller, `peopleOf`, passes `subjectOf`'s firm. That firm is the session's, and the case is already in it and in the reader's caseScope.
+* **Probe** (a reviewer script calling `staffWhoMaySee` straight against the copy's database, not committed):
+  * firm A's case with firm A: 3 people, all firm A staff;
+  * **the same case with firm B's id: 0 people**, although firm B has 1 active staff member;
+  * a malformed firm id throws.
+* `caseScope`, `caseScopeWhere` and `caseVisibleSql` in the same file were already firm-bound: each filters on `firmId`, or names the caller's firm-scoped `c`.
+
+**Lead condition (2): the Escape behaviour is accepted.**
+* **Escape closes the tip at once.** The trigger's `onKeyDown` clears the 600 ms guard and sets `open=false`. Radix's own Escape (a capture listener on the document) can arrive inside the guard and be ignored, but the trigger handler closes the tip anyway. Focus stays on the trigger. The panel test checks that the tip is hidden within 1 s, inside the 600 ms window, and that focus has not moved.
+* **WCAG 1.4.13 is met:**
+  * *dismissible*: Escape, without moving the pointer or focus;
+  * *hoverable*: Radix's content is unchanged;
+  * *persistent*: better than before, because the scroll that focus causes no longer closes a tip the person never saw.
+* **WCAG 2.1.2 is met:** nothing traps focus. Tab or blur closes the tip as before, because the guard holds only while the trigger keeps focus. Escape still reaches only the topmost Radix layer, so it does not also close an enclosing dialog.
+* **Residual (Minor, not blocking):** a pointer user who clicks a focusable trigger and moves away within 600 ms keeps the tip until blur, Escape or the next hover. Content that persists longer is allowed under 1.4.13.
+
+**The other changes:**
+* `Tip` is the shared tooltip, used 105 times in 35 files. The change is contained:
+  * it is controlled with the same delay (TipProvider 250 ms);
+  * the trigger's own `onFocus` and `onKeyDown` are still called;
+  * `tabIndex` is set only when `focusable` is given;
+  * the props are typed, with no `any` (415 against a base of 416).
+* `filing-changes.tsx`'s Principal applicant tip now goes through `Tip`/`TipProvider` (200 → 250 ms delay; `TooltipContent`'s default `max-w-xs` replaces the inline class). It looks and reads the same.
+* The census comment gives the reason with the row number, and the count moves 58 → 59.
+
+**Issues:** none new beyond the residual above. The open Minors are unchanged: R2-m1, R2-m2, the breaker's m1 title, and DP9's draft-kept test; relative times and the bell's {name} stay with the tech lead. Scores and journey are unchanged (9/10, pass).
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 4e8d59b6969aa8ee2769d84283c5a97b075ee4a6
