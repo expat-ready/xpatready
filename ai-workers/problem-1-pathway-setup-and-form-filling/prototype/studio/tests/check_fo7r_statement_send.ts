@@ -245,6 +245,14 @@ try {
   sql(`set session_replication_role = replica; insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) select '${A}', i.id, 'CASH', 400, 'CAD', 'OPERATING', now(), 'nopay-one', 'seed:FO-7r-2' from money_invoice i where i.person_id = '${PNOPAY}' limit 1`);
   const nSent = mail.sent.length, over = await timed("POST", `${N5}/statement/send`, ALL);
   ok(`FO-7r break R3-M1 fail: one line past the limit (5,001) on lagging statistics → 422 naming to in ${over.ms} ms (never the 5 s limit's 500), nothing sent`, over.status === 422 && JSON.stringify(over.body).includes('"to"') && over.ms < BOUND && mail.sent.length === nSent, [over.status, over.ms]);
+  // review round 4 R4-1: the ids travel only when the planner's estimate is wrong; analyzed, the one-query path again
+  const { invoiceIdsOf } = await import("../api/src/client-money/reports/statement.ts");
+  const idsFor = (pid: string) => owner.$transaction((tx) => invoiceIdsOf(tx, A, { kind: "PERSON", id: pid, name: null }, "ALL", undefined));
+  const lagging = await idsFor(PSTALE), small = await idsFor(PA);
+  ok("FO-7r break R3-M1 pass: on lagging statistics the client's 2,500 invoice ids are bound (the planner's estimate is wrong); a small client's are not", lagging?.split(",").length === 2500 && small === null, [lagging?.split(",").length, small]);
+  sql(`analyze money_invoice`);
+  const analyzed = await idsFor(PSTALE);
+  ok("FO-7r review R4-1 fail: once analyzed, the same 2,500 invoices plan from statistics, with no id list sent (part 1's page budget)", analyzed === null, analyzed?.length);
   // break round 2 m1: an address MailPort's own schema takes but the message layer's channel refuses (a@b-.example) is 422
   sql(`update fo_person set email = 'a@b-.example', merged_into_id = null, merged_at = null where id = '${PF}'`);
   const dash = await call(tA, "POST", `/front-office/money/parties/person/${PF}/statement/send`, ALL);

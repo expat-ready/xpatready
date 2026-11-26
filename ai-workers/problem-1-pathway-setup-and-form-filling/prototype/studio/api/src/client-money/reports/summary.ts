@@ -42,7 +42,7 @@ function add(a: Figures, b: Figures): Figures {
 }
 
 /** The per-case, per-currency invoice figures' SQL (exported for the plan check). */
-export function summarySql(f: string, party: Party, scope: MoneyScope, today: string, invoiceIds: string): Prisma.Sql {
+export function summarySql(f: string, party: Party, scope: MoneyScope, today: string, invoiceIds: string | null): Prisma.Sql {
   return Prisma.sql`${ledgerCtes(f, party, scope, undefined, false, invoiceIds)},
         -- each invoice's facts summed once from the lines (materialized), then joined to the invoices by id: a join of the
         -- invoices straight onto the lines' union re-ran the union per invoice when statistics lagged (break round 2 M1)

@@ -45,17 +45,38 @@ const Cursor = z.strictObject({ a: z.union([z.literal(0), z.literal(1)]), c: z.e
 /** Trust lines sort by seq alone: one fixed key time (never created_at, the transaction's start: trust/reads.ts's break Major 1). */
 const TRUST_KEY = "2000-01-01 00:00:00+00";
 
-/** The client's issued invoices in the caller's scope (one case's when named): ledgerCtes's set, read first in the caller's
- *  transaction (repeatable read, one snapshot), so ledgerCtes plans with their real count (break round 3 M1 on #3753). */
-export async function invoiceIdsOf(tx: Tx, f: string, p: Party, scope: MoneyScope, caseId: string | undefined): Promise<string> {
-  const [row] = await tx.$queryRaw<{ ids: string }[]>`select coalesce(string_agg(i.id::text, ','), '') as ids from money_invoice i
-    where i.firm_id = ${f}::uuid and ${partyCol(p, "i")} = ${p.id}::uuid and i.issued_at is not null and ${scopeSql(scope)} ${caseId ? Prisma.sql`and i.case_id = ${caseId}::uuid` : Prisma.empty}`;
-  return row?.ids ?? "";   // one text value (comma-separated uuids), not a row per invoice nor a 10,000-item array to convert
+/** The client's issued invoices in scope, one case's when named (the one filter for invoiceIdsOf and ledgerCtes). */
+const invoicesWhere = (f: string, p: Party, scope: MoneyScope, caseId: string | undefined) =>
+  Prisma.sql`i.firm_id = ${f}::uuid and ${partyCol(p, "i")} = ${p.id}::uuid and i.issued_at is not null and ${scopeSql(scope)} ${caseId ? Prisma.sql`and i.case_id = ${caseId}::uuid` : Prisma.empty}`;
+/** Below this many invoices a plan that expects one is still cheap (a nested loop over 500 is milliseconds). */
+const STALE_FLOOR = 500;
+/** At or above this estimate the planner hashes the client's invoices into the facts, whatever their real count. */
+const PLAN_SMALL = 100;
+/** The client's issued invoices in the caller's scope (one case's when named), ledgerCtes's set: null when the planner's
+ *  own estimate is near their real count (the usual case: ledgerCtes filters them itself, one query), else their ids as
+ *  one comma-separated text value, which ledgerCtes binds so the planner knows the real count (only when the estimate is
+ *  under PLAN_SMALL and the count past STALE_FLOOR and four times the estimate). Statistics that lag a
+ *  client's new rows made it expect one invoice, and every join became a nested loop rescanning a materialized set per
+ *  row: a 500 inside the line limit (break round 3 M1 on #3753). Sending the ids every time cost part 1's page budget
+ *  50-90 ms at 10,000 analyzed invoices (review round 4 R4-1), so they travel only when the estimate is wrong. Read in
+ *  the caller's transaction (repeatable read, one snapshot). */
+export async function invoiceIdsOf(tx: Tx, f: string, p: Party, scope: MoneyScope, caseId: string | undefined): Promise<string | null> {
+  const where = invoicesWhere(f, p, scope, caseId);
+  const [plan] = await tx.$queryRaw<{ "QUERY PLAN": unknown }[]>`explain (format json) select 1 from money_invoice i where ${where}`;
+  const json = plan?.["QUERY PLAN"], parsed = (typeof json === "string" ? JSON.parse(json) : json) as { Plan?: { "Plan Rows"?: number } }[];
+  const estimate = Number(parsed?.[0]?.Plan?.["Plan Rows"] ?? 0);
+  // Only an estimate of a handful makes the planner loop over a materialized set per row (above that it hashes: part 1's
+  // own route plans 10,000 invoices estimated at 342 well), so a bigger estimate needs no count and no list (R4-1).
+  if (estimate >= PLAN_SMALL) return null;
+  const [row] = await tx.$queryRaw<{ n: number }[]>`select count(*)::int as n from money_invoice i where ${where}`;
+  if ((row?.n ?? 0) <= Math.max(STALE_FLOOR, estimate * 4)) return null;
+  const [ids] = await tx.$queryRaw<{ ids: string }[]>`select coalesce(string_agg(i.id::text, ','), '') as ids from money_invoice i where ${where}`;
+  return ids?.ids ?? "";
 }
 
 /** The CTEs `inv` (the client's issued invoices in scope) and `l` (every line of the client's accounts the caller may
  *  see, with its sort key (acct, currency, k, o, r, id, inv): r is the fact's own time, so facts moved to the issue time keep their order (break round 2 m1) and signed amount). summary.ts reads the same lines. */
-export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean, invoiceIds: string): Prisma.Sql {
+export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: string | undefined, showTrust: boolean, invoiceIds: string | null): Prisma.Sql {
   const IDS = Prisma.sql`(select ids.a from ids)::uuid[]`;
   const onCase = (x: string) => caseId ? Prisma.sql`and ${Prisma.raw(x)}.case_id = ${caseId}::uuid` : Prisma.empty;
   const trust = showTrust ? Prisma.sql`union all
@@ -66,13 +87,12 @@ export function ledgerCtes(f: string, p: Party, scope: MoneyScope, caseId: strin
       where e.firm_id = ${f}::uuid and ${partyCol(p, "e")} = ${p.id}::uuid and ${seenSql(scope, "e")} ${onCase("e")}` : Prisma.empty;
   // inv: the client's issued invoices in scope; each later branch is one fact of FACTS_LATERAL, joined to them by invoice
   // the stored total: money_invoice_total's own sum, read for the client's invoices in one grouped (hashed) read
-  // inv0: the invoices invoiceIdsOf read first, in this snapshot, taken by primary key from a bound list, so the planner
-  // knows their real count even when statistics lag a client's new rows (break round 3 M1 on #3753: estimated at one
-  // invoice, every join below became a nested loop rescanning a materialized set per row, a 500 inside the line limit).
+  // inv0: the client's invoices; when invoiceIdsOf found the planner's estimate wrong (statistics lagging the client's new
+  // rows), taken by primary key from its bound list, so the planner knows their real count (break round 3 M1 on #3753).
   // Every fact table is read through its (firm, invoice) index for these ids only, so the cost follows the client's facts,
   // never the firm's (break round 2 M1 of part 1: a hash join read each table of the whole firm).
   return Prisma.sql`with inv0 as materialized (select i.id, i.case_id, i.currency, i.number, i.issued_at, i.due_date from money_invoice i
-      where i.firm_id = ${f}::uuid and i.id = any(string_to_array(${invoiceIds}, ',')::uuid[])),   -- immutable on a bound value: folded to a constant array when planned
+      where ${invoiceIds === null ? invoicesWhere(f, p, scope, caseId) : Prisma.sql`i.firm_id = ${f}::uuid and i.id = any(string_to_array(${invoiceIds}, ',')::uuid[])`}),   -- string_to_array on a bound value is folded to a constant array when planned
     -- their ids, once, for the fact branches (a sub-select, so the planner weighs the array once, on inv0 alone)
     ids as materialized (select coalesce(array_agg(inv0.id), '{}'::uuid[]) as a from inv0),
     inv as materialized (select inv0.*, coalesce(t.total, 0) as total from inv0 left join (select x.invoice_id, sum(x.amount_minor::bigint + x.tax_minor) as total
