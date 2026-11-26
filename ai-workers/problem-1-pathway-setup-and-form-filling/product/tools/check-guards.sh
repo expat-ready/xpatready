@@ -711,8 +711,10 @@ P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/
 # OS-78c (OS-PM 4): comment-triggered workflows start no job on a comment without their words
 MUT="$MUT"'
 OS78c queue|../../.github/workflows/queue-gate.yml|s/(contains(github.event.comment.body, .Reviewer:.) \&\& contains/(contains/|check-comment-words.sh
-OS78c rounds|../../.github/workflows/review-rounds.yml|s/contains(github.event.comment.body, .reviewer:.)/contains(github.event.comment.body, \x27reviewer\x27)/|check-comment-words.sh
-OS78c read|../../.github/workflows/lead-read.yml|s/contains(github.event.comment.body, .Lead read.) .. contains(github.event.changes.body.from, .Lead read.)/true/|check-comment-words.sh'
+OS78c rounds|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\& (contains(github.event.comment.body, .approve.)/(contains(github.event.comment.body, \x27reviewer\x27) \&\& (true/|check-comment-words.sh
+OS78c markdown|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\&/(contains(github.event.comment.body, \x27reviewer:\x27) \&\&/|check-comment-words.sh
+OS78c read|../../.github/workflows/lead-read.yml|s/(github.event.action != .created. \&\&/(true \&\&/|check-comment-words.sh
+OS78c takeback|../../.github/workflows/lead-read.yml|s/(contains(github.event.changes.body.from, .Lead.) \&\& contains(github.event.changes.body.from, .read.))/false/|check-comment-words.sh'
 # OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'
 OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh

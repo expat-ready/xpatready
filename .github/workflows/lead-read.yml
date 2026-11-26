@@ -27,12 +27,15 @@ jobs:
   read-gate:
     # A comment only when it is on a PR and by someone with write access; a new one only when it names the read (an edit
     # or a deletion is judged again when its new or old body names the read: a read taken back must not keep its success,
-    # break m5). OS-78c (OS-PM 4, 26 Nov): was every edit and deletion; lead-read-gate.sh counts only a comment never
-    # edited, so an edit or deletion of a comment that never held "Lead read" changes no verdict. check-comment-words.sh.
+    # break m5). OS-78c (OS-PM 4, 26 Nov): was every edit and deletion; now one whose new or old body has "Lead" and
+    # "read" (lead-read-gate.sh strips markdown, so "**Lead** read the diff" counts); an edit or deletion of a comment
+    # without them changes no verdict. check-comment-words.sh.
     if: >-
       github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-       (contains(github.event.comment.body, 'Lead read') || contains(github.event.changes.body.from, 'Lead read')) &&
+       (contains(github.event.comment.body, 'Lead read') || (github.event.action != 'created' &&
+        ((contains(github.event.comment.body, 'Lead') && contains(github.event.comment.body, 'read')) ||
+         (contains(github.event.changes.body.from, 'Lead') && contains(github.event.changes.body.from, 'read'))))) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 5

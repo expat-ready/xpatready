@@ -127,7 +127,7 @@ def comment(body, action="created", old=None, assoc="MEMBER"):
     if old is not None: ev["changes"] = {"body": {"from": old}}
     return {"event_name": "issue_comment", "event": ev}
 SHA = "0123456789abcdef0123456789abcdef01234567"
-NONE = ["Thanks: merged main in, ci is green, the reviewer agent is on it.",                 # "reviewer" without its colon
+NONE = ["Thanks: merged main in, ci is green, the reviewer agent is on it.",                 # "reviewer" without a verdict word
         "Lead 5: review: approved stays; I approved the plan. Please read the lead row.",   # "approved", "read", "lead"
         "Question for the tech lead: should OS-50 go first?"]
 # (workflow, job, [(case, context, should the job start)])
@@ -144,14 +144,21 @@ CASES = [
     ("a verdict", comment("Reviewer: Changes needed: M1"), True),
     ("a Lead allowance", comment("Lead allows round 3: one more"), True),
     ("an edit that removes a verdict", comment("(withdrawn)", "edited", "Reviewer: Approve x"), True),
-    ("a deleted verdict", comment("reviewer: approve x", "deleted"), True)]),
+    ("a deleted verdict", comment("reviewer: approve x", "deleted"), True),
+    ("a verdict in split markdown (review-rounds.py strips it)", comment("**Reviewer**: Changes needed"), True),
+    ("a verdict in italic markdown", comment("_Reviewer_: Block"), True),
+    ("a verdict in a code span", comment("`Reviewer`: Approve x"), True),
+    ("an edit that removes a split-markdown verdict", comment("(withdrawn)", "edited", "**Reviewer**: Reject"), True),
+    ("an allowance in bold", comment("**Lead allows round** 3: one more"), True)]),
   ("lead-read.yml", "read-gate",
    [(f"no words: {b[:40]!r}", comment(b), False) for b in NONE] +
-   [(f"no words, edited: {NONE[1][:30]!r}", comment(NONE[1], "edited", NONE[0]), False),
+   [(f"no words, edited: {NONE[0][:30]!r}", comment(NONE[0], "edited", NONE[2]), False),
     (f"no words, deleted: {NONE[2][:30]!r}", comment(NONE[2], "deleted"), False),
     ("a read line", comment(f"Lead read the diff: {SHA}"), True),
     ("an edit that takes a read back", comment("(withdrawn)", "edited", f"Lead read the diff: {SHA}"), True),
     ("a deleted read line", comment(f"Lead read: OK {SHA}", "deleted"), True),
+    ("an edit taking back a split-markdown read (lead-read-gate.sh strips it)", comment("(withdrawn)", "edited", f"**Lead** read the diff: {SHA}"), True),
+    ("a deleted split-markdown read", comment(f"**Lead** read the diff: {SHA}", "deleted"), True),
     ("a read line by an outsider", comment(f"Lead read the diff: {SHA}", assoc="NONE"), False)]),
 ]
 for f, job, cases in CASES:

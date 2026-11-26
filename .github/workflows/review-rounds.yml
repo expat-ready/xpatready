@@ -23,13 +23,16 @@ permissions:
 jobs:
   review-rounds:
     # contains() ignores case; an edit is judged on its old body too (removing a verdict or an allowance re-judges).
-    # OS-78c (OS-PM 4, 26 Nov): "reviewer:" with its colon, as review-rounds.py's VERDICT reads it in the raw body; a
-    # comment that only says "the reviewer" starts no job. Test: check-comment-words.sh.
+    # OS-78c (OS-PM 4, 26 Nov): "reviewer" and a verdict word (approve, change, block, reject; VERDICT in review-rounds.py,
+    # which strips markdown first, so "**Reviewer**: Block" counts), or "allows" and "round" (ALLOW); a comment that only
+    # says "the reviewer" starts no job. Test: check-comment-words.sh.
     if: >-
       github.event_name == 'pull_request_target' ||
-      (github.event.issue.pull_request && (contains(github.event.comment.body, 'reviewer:') ||
-      contains(github.event.comment.body, 'allows round') || contains(github.event.changes.body.from, 'reviewer:') ||
-      contains(github.event.changes.body.from, 'allows round')))
+      (github.event.issue.pull_request && (
+      (contains(github.event.comment.body, 'reviewer') && (contains(github.event.comment.body, 'approve') || contains(github.event.comment.body, 'change') || contains(github.event.comment.body, 'block') || contains(github.event.comment.body, 'reject'))) ||
+      (contains(github.event.comment.body, 'allows') && contains(github.event.comment.body, 'round')) ||
+      (contains(github.event.changes.body.from, 'reviewer') && (contains(github.event.changes.body.from, 'approve') || contains(github.event.changes.body.from, 'change') || contains(github.event.changes.body.from, 'block') || contains(github.event.changes.body.from, 'reject'))) ||
+      (contains(github.event.changes.body.from, 'allows') && contains(github.event.changes.body.from, 'round'))))
     # On the job, not the workflow (#2749 review M1): a skipped run for an unrelated comment takes no slot, so it can
     # never cancel a verdict's run. Every run reads the PR as it is now, so a newer run replacing an older one is safe.
     # Never also at the workflow: the same group at both levels is a deadlock that cancels every run (SPD-2 item 5,
