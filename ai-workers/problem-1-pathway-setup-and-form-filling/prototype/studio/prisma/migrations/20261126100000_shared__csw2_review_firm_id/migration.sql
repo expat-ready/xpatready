@@ -14,8 +14,10 @@
 --     the finding's case (the same-case rule #3823's breaker asked for: it holds while a firm is still empty).
 --   * the same case (case_review_same_case, breaker M1): every parent a round row, form or check names is of its own
 --     case, so a row of a case whose firm is still empty cannot name another firm's row (the keys skip it until then).
---   * c83_form_guard and c83_child_insert_guard: their "written in this transaction" (xmin) opening no longer applies
---     while a firm fill runs in the transaction (xr.case_firm_fill, set by the follow and the backfill; breaker M2).
+--   * c83_form_guard and c83_child_insert_guard: their "written in this transaction" (xmin) opening no longer applies to
+--     a round row whose firm was filled in this transaction (case_review_fill_mark, written by a trigger on the row and two
+--     definer functions the app cannot bypass; breaker M2, round 2). A filing item's case and filing never change
+--     (case_review_case_fixed; round 2 M2).
 --   * the keep (case_review_firm_keep): a firm once set is never emptied or changed (#3811's round-1 Major).
 --   * the follow (case_review_firm_follow, AFTER UPDATE OF firm_id on runtime_case and filing): a case's firm arriving
 --     later fills these rows, parents first.
@@ -26,7 +28,9 @@
 --   case_review_firm_match ON review_finding; DROP TRIGGER case_review_firm_follow ON runtime_case, filing; DROP FUNCTION
 --   case_review_firm_keep(), case_review_firm_match(), case_review_firm_follow(), case_review_firm_backfill(); restore the
 --   six guards from their latest migrations (c76, c83; c83_form_guard from qa345_stamp_read_back); DROP TRIGGER
---   case_review_same_case ON review_round_filing, review_round_form, review_check; DROP FUNCTION case_review_same_case(); DROP each *_firm_id_fkey below; DROP INDEX each index below; ALTER TABLE
+--   case_review_same_case ON review_round_filing, review_round_form, review_check; DROP FUNCTION case_review_same_case();
+--   DROP TRIGGER case_review_mark_fill ON review_round_filing; DROP TRIGGER case_review_case_fixed ON filing_item; DROP
+--   FUNCTION case_review_mark_fill(), case_review_filled_now(uuid), case_review_case_fixed(); DROP TABLE case_review_fill_mark; DROP each *_firm_id_fkey below; DROP INDEX each index below; ALTER TABLE
 --   the seven DROP COLUMN firm_id; then delete this folder's row from _prisma_migrations. Nothing is lost: firm_id is derived.
 
 -- AlterTable
@@ -82,6 +86,30 @@ CREATE UNIQUE INDEX "review_round_filing_id_firm_id_key" ON "review_round_filing
 
 -- CreateIndex
 CREATE INDEX "review_round_form_firm_id_case_id_idx" ON "review_round_form"("firm_id", "case_id");
+
+-- Breaker M2 on #3831 (round 2: a session setting could be switched back off): two C8.3 guards let a write through on a
+-- round row written in this transaction (its xmin: the transaction that approved it). The firm fill rewrites a decided row
+-- too, so a round row whose firm was filled in this transaction no longer opens that way. The fill is marked by a
+-- trigger on review_round_filing itself (any fill: the follow, the backfill, or by hand) into case_review_fill_mark, which
+-- only the two definer functions below write and read (the app holds no right on the table).
+CREATE TABLE "case_review_fill_mark" ("xact" BIGINT NOT NULL, "row_id" UUID NOT NULL, CONSTRAINT "case_review_fill_mark_pkey" PRIMARY KEY ("xact", "row_id"));
+REVOKE ALL ON case_review_fill_mark FROM PUBLIC, xr_data;   -- the default privileges give xr_data every new table; not this one
+CREATE FUNCTION case_review_mark_fill() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+  SET search_path = pg_catalog, public, pg_temp AS $fn$
+BEGIN
+  IF OLD.firm_id IS NULL AND NEW.firm_id IS NOT NULL THEN
+    DELETE FROM public.case_review_fill_mark WHERE xact < pg_snapshot_xmin(pg_current_snapshot())::text::bigint;   -- finished transactions
+    INSERT INTO public.case_review_fill_mark (xact, row_id) VALUES (pg_current_xact_id()::text::bigint, NEW.id) ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN NEW;
+END $fn$;
+REVOKE ALL ON FUNCTION case_review_mark_fill() FROM PUBLIC;
+CREATE TRIGGER case_review_mark_fill BEFORE UPDATE OF firm_id ON "review_round_filing" FOR EACH ROW EXECUTE FUNCTION case_review_mark_fill();
+CREATE FUNCTION case_review_filled_now(row_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+  SET search_path = pg_catalog, public, pg_temp
+  AS $fn$ SELECT EXISTS (SELECT 1 FROM public.case_review_fill_mark m WHERE m.xact = pg_current_xact_id()::text::bigint AND m.row_id = $1) $fn$;
+REVOKE ALL ON FUNCTION case_review_filled_now(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION case_review_filled_now(uuid) TO xr_data;
 
 -- The update guards: the one firm fill from empty is let through (#3811's helper).
 CREATE OR REPLACE FUNCTION c76_append_only() RETURNS trigger LANGUAGE plpgsql AS $fn$
@@ -143,18 +171,15 @@ BEGIN
     END IF;
     RAISE EXCEPTION 'review_round_form: a stamp is written once';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM "review_round_filing" WHERE "id" = OLD."round_filing_id" AND ("status" = 'under_review' OR ("xmin" = pg_current_xact_id()::xid AND coalesce(current_setting('xr.case_firm_fill', true), '') <> 'on'))) THEN
+  IF NOT EXISTS (SELECT 1 FROM "review_round_filing" WHERE "id" = OLD."round_filing_id" AND ("status" = 'under_review' OR ("xmin" = pg_current_xact_id()::xid AND NOT public.case_review_filled_now("id")))) THEN
     RAISE EXCEPTION 'review_round_form: a stamp is written only while its filing is under review';
   END IF;
   RETURN NEW;
 END $fn$;
 
--- Breaker M2 on #3831: two C8.3 guards let a write through on a round row written in this transaction (its xmin: the
--- transaction that approved it). The firm fill rewrites a decided row too, so while a fill runs in this transaction
--- (the follow and the backfill set xr.case_firm_fill = on, transaction-local) that clause no longer opens a decided row.
 CREATE OR REPLACE FUNCTION c83_child_insert_guard() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM "review_round_filing" WHERE "id" = NEW."round_filing_id" AND ("status" IN ('sent', 'under_review') OR ("xmin" = pg_current_xact_id()::xid AND coalesce(current_setting('xr.case_firm_fill', true), '') <> 'on'))) THEN
+  IF NOT EXISTS (SELECT 1 FROM "review_round_filing" WHERE "id" = NEW."round_filing_id" AND ("status" IN ('sent', 'under_review') OR ("xmin" = pg_current_xact_id()::xid AND NOT public.case_review_filled_now("id")))) THEN
     RAISE EXCEPTION '%: the filing is decided; nothing is added to it', TG_TABLE_NAME;
   END IF;
   RETURN NEW;
@@ -165,7 +190,6 @@ CREATE FUNCTION case_review_firm_backfill() RETURNS integer LANGUAGE plpgsql SEC
   SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE t text; n integer; total integer := 0;
 BEGIN
-  PERFORM set_config('xr.case_firm_fill', 'on', true);
   FOREACH t IN ARRAY ARRAY['filing_review', 'readiness_pass'] LOOP
     EXECUTE format('UPDATE %I c SET firm_id = f.firm_id FROM filing f WHERE f.id = c.filing_id AND c.firm_id IS NULL AND f.firm_id IS NOT NULL', t);
     GET DIAGNOSTICS n = ROW_COUNT; total := total + n;
@@ -204,6 +228,8 @@ BEGIN
     UNION ALL SELECT 'review_round_filing ' || c.id || ' (names a row of another case)' FROM review_round_filing c LEFT JOIN review_round r ON r.id = c.round_id LEFT JOIN filing f ON f.id = c.filing_id WHERE r.case_id <> c.case_id OR f.case_id <> c.case_id
     UNION ALL SELECT 'review_round_form ' || c.id || ' (names a row of another case)' FROM review_round_form c LEFT JOIN review_round_filing r ON r.id = c.round_filing_id LEFT JOIN filing_item i ON i.id = c.item_id WHERE r.case_id <> c.case_id OR i.case_id <> c.case_id
     UNION ALL SELECT 'review_check ' || c.id || ' (names a row of another case)' FROM review_check c JOIN review_round_filing r ON r.id = c.round_filing_id WHERE r.case_id <> c.case_id
+    UNION ALL SELECT 'review_round_filing ' || c.id || ' (its filing review is another case''s)' FROM review_round_filing c JOIN filing_review v ON v.id = c.filing_review_id JOIN filing f ON f.id = v.filing_id WHERE f.case_id <> c.case_id
+    UNION ALL SELECT 'review_round_form ' || c.id || ' (its round or filing is another case''s)' FROM review_round_form c LEFT JOIN review_round r ON r.id = c.round_id LEFT JOIN filing f ON f.id = c.filing_id WHERE r.case_id <> c.case_id OR f.case_id <> c.case_id
     LIMIT 20) q;
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION 'CS-W2 review stopped: %', bad USING ERRCODE = '23514';
@@ -262,6 +288,19 @@ CREATE TRIGGER case_review_same_case BEFORE INSERT OR UPDATE ON "review_round_fi
 CREATE TRIGGER case_review_same_case BEFORE INSERT OR UPDATE ON "review_round_form" FOR EACH ROW EXECUTE FUNCTION case_review_same_case();
 CREATE TRIGGER case_review_same_case BEFORE INSERT OR UPDATE ON "review_check" FOR EACH ROW EXECUTE FUNCTION case_review_same_case();
 
+-- Round 2 breaker M2: the same-case rule is checked when a review row is written, so its parents must not move case
+-- later. A filing item's case never changes (no app path moves one); filing, round, round row and filing review are
+-- already fixed by their own guards.
+CREATE FUNCTION case_review_case_fixed() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+  SET search_path = pg_catalog, public, pg_temp AS $fn$
+BEGIN
+  IF NEW.case_id IS DISTINCT FROM OLD.case_id OR NEW.filing_id IS DISTINCT FROM OLD.filing_id THEN
+    RAISE EXCEPTION 'case_review_case_fixed: a filing item keeps its case and filing' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER case_review_case_fixed BEFORE UPDATE OF case_id, filing_id ON "filing_item" FOR EACH ROW EXECUTE FUNCTION case_review_case_fixed();
+
 -- A firm once set stays (#3811's round-1 Major: the keys skip a null firm).
 CREATE FUNCTION case_review_firm_keep() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
   SET search_path = pg_catalog, public, pg_temp AS $fn$
@@ -285,7 +324,6 @@ CREATE FUNCTION case_review_firm_follow() RETURNS trigger LANGUAGE plpgsql SECUR
 DECLARE i int := 0;
 BEGIN
   IF NEW.firm_id IS NULL OR NEW.firm_id IS NOT DISTINCT FROM OLD.firm_id THEN RETURN NULL; END IF;
-  PERFORM set_config('xr.case_firm_fill', 'on', true);
   WHILE i < TG_NARGS LOOP
     EXECUTE format('UPDATE %I SET firm_id = $1 WHERE %I = $2 AND firm_id IS NULL', TG_ARGV[i], TG_ARGV[i + 1]) USING NEW.firm_id, NEW.id;
     i := i + 2;

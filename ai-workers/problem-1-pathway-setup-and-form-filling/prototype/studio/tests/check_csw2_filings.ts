@@ -137,7 +137,7 @@ try {
   ok("CS-W2 DW1.3 pass: the same keys accept a parent of the row's own firm (a firm B item under firm B's filing)",
     A.err(`begin; alter table filing_item disable trigger case_filings_firm_fill; insert into filing_item (id, workspace_id, case_id, filing_id, kind, item_key, subject_id, firm_id) values ('${u(421)}', '${W}', '${K2}', '${FL2}', 'form', 'X', '${PRI2}', '${F2}'); rollback;`) === "");
   const moveItem = A.err(`update filing_item set filing_id = '${FL2}' where id = '${u(81)}'`);
-  ok("CS-W2 DW1.3 fail: moving a firm A item under firm B's filing is refused by its key (an update, not only an insert)", /violates foreign key constraint "filing_item_filing_id_firm_id_fkey"/.test(moveItem), moveItem.slice(0, 200));
+  ok("CS-W2 DW1.3 fail: moving a firm A item under firm B's filing is refused (by its key, or since part review by case_review_case_fixed: an item never moves)", /violates foreign key constraint "filing_item_filing_id_firm_id_fkey"|case_review_case_fixed: a filing item keeps its case and filing/.test(moveItem), moveItem.slice(0, 200));
   // Breaker M1: emptying firm_id would skip the keys (MATCH SIMPLE); the keep refuses it, and a change to another firm.
   const emptied = [
     A.err(`update filing_applicant set firm_id = null, filing_id = '${FL2}' where id = '${u(71)}'`),
