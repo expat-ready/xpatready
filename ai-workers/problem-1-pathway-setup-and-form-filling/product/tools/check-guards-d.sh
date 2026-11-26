@@ -18,7 +18,8 @@ import os, re, sys
 tools, nb, nr = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]); out = []
 ROW = re.compile(r"^[^#|\s][^|]*\|[^|]+\|.*\|[\w.-]+\.(sh|py)$")
 def lines(p):
-    try: return open(p, encoding="utf-8").read().split("\n")
+    # newline="": a lone \r stays in the line, as bash reads it (round 2 of #3833: Python's universal newlines split there)
+    try: return open(p, encoding="utf-8", newline="").read().split("\n")
     except OSError as e: out.append(f"{os.path.relpath(p, tools)} cannot be read ({type(e).__name__})"); return []
 g = lines(os.path.join(tools, "check-guards.sh"))
 for i, l in enumerate(g, 1):
@@ -43,7 +44,10 @@ for n in names:
     # block MUT='<row> and the two helper lines pyparse() and jsparse() it has always held.
     inside = False; any_row = False
     for i, l in enumerate(L, 1):
-        s = l.strip()
+        if "\r" in l: out.append(f"guards.d/{n}:{i}: a carriage return (bash reads the line differently)"); continue
+        s = l.strip(" \t")   # only bash's own blanks (round 2: \f, \v, NBSP are words to bash, not spaces)
+        if not inside and not s.startswith("#") and not re.fullmatch(r"[\t\x20-\x7e]*", l):   # after a # bash reads nothing
+            out.append(f"guards.d/{n}:{i}: a character outside printable ASCII and tab outside a MUT block"); continue
         if inside:
             if s.endswith("'"): inside = False; s = s[:-1]
             if not s: out.append(f"guards.d/{n}:{i}: an empty line inside a MUT block (an empty row)")
@@ -58,8 +62,8 @@ for n in names:
             else: inside = True
             if "'" in r or not ROW.match(r.strip()): out.append(f"guards.d/{n}:{i} is not a row (guard|file|sed edit|test, no ' in it)")
             continue
-        if base and re.fullmatch(r'(py|js)parse\(\) \{ (python3 -I -c "import ast,sys; ast\.parse\(open\(sys\.argv\[1\]\)\.read\(\)\)"|node --check) "\$\{@: -1\}"; \}(\s+#.*)?', s): continue
-        if re.fullmatch(r"TESTS=\"\$TESTS( [\w.-]+\.(sh|py))+\"(\s+#.*)?", s): continue
+        if base and re.fullmatch(r'(py|js)parse\(\) \{ (python3 -I -c "import ast,sys; ast\.parse\(open\(sys\.argv\[1\]\)\.read\(\)\)"|node --check) "\$\{@: -1\}"; \}([ \t]+#.*)?', s): continue
+        if re.fullmatch(r"TESTS=\"\$TESTS( [\w.-]+\.(sh|py))+\"([ \t]+#.*)?", s): continue
         out.append(f"guards.d/{n}:{i} is neither a comment, a MUT=\"$MUT\"' block nor a TESTS=\"$TESTS ...\" line: {s[:60]!r}")
     if inside: out.append(f"guards.d/{n}: a MUT block is not closed with '")
     if not base and not any_row and not any(l.strip().startswith("TESTS=") for l in L): out.append(f"guards.d/{n}: no row and no test")
@@ -91,6 +95,10 @@ mk; printf "pyparse() { true; }; echo RAN\n" >> "$T/c/guards.d/000-base.sh"
 ok "a command added to 000-base.sh fails (the grammar holds there too)" "$(judge "$T/c" | grep -q '000-base.sh:.* is neither' && echo 1)" "$(judge "$T/c")"
 mk; printf 'MUT="$MUT"'"'"'\nOS99 a|product/tools/x.sh|s/a/b/|check-x.sh\n\nOS99 b|product/tools/x.sh|s/a/b/|check-x.sh'"'"'\n' > "$T/c/guards.d/OS-99.sh"
 ok "an empty line inside a block (an empty row) fails" "$(judge "$T/c" | grep -q 'OS-99.sh:3: an empty line' && echo 1)" "$(judge "$T/c")"
+for ch in '\r' '\f' '\302\240' '\034'; do
+  mk; printf 'MUT="$MUT"'"'"'\nOS99 a|product/tools/x.sh|s/a/b/|check-x.sh'"'"'\n'"$ch"'# x; echo RAN\n' > "$T/c/guards.d/OS-99.sh"
+  ok "a line starting with $ch then '# ...; cmd' (a word to bash, not a comment) fails" "$(judge "$T/c" | grep -q 'OS-99.sh:3' && echo 1)" "$(judge "$T/c")"
+done
 mk; printf '# OS-99: an item\nMUT="$MUT"'"'"'\nOS99 a|product/tools/x.sh|s/a/b/|check-x.sh\nOS99 b|../../.github/workflows/x.yml|s/a/b/|check-x.sh'"'"'\nTESTS="$TESTS check-x.sh"   # its test\n' > "$T/c/guards.d/OS-99.sh"
 ok "a well-formed item file (comment, a block of rows, a TESTS line) passes" "$([ -z "$(judge "$T/c")" ] && echo 1)" "$(judge "$T/c")"
 # The real files.
