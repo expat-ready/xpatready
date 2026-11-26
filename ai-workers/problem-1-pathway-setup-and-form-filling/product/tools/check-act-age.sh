@@ -43,5 +43,10 @@ ok "an unreadable memory lists the stale lines again (never hides them)" "$(grep
 out=$(printf '%s\n' "$IN" | python3 -I "$A" --name retry --state "$T/s" --now not-a-time 2>&1)
 ok "anything wrong here: every detector line passes unchanged, with one ACT saying why" "$(grep -q 'check_a.ts passed only on retry 2 times' <<< "$out" && grep -q 'act-age.py could not judge' <<< "$out" && echo 1)" "$out"
 LW="$TOOLS/lead-watch.sh"
+# step 9's did-not-run test, read from lead-watch.sh, on act-age's output for a week of stale-only checks (round 2 of #3837)
+RX=$(python3 -I -c 'import re,sys; m=re.search(r"^grep -qE .(\^\(outside[^\x27]*). <<<\"\$od\"", open(sys.argv[1]).read(), re.M); print(m.group(1) if m else "")' "$LW")
+st='ACT outside: 3 SomeVendor: stuck for 230 h (since 16 Nov 21:40 IST)'
+o1=$(printf '%s\n' "$st" | python3 -I "$A" --name outside3 --state "$T/s" --now 2026-11-26T08:00:00Z); o2=$(printf '%s\n' "$st" | python3 -I "$A" --name outside3 --state "$T/s" --now 2026-11-26T08:30:00Z)
+ok "step 9 sees outside's output on the weekly check and on the quiet checks after it (no false did-not-run ACT)" "$([ -n "$RX" ] && grep -qE "$RX" <<< "$o1" && grep -qE "$RX" <<< "$o2" && echo 1)" "rx=$RX / $o2"
 ok "lead-watch.sh pipes retry-watch.py and outside-deps-watch.py through act-age.py" "$(grep -q 'retry-watch.py" --state "$STATE_DIR" 2>&1 | python3 -I "$TOOLS/act-age.py" --name retry' "$LW" && grep -q "outside-deps-watch.py\" 2>&1 | python3 -I \"\$TOOLS/act-age.py\" --name outside --state \"\$STATE_DIR\" --live 'decision date \[^:\]\* reached'" "$LW" && grep -q 'outside-deps-watch.py or act-age.py did not run' "$LW" && echo 1)" "not wired"
 finish

@@ -8,4 +8,5 @@ OS85b nearest|product/tools/act-age.py|s/ for k in (-1, 0, 1)\]/ for k in (0,)]/
 OS85b live|product/tools/act-age.py|s/ and not any(re.search(x, l) for x in o.live) else None/ else None/|check-act-age.sh
 OS85b outside|product/tools/lead-watch.sh|s/ --name outside --state "\$STATE_DIR" --live .decision date \[^:\]\* reached.)/ --name outside --state "$STATE_DIR")/|check-act-age.sh
 OS85b rollup|product/tools/retry-watch.py|s/ + (f", newest pass over 72 h ago (at {ist(max(t for _, t in part))})" if tag else "")//|check-retry-watch.sh
+OS85b quiet|product/tools/lead-watch.sh|s/ACT   stale outside.stale outside)/ACT   stale outside)/|check-act-age.sh
 OS85b wired|product/tools/lead-watch.sh|s/ 2>\&1 . python3 -I "\$TOOLS\/act-age.py" --name retry --state "\$STATE_DIR")/ 2>\&1)/|check-act-age.sh'
