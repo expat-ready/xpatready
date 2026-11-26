@@ -75,5 +75,5 @@ function Body() {
 }
 
 export function TrustHomePage() {
-  return <PlatformFrame area={MONEY_AREA} crumbs={[{ label: "Trust" }]}><Body /></PlatformFrame>;
+  return <PlatformFrame area={MONEY_AREA} crumbs={[]}><Body /></PlatformFrame>;
 }

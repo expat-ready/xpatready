@@ -5,6 +5,7 @@
 // withdrawal names its invoice (a link waits on the invoice's id in the ledger's answer: contract gap); a balance below zero (only after a reversal) is red with "Trust shortfall after a reversal".
 // Out of the caller's view, another firm's or unknown: one plain "not found", never "CAD 0 held" (C5). Not here yet: Pay from
 // trust and Refund to client (FO-7s3b part 1b), Send statement (FO-7s5), the case's own view /money/cases/:id (part 1b).
+import type * as React from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Button, Notice, Table } from "@/components/ui/controls";
@@ -16,12 +17,14 @@ import { money } from "../invoices/contract";
 import { entryWords, heldWords, kindWord, LedgerPage, SHORTFALL_LABEL, shortfallWords, Summary, type Figures } from "./contract";
 
 const NOT_TRACKED = "Not tracked yet";
-const ROWS: { label: string; of: (f: Figures) => string; trust?: boolean }[] = [
+/** A negative trust figure is never bare (BR-3, DW7): red, with its label. */
+const Short = ({ minor, currency }: { minor: number; currency: string }) => <><span className="font-semibold tabular-nums text-text-danger" data-balance>{money(minor, currency)}</span><span className="block text-xs text-text-danger">{SHORTFALL_LABEL}</span></>;
+const ROWS: { label: string; of: (f: Figures) => React.ReactNode; trust?: boolean }[] = [
   { label: "Billed", of: (f) => money(f.billedMinor, f.currency) }, { label: "Paid", of: (f) => money(f.paidMinor, f.currency) },
   { label: "Paid from trust", of: (f) => money(f.paidFromTrustMinor, f.currency), trust: true }, { label: "Credited", of: (f) => money(f.creditedMinor, f.currency) },
   { label: "Written off", of: (f) => money(f.writtenOffMinor, f.currency) }, { label: "Refunded", of: (f) => money(f.refundedMinor, f.currency) },
   { label: "Owed", of: (f) => money(f.owedMinor, f.currency) }, { label: "Oldest overdue", of: (f) => (f.oldestOverdueDays === null ? "—" : `${f.oldestOverdueDays} days`) },
-  { label: "Trust held", of: (f) => (f.trustMinor === null ? "—" : money(f.trustMinor, f.currency)), trust: true },
+  { label: "Trust held", of: (f) => (f.trustMinor === null ? "—" : f.trustMinor < 0 ? <Short minor={f.trustMinor} currency={f.currency} /> : money(f.trustMinor, f.currency)), trust: true },
   { label: "Credit", of: (f) => money(f.creditMinor, f.currency) }, { label: "Unbilled", of: () => NOT_TRACKED },
 ];
 const at = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -50,9 +53,7 @@ function Ledger({ param, id, cases }: { param: string; id: string; cases: Map<st
               <td className="hidden md:table-cell">{e.reference ?? "—"}</td>
               <td className="hidden lg:table-cell">{e.payer ?? "—"}</td>
               <td className="whitespace-nowrap tabular-nums" data-figure>{e.amountMinor < 0 ? `${money(-e.amountMinor, e.currency)} out` : money(e.amountMinor, e.currency)}</td>
-              <td className="whitespace-nowrap">{short
-                ? <><span className="font-semibold tabular-nums text-text-danger" data-balance>{money(e.balanceAfterMinor, e.currency)}</span><span className="block text-xs text-text-danger">{SHORTFALL_LABEL}</span></>
-                : <span className="tabular-nums" data-balance>{money(e.balanceAfterMinor, e.currency)}</span>}</td>
+              <td className="whitespace-nowrap">{short ? <Short minor={e.balanceAfterMinor} currency={e.currency} /> : <span className="tabular-nums" data-balance>{money(e.balanceAfterMinor, e.currency)}</span>}</td>
             </tr>
           );
         })}
@@ -74,7 +75,7 @@ function Body() {
   }
   if (!q.data) return <Loading label="Loading this client's money" rows={4} />;
   const s = q.data, cols = s.totals, rows = ROWS.filter((r) => s.trustShows || !r.trust), cases = new Map(s.cases.filter((c) => c.caseId).map((c) => [c.caseId!, c.caseLabel]));
-  const held = s.trustShows ? cols.map((f) => heldWords(s.cases, f.currency, money)).filter((x): x is string => !!x) : [];
+  const held = s.trustShows ? cols.filter((f) => (f.trustMinor ?? 0) >= 0).map((f) => heldWords(s.cases, f.currency, money)).filter((x): x is string => !!x) : [];
   const short = s.trustShows ? cols.filter((f) => (f.trustMinor ?? 0) < 0) : [];
   return (
     <div className="flex flex-col gap-8" data-party-money>
