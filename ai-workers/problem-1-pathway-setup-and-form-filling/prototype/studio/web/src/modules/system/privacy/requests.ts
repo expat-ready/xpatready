@@ -13,18 +13,22 @@ export const TYPE_WORDS: Record<(typeof REQUEST_TYPES)[number], string> = { ACCE
 export const REQUEST_STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED", "OVERDUE", "HELD"] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 /** One word and a shape each (never colour alone, UXL-14). */
-export const REQUEST_STATUS_WORDS: Record<RequestStatus, { word: string; mark: string; tone: string }> = {
-  PENDING: { word: "Pending", mark: "○", tone: "text-text" },
-  IN_PROGRESS: { word: "In progress", mark: "◐", tone: "text-text-link" },
-  COMPLETED: { word: "Completed", mark: "●", tone: "text-text-ok" },
-  OVERDUE: { word: "Overdue", mark: "▲", tone: "text-text-danger" },
-  HELD: { word: "Held", mark: "◆", tone: "text-text-warn" },
+export const REQUEST_STATUS_WORDS: Record<RequestStatus, { word: string; mark: string; tone: string; hint: string }> = {
+  PENDING: { word: "Pending", mark: "○", tone: "text-text", hint: "Logged; work has not started." },
+  IN_PROGRESS: { word: "In progress", mark: "◐", tone: "text-text-link", hint: "Being worked on." },
+  COMPLETED: { word: "Completed", mark: "●", tone: "text-text-ok", hint: "Done; what was done is on the request. Nothing more can change." },
+  OVERDUE: { word: "Overdue", mark: "▲", tone: "text-text-danger", hint: "Past its target date (set by the daily check); still to be completed." },
+  HELD: { word: "Held", mark: "◆", tone: "text-text-warn", hint: "Marked held: paused. This places no legal hold." },
 };
 /** The moves a person may ask for from each status (the API decides; Overdue only by the daily check, BR-5). */
 export const MOVES: Record<RequestStatus, ("IN_PROGRESS" | "COMPLETED" | "HELD")[]> = {
   PENDING: ["IN_PROGRESS", "HELD"], IN_PROGRESS: ["COMPLETED", "HELD"], OVERDUE: ["COMPLETED", "HELD"], HELD: ["IN_PROGRESS", "COMPLETED"], COMPLETED: [],
 };
-export const MOVE_WORDS: Record<"IN_PROGRESS" | "COMPLETED" | "HELD", string> = { IN_PROGRESS: "Start work", COMPLETED: "Mark completed", HELD: "Put on hold" };
+export const MOVE_WORDS: Record<"IN_PROGRESS" | "COMPLETED" | "HELD", string> = { IN_PROGRESS: "Start work", COMPLETED: "Mark completed", HELD: "Mark held" };
+/** A move's words from where it starts (challenge m6: from Held, work resumes). */
+export const moveWords = (from: RequestStatus, m: "IN_PROGRESS" | "COMPLETED" | "HELD") => (from === "HELD" && m === "IN_PROGRESS" ? "Resume work" : MOVE_WORDS[m]);
+/** A uuid as the firm's records give it (the person record id). */
+export const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.trim());
 
 export const DataRequest = z.object({
   id: z.string(), type: z.enum(REQUEST_TYPES), requester: z.string(), requesterEmail: z.string(), receivedOn: z.string(), targetDate: z.string(), status: z.enum(REQUEST_STATUSES),
@@ -46,7 +50,8 @@ const dayNumber = (day: string) => Math.round(Date.parse(`${day}T00:00:00Z`) / 8
 export function dueWords(r: Pick<DataRequest, "targetDate" | "status">, today: string): string {
   if (r.status === "COMPLETED") return "";
   const n = dayNumber(r.targetDate) - dayNumber(today);
-  return n === 0 ? "today" : n > 0 ? `in ${n} ${n === 1 ? "day" : "days"}` : `${-n} ${n === -1 ? "day" : "days"} late`;
+  const k = Math.abs(n).toLocaleString("en-GB");   // break m6: "46,320 days late"
+  return n === 0 ? "today" : n > 0 ? `in ${k} ${n === 1 ? "day" : "days"}` : `${k} ${n === -1 ? "day" : "days"} late`;
 }
 /** Today's calendar day in Toronto (the register's own clock). */
 export const torontoToday = (now = new Date()) => now.toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
@@ -86,12 +91,16 @@ export const REQUEST_COPY = {
   truncated: "Showing the newest 500.",
   logTitle: "Log a request",
   logLead: "Log a request made to ExpatReady the day it arrives. Its target date is set 30 days after the day received.",
-  personHint: "Only when the request is about one person record in one firm: the firm's id and that record's id, together.",
+  personHint: "Only when the request is about one person record in one firm: pick the firm, then paste that record's id.",
+  personIdWords: "Paste the person record's id as the firm gives it: 36 characters, like 3f2a0c1e-…-c91e.",
+  firmNeeded: "Pick the firm this person record is in.", personNeeded: "Paste the person record's id, or remove the firm.",
   personCopy: "Person record id as the firm gave it; not checked against the firm's records.",
   logged: "Logged. Its target date is 30 days after the day received.",
   logFailed: "Could not log the request. Please try again.",
   missing: "No such request.",
   noteHint: "Optional: kept with the step.",
+  heldLead: "This marks the request only. It places no legal hold.",
+  stale: "This request was changed by someone else since you opened it: nothing was saved. The page now shows the latest.",
   actionsHint: "What was done to complete it: kept on the request.",
   overdueByCheck: "Overdue is set by the daily check when the target date passes; it cannot be chosen.",
   completedNoMore: "Completed: nothing more can be changed.",

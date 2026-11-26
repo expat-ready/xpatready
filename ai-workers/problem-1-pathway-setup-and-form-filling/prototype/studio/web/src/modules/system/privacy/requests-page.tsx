@@ -12,24 +12,32 @@ import { cn } from "@/lib/utils";
 import { SystemFrame, useSystemStaff } from "../frame";
 import { systemApi, SystemApiError, useSystemToken } from "../session";
 import { firmWords } from "./contract";
-import { dayWords, DSR_KEY, dueWords, logBody, REQUEST_COPY as C, REQUEST_STATUS_WORDS, REQUEST_STATUSES, REQUEST_TYPES, requestFieldErrors, RequestList, torontoToday, TYPE_WORDS, type DataRequest, type LogDraft, type RequestStatus } from "./requests";
+import { OneFirm, type Firm } from "./one-firm";
+import { dayWords, DSR_KEY, dueWords, isUuid, logBody, REQUEST_COPY as C, REQUEST_STATUS_WORDS, REQUEST_STATUSES, REQUEST_TYPES, requestFieldErrors, RequestList, torontoToday, TYPE_WORDS, type DataRequest, type LogDraft, type RequestStatus } from "./requests";
 
 const blank = (): LogDraft => ({ type: "ACCESS", requester: "", requesterEmail: "", receivedOn: torontoToday(), firmId: "", personId: "" });
 const Logged = z.object({ id: z.string() });
 
 function LogRequest({ open, onOpenChange, onLogged, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; onLogged: (id: string) => void; returnFocus: () => HTMLElement | null }) {
+  const [firm, setFirm] = React.useState<Firm | null>(null);
   const [d, setD] = React.useState<LogDraft>(blank), [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false), [refused, setRefused] = React.useState(0);
   const form = React.useRef<HTMLFormElement>(null);
-  React.useEffect(() => { if (open) { setD(blank()); setErrors({}); } }, [open]);
+  React.useEffect(() => { if (open) { setD(blank()); setFirm(null); setErrors({}); } }, [open]);
   React.useEffect(() => { if (refused) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); }, [refused]);
   const put = <K extends keyof LogDraft>(k: K, v: string) => { setD((o) => ({ ...o, [k]: v })); setErrors((o) => { if (!(k in o)) return o; const { [k]: _gone, ...rest } = o; return rest; }); };
   const send = async (e: React.FormEvent) => {
-    e.preventDefault(); if (busy) return; setBusy(true); setErrors({});
-    try { onLogged(Logged.parse(await systemApi("/register/requests", { method: "POST", json: logBody(d) })).id); }
+    e.preventDefault(); if (busy) return;
+    // Review M1: the firm is picked, the id's shape said in plain words before anything is sent.
+    const pid = d.personId.trim(), mine: Record<string, string> = {};
+    if (firm && !pid) mine.personId = C.personNeeded; else if (pid && !isUuid(pid)) mine.personId = C.personIdWords;
+    if (pid && !firm) mine.firmId = C.firmNeeded;
+    if (Object.keys(mine).length) { setErrors(mine); setRefused((n) => n + 1); return; }
+    setBusy(true); setErrors({});
+    try { onLogged(Logged.parse(await systemApi("/register/requests", { method: "POST", json: logBody({ ...d, firmId: firm?.id ?? "" }) })).id); }
     catch (x) { setErrors(x instanceof SystemApiError && x.problem.fields ? requestFieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : C.logFailed }); setRefused((n) => n + 1); }
     finally { setBusy(false); }
   };
-  const text = (k: "requester" | "requesterEmail" | "firmId" | "personId", label: string, type = "text") =>
+  const text = (k: "requester" | "requesterEmail" | "personId", label: string, type = "text") =>
     <Field label={label} error={errors[k]}><Input type={type} value={d[k]} onChange={(e) => put(k, e.target.value)} aria-invalid={errors[k] ? true : undefined} data-field={k} /></Field>;
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={C.logTitle} description={C.logLead} guard returnFocus={returnFocus}
@@ -44,7 +52,8 @@ function LogRequest({ open, onOpenChange, onLogged, returnFocus }: { open: boole
         <fieldset className="flex flex-col gap-3">
           <legend className="text-xs font-medium text-text">About one person record (optional)</legend>
           <p className="text-xs text-text-muted">{C.personHint}</p>
-          {text("firmId", "Firm id")}{text("personId", "Person record id")}
+          <OneFirm chosen={firm} onChange={(f) => { setFirm(f); setErrors(({ firmId: _g, ...r }) => r); }} error={errors.firmId} />
+          {text("personId", "Person record id")}
         </fieldset>
         {errors.other ? <Notice tone="danger"><span data-log-error>{errors.other}</span></Notice> : null}
       </form>
@@ -61,7 +70,7 @@ function Row({ r, today }: { r: DataRequest; today: string }) {
         {r.firmId ? <span className="block text-xs text-text-muted">{firmWords({ id: r.firmId, name: r.firmName })}</span> : null}</td>
       <td>{TYPE_WORDS[r.type]}</td>
       <td className="whitespace-nowrap"><time dateTime={r.targetDate}>{dayWords(r.targetDate)}</time>{due ? <span className={cn("block text-xs", due.endsWith("late") ? "text-text-danger" : "text-text-muted")}>{due}</span> : null}</td>
-      <td className="whitespace-nowrap"><span className={cn("font-medium", s.tone)}><span aria-hidden>{s.mark} </span>{s.word}</span></td>
+      <td className="whitespace-nowrap"><span className={cn("font-medium", s.tone)} title={s.hint}><span aria-hidden>{s.mark} </span>{s.word}</span></td>
     </tr>
   );
 }

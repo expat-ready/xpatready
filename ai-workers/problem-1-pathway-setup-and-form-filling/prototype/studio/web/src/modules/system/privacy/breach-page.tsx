@@ -89,10 +89,10 @@ function BreachBody() {
   // after "changed elsewhere", it showed the old words while the reload was still on its way), and its stale check compares
   // with the breach as it was when the dialog opened, never with a copy a background refetch replaced meanwhile.
   const seenAt = React.useRef<{ updatedAt: string; notices: number } | null>(null), [readying, setReadying] = React.useState(false);
-  const opening = async (open: () => void) => {
+  const opening = async (open: (fresh: BreachOne) => void) => {
     if (readying) return;
     setReadying(true);
-    try { const r = await one.refetch(); if (!r.data) return; seenAt.current = { updatedAt: r.data.updatedAt, notices: r.data.notices.length }; open(); } finally { setReadying(false); }
+    try { const r = await one.refetch(); if (!r.data) return; seenAt.current = { updatedAt: r.data.updatedAt, notices: r.data.notices.length }; open(r.data); } finally { setReadying(false); }
   };
   const unchanged = async () => {
     const now = BreachOne.parse(await systemApi(`/register/breaches/${encodeURIComponent(id)}`)), was = seenAt.current;
@@ -137,7 +137,7 @@ function BreachBody() {
         </dl>
       </Card>
 
-      <Card title="Decision" id="breach-decision" action={manage && b.status === "RECORDED" && !fixed ? <Button ref={decideButton} variant={b.decision === "UNDECIDED" ? "default" : "outline"} size="sm" busy={readying} onClick={() => void opening(() => { setChoice(b.decision === "UNDECIDED" ? null : b.decision); setWhy(""); setDeciding(true); })}>{b.decision === "UNDECIDED" ? "Decide" : "Change the decision"}</Button> : undefined}>
+      <Card title="Decision" id="breach-decision" action={manage && b.status === "RECORDED" && !fixed ? <Button ref={decideButton} variant={b.decision === "UNDECIDED" ? "default" : "outline"} size="sm" busy={readying} onClick={() => void opening((fresh) => { setChoice(fresh.decision === "UNDECIDED" ? null : fresh.decision); setWhy(""); setDeciding(true); })}   /* break B1 (#3818): the dialog starts from the fresh read, the same read its stale check compares with */>{b.decision === "UNDECIDED" ? "Decide" : "Change the decision"}</Button> : undefined}>
         <dl>
           <Row label="Decision">{b.status === "DRAFT" ? `${DECISION_WORDS[b.decision]} (confirm the record first)` : b.decision === "NOTIFY_FIRMS" ? "Notify the affected firms" : DECISION_WORDS[b.decision]}</Row>
           {b.decisionReason ? <Row label="Why">{b.decisionReason}</Row> : null}

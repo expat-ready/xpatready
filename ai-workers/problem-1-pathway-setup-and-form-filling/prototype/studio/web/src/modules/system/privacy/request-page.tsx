@@ -9,15 +9,15 @@ import { Button, Dialog, Field, Notice, Textarea } from "@/components/ui/control
 import { cn } from "@/lib/utils";
 import { SystemFrame, useSystemStaff } from "../frame";
 import { systemApi, SystemApiError, useSystemToken } from "../session";
-import { actorWords, firmWords, momentUtc, shortId } from "./contract";
-import { dayWords, DSR_KEY, dueWords, MOVE_WORDS, MOVES, REQUEST_COPY as C, REQUEST_STATUS_WORDS, requestFieldErrors, RequestOne, stepWords, torontoToday, TYPE_WORDS } from "./requests";
+import { actorWords, firmWords, momentUtc } from "./contract";
+import { dayWords, DSR_KEY, dueWords, moveWords, MOVES, REQUEST_COPY as C, REQUEST_STATUS_WORDS, requestFieldErrors, RequestOne, stepWords, torontoToday, TYPE_WORDS } from "./requests";
 
 type Move = "IN_PROGRESS" | "COMPLETED" | "HELD";
 const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="grid gap-1 py-1.5 sm:grid-cols-[12rem_1fr]"><dt className="text-xs font-medium text-text-muted">{label}</dt><dd className="text-sm [overflow-wrap:anywhere] whitespace-pre-line">{children}</dd></div>
 );
 
-function MoveDialog({ id, move, onOpenChange, onMoved, returnFocus }: { id: string; move: Move | null; onOpenChange: (o: boolean) => void; onMoved: (m: Move) => void; returnFocus: () => HTMLElement | null }) {
+function MoveDialog({ id, from, move, onOpenChange, onMoved, onStale, returnFocus }: { id: string; from: RequestOne["status"]; move: Move | null; onOpenChange: (o: boolean) => void; onMoved: (m: Move) => void; onStale: (words: string) => void; returnFocus: () => HTMLElement | null }) {
   const [actions, setActions] = React.useState(""), [note, setNote] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
   const form = React.useRef<HTMLFormElement>(null);
   React.useEffect(() => { if (move) { setActions(""); setNote(""); setErrors({}); } }, [move]);
@@ -27,13 +27,21 @@ function MoveDialog({ id, move, onOpenChange, onMoved, returnFocus }: { id: stri
     const body: Record<string, unknown> = { status: move };
     if (move === "COMPLETED") body.actionsTaken = actions;   // sent as typed: an empty one is the API's field error
     if (note.trim()) body.note = note;
-    try { await systemApi(`/register/requests/${encodeURIComponent(id)}/status`, { method: "POST", json: body }); onMoved(move); }
-    catch (x) { setErrors(x instanceof SystemApiError && x.problem.fields ? requestFieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : "Could not save. Please try again." }); }
+    try {
+      // Break M1 (#3818): the request is read again first; moved by someone else since this dialog opened → nothing is sent.
+      const now = RequestOne.parse(await systemApi(`/register/requests/${encodeURIComponent(id)}`));
+      if (now.status !== from) { onStale(C.stale); return; }
+      await systemApi(`/register/requests/${encodeURIComponent(id)}/status`, { method: "POST", json: body }); onMoved(move);
+    }
+    catch (x) {
+      // Review m1: a move the request's status no longer allows (changed elsewhere): the dialog closes and the page reloads.
+      if (x instanceof SystemApiError && x.status === 409 && (x.problem.code === "MOVE_REFUSED" || x.problem.code === "SAME_STATUS")) { onStale(`${x.message} ${C.stale}`); return; }
+      setErrors(x instanceof SystemApiError && x.problem.fields ? requestFieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : "Could not save. Please try again." }); }
     finally { setBusy(false); }
   };
   return (
-    <Dialog open={!!move} onOpenChange={onOpenChange} title={move ? `${MOVE_WORDS[move]}?` : ""} description={move === "COMPLETED" ? C.actionsHint : C.noteHint} returnFocus={returnFocus}
-      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="move-request" busy={busy} data-move-send>{move ? MOVE_WORDS[move] : ""}</Button></>}>
+    <Dialog open={!!move} onOpenChange={onOpenChange} guard title={move ? `${moveWords(from, move)}?` : ""} description={move === "COMPLETED" ? C.actionsHint : move === "HELD" ? C.heldLead : undefined} returnFocus={returnFocus}
+      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="move-request" busy={busy} data-move-send>{move ? moveWords(from, move) : ""}</Button></>}>
       <form id="move-request" ref={form} onSubmit={go} noValidate className="flex flex-col gap-4">
         {move === "COMPLETED" ? <Field label="What was done" error={errors.actionsTaken}><Textarea rows={3} value={actions} onChange={(e) => { setActions(e.target.value); setErrors(({ actionsTaken: _g, ...r }) => r); }} aria-invalid={errors.actionsTaken ? true : undefined} data-field="actionsTaken" /></Field> : null}
         <Field label="Note" hint={C.noteHint} error={errors.note}><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={errors.note ? true : undefined} data-field="note" /></Field>
@@ -46,8 +54,8 @@ function MoveDialog({ id, move, onOpenChange, onMoved, returnFocus }: { id: stri
 function RequestBody() {
   const { id = "" } = useParams(), [params, setParams] = useSearchParams(), token = useSystemToken(), me = useSystemStaff(), qc = useQueryClient();
   const one = useQuery({ queryKey: ["sys", "request", id, token], enabled: !!token, retry: false, queryFn: async () => RequestOne.parse(await systemApi(`/register/requests/${encodeURIComponent(id)}`)) });
-  const [move, setMove] = React.useState<Move | null>(null), [done, setDone] = React.useState<string | null>(params.get("logged") ? C.logged : null);
-  const heading = React.useRef<HTMLHeadingElement>(null), actionsRef = React.useRef<HTMLDivElement>(null);
+  const [move, setMove] = React.useState<Move | null>(null), [openedAt, setOpenedAt] = React.useState<RequestOne["status"]>("PENDING"), [done, setDone] = React.useState<string | null>(params.get("logged") ? C.logged : null);
+  const heading = React.useRef<HTMLHeadingElement>(null), actionsRef = React.useRef<HTMLDivElement>(null), doneLine = React.useRef<HTMLParagraphElement>(null);
   React.useEffect(() => { if (params.get("logged")) setParams({}, { replace: true }); }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- once, on arrival
   React.useEffect(() => { if (one.data && done) heading.current?.focus(); }, [!!one.data]);   // eslint-disable-line react-hooks/exhaustive-deps -- the first answer
   const r = one.data;
@@ -58,16 +66,19 @@ function RequestBody() {
       <span data-request-error>{refused ? (refused.status === 404 ? C.missing : refused.message) : C.loadFailed}</span></Notice>
     <Link to="/system/privacy/requests" className="text-sm text-text-link">Back to Data requests to us</Link></div>;
   const s = REQUEST_STATUS_WORDS[r.status], due = dueWords(r, torontoToday()), manage = me.keys.includes(DSR_KEY), moves = MOVES[r.status];
-  const moved = (m: Move) => { setMove(null); setDone(`Moved to ${REQUEST_STATUS_WORDS[m].word}.`); void qc.invalidateQueries({ queryKey: ["sys", "request", id] }); void qc.invalidateQueries({ queryKey: ["sys", "requests"] }); };
+  const reload = () => { void qc.invalidateQueries({ queryKey: ["sys", "request", id] }); void qc.invalidateQueries({ queryKey: ["sys", "requests"] }); };
+  const moved = (m: Move) => { setDone(`Moved to ${REQUEST_STATUS_WORDS[m].word}.`); setMove(null); reload(); };
+  const stale = (words: string) => { setDone(words); setMove(null); reload(); };
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
       <Link to="/system/privacy/requests" className="text-sm text-text-link">← Data requests to us</Link>
       <header className="flex flex-col gap-2">
         <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none [overflow-wrap:anywhere]">{TYPE_WORDS[r.type]} request from {r.requester}</h1>
-        <p className={cn("font-medium", s.tone)} data-request-status={r.status}><span aria-hidden>{s.mark} </span>{s.word}{due ? <span className="font-normal text-text-muted"> · target {dayWords(r.targetDate)}, {due}</span> : null}</p>
-        {done ? <p role="status" className="text-sm text-text-ok" data-done>{done}</p> : null}
+        <p className={cn("font-medium", s.tone)} data-request-status={r.status} title={s.hint}><span aria-hidden>{s.mark} </span>{s.word}{due ? <span className="font-normal text-text-muted"> · target {dayWords(r.targetDate)}, {due}</span> : null}</p>
+        {/* Review M2: always there, so the focus can land on it after a move (the move buttons are replaced by the reload). */}
+        <p ref={doneLine} tabIndex={-1} role="status" className={cn("text-sm text-text-ok outline-none", !done && "sr-only")} data-done>{done ?? ""}</p>
         {manage ? <div ref={actionsRef} className="flex flex-wrap gap-2" data-request-moves>
-          {moves.length ? moves.map((m, i) => <Button key={m} variant={i === 0 ? "default" : "outline"} onClick={() => setMove(m)}>{MOVE_WORDS[m]}</Button>) : <p className="text-sm text-text-muted">{C.completedNoMore}</p>}
+          {moves.length ? moves.map((m, i) => <Button key={m} variant={i === 0 ? "default" : "outline"} className="max-sm:min-h-11" onClick={() => { setOpenedAt(r.status); setMove(m); }}>{moveWords(r.status, m)}</Button>) : <p className="text-sm text-text-muted">{C.completedNoMore}</p>}
         </div> : null}
         {manage && r.status !== "COMPLETED" ? <p className="text-xs text-text-muted">{C.overdueByCheck}</p> : null}
       </header>
@@ -78,7 +89,7 @@ function RequestBody() {
           <Row label="Received on"><time dateTime={r.receivedOn}>{dayWords(r.receivedOn)}</time></Row>
           <Row label="Target date"><time dateTime={r.targetDate} data-target-date>{dayWords(r.targetDate)}</time> (30 days after receipt; our own reminder)</Row>
           {r.firmId ? <Row label="Firm">{firmWords({ id: r.firmId, name: r.firmName })}</Row> : null}
-          {r.personId ? <Row label="Person record"><span title={r.personId}>{shortId(r.personId)}</span><span className="block text-xs text-text-muted">{C.personCopy}</span></Row> : null}
+          {r.personId ? <Row label="Person record"><code className="select-all font-mono text-xs [overflow-wrap:anywhere]" data-person-id>{r.personId}</code><span className="block text-xs text-text-muted">{C.personCopy}</span></Row> : null}
           {r.actionsTaken ? <Row label="What was done"><span data-actions-taken>{r.actionsTaken}</span></Row> : null}
           {r.completedOn ? <Row label="Completed on"><time dateTime={r.completedOn}>{dayWords(r.completedOn)}</time></Row> : null}
           <Row label="Logged by">{actorWords(r.recordedBy, r.recordedByName)}</Row>
@@ -94,7 +105,7 @@ function RequestBody() {
           </li>)}
         </ol>
       </section>
-      {manage ? <MoveDialog id={r.id} move={move} onOpenChange={(o) => { if (!o) setMove(null); }} onMoved={moved} returnFocus={() => actionsRef.current?.querySelector("button") ?? heading.current} /> : null}
+      {manage ? <MoveDialog id={r.id} from={openedAt} move={move} onOpenChange={(o) => { if (!o) setMove(null); }} onMoved={moved} onStale={stale} returnFocus={() => (done || doneLine.current?.textContent ? doneLine.current : actionsRef.current?.querySelector("button")) ?? heading.current} /> : null}
     </div>
   );
 }
