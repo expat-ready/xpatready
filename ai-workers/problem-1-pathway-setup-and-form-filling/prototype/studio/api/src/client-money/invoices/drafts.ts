@@ -21,6 +21,7 @@ import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
 import { billToProvince, type BillToParty } from "./bill-to.ts";
 import { failClosed, invoiceInScope, partyInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { taxForLine } from "./tax-round.ts";
+import { liveParty } from "../live-party.ts";
 import { SIGNED_STATES, type RetainerFeeRow, type RetainerFeesPort } from "../../../../ports/retainer-fees.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -73,6 +74,7 @@ export class InvoiceDrafts {
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: d.companyId!.toLowerCase() }), select: { id: true } });
       // C5 (Lead 14, #3321 (2)): a party outside the caller's scope is the same 404 as a missing one, before anything is written
       if (!client || !partyInScope(scope, client.id)) notFound(d.personId ? "person" : "company");
+      await liveParty(tx, ctx.firmId, client!.id, scope);   // FO-9b part 2m: never a draft on a merged-away client (held FOR KEY SHARE)
       // FO-7w1 (break m4): a retainer's fee rows are CAD only (fo_retainer_fee_row_currency_check), so a draft from one
       // with no currency sent is CAD, never the firm's default (a USD default would refuse every row at a field not sent).
       const currency = d.currency ?? (d.retainerId ? "CAD" : settings.defaultCurrency);
@@ -113,6 +115,7 @@ export class InvoiceDrafts {
       await this.seen(tx, ctx, id, scope);   // C5 before the row lock and any write (review m2)
       const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null; billTo: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId", bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      await liveParty(tx, firmId, inv.personId ?? inv.companyId, scope);   // FO-9b part 2m (break m3): never a line on a merged-away client's draft
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
@@ -158,6 +161,7 @@ export class InvoiceDrafts {
       await this.seen(tx, ctx, id, scope);   // C5 before the row lock and any write (review m2)
       const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null; personId: string | null; companyId: string | null; currency: string }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo", person_id::text as "personId", company_id::text as "companyId", currency::text as currency from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      await liveParty(tx, firmId, inv.personId ?? inv.companyId, scope);   // FO-9b part 2m (break m3)
       if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
       if (inv.billTo === b.province) return this.view(tx, ctx.firmId, id);
       // The two defaults, from one read of the firm's facts after the invoice's lock (as addLine reads them).
