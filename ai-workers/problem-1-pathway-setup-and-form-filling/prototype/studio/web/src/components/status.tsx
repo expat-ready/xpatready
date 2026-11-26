@@ -13,8 +13,17 @@ export function TipProvider({ children }: { children: React.ReactNode }) {
 /** A tooltip on a focusable trigger. Content describes the trigger (aria-describedby); it never names it. `focusable`
  *  makes a plain element reachable by keyboard (a number sets its tabIndex, for rows of a treegrid). */
 export function Tip({ tip, children, focusable }: { tip: React.ReactNode; children: React.ReactElement; focusable?: boolean | number }) {
-  const child = focusable !== undefined && focusable !== false ? React.cloneElement(children as React.ReactElement<any>, { tabIndex: focusable === true ? 0 : focusable }) : children;
-  return <Tooltip><TooltipTrigger asChild>{child}</TooltipTrigger><TooltipContent>{tip}</TooltipContent></Tooltip>;
+  // Radix closes an open tooltip on any page scroll. Focusing a trigger below the fold scrolls the page just after the
+  // tooltip opens, so a keyboard user never saw it (CS-NT1 part 4 put the case page's tips below the fold; c95 BIC-14,
+  // A24-3 m3). A close that comes within 600 ms of the focus, while the trigger still has focus, is that scroll and is
+  // ignored; blur, Escape and the pointer leaving close it as before.
+  const [open, setOpen] = React.useState(false);
+  const focused = React.useRef<{ at: number; el: EventTarget | null }>({ at: 0, el: null });
+  const props = (children as React.ReactElement<any>).props ?? {};
+  const onFocus = (e: React.FocusEvent) => { focused.current = { at: Date.now(), el: e.currentTarget }; props.onFocus?.(e); };
+  const child = React.cloneElement(children as React.ReactElement<any>, { onFocus, ...(focusable !== undefined && focusable !== false ? { tabIndex: focusable === true ? 0 : focusable } : {}) });
+  const change = (o: boolean) => { if (!o && Date.now() - focused.current.at < 600 && focused.current.el === document.activeElement) return; setOpen(o); };
+  return <Tooltip open={open} onOpenChange={change}><TooltipTrigger asChild>{child}</TooltipTrigger><TooltipContent>{tip}</TooltipContent></Tooltip>;
 }
 
 export const STATUS_TIP: Record<Status, string> = {
