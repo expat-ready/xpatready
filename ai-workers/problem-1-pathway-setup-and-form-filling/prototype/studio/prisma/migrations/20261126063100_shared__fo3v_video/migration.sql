@@ -79,7 +79,10 @@ END
 $fn$;
 CREATE TRIGGER "fo_video_drop_on_deactivate" AFTER UPDATE OF "status" ON "platform_staff" FOR EACH ROW
   WHEN (NEW."status" = 'DEACTIVATED' AND OLD."status" IS DISTINCT FROM NEW."status") EXECUTE FUNCTION fo_video_drop_on_deactivate();
+-- F4 (20261121230000) took CREATE on public from xr_wall_reader; the owner change needs it for this statement only (check_pf8b_f4_migrations.ts).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION fo_video_drop_on_deactivate() OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 REVOKE ALL ON FUNCTION fo_video_drop_on_deactivate() FROM PUBLIC;
 
 -- PF-12's wall (forced policy on the session's firm, the firm gate first; tests/check_pf12_walls.ts).
