@@ -41,7 +41,7 @@ code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:
 </style>
 <div class="wrap">
 <header style="display:flex;flex-direction:column;gap:8px">
-  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 2 · version 4 · 26 Nov 2026, 15:0x IST · from lead-watch at 13:33 IST and GitHub at 14:2x IST</div>
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 2 · version 5 · 26 Nov 2026, 14:2x IST (earlier versions mislabelled 14:3x and 15:0x) · from lead-watch at 13:33 IST and GitHub at 14:2x IST</div>
   <h1>Release 1 Recovery Control Room</h1>
   <p class="sub"><b>This is the one page we keep (A401).</b> Every report uses its order: Needs you, Headline, capabilities, pipeline, how it is watched, the 15-a-day math, operating system, Lead scorecard, plan. No new formats. One page for the founder: where Release 1 stands, what is moving, what is stuck, what is enforced, and the recovery plan. Every number comes from GitHub or main's <code>qa/CAPABILITIES.md</code> at 12:19 IST; estimates say so. The detailed plan is in <a href="https://claude.ai/artifact/PgnAemZQEb3FnbM9DTYaXX">Release 1 Plan of Attack</a>.</p>
 </header>
@@ -71,6 +71,29 @@ code{font-family:var(--mono);font-size:.85em}a{color:var(--accent)}footer{color:
     <div style="width:26.3%;background:var(--idle)">29 Not built</div>
   </div>
   <p><b>Recommendation:</b> keep the Lead's reads under 30 minutes (15 read and queued 12:45-13:45 IST), cut review rounds caused by one shared file (OS-85, sent to the pipeline lane), and shape the nine unshaped rows R1.113-R1.121 now: they, and the six rows that need outside accounts, are the real tail, not the 15-a-day rate.</p>
+</section>
+
+<section>
+  <h2>Forecast, row by row (ETA board, P-338)</h2>
+  <p class="sub">Estimates from this check's PR states, 14:2x IST. Each check marks each line on time or late by N minutes, and why. "Works" means qa-proven on main.</p>
+  <div class="box"><table>
+    <tr><th style="width:24%">Capability</th><th>What is left</th><th style="width:16%">Works by (IST)</th><th style="width:22%">Waits on</th></tr>
+    <tr><td>R1.96 refunds, credit notes, plans</td><td>Merged 00:31 (#3792); proof only</td><td class="num">26 Nov 16:00</td><td>qa 2 proof PR</td></tr>
+    <tr><td>R1.112 video meeting links</td><td>#3418 in the merge queue now</td><td class="num">26 Nov 17:00</td><td>batch green, then qa</td></tr>
+    <tr><td>R1.85 data-request register</td><td>#3818 merged; #3713 in a batch; #3836 legal holds open</td><td class="num">27 Nov 10:00</td><td>#3836 review</td></tr>
+    <tr><td>R1.79 dashboards and reports</td><td>#3734 in a batch; #3812 money tiles in review</td><td class="num">27 Nov 12:00</td><td>#3812 Approve and read</td></tr>
+    <tr><td>R1.60 deposit on signing</td><td>#3681 full run running; part a2 after it</td><td class="num">27 Nov 14:00</td><td>full run green, then a2</td></tr>
+    <tr><td>R1.64 resumable upload</td><td>#3303 tests re-started; #3698 stacked on it</td><td class="num">27 Nov 16:00</td><td>pr-suites on #3303</td></tr>
+    <tr><td>R1.76 notes and timeline</td><td>#3649 full run; #3822, #3829, #3832 drafts</td><td class="num">27 Nov 20:00</td><td>three drafts to review</td></tr>
+    <tr><td>R1.3 walls between firms</td><td>#3811, #3823 round fixes; #3831 draft; CS-W4</td><td class="num">28 Nov</td><td>CS-W4 walls</td></tr>
+  </table></div>
+  <div class="stats">
+    <div class="stat"><b>2</b><span>expected Works by 07:00 27 Nov (R1.96, R1.112)</span></div>
+    <div class="stat"><b>6-8</b><span>expected by 07:00 28 Nov</span></div>
+    <div class="stat"><b>64 → 72</b><span>Works by 28 Nov (estimate)</span></div>
+    <div class="stat warn"><b>~4 Dec</b><span>all 110 at 6-8 a day once the switch settles</span></div>
+  </div>
+  <p class="sub">Why lower than 15 today: the 17:30 switch costs about an hour of lanes, and the near-Works rows each still have 1-3 parts in review. The 15-a-day path is in "The math for 15 a day" below.</p>
 </section>
 
 <section>

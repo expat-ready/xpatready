@@ -18,7 +18,8 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | # | Ask (IST) | Status |
 |---|---|---|
 | A403-A404 | 26 Nov ~14:0x (typed) | maximise proven from the remaining plan; the switch strategy becomes standing (A404): top block of RESUME-ON-NEW-ACCOUNT.md. A403 word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
-| A402 | 26 Nov ~14:5x (typed) | provisioning so an account switch loses no work, state or context (research the harness/mobile features, no over-engineering); control room kept consistent and updated by every Lead, who finds how to unblock, improve and recover; think ahead where things go wrong and run the factory in that order; **Lead scorecard below 8 → find why and fix it, at each check**. Done 15:0x: control room v4 (below-8 fixes, risks, account switch: docs say no session moves between accounts; recommend usage credits with a cap, founder to decide) |
+| A405 | 26 Nov ~14:1x (typed) | standing pre-approvals for every Lead (lane answers in the browser, reopen/re-run, 12 lanes per account, check-only merges); full text in RESUME's standing block |
+| A402 | 26 Nov ~13:5x (typed) | switch provisioning researched (no session moves between accounts); scorecard under 8 → cause and fix each check (in force); row word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
 | A401 | 26 Nov ~14:0x (typed) | done 14:3x (control room v3 is the one format; P-731 ruled; OS-85 sent); row word for word in `history/STATE-2026-11-26-1315-lead2-a395-row.md` |
 | A400 | 26 Nov ~12:2x | watchers inside the pipeline, not one-off: word for word in the A391-A394 history file | OS-82, OS-83 with OS-PM 4 |
 | A399 | 26 Nov ~12:0x (typed) | standing approvals until he says stop (see hand-over block) | in force |
