@@ -88,7 +88,9 @@ try {
     A.err(`update case_stage set firm_key = 'ghost-firm' where id = '${u(21)}'`, "xr_app"),
   ];
   ok("CS-W1 DW6 fail: a case's, a counter row's or a stage's firm_id or firm_key cannot change (as owner and as xr_app)",
-    moves.slice(0, 4).every((e) => /case_firm_fixed: a \w+ row keeps its firm/.test(e)) && /case_firm_fixed|permission denied|not found/.test(moves[4]), moves.map((e) => e.slice(0, 90)));
+    moves.every((e) => /case_firm_fixed: a \w+ row keeps its firm/.test(e)), moves.map((e) => e.slice(0, 90)));
+  const replicaMove = A.err(`set session_replication_role = replica; update runtime_case set firm_id = '${F2}' where id = '${u(11)}'`);
+  ok("CS-W1 DW6 fail (review m2): a replica-mode writer cannot change a case's firm either (the guard fires ALWAYS)", /case_firm_fixed: a runtime_case row keeps its firm/.test(replicaMove), replicaMove.slice(0, 120));
   ok("CS-W1 DW6 pass: an update naming the columns with the same values, or other columns, goes through",
     A.err(`begin; update runtime_case set firm_id = firm_id, firm_key = firm_key, reference = 'P2-1b' where id = '${u(11)}'; update firm_case_counter set next_value = next_value + 1 where firm_key = 'sample-firm'; rollback;`) === "");
 
@@ -96,9 +98,9 @@ try {
   ok("CS-W1 DW7 pass: the migration adds exactly one function, case_firm_fixed", added.join(",") === "case_firm_fixed", added);
   ok("CS-W1 DW7 fail: it is SECURITY INVOKER with its search_path pinned, pg_temp last",
     A.sql(`select prosecdef::text || ':' || array_to_string(proconfig, ';') from pg_proc where proname = 'case_firm_fixed'`) === "false:search_path=pg_catalog, public, pg_temp");
-  ok("CS-W1 part 2 pass: the three fills fire ALWAYS ('A'), the guard on every update ('O')",
+  ok("CS-W1 part 2 pass: the three fills and the three guards fire ALWAYS ('A'), also for a replica-mode writer",
     A.sql(`select string_agg(c.relname || '.' || t.tgname || '=' || t.tgenabled::text, ',' order by c.relname, t.tgname) from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname in ('case_firm_from_key', 'case_firm_fill', 'case_firm_fixed') and c.relname in ('runtime_case', 'case_stage', 'firm_case_counter')`)
-      === "case_stage.case_firm_fill=A,case_stage.case_firm_fixed=O,firm_case_counter.case_firm_fixed=O,firm_case_counter.case_firm_from_key=A,runtime_case.case_firm_fixed=O,runtime_case.case_firm_from_key=A");
+      === "case_stage.case_firm_fill=A,case_stage.case_firm_fixed=A,firm_case_counter.case_firm_fixed=A,firm_case_counter.case_firm_from_key=A,runtime_case.case_firm_fixed=A,runtime_case.case_firm_from_key=A");
 } finally { A.drop(); }
 
 // ------------------------------------------------------------------------------------------ 2. the copy (API)

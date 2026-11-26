@@ -5,17 +5,20 @@
 --   * the stop: while runtime_case, case_stage or firm_case_counter holds a row with no firm_id, the migration refuses in
 --     plain words naming each firm key ("run the Sample seed, then migrate again"; brief DW8). CS-W1 part 1's backfill
 --     runs once first, so a database whose Sample firms already exist migrates without a hand step.
---   * the fills (case_firm_from_key, case_firm_fill) fire ALWAYS, also under session_replication_role = replica (a
---     restore, the suites' seeds), so a restore-style insert still gets its firm.
+--   * the fills (case_firm_from_key, case_firm_fill) fire ALWAYS, also under session_replication_role = replica (the
+--     suites' restore-style seeds; pg_restore itself loads the data before the triggers exist), so such an insert still
+--     gets its firm.
 --   * NOT NULL on the three columns (Prisma: firmId String, the default unchanged, so no code passes it).
---   * the guard (case_firm_fixed): a case's, a counter row's or a stage's firm_id and firm_key never change (brief DW6; on
---     main nothing guarded a case's firm: #3811's breaker m3). An UPDATE that names the columns with the same values passes.
+--   * the guard (case_firm_fixed, ALWAYS): a case's, a counter row's or a stage's firm_id and firm_key never change (brief
+--     DW6; on main nothing guarded a case's firm: #3811's breaker m3). An UPDATE that names the columns with the same
+--     values passes. On case_stage this stands in for the brief's change to runtime_case_stage_forward() (same effect).
 --   * Left for part 2b (its own PR): the four unique rules re-keyed from firm_key to firm_id, runtime_next_case_number
 --     resolving the id inside, and the five firm-identity comparisons in code switching to firm_id (brief DW3, DW4).
--- Rollback (in this order): ALTER TABLE runtime_case, firm_case_counter ENABLE TRIGGER case_firm_from_key; ALTER TABLE
---   case_stage ENABLE TRIGGER case_firm_fill; DROP TRIGGER case_firm_fixed ON runtime_case, firm_case_counter, case_stage; DROP FUNCTION
---   case_firm_fixed(); ALTER TABLE runtime_case, firm_case_counter, case_stage ALTER COLUMN firm_id DROP NOT NULL; then
---   delete this folder's row from _prisma_migrations. Nothing is lost.
+-- Rollback (in this order): DROP TRIGGER case_firm_fixed ON runtime_case; DROP TRIGGER case_firm_fixed ON firm_case_counter;
+--   DROP TRIGGER case_firm_fixed ON case_stage; DROP FUNCTION case_firm_fixed(); ALTER TABLE runtime_case ENABLE TRIGGER
+--   case_firm_from_key; ALTER TABLE firm_case_counter ENABLE TRIGGER case_firm_from_key; ALTER TABLE case_stage ENABLE
+--   TRIGGER case_firm_fill; ALTER TABLE runtime_case ALTER COLUMN firm_id DROP NOT NULL; (the same for firm_case_counter
+--   and case_stage); then delete this folder's row from _prisma_migrations. Nothing is lost.
 
 SELECT case_firm_backfill();
 
@@ -60,3 +63,8 @@ END $fn$;
 CREATE TRIGGER case_firm_fixed BEFORE UPDATE OF firm_id, firm_key ON "runtime_case" FOR EACH ROW EXECUTE FUNCTION case_firm_fixed();
 CREATE TRIGGER case_firm_fixed BEFORE UPDATE OF firm_id, firm_key ON "firm_case_counter" FOR EACH ROW EXECUTE FUNCTION case_firm_fixed();
 CREATE TRIGGER case_firm_fixed BEFORE UPDATE OF firm_id, firm_key ON "case_stage" FOR EACH ROW EXECUTE FUNCTION case_firm_fixed();
+-- The guard fires ALWAYS too (review m2): a replica-mode writer cannot give a row another firm either. A restore that
+-- needs to (none does: pg_restore loads the data before the triggers exist) is a deliberate owner act: DISABLE TRIGGER.
+ALTER TABLE "runtime_case" ENABLE ALWAYS TRIGGER case_firm_fixed;
+ALTER TABLE "firm_case_counter" ENABLE ALWAYS TRIGGER case_firm_fixed;
+ALTER TABLE "case_stage" ENABLE ALWAYS TRIGGER case_firm_fixed;

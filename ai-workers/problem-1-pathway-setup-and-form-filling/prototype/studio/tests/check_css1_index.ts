@@ -201,9 +201,15 @@ try {
   const S = person(FULL, w, B, "principal", "Solo Client (Sample)");
   ok("CS-S1 DW3 pass: the row's firm_id equals the case's firm (platform_firm by firm_key)", p2?.firm_id === sql(FULL, `select f.id from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${A}'`));
   ok("CS-S1 DW3 pass: a case of the Sample solo firm gets the solo firm's id", row(FULL, S.subject)?.firm_id === w.firm["sample-solo"] && w.firm["sample-solo"] !== w.firm["sample-firm"]);
-  // CS-W1 part 2 (20261126160000) makes a case's firm required: a case whose firm has no platform_firm row can no longer
-  // exist, so the earlier check (such a case's answer write succeeds with no index row) is now the database's refusal of it.
-  ok("CS-S1 DW3 fail: a case whose firm has no platform_firm row is refused (CS-W1 part 2), so no row can lack its firm",
+  // CS-W1 part 2 (20261126160000): a new case whose key has no platform_firm row is refused, and a case's firm never changes,
+  // so the app cannot make this state; the fixture builds it as the table owner (a Sample case re-keyed, replica mode, the
+  // guard disabled for that statement), so the index's own behaviour below is still what is tested (review m1).
+  const X = newCase(FULL, w, "sample-firm");
+  sql(FULL, `begin; set local session_replication_role = replica; alter table runtime_case disable trigger case_firm_fixed; update runtime_case set firm_key = 'not-registered' where id = '${X}'; alter table runtime_case enable always trigger case_firm_fixed; commit;`);
+  const XP = person(FULL, w, X, "principal", "Unregistered (Sample)");
+  ok("CS-S1 DW3 fail: a case whose firm has no platform_firm row gets no row, and its answer write still succeeds",
+    err(() => answer(FULL, w, XP, "person.given_names", "Nobody")) === "" && row(FULL, XP.subject) === null);
+  ok("CS-S1 DW3 fail (CS-W1 part 2): a new case whose key has no platform_firm row is refused at the database",
     /null value in column "firm_id" of relation "runtime_case"/.test(err(() => newCase(FULL, w, "not-registered"))));
   // As the API writes (PF-12: xr_app, no firm set): the definer lookup sees the case's firm past the wall on platform_firm.
   const appId = randomUUID();
