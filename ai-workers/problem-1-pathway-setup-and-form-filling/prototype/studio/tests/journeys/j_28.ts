@@ -84,6 +84,11 @@ console.log(`setup (not through the product: no firm, staff, hours, type, web fo
 const visitor = { given: "Visitor", family: `J28 ${run}`, email: `visitor.${run}@j28-client.example` };
 const unticked = { given: "Unticked", family: `J28 ${run}`, email: `unticked.${run}@j28-client.example` };
 const bookerOff = { given: "Booker", family: `NoTick ${run}`, email: `booker.${run}@j28-client.example` };
+const autoMergeDone = async (personId: string) => {   // FO-9b part 2b: the merge job for this new person has finished (at most 20 s)
+  for (let i = 0; i < 100; i++) { if (sql(`select count(*) from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->'payload'->>'personId' = '${personId}' and state = 'completed'`) === "1") return true; await new Promise((r) => setTimeout(r, 200)); }
+  return false;
+};
+const jobStates = (personId: string) => sql(`select coalesce(string_agg(state::text || ':' || coalesce(output::text, ''), ' '), 'none') from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->'payload'->>'personId' = '${personId}'`).slice(0, 300);
 const personOf = (email: string, nth = 0) => sql(`select id from fo_person where firm_id = '${firm.id}' and email = '${email}' order by created_at, id offset ${nth} limit 1`);
 const rowsOf = (person: string) => (person ? sql(`select channel || '|' || purpose || '|' || source || '|' || coalesce(wording_id::text, '-') || '|' || recorded_by || '|' || (withdrawn_at is null) from msg_consent where subject_id = '${person}' order by given_at, id`) : "").split("\n").filter(Boolean);
 const allowed = async (person: string, channel: "EMAIL" | "WHATSAPP", address: string) => consent.allows(db, { firmId: firm.id, subject: { kind: "FO_PERSON", id: person }, channel, address, class: "MARKETING" });
@@ -178,6 +183,12 @@ try {
   ok("J-28 W2: the booking's person is a new record flagged as a possible match of the web-form visitor, never linked (AG-2-84)",
     b !== "" && b !== v && sql(`select count(*) from fo_lead where person_id = '${b}' and possible_match_person_id = '${v}'`) === "1");
   ok("J-28 W2: the web form's row is untouched by the booking (still one row, live)", JSON.stringify(rowsOf(v)) === JSON.stringify(vRows));
+  // FO-9b part 2b (P-574 (2); break M1 on #3527): the booking carries a consent, so it is never merged by itself (that
+  // copy could never be undone); its job finishes and the pair waits on To review for a person.
+  const jobDone = b ? await autoMergeDone(b) : false;
+  ok("J-28 W2: the merge by itself leaves them apart (the booking carries a consent): its job finished, both records live, the pair To review",
+    jobDone && sql(`select count(*) from fo_person where id in ('${v}', '${b}') and merged_into_id is null`) === "2"
+      && sql(`select status from fo_dup_review where low_id = least('${v}'::uuid, '${b}'::uuid) and high_id = greatest('${v}'::uuid, '${b}'::uuid)`) === "OPEN", { jobDone, jobs: jobStates(b) });
   const b2 = await book(await newPage(), bookerOff, false);
   const off = personOf(bookerOff.email);
   ok("J-28 W2 fail: a booking with the tick off is booked and records no consent row (QA-511)", b2.booked && off !== "" && rowsOf(off).length === 0, { booked: b2.booked, rows: rowsOf(off) });

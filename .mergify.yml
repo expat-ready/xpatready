@@ -260,6 +260,11 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-entitlements.prisma"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-entitlements__*/**"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
+      mig-platform-files:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-files.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_platform-files__*/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/*_shared__*/**"
       mig-platform-firm-export:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-firm-export.prisma"
@@ -378,6 +383,7 @@ scopes:
     mig-pathways: 1
     mig-platform: 1
     mig-platform-entitlements: 1
+    mig-platform-files: 1
     mig-platform-firm-export: 1
     mig-platform-import: 1
     mig-platform-messages: 1
@@ -409,6 +415,8 @@ scopes:
 # CAPABILITIES.md among the last 300 closed PRs (17 Nov), all 7 had a "qa:" title and none a claude/qa- branch (cloud
 # sessions name their own branches). No allow_checks_interruption: Mergify's default inserts a higher-priority PR just
 # after the batches whose checks already run, so a verdict never restarts a running product batch.
+# P-827 (founder 25 Nov, one-time): the order is verdicts, pipeline, product, records until P-822, P-823 and the
+# Lead-tool fixes are on main (the pipeline queue's comment below; undo: move pipeline back after product).
 # product/screens/B119/check-queue-rules.py reads this file and fails when the queues stop routing that way. The daily
 # records PR (P-336) stays.
 queue_rules:
@@ -424,6 +432,32 @@ queue_rules:
       - label = records
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
+    merge_conditions:
+      - check-success = ci
+    merge_method: merge
+  # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
+  # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
+  # product code. The XFA engine rule applies here too.
+  # P-827 (founder 25 Nov 10:3x IST, typed "Yes, pipeline first"; a one-time exception to P-717 (a)'s order): pipeline
+  # is listed just after verdicts, ahead of product, so enforcement lands first until P-822, P-823 and the Lead-tool
+  # fixes are on main. No allow_checks_interruption: Mergify's default puts a higher-priority PR just after the batches
+  # whose checks already run, so a pipeline PR never restarts a running product batch.
+  # Undo: move pipeline back after product when P-827 ends (this block below product's; check-queue-rules.py's order
+  # and engineering-approved-setup.json's queue_order with it).
+  - name: pipeline
+    batch_size: 2
+    batch_max_failure_resolution_attempts: 2
+    batch_max_wait_time: 2 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      - -label=records
+      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      - or:
+          - check-success = xfa-engine
+          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
     merge_conditions:
       - check-success = ci
     merge_method: merge
@@ -446,7 +480,8 @@ queue_rules:
       # comment lines above it.
       - check-success = pr-rules
       - -label=records
-      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" below, never a product batch.
+      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" (listed above product while P-827
+      # holds), never a product batch.
       - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
       # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
       # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
@@ -473,26 +508,6 @@ queue_rules:
       - or:
           - check-success = skeleton
           - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
-    merge_method: merge
-  # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
-  # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
-  # product code and, after product in priority, never holds a product PR back. The XFA engine rule applies here too.
-  - name: pipeline
-    batch_size: 2
-    batch_max_failure_resolution_attempts: 2
-    batch_max_wait_time: 2 min
-    queue_conditions:
-      - base = main
-      - -draft
-      - "label = review: approved"
-      - check-success = ci
-      - -label=records
-      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
-      - or:
-          - check-success = xfa-engine
-          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
-    merge_conditions:
-      - check-success = ci
     merge_method: merge
   - name: records
     batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
