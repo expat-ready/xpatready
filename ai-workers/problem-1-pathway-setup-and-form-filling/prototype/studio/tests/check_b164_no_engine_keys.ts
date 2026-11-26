@@ -119,8 +119,9 @@ function knownKeys(): Set<string> {
 // "firm" and "fees" head FO-5's retainer placeholder names ({firm.name}, {fees.total}): fields of a document, no program.
 // "legal" heads AUD-5's firm setting key (legal.closed_client_files_years, the settings registry's module.name form): no program.
 // "audit" heads AUD-4's audit action (audit.exported, AuditPort's dotted action form): no program.
+// "video" heads FO-3v's audit actions (video.meeting_link_changed, video.choice_changed: AuditPort's dotted form): no program.
 // code.*: the Code of conduct's clause markers and merge value (FO-5b), never a combination
-const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees", "legal", "audit", "code"]);
+const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees", "legal", "audit", "code", "video"]);
 const FILE_ENDINGS = new Set(["json", "ts", "tsx", "js", "mjs", "cjs", "pdf", "md", "txt", "csv", "html", "py", "xml", "sql", "png"]);
 /** A program by name, in a name or a string. Roles (spouse, child) are not programs; neither are the abbreviations
  *  fact-name.ts upper-cases (LMIA, TRV), which name facts of any program. */
