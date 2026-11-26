@@ -375,5 +375,13 @@ del FOLDERS["platform-admin"]
 if not any("_shared/" in x for x in owners_bad(src, files + [ST + "web/src/modules/_shared/deep/routes.tsx"])): bad.append("self-test: a _ folder with a nested routes.tsx is skipped")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
-sys.exit(1 if bad else 0)
+# OS-50 (OS-PM 4, 26 Nov): the queues' routing and the near-Proven priority rule, B119's check-queue-rules.py (it runs no
+# suite and reads .mergify.yml only); until now nothing in CI ran it.
+q = subprocess.run([sys.executable, "-I", os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/B119/check-queue-rules.py"),
+                    os.path.join(root, ".mergify.yml")], capture_output=True, text=True, cwd=root)
+last = (q.stdout.strip().splitlines() or ["no output"])[-1]
+if q.returncode != 0:
+    print("\n".join(l for l in q.stdout.splitlines() if l.startswith("FAIL"))[:2000] or q.stderr[:400])
+print(f"{'PASS' if q.returncode == 0 else 'FAIL'}  queue rules (check-queue-rules.py, B119, OS-50): {last}")
+sys.exit(1 if bad or q.returncode != 0 else 0)
 PY

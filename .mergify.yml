@@ -494,6 +494,16 @@ queue_rules:
       # PR with a part missing stays out. The check itself is report-only (passes) for 2 h after it reached main, then
       # fails on a missing part (ready-gate.py), so this line needs no second PR; a PR with no run is never held.
       - -check-failure = completes-ready
+    # OS-50 (P-733, P-820; full-power #129; OS-PM 4, 26 Nov): a PR that completes a Release 1 item goes first among product
+    # PRs, so the next proof lands sooner. Its body has a "Completes: R1.<n>" line, read as CI's item-proof.mjs and
+    # proof-read-watch.py read it (optionally a list item, quote or bold). No allow_checks_interruption: it goes ahead of
+    # waiting PRs only, never restarting a running batch. check-queue-rules.py checks the rule and its pattern.
+    priority_rules:
+      - name: near-proven
+        conditions:
+          - body ~= (?m)^[\s>*-]*(\*\*|__)?Completes(\*\*|__)?\s*:(\*\*|__)?\s*R1\.\d+
+        priority: high
+        allow_checks_interruption: false
     merge_conditions:
       - check-success = ci
       # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,
