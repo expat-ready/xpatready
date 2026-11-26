@@ -8,6 +8,18 @@ on:
     # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
     - cron: "11,41 * * * *"   # every 30 min, off the top of the hour (GitHub delays :00 schedules most)
   workflow_dispatch:
+  # OS-83 (tech lead 26 Nov, founder ask A400: every watcher runs inside the pipeline): GitHub ran the schedule above
+  # only every 8-11 hours (18-26 Nov), so a merge to main, a ci run on main (a full run) and a PR comment start it too.
+  # The concurrency group below keeps one run and one waiting; the heartbeat reads GitHub as it is now, so a waiting run
+  # replaced by a newer one loses nothing. Manifest heartbeat.events_required; test_conformance_check.py.
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  issue_comment:
+    types: [created]
 permissions:
   contents: read
   actions: read
