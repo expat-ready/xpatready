@@ -23,10 +23,11 @@ const cellWords = (v: string | number | null) => (typeof v === "string" && MONEY
  *  them; hover also shows them as the native title. The words are in the button's accessible name too. */
 function Tip({ text, label }: { text: string; label: string }) {
   const [open, setOpen] = React.useState(false), id = React.useId();
-  return <span className="relative inline-flex">
-    <button type="button" title={text} aria-label={`${label}: ${text}`} aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }} onBlur={() => setOpen(false)}
+  // the words open inside the card, across its width (never off the page: review and break r2-m1); a press on them keeps them open
+  return <span className="inline-flex">
+    <button type="button" title={text} aria-label={`${label}: ${text}`} aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }} onBlur={(e) => { if (!e.relatedTarget || (e.relatedTarget as HTMLElement).id !== id) setOpen(false); }}
       className="inline-flex size-6 items-center justify-center rounded-full border border-border text-xs text-text-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" data-report-tip>i</button>
-    {open ? <span id={id} role="status" className="absolute left-0 top-7 z-10 w-64 max-w-[80vw] rounded-lg border border-border bg-surface-raised p-2 text-xs font-normal text-text shadow-md" data-report-tip-text>{text}</span> : null}
+    {open ? <span id={id} role="status" tabIndex={-1} onBlur={() => setOpen(false)} className="absolute inset-x-4 top-11 z-10 rounded-lg border border-border bg-surface-raised p-2 text-xs font-normal text-text shadow-md outline-none" data-report-tip-text>{text}</span> : null}
   </span>;
 }
 
@@ -59,21 +60,23 @@ const BAR_SHOWN = 15;
 function BarList({ rows, label, render }: { rows: Record<string, string | number | null>[]; label: string; render: (r: Record<string, string | number | null>, i: number) => React.ReactNode }) {
   const [all, setAll] = React.useState(false), shown = all ? rows : rows.slice(0, BAR_SHOWN);
   return <div className="flex flex-col gap-2"><ul className="flex flex-col gap-1" aria-label={label}>{shown.map(render)}</ul>
-    {rows.length > BAR_SHOWN ? <Button variant="link" size="sm" className="self-start px-0" onClick={() => setAll((a) => !a)} data-report-bars-toggle>{all ? "Show fewer" : `Show all ${rows.length}`}</Button> : null}</div>;
+    {rows.length > BAR_SHOWN ? <Button variant="link" size="sm" className="min-h-11 self-start px-0 sm:min-h-8" onClick={() => setAll((a) => !a)} data-report-bars-toggle>{all ? "Show fewer" : `Show all ${rows.length}`}</Button> : null}</div>;
 }
 
-function Card({ w, m, person, canExport, onExport, retry }: { w: Widget; m: Metric | undefined; person: string | null; canExport: boolean; onExport: (key: string, label: string) => void; retry: () => void }) {
+function Card({ w, m, person, canExport, onExport, retry, blocked, exporting }: { w: Widget; m: Metric | undefined; person: string | null; canExport: boolean; onExport: (key: string, label: string) => void; retry: () => void;
+  /** Why nothing will load (dates that cannot be read, a failed answer): said instead of a skeleton (r2-m2). */ blocked: string | null; exporting: boolean }) {
   const wide = w.visual !== "TILE";
   const label = m?.label ?? w.label ?? heading(w.metricKey.split(".").at(-1)!);   // an unregistered widget has no label yet: its key in words
   const scope = m ? scopeWords(m, person) : null;
   const exportable = canExport && wide && m?.status === "OK" && m.reading?.kind === "LIST" && m.reading.rows.length > 0;
   return (
-    <section className={cn("flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4", wide && "sm:col-span-2", !w.registered && "border-dashed bg-surface")} data-report-card={w.metricKey} aria-label={label}>
+    <section className={cn("relative flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4", wide && "sm:col-span-2", !w.registered && "border-dashed bg-surface")} data-report-card={w.metricKey} aria-label={label}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold">{label}{m ? <Tip label="What this counts" text={m.source} /> : null}</h2>
-        {exportable ? <Button variant="outline" size="sm" onClick={() => onExport(w.metricKey, label)} data-report-export={w.metricKey}>Export CSV</Button> : null}
+        {exportable ? <Button variant="outline" size="sm" className="min-h-11 sm:min-h-8" disabled={exporting} busy={exporting} onClick={() => onExport(w.metricKey, label)} data-report-export={w.metricKey}>Export CSV</Button> : null}
       </div>
       {!w.registered ? <p className="text-sm text-text-muted" data-report-state="not-counted">Not counted yet <Tip label="Not counted yet" text="Coming in Release 1." /></p>
+        : !m && blocked ? <p className="text-sm text-text-muted" data-report-state="blocked">{blocked}</p>
         : !m ? <div className="h-8 animate-pulse rounded bg-text/5" data-report-state="loading" aria-hidden />
         : m.status === "WITHHELD" ? <p className="text-sm text-text-muted" data-report-state="withheld">Not in your access <Tip label="Not in your access" text={withheldTip(m.key)} /></p>
         : m.status === "UNAVAILABLE" ? <div className="flex flex-wrap items-center gap-2 text-sm" data-report-state="unavailable"><span>Could not be counted just now. Try again</span><Button size="sm" className="min-h-11 sm:min-h-8" onClick={retry} data-report-retry>Retry</Button></div>
@@ -110,11 +113,11 @@ function Reports() {
   const byKey = new Map(stale ? [] : answer.data?.metrics.map((m) => [m.key, m]) ?? []);
   const personName = f.staffId ? people?.find((p) => p.id === f.staffId)?.name ?? null : null;
   const [said, setSaid] = React.useState(""), [exportError, setExportError] = React.useState("");
-  const exporting = React.useRef(false);
+  const exporting = React.useRef(false), [busyExport, setBusyExport] = React.useState(false);
   const exportNow = async (metric: string) => {
-    if (exporting.current) return;   // one export per press (break m2)
-    exporting.current = true;
-    try { await exportOnce(metric); } finally { exporting.current = false; }
+    if (exporting.current) return;   // one export per press (break m2); every Export button shows busy meanwhile (r2-m3)
+    exporting.current = true; setBusyExport(true);
+    try { await exportOnce(metric); } finally { exporting.current = false; setBusyExport(false); }
   };
   const exportOnce = async (metric: string) => {
     setSaid(""); setExportError("");
@@ -131,6 +134,7 @@ function Reports() {
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
     setSaid(`Downloaded ${name}. The export is recorded in the activity log.`);
   };
+  const blocked = f.rangeProblem ? "Fix the dates above to see this figure." : answer.isError ? "Could not be counted just now. Try again." : null;
   const failed = dash.error instanceof StaffApiError ? dash.error : ctxQ.error instanceof StaffApiError ? ctxQ.error : answer.error instanceof StaffApiError ? answer.error : null;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
@@ -155,9 +159,9 @@ function Reports() {
       {said ? <Notice tone="ok"><span data-report-export-said>{said}</span></Notice> : null}
       {exportError ? <Notice tone="danger" title="Not exported"><span data-report-export-error>{exportError}</span></Notice> : null}
       {failed ? <Notice tone="danger" title="Reports could not be shown"><span data-report-error>{failed.problem?.detail ?? "Try again in a moment."}</span></Notice> : null}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy={answer.isFetching || stale} data-report-grid>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy={!blocked && (answer.isFetching || stale)} data-report-grid>
         {dash.isPending ? Array.from({ length: 4 }, (_, i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-text/5" aria-hidden data-report-skeleton />)
-          : dash.data?.widgets.map((w) => <Card key={w.metricKey} w={w} m={byKey.get(w.metricKey)} person={personName} canExport={ctxQ.data?.canExport === true} onExport={(k) => void exportNow(k)} retry={() => void answer.refetch()} />)}
+          : dash.data?.widgets.map((w) => <Card key={w.metricKey} w={w} m={byKey.get(w.metricKey)} person={personName} canExport={ctxQ.data?.canExport === true} onExport={(k) => void exportNow(k)} retry={() => void answer.refetch()} blocked={blocked} exporting={busyExport} />)}
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { chromium, type Browser, type Page } from "playwright";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
+import { csvOf } from "../api/src/platform/reports/export.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -36,6 +37,9 @@ const api = async (t: string | null, method: string, path: string, body?: unknow
   return { status: r.status, body: j, text, headers: r.headers };
 };
 let failed = 0;
+// break r2-m4: a label shaped like an amount stays text (guarded); an amount in a later column and a number are written as they are
+ok("PF-R3 BR7 pass (break r2-m4): the CSV writes a label that looks like an amount as guarded text, and amounts and numbers as they are",
+  csvOf([{ stage: "-5.00", cases: -3, average_days: "-1.50" }]) === "\uFEFFStage,Cases,Average days\r\n'-5.00,-3,-1.50\r\n", csvOf([{ stage: "-5.00", cases: -3, average_days: "-1.50" }]));
 
 await seedSampleFirms(db);
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
@@ -184,6 +188,28 @@ try {
     await open(pk, `?person=${officer.id}`);
     ok("PF-R3 BR1 pass (review M2, M4): with a person picked, a card says \"<Name>'s work\" over that person's own figures (no invoices on their cases)", (await card(pk, "reports.money.fees_billed").locator("[data-report-scope]").innerText()) === `${officer.name}'s work`
       && (await card(pk, "reports.money.fees_billed").locator("[data-report-state=empty]").innerText()) === "No invoices in this period");
+    // break R2-M1: the same colleague's id in capitals is the same person: picker, badge and figures agree
+    await open(pk, `?person=${officer.id.toUpperCase()}`);
+    ok("PF-R3 BR1 pass (break R2-M1): a person id in capitals selects that person in the picker and the badge says \"<Name>'s work\"", (await pk.locator("[data-report-person]").inputValue()) === officer.id
+      && (await card(pk, "reports.money.fees_billed").locator("[data-report-scope]").innerText()) === `${officer.name}'s work`);
+    // break R2-M2: an impossible month or day never crashes the page; it reads as the firm's month
+    await open(pk, "?from=2026-13-01&to=2026-11-32");
+    ok("PF-R3 BR3 fail (break R2-M2): an impossible date in the address falls back to the month, never a crash", (await pk.locator("[data-report-month]").inputValue()) === `${month}-01` && !errs.some((e) => /Invalid time value/.test(e)), errs);
+    // review r2-m3: the stale-answer guard (M2) with a slow answer: after a filter change no old figure shows until the new one comes
+    await pk.route("**/api/platform/reports/query", async (r) => { await new Promise((res) => setTimeout(res, 2500)); await r.continue(); });
+    await open(pk);
+    await pk.locator("[data-report-client-type]").selectOption("CORPORATE");
+    const midValues = await pk.locator("[data-report-grid] [data-report-value]").count(), midBusy = await pk.locator("[data-report-grid]").getAttribute("aria-busy"), midExport = await pk.locator("[data-report-export]").count();
+    await pk.waitForFunction(() => !document.querySelector("[data-report-state=loading]"), undefined, { timeout: 30_000 });
+    ok("PF-R3 BR1 fail (review M2, r2-m3): while a new answer is coming no old figure and no Export button show, and the grid is busy", midValues === 0 && midBusy === "true" && midExport === 0, { midValues, midBusy, midExport });
+    await pk.unroute("**/api/platform/reports/query");
+    // break and review r2-m1: the words of the right-hand card's (i) stay inside the page at 1440
+    await open(pk);
+    const right = pk.locator("[data-report-card] [data-report-tip]").last(); await right.click();
+    ok("PF-R3 BR5 pass (r2-m1): the open \"What this counts\" words never push the page sideways", (await pk.locator("[data-report-tip-text]").count()) === 1 && !(await pk.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
+    // review and break r2-m2: dates that cannot be read together say why on every card; nothing pretends to load
+    await pk.goto(`${BASE}/platform/reports?from=${month}-20&to=${month}-10`); await pk.locator("[data-report-state=blocked]").first().waitFor({ timeout: 30_000 });
+    ok("PF-R3 BR6 pass (r2-m2): with the end before the start, cards say \"Fix the dates above\" and the grid is not busy", (await pk.locator("[data-report-state=loading]").count()) === 0 && (await pk.locator("[data-report-grid]").getAttribute("aria-busy")) === "false");
     // review M4: BR-6's empty words per metric
     await open(pk, "?clientType=CORPORATE");
     ok("PF-R3 BR6 pass (review M4, break m8): empty figures say why in their own words: \"No payments in this period\", \"No invoices in this period\"", (await card(pk, "reports.money.fees_collected").locator("[data-report-state=empty]").innerText()) === "No payments in this period"

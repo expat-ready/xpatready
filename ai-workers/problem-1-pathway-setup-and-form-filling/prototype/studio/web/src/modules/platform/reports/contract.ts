@@ -38,7 +38,7 @@ export type Filters = { dashboard: DashboardRole; from: string; to: string; staf
   /** Set when the address's dates cannot be read together (the end before the start): no figure is asked for until fixed (review M3). */
   rangeProblem?: string };
 /** A real calendar day (2026-02-30 is not one: break m5). */
-export const isDay = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
+export const isDay = (v: string | null): v is string => { if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false; const t = Date.parse(`${v}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().startsWith(v); };   // month 13 or day 32 is NaN first (break R2-M2: no crash)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function readFilters(p: URLSearchParams, o: { roles: readonly string[]; keys: readonly string[]; period: { from: string; to: string } | null; people?: readonly { id: string }[] }): Filters {
   const d = p.get("dashboard"), from = p.get("from"), to = p.get("to"), staffId = p.get("person"), ct = p.get("clientType");
@@ -47,7 +47,9 @@ export function readFilters(p: URLSearchParams, o: { roles: readonly string[]; k
     from: isDay(from) ? from : o.period?.from ?? "", to: isDay(to) ? to : o.period?.to ?? "" };
   if (out.from && out.to && out.from > out.to) out.rangeProblem = "The end date is before the start date. Change one of them.";
   // only someone the firm's people list holds (break M1: an outside id would count nothing under "Whole firm")
-  if (seesAll && staffId && UUID.test(staffId) && o.people?.some((x) => x.id.toLowerCase() === staffId.toLowerCase())) out.staffId = staffId;
+  // kept as the list writes it, so the picker and the badge find the same person (break R2-M1: an id in capitals)
+  const known = seesAll && staffId && UUID.test(staffId) ? o.people?.find((x) => x.id.toLowerCase() === staffId.toLowerCase()) : undefined;
+  if (known) out.staffId = known.id;
   // AG-14-32 (departure recorded in the concept, BR-3): All for view.all and money holders by default (break m11), Individual for others
   const type = ct === "INDIVIDUAL" || ct === "CORPORATE" || ct === "ALL" ? ct : seesAll || o.keys.includes(REPORT.financial) ? "ALL" : "INDIVIDUAL";
   if (type !== "ALL") out.clientType = type;

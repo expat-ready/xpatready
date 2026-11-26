@@ -94,3 +94,50 @@
 - **Other states:** empty, "Not counted yet" and "Not in your access" read as BR-6 says. Keyboard alone reaches the filters, every (i) and Export CSV, and Enter downloads the file.
 
 Note: `screenshots/owner-1440.png` changed in the working tree at 16:25 UTC. This report did not write it: another run of `check_pfr3_reports_browser.ts` did. Nothing is committed.
+
+## Round 2: diff b6b117848..2af419e (26 Nov)
+- **Copy:** `brk3b` on :4794, same seed as round 1, plus stage names `-5.00` and `1234567890123.45`. Stopped afterwards; :4400 never used.
+- **Accepted from round 1:** M2 (AG-14-26 says "not masked"; reveal-pii withdrawn, AG7-D10), m10 (left as is) and m12 (the checks are in the browser check). None of these is re-raised.
+
+### R2-M1 · Major: a person id in capitals brings back M1
+- **Do:** as the Owner, open `?person=9D1F827B-…` (a real colleague's id, upper case).
+- **Expected:** the same as the lower-case id: that person picked, and "<Name>'s work" on the cards.
+- **Actual:** the query sends `staffId` and the cards hold that person's (empty) figures. The Person picker says "Everyone" and every card's badge says "Whole firm". The lower-case id gives "<Name>'s work".
+- **Cause:** `contract.ts:50` compares the ids in lower case but keeps the address's own spelling. `reports-page.tsx:111` (`p.id === f.staffId`) and the Select's `value` (`:148`) then compare exactly, so neither finds the person.
+
+### R2-M2 · Major: an impossible month or day in the address crashes the page
+- **Do:** open `?from=2026-13-01`, `?to=2026-11-32`, or day `00` / month `00`.
+- **Actual:** "This page could not be shown", with `RangeError: Invalid time value` in the console. Reloading crashes again until the address is edited.
+- **Cause:** `contract.ts:41` (`isDay`) calls `toISOString()` on an Invalid Date, which throws. The server's own date check tests `Date.parse` first. `2026-02-30` is handled; months 13 and 00 and days 32 and 00 are not.
+
+### Minor
+- **r2-m1 · The (i) words run off the screen.**
+  - "What this counts" opens 256 px wide from the button's left edge (`reports-page.tsx:29`, `left-0 w-64`). In the right-hand cards it runs past the viewport by 91 px at 375, 67 px at 640 (about 200 % zoom) and 63 px at 1440.
+  - The text is cut off and the page scrolls sideways while it is open (screenshot `r2-tip-375.png`).
+  - Clicking the words to select them closes the tip, because the button loses focus (`onBlur`, `:27`).
+- **r2-m2 · Cards that will never load still look like they are loading.**
+  - With From after To, the To field shows its message (held), but every card shows a loading skeleton and the grid stays `aria-busy="true"` with nothing being asked.
+  - If the new query fails (a forced 500), the notice shows, but the cards stay skeletons forever.
+  - Where: `reports-page.tsx:109-110`.
+- **r2-m3 · A blocked export press gets no feedback.**
+  - The guard holds: a double-click plus a third click sent 1 request and gave 1 download, and a later press works.
+  - But the button is neither disabled nor marked busy during the export. Pressing a second table's Export while the first runs is silently ignored.
+  - Where: `reports-page.tsx:74`, `:115-117`.
+- **r2-m4 · The CSV writer decides by the shape of the value, not the column.**
+  - Any text that looks like an amount is written raw: a stage named `-5.00` becomes the number −5 in a spreadsheet. That is not an injection, but the text changes type.
+  - A negative value that is a number (not a string) is still written as `'-3`.
+  - This is latent: no registered table has negative counts or days today.
+  - Where: `export.ts:49`.
+- **r2-m5 · Still small at 375 px.** Export CSV and "Show all 200" are 32 px tall. m9 was fixed only for the (i), now 24 px, and Retry.
+
+### What held in round 2
+- **Person check:** an outside id is dropped ("Everyone", no `staffId` sent). A Case Officer's and Billing / Finance's own id in the address are dropped ("You", no `staffId`).
+- **Billing / Finance:** lands on All. Read-only stays on Individual and the Case Officer dashboard.
+- **Waits:** no query goes out before the filter context arrives.
+- **Stale answer:** for the 3 s a query was held, no old figures and no Export were shown, and the new answer then drew. Retry keeps its figure while it refetches.
+- **Month picker:** the firm's month and the 11 before it. Choosing a month writes the address and the current month leaves it clean. Custom shows From and To, a full month outside the list shows Custom, a reload keeps the choice, and the arrow keys change the month.
+- **Range checks:** From after To shows the field message and asks nothing; `2026-02-30` falls back to the month.
+- **Toggletip:** Enter opens it and Escape and a second press close it. axe finds 0 serious with it open or closed, at 375, 640, 1024 and 1440 px.
+- **CSV:** text cells are still guarded (`'=HYPERLINK…`, `'+SUM`, `'-2+3`, `'@cmd`). Headings are written as the page shows them; amounts are raw (`CAD,0.00,3415.43,…`). An empty table gives 422 `NOTHING_TO_EXPORT` with no audit line, and WITHHELD still wins over empty (403).
+- **Bar list:** 15 bars, then "Show all 200", by keyboard too. "No payments in this period" is shown for Fees collected.
+- **Errors:** no page error in any run except R2-M2.

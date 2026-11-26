@@ -43,11 +43,13 @@ export function columnsOf(rows: Record<string, unknown>[]): string[] {
 /** A column's heading as the page shows it ("average_days" → "Average days"; web/src/modules/platform/reports/contract.ts heading). */
 export const headingOf = (k: string) => { const t = k.replace(/_/g, " ").replace(/\bdays (\d+) (\d+)\b/, "$1-$2 days").replace(/\bdays 90 plus\b/, "90+ days"); return t.charAt(0).toUpperCase() + t.slice(1); };
 const AMOUNT = /^-?\d{1,13}\.\d{2}$/;
-/** The CSV of a LIST answer (UTF-8 with its mark, a header row, CRLF rows). An amount is written as it is (a number). */
+/** The CSV of a LIST answer (UTF-8 with its mark, a header row, CRLF rows). A number, and an amount in any column but the
+ *  first (every table's first column is its label: a stage, a client, a currency, a month), is written as it is; every
+ *  other cell goes through the formula-safe writer, so a label that looks like an amount stays text (break r2-m4). */
 export function csvOf(rows: Record<string, unknown>[]): string {
   const cols = columnsOf(rows);
-  const cell = (v: unknown) => (typeof v === "string" && AMOUNT.test(v) ? v : csvRow([v ?? null]).slice(0, -2));
-  return `\uFEFF${csvRow(cols.map(headingOf))}${rows.map((r) => `${cols.map((c) => cell(r[c])).join(",")}\r\n`).join("")}`;
+  const cell = (v: unknown, i: number) => (typeof v === "number" ? String(v) : i > 0 && typeof v === "string" && AMOUNT.test(v) ? v : csvRow([v ?? null]).slice(0, -2));
+  return `\uFEFF${csvRow(cols.map(headingOf))}${rows.map((r) => `${cols.map((c, i) => cell(r[c], i)).join(",")}\r\n`).join("")}`;
 }
 
 /** The file's name: reports-<metric's last part, dashed>-<from>[-to-<to>].csv. */
