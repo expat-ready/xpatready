@@ -21,7 +21,7 @@ on:
   issue_comment:
     types: [created]
   workflow_run:
-    workflows: [ci]
+    workflows: [ci, pr-suites]   # P-822: pr-suites may end after ci; its end wakes the label too
     types: [completed]
   pull_request_target:
     # unlabeled: the PR goes back to pending, so a label put on again never meets an old success (round 2 m3)
