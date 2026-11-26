@@ -3,7 +3,7 @@
 // visibility checks the custom-field routes call before reading or writing a value, so a field never shows more than its
 // record does. Also the shape rules both sides share: the ten types (Sample, question 8), the limit of active fields per
 // kind (Sample, P-562), a field's key made from its label, and each type's value check in plain words. The value check
-// mirrors the database's pf_custom_value_ok (migration 20261126063100_shared__pf22a_custom_fields), which stays the last
+// mirrors the database's pf_custom_value_ok (migration 20261126155300_shared__pf22a_custom_fields), which stays the last
 // word. The registry rule (EntityRegistry) is one class used by the real adapter (api/src/platform/custom-fields/
 // registry.ts) and the fake, so the fake can never promise another rule. This folder imports only zod and its own files.
 import { z } from "zod";
