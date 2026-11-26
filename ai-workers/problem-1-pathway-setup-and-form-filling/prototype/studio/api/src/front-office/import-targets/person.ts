@@ -11,11 +11,12 @@
 import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";
-import type { ConsentPort } from "../../../../ports/consent.ts";
+import { EMAIL_KEPT, type ConsentPort } from "../../../../ports/consent.ts";
 import type { Existing, ImportContext, ImportTarget, Reason, RowCheck, TargetField } from "../../../../ports/import-target.ts";
 import { normaliseEmail } from "../../../../ports/matching.ts";
 import { hasWord } from "../../../../ports/fo-person.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { livePersonId } from "../duplicates/merge/follow.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { seedFirmFrontOffice } from "../firm-seed.ts";
 
@@ -57,7 +58,7 @@ export class PersonImportTarget implements ImportTarget<Tx> {
     const given = text("givenNames", c.givenNames, 200, reasons), family = text("familyName", c.familyName, 200, reasons);
     if (given) v.givenNames = given;
     if (family) v.familyName = family;
-    if (c.email !== undefined) { const e = normaliseEmail(c.email); if (e && [...e].length <= 254) v.email = e; else reasons.push({ field: "email", rule: "not_email" }); }
+    if (c.email !== undefined) { const e = normaliseEmail(c.email); if (e && e.length <= 254 && EMAIL_KEPT.test(e)) v.email = e; else reasons.push({ field: "email", rule: "not_email" }); }
     if (c.phone !== undefined) { const p = phoneE164Exact(c.phone); if (p) v.phone = p; else reasons.push({ field: "phone", rule: "not_phone" }); }
     if (c.language !== undefined) { const l = c.language.trim().toLowerCase(); if (LANGUAGES.includes(l)) v.language = l; else reasons.push({ field: "language", rule: "not_language" }); }
     if (c.marketingConsent !== undefined) {
@@ -75,15 +76,29 @@ export class PersonImportTarget implements ImportTarget<Tx> {
   async find(tx: Tx, firmId: string, naturalKey: string): Promise<Existing | null> {
     const [kind, value] = [naturalKey.slice(0, naturalKey.indexOf(":")), naturalKey.slice(naturalKey.indexOf(":") + 1)];
     const where = kind === "email" ? { email: value } : { phoneE164: value };
-    const p = await tx.foPerson.findFirst({ where: firmScope(firmId, { ...where, mergedIntoId: null }), orderBy: { createdAt: "asc" } });
-    if (!p) return null;
-    return { id: p.id, values: { givenNames: p.givenNames, familyName: p.familyName, email: p.email, phone: p.phone, language: p.language, marketingConsent: await this.consentState(tx, firmId, p.id, p.email) } };
+    let p = await tx.foPerson.findFirst({ where: firmScope(firmId, { ...where, mergedIntoId: null }), orderBy: { createdAt: "asc" } });
+    let viaTombstone = false;
+    if (!p) {
+      // Only a merged-away person has this key: the row is that person, now the survivor (AG-2-16 §10, FO-9b's follow;
+      // review and break M: a new person here brought back a consent the merged-away person withdrew).
+      const gone = await tx.foPerson.findFirst({ where: firmScope(firmId, { ...where, mergedIntoId: { not: null } }), orderBy: { createdAt: "asc" }, select: { id: true } });
+      const liveId = gone ? await livePersonId(tx, firmId, gone.id) : null;
+      p = liveId ? await tx.foPerson.findFirst({ where: firmScope(firmId, { id: liveId, mergedIntoId: null }) }) : null;
+      if (!p) return null;
+      viaTombstone = true;
+    }
+    // Through a tombstone an import never sets consent: the row's address is not the survivor's (it may be the withdrawn one).
+    const consent = viaTombstone ? "kept" : await this.consentState(tx, firmId, p.id, p.email);
+    return { id: p.id, values: { givenNames: p.givenNames, familyName: p.familyName, email: p.email, phone: p.phone, language: p.language, marketingConsent: consent } };
   }
 
   /** "yes" while a marketing consent is live; "kept" when the person withdrew, unsubscribed or is suppressed (an import
    *  never overrides that); null when there is none (the one state an import may fill). */
   private async consentState(tx: Tx, firmId: string, personId: string, email: string | null): Promise<string | null> {
     if (!email) return null;
+    // An address the consent store cannot keep (another door let it in: non-ASCII, a comma) gets no consent from an
+    // import, and never fails the preview (review and break M: allows() threw, a bare 500 logging the address).
+    if (!EMAIL_KEPT.test(email)) return "kept";
     const d = await this.consent.allows(tx, { firmId, subject: { kind: "FO_PERSON", id: personId }, channel: "EMAIL", address: email, class: "MARKETING" });
     return d.allowed ? "yes" : d.reason === "NO_CONSENT" ? null : "kept";
   }
@@ -98,7 +113,8 @@ export class PersonImportTarget implements ImportTarget<Tx> {
     const id = randomUUID(), row = { givenNames: v.givenNames ?? null, familyName: v.familyName ?? null, email: v.email ?? null, phone: v.phone ?? null, language: v.language ?? null };
     await tx.foPerson.create({ data: { id, firmId, ...row, phoneReadable: true, createdBy: ctx.actor } });
     await this.audit.record(tx, { firmId, actor: ctx.actor, action: "front_office.person.imported", entity: "fo_person", entityKey: id, summary: "A person was added by an import.", detail: { foPersonId: id, batchId: ctx.batchId }, before: null, after: row });
-    if (v.marketingConsent === "yes") await this.recordConsent(tx, ctx, id);
+    // A new person at a suppressed or unsubscribed address gets no consent (break m1): the same gate as a known person.
+    if (v.marketingConsent === "yes" && (await this.consentState(tx, firmId, id, row.email)) === null) await this.recordConsent(tx, ctx, id);
     return { id };
   }
 
