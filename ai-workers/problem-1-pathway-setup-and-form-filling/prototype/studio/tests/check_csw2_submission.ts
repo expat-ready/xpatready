@@ -118,7 +118,7 @@ try {
   ok("CS-W2 DW6.3 pass: the same record with all its parents of its own firm goes in", A.err(`begin; alter table filing_record disable trigger user; ${rec({})}; rollback;`) === "");
   const kept = TABLES.map((t) => A.err(`update ${t} set firm_id = null where firm_id = '${F1}'`));
   ok("CS-W2 DW6.3 fail: a firm once set cannot be emptied (which would skip the keys) in any of the six tables, nor changed, as owner and as xr_app",
-    kept.every((e) => /case_submission_firm_keep: a \w+ row keeps its firm/.test(e)) && /case_submission_firm_keep/.test(A.err(`update sign_step set firm_id = null, item_id = '${b.IT}' where id = '${a.SS}'`, "xr_app")), kept.map((e) => e.slice(0, 90)));
+    kept.every((e) => /case_submission_firm_keep: a \w+ row keeps its firm/.test(e)) && /case_submission_firm_keep/.test(A.err(`update filing_person_record set firm_id = null, filing_id = '${b.FL}' where id = '${a.PR}'`, "xr_app")), kept.map((e) => e.slice(0, 90)));
   // #3831's breaker M1: a firm-less case's rows cannot name another case's item, filing or group (the keys skip them).
   const g = ids(3);
   const cross = [
@@ -127,12 +127,20 @@ try {
     A.err(`insert into signed_scan (id, workspace_id, case_id, item_id, file_name, media_type, size_bytes, sha256, path, uploaded_by) values ('${u(345)}', '${W}', '${g.K}', '${a.IT}', 'a.pdf', 'application/pdf', 1, '${SHA}', 'p', 'x')`, "xr_app"),
   ];
   ok("CS-W2 DW6.3 fail (#3831's breaker M1): a firm-less case's sign step, record or scan cannot name another case's item or group, as xr_app",
-    cross.every((e) => /case_submission_same_case: a \w+ row can only name rows of its own case|case_stage_ended|changes only in/.test(e)) && cross.filter((e) => /case_submission_same_case/.test(e)).length >= 2, cross.map((e) => e.slice(0, 110)));
+    cross.every((e) => /case_submission_same_case: a \w+ row can only name rows of its own case|case_submission_case_fixed|case_stage_ended|changes only in/.test(e)) && cross.filter((e) => /case_submission_same_case|case_submission_case_fixed/.test(e)).length >= 2, cross.map((e) => e.slice(0, 110)));
+  // Round 1 m2: a sign step or scan keeps its case and item (a firm-less one could otherwise move under firm A's case).
+  const mv = [A.err(`update sign_step set case_id = '${a.K}', item_id = '${a.IT}' where id = '${g.SS}'`, "xr_app"), A.err(`update signed_scan set item_id = '${u(0)}' where id = '${a.SC}'`, "xr_app")];
+  ok("CS-W2 DW6.3 fail (round 1 m2): a sign step and a scan keep their case and item, as xr_app", mv.every((e) => /case_submission_case_fixed: a \w+ row keeps its case and item/.test(e)), mv.map((e) => e.slice(0, 100)));
+  // Round 1 m3: the fee receipt's and the record's same-case rules each refuse.
+  const sc = [A.err(`insert into fee_receipt_file (id, workspace_id, case_id, filing_id, file_name, media_type, size_bytes, sha256, path, uploaded_by) values ('${u(346)}', '${W}', '${g.K}', '${a.FL}', 'r.pdf', 'application/pdf', 1, '${SHA}', 'p', 'x')`, "xr_app"),
+    A.err(`update filing_record set filing_id = '${a.FL}' where id = '${g.FR}'`, "xr_app")];
+  ok("CS-W2 DW6.3 fail (round 1 m3): a firm-less case's fee receipt cannot name another case's record, nor its record another case's filing, as xr_app",
+    sc.every((e) => /case_submission_same_case|changes only in/.test(e)) && /case_submission_same_case/.test(sc[0]), sc.map((e) => e.slice(0, 100)));
   const moveCase = A.err(`update runtime_case set firm_id = '${F2}' where id = '${a.K}'`);
   ok("CS-W2 DW6.3 fail: a case's firm cannot move while its submission rows name it (ON UPDATE RESTRICT)", /violates RESTRICT setting of foreign key constraint/.test(moveCase), moveCase.slice(0, 160));
 
   // ---------------------------------------------------------------- DW6.4: names, rights, the follow, the guards
-  ok("CS-W2 DW6.4 pass: the migration adds exactly four functions, all case_submission_*", added.sort().join(",") === "case_submission_firm_backfill,case_submission_firm_follow,case_submission_firm_keep,case_submission_same_case", added);
+  ok("CS-W2 DW6.4 pass: the migration adds exactly five functions, all case_submission_*", added.sort().join(",") === "case_submission_case_fixed,case_submission_firm_backfill,case_submission_firm_follow,case_submission_firm_keep,case_submission_same_case", added);
   const defs = A.sql(`select string_agg(proname || ':' || prosecdef || ':' || coalesce(array_to_string(proconfig, ';'), ''), ' | ' order by proname) from pg_proc where proname like 'case_submission_%'`);
   ok("CS-W2 DW6.4 fail: none is SECURITY DEFINER, each pins its search_path with pg_temp last", !defs.includes(":true:") && defs.split(" | ").every((d) => /search_path=pg_catalog, public, pg_temp$/.test(d)), defs);
   ok("CS-W2 DW6.4 fail: the backfill is not callable by PUBLIC", A.sql(`select has_function_privilege('public', 'case_submission_firm_backfill()', 'EXECUTE')`) === "f");
@@ -149,6 +157,18 @@ try {
   ok("CS-W2 DW6.4 pass: a correction still changes only the application number", A.err(`begin; update filing_record set application_number = 'V999' where id = '${a.FR}'; rollback;`) === "");
   ok("CS-W2 DW6.4 pass: a second backfill run changes nothing", A.sql(`select case_submission_firm_backfill()`) === "0");
 } finally { A.drop(); }
+
+// Round 1 m1: a fee receipt of a firm-less case naming another case's record stops the migration (the follow would
+// otherwise fail the same-case rule later and stop case_firm_backfill() for every case).
+const C = scratch("fee");
+try {
+  const [a, g] = [ids(1), ids(3)];
+  C.sql(seedBase + caseRows(1, "sample-firm", F1) + caseRows(3, "ghost-firm", null) + `
+    update fee_receipt_file set filing_id = '${a.FL}' where id = '${g.FE}';`);
+  let stop = "";
+  try { C.file(join(MIG, NEW, "migration.sql")); } catch (e) { stop = String((e as { stderr?: string }).stderr ?? e); }
+  ok("CS-W2 DW6.1 fail (round 1 m1): a fee receipt of a firm-less case naming another case's record stops the migration, naming the row", new RegExp(`CS-W2 submission stopped: .*fee_receipt_file ${g.FE} \\(its record is another case's\\)`).test(stop), stop.slice(0, 300));
+} finally { C.drop(); }
 
 const B = scratch("bad");
 try {

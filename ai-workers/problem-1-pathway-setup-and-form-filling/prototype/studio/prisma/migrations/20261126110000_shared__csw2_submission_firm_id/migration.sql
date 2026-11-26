@@ -12,6 +12,8 @@
 --     filing_record gets that unique). Left for part "keys": sign_step -> form_instance (copy_id; answers part).
 --   * the same case (case_submission_same_case): every parent a sign step, scan, record or fee receipt names is of
 --     its own case, so a row of a case whose firm is still empty cannot name another firm's row (#3831's breaker M1).
+--   * a sign step's and a scan's case and item never change (case_submission_case_fixed). The stop check also names a fee
+--     receipt of another case's record and every missing parent (round 1 m1, m2).
 --   * the keep (case_submission_firm_keep): a firm once set is never emptied or changed (#3811's round-1 Major).
 --   * the follow (AFTER UPDATE OF firm_id on runtime_case and filing): a case's firm arriving later fills these rows; part
 --     filings' follow (named earlier, so fired first) has filled the filings and groups by then.
@@ -20,7 +22,8 @@
 --     before. (sign_step's and the records' stage guards were given it by #3811.)
 -- Rollback (in this order): DROP TRIGGER case_submission_firm_fill, case_submission_firm_keep ON the six tables; DROP TRIGGER
 --   case_submission_firm_follow ON runtime_case, filing; DROP TRIGGER case_submission_same_case ON sign_step, signed_scan,
---   filing_record, fee_receipt_file; DROP FUNCTION case_submission_same_case(); DROP FUNCTION case_submission_firm_keep(),
+--   filing_record, fee_receipt_file; DROP FUNCTION case_submission_same_case(); DROP TRIGGER case_submission_case_fixed ON
+--   sign_step, signed_scan; DROP FUNCTION case_submission_case_fixed(); DROP FUNCTION case_submission_firm_keep(),
 --   case_submission_firm_follow(), case_submission_firm_backfill(); restore the four guards from their migrations; DROP
 --   each *_firm_id_fkey below; DROP INDEX each index below; ALTER TABLE the six DROP COLUMN firm_id; then delete this
 --   folder's row from _prisma_migrations. Nothing is lost: firm_id is derived.
@@ -140,6 +143,11 @@ BEGIN
     UNION ALL SELECT 'sign_step ' || c.id || ' (its item is another case''s)' FROM sign_step c JOIN filing_item i ON i.id = c.item_id WHERE i.case_id <> c.case_id
     UNION ALL SELECT 'signed_scan ' || c.id || ' (its item is another case''s)' FROM signed_scan c JOIN filing_item i ON i.id = c.item_id WHERE i.case_id <> c.case_id
     UNION ALL SELECT 'filing_record ' || c.id || ' (its filing or group is another case''s)' FROM filing_record c LEFT JOIN filing f ON f.id = c.filing_id LEFT JOIN submission_group g ON g.id = c.submission_group_id WHERE f.case_id <> c.case_id OR g.case_id <> c.case_id
+    UNION ALL SELECT 'fee_receipt_file ' || c.id || ' (its record is another case''s)' FROM fee_receipt_file c JOIN filing_record r ON r.filing_id = c.filing_id WHERE r.case_id <> c.case_id
+    UNION ALL SELECT 'sign_step ' || c.id || ' (no such item)' FROM sign_step c WHERE NOT EXISTS (SELECT 1 FROM filing_item i WHERE i.id = c.item_id)
+    UNION ALL SELECT 'signed_scan ' || c.id || ' (no such item)' FROM signed_scan c WHERE NOT EXISTS (SELECT 1 FROM filing_item i WHERE i.id = c.item_id)
+    UNION ALL SELECT 'filing_record ' || c.id || ' (no such filing or group)' FROM filing_record c WHERE NOT EXISTS (SELECT 1 FROM filing f WHERE f.id = c.filing_id) OR NOT EXISTS (SELECT 1 FROM submission_group g WHERE g.id = c.submission_group_id)
+    UNION ALL SELECT 'fee_receipt_file ' || c.id || ' (no such record)' FROM fee_receipt_file c WHERE NOT EXISTS (SELECT 1 FROM filing_record r WHERE r.filing_id = c.filing_id)
     LIMIT 20) q;
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION 'CS-W2 submission stopped: %', bad USING ERRCODE = '23514';
@@ -178,6 +186,19 @@ CREATE TRIGGER case_submission_same_case BEFORE INSERT OR UPDATE ON "sign_step" 
 CREATE TRIGGER case_submission_same_case BEFORE INSERT OR UPDATE ON "signed_scan" FOR EACH ROW EXECUTE FUNCTION case_submission_same_case();
 CREATE TRIGGER case_submission_same_case BEFORE INSERT OR UPDATE ON "filing_record" FOR EACH ROW EXECUTE FUNCTION case_submission_same_case();
 CREATE TRIGGER case_submission_same_case BEFORE INSERT OR UPDATE ON "fee_receipt_file" FOR EACH ROW EXECUTE FUNCTION case_submission_same_case();
+
+-- A sign step's and a scan's case and item never change (no app path moves one; reviewer m2 on #3840: a firm-less step
+-- could otherwise be moved under another case and keep an empty firm there), as #3831 did for filing items.
+CREATE FUNCTION case_submission_case_fixed() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+  SET search_path = pg_catalog, public, pg_temp AS $fn$
+BEGIN
+  IF NEW.case_id IS DISTINCT FROM OLD.case_id OR NEW.item_id IS DISTINCT FROM OLD.item_id THEN
+    RAISE EXCEPTION 'case_submission_case_fixed: a % row keeps its case and item', TG_TABLE_NAME USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER case_submission_case_fixed BEFORE UPDATE OF case_id, item_id ON "sign_step" FOR EACH ROW EXECUTE FUNCTION case_submission_case_fixed();
+CREATE TRIGGER case_submission_case_fixed BEFORE UPDATE OF case_id, item_id ON "signed_scan" FOR EACH ROW EXECUTE FUNCTION case_submission_case_fixed();
 
 -- A firm once set stays (#3811's round-1 Major: the keys skip a null firm).
 CREATE FUNCTION case_submission_firm_keep() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
