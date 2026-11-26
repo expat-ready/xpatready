@@ -82,3 +82,49 @@ Details are in `journey-test-reviewer-2026-11-26.md`. The Majors still hold the 
 * Minor: m1 (Must), m2-m10 (Should).
 
 Reviewer: Changes be4b8a3c79a007467ac72b5b3c9fe9f9a5909590
+
+## Round 2 (diff only): `git diff be4b8a3c7..9afa4cc56993bd44f325c17b7ab345995db603a4`, reviewer, 26 Nov 2026
+This round also re-checks the breaker's round-1 Majors (`break-report.md`), so one verdict covers both.
+
+**Ran** (isolated copy `rv_fo4p2b` on :4435, stopped afterwards):
+* the builder's check: **30/30**;
+* my own round-2 Playwright walk (scratchpad only) at 1440 and 375 px, keyboard included, with SQL reads after each step.
+
+**Closed:**
+* **Review M1.** The key is now `["fo","prospects","timeline",id]`; nothing on the page sets or removes data across that whole prefix. Set value added its line with no reload (1 → 2 lines), and the builder's PA6 covers Move.
+* **Review M2 / break M3.**
+  * A note or call longer than 3 lines or 240 characters folds, with a "Show all of it" / "Show less" toggle (`aria-expanded`, opens with Enter). A note that short is never clamped, so no text is hidden without a toggle.
+  * A 40-line note and a 4,000-character paragraph at 375 px read in full, with no sideways scroll.
+  * axe is clean with the note expanded.
+* **Review M3 / break M1.** Focus goes back to Log a call after Escape, Cancel, the X and a save: checked each one. The Panel's `onCloseAutoFocus` handles the unmounted panel.
+* **Break M2.**
+  * Typed data plus the X or a click outside asks first; on No the panel stays open with the words kept. Yes closes and logs nothing (PA6).
+  * Escape does not close the panel while a save is running.
+  * The Cancel button closes without asking. That is a deliberate choice by the person, so I accept it.
+* **Minors fixed:**
+  * m1: "The call cannot be before the lead arrived." (no `when:` prefix);
+  * m4: the When hint;
+  * m5: focus goes back to the box after Add note;
+  * m6: "Note added." / "Call logged." in a status line;
+  * m7: Log a call and Add note are 44 px tall at 375 px;
+  * m8: "4,5" is stored as 270 s, and `1e3`, `0x10` and `1.234` are refused with "e.g. 4 or 4.5".
+  * The breaker's m5-m7 are in the diff as described. I checked them in the code; I did not repeat the breaker's NFD or typing-during-save attacks.
+
+**New or still open (none Major):**
+* **r1 (Minor, Should). `max` on When is fixed at the minute the panel opened** (`prospect-activity.tsx:131`).
+  * I typed a time 2 minutes after it and pressed Enter in Minutes. The browser's own check blocked the save (`rangeOverflow`) with no message from the screen, and the earlier server error stayed on the field. Clicking "Log the call" skips that check.
+  * *Fix:* work out `max` when the person submits, or add `noValidate` and let the server's 5-minute rule decide.
+* **r2 (Minor, Should). After "Show all N lines", focus lands on line 11 with `outline-none`** (`:88`), so nothing shows where the new lines begin. Give it a visible focus style.
+* **r3 (Minor, Should). Small details:**
+  * the "Show all of it" toggle is 16 px tall (UXL-09 asks for 24 px; axe's target-size rule passes on spacing);
+  * the status line sits inside the `:edit` block (`:78`), so a role with `:log-call` but no `:edit` would not hear "Call logged." (no seeded role is like that);
+  * Cancel stays clickable during a save, which closes the panel and drops any error that comes back.
+* **Still open by the builder's choice (to be listed in the PR), accepted as Should:** review m2, m3, m9 (to be recorded in the PR body) and m10; break m4. Break S1-S3 belong to the server (FO-2p4) and go to a follow-up row; they do not block this screen.
+
+**Journey score (round 2): 9/10.** Feedback, accessibility and visual quality each rise to 1. Plain words stays at ½ ("Moved to another stage", "Prospect updated", two date styles).
+
+**Verdict: Approve 9afa4cc56993bd44f325c17b7ab345995db603a4**
+* No open Blocker or Major from the review or the break report.
+* Minor (Should): r1-r3; review m2, m3, m9, m10; break m4; S1-S3 (follow-up row).
+
+Reviewer: Approve 9afa4cc56993bd44f325c17b7ab345995db603a4
