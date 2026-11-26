@@ -163,7 +163,7 @@ code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);paddin
       <li>CodeQL code scanning and secret push protection</li>
       <li>CI actions pinned to exact versions (commit hashes)</li>
       <li>CODEOWNERS for pipeline and migration files</li>
-      <li>Approval required before outside contributors' pull requests run CI. Our Mac runner currently serves a public repository, so this matters.</li>
+      <li>Approval required before outside contributors' pull requests run CI. Our Mac runner currently serves a public repository, so this matters. Also put the Mac runner in a runner group limited to <code>queue-gate.yml</code> on main, or move that workflow to GitHub's machines.</li>
       <li>A check that refuses destructive database migrations</li>
     </ul></div>
     <div class="card later"><h3>At production hand-over (partner team)</h3><ul>
