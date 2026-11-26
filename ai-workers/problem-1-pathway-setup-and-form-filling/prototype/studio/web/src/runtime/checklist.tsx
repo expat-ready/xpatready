@@ -18,6 +18,7 @@ import { FoldOut } from "@/components/fold-out";
 import { DocumentFlagsDialog } from "@/pages/case/document-flags/panel"; // CS-D7
 import { DocumentReads } from "./document-reads";
 import { DocumentPreview } from "./document-preview"; // CS-D5 part 2
+import { OtherDocuments, type CaseKind, type OtherDocument } from "./other-documents"; // CS-D1u
 
 /** What the panel reads of a line as the API answers it (api/src/case-checklist.ts StoredLine, from the engine's PersonLine
  *  in engine/runtime/case-checklist.ts). Declared here, not imported: the engine file reads Node modules the web build has not. */
@@ -41,9 +42,11 @@ type TranslationLine = { id: string; label: string; document_id: string; for_doc
 type Age = { years: number | null; on: string | null; why: string; worked_out: boolean };
 type Person = { subject: string; label: string; role: string; applies: boolean; lines: ChecklistLine[]; waiting: ChecklistLine[]; not_needed: ChecklistLine[]; age?: Age; translations?: TranslationLine[];
   /** C6.14 BR-4: whether the person may provide a shared document today (the server's rule), and why not. */
-  may_provide?: { ok: boolean; why: string } };
+  may_provide?: { ok: boolean; why: string };
+  /** CS-D1u: the person's documents with no checklist line. */
+  other_documents?: OtherDocument[] };
 export type ChecklistView =
-  | { derived: true; stand_in: "SI-14"; people: Person[]; basis: string; empty_release: boolean; ages_on_why: string }
+  | { derived: true; stand_in: "SI-14"; people: Person[]; basis: string; empty_release: boolean; ages_on_why: string; case_kinds?: CaseKind[] }
   | { derived: false; why: string };
 
 const HAVE: readonly LineState[] = ["received", "being_checked", "approved"];
@@ -81,13 +84,13 @@ function Body({ caseId, caseSubject, d, nameOf }: { caseId: string; caseSubject:
   if (d.empty_release) return <div className="p-4"><Notice tone="warn" title="This release has no document lines">{d.basis}</Notice></div>;
   return (
     <div className="divide-y divide-border">
-      {d.people.map((p) => <PersonDocuments key={p.subject} caseId={caseId} caseSubject={caseSubject} p={p} people={d.people} nameOf={nameOf} />)}
+      {d.people.map((p) => <PersonDocuments key={p.subject} caseId={caseId} caseSubject={caseSubject} p={p} people={d.people} nameOf={nameOf} kinds={d.case_kinds ?? []} />)}
       <p className="px-4 py-2 text-xs text-text-muted">{d.basis} {d.ages_on_why}</p>
     </div>
   );
 }
 
-function PersonDocuments({ caseId, caseSubject, p, people, nameOf }: { caseId: string; caseSubject: string; p: Person; people: Person[]; nameOf: (id: string) => string }) {
+function PersonDocuments({ caseId, caseSubject, p, people, nameOf, kinds }: { caseId: string; caseSubject: string; p: Person; people: Person[]; nameOf: (id: string) => string; kinds: CaseKind[] }) {
   const { n, m } = received(p.lines);
   const id = `docs-${p.subject}`;
   return (
@@ -120,6 +123,7 @@ function PersonDocuments({ caseId, caseSubject, p, people, nameOf }: { caseId: s
                 onClick={() => { if (window.location.hash === `#${to}`) window.dispatchEvent(new HashChangeEvent("hashchange")); }}>{unquoted(x.question)}{x.on === "case" ? " (for the application)" : ""}</a></React.Fragment>; })}</p> : null}
             </li>))}</ul>
         </div>) : null}
+      <OtherDocuments caseId={caseId} subject={p.subject} label={p.label} docs={p.other_documents ?? []} kinds={kinds} nameOf={nameOf} />
       {p.not_needed.length ? (
         <FoldOut className="mt-2 text-sm" data-not-needed summaryClassName="text-xs font-medium text-text-muted" summary={<>Not needed now ({p.not_needed.length})</>}>
           <ul className="mt-1 space-y-1">{p.not_needed.map((l) => <li key={l.id} className="text-[13px]"><span className="font-medium">{l.label}</span>: <span className="text-text-muted">{l.reason}</span></li>)}</ul>

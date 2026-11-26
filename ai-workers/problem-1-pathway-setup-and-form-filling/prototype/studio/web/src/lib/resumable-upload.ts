@@ -40,7 +40,8 @@ export function uploadWords(phase: UploadPhase, percent: number, failure?: strin
 /** A refusal's words: problem+json's detail (else title), a plain-text body, else words for its status. Never markup. */
 export function refusalWords(status: number, body: string | undefined, type: string | null | undefined): string {
   const t = (type ?? "").toLowerCase(), b = (body ?? "").trim();
-  if (status === 404) return "This upload is no longer on the server. Start it again.";   // the rail's bare "Not found" says too little
+  // The rail's bare "Not found" says too little; a door's own 404 words (CS-D1u: "That person is not on this case.") are shown.
+  if (status === 404 && (!t.startsWith("text/plain") || !b || b === "Not found" || b.length > 500)) return "This upload is no longer on the server. Start it again.";
   if (status === 410 && !b) return "This upload expired: it was not finished within 24 hours. Start it again.";   // a HEAD's 410 has no body (break r2-m3)
   if (t.includes("json")) { try { const p = JSON.parse(b) as { detail?: unknown; title?: unknown }; const w = typeof p.detail === "string" ? p.detail : typeof p.title === "string" ? p.title : ""; if (w) return w; } catch { /* below */ } }
   if (t.startsWith("text/plain") && b && b.length <= 500) return b;

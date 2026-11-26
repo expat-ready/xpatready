@@ -1,0 +1,2 @@
+Entry points: CS-D1u (R1.64 part 4): the Documents panel's "Other documents (no checklist line)" per person (`other-documents.tsx`, from `checklist.tsx`): the person's documents with no line and "Add <kind> for <person>…", uploading through `web/src/lib/resumable-upload.ts` (door STAFF, the staff sign-in inline when signed out) with CS-D2's words and the server's refusal words.
+Tests: CS-D1u: `tests/journeys/j_64.ts`.

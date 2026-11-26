@@ -97,6 +97,10 @@ export function CaseDecisionPanel({ caseId }: { caseId: string }) {
   const [initial, setInitial] = React.useState<Draft>(EMPTY);
   const [lost, setLost] = React.useState<{ act: Act; draft: Draft } | null>(null);
   const signedOut = React.useRef(!token);
+  // CS-D1u (review m4 on #3698): focus moves here after a sign-in only when the person signed in here (another panel's
+  // inline sign-in, the Documents panel's, keeps its own focus).
+  const root = React.useRef<HTMLElement>(null), here = React.useRef(false);
+  React.useEffect(() => { const f = (e: FocusEvent) => { if (e.target !== document.body) here.current = !!root.current?.contains(e.target as Node); }; document.addEventListener("focusin", f); return () => document.removeEventListener("focusin", f); }, []);
   React.useEffect(() => {
     if (!token) { signedOut.current = true; if (act) { setLost({ act, draft: draft.current }); setAct(null); } return; }
     if (!q.data) return;
@@ -105,13 +109,13 @@ export function CaseDecisionPanel({ caseId }: { caseId: string }) {
       const again = lost.act.kind === "decide" ? q.data.filings.find((f) => f.id === (lost.act as { filing: Row }).filing.id && q.data!.can.decide.includes(f.id)) : true;
       if (again) { setInitial(lost.draft); setAct(lost.act.kind === "decide" ? { kind: "decide", filing: again as Row } : lost.act); }
       setLost(null);
-    } else if (signedOut.current) requestAnimationFrame(() => heading.current?.focus());   // review m1: focus after the inline sign-in
+    } else if (signedOut.current && here.current) requestAnimationFrame(() => heading.current?.focus());   // review m1: focus after the inline sign-in
     signedOut.current = false;
   }, [token, act, q.data]);   // eslint-disable-line react-hooks/exhaustive-deps -- on the session and the read only
   const keys = me.data?.keys ?? [];
   const mayDecide = keys.includes(DECIDE), mayReopen = keys.includes(REOPEN);
   return (
-    <section aria-labelledby="case-decision-h" className="rounded-xl border border-border bg-surface-raised" data-case-decision>
+    <section ref={root} aria-labelledby="case-decision-h" className="rounded-xl border border-border bg-surface-raised" data-case-decision>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <h2 id="case-decision-h" ref={heading} tabIndex={-1} className="text-base font-semibold outline-none">Decision and closing</h2>
         <p className="min-w-0 basis-full text-[13px] text-text-muted sm:basis-0 sm:flex-1">Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p>
