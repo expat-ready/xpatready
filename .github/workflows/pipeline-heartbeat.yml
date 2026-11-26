@@ -8,6 +8,21 @@ on:
     # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
     - cron: "11,41 * * * *"   # every 30 min, off the top of the hour (GitHub delays :00 schedules most)
   workflow_dispatch:
+  # OS-83 (tech lead 26 Nov, founder ask A400: every watcher runs inside the pipeline): GitHub ran the schedule above
+  # only every 8-11 hours (18-26 Nov), so a merge to main and a ci run on main (a full run) start it too. Such an event
+  # run judges and shows red, but its result goes up as "pipeline-heartbeat-event", which the next run's read_previous
+  # never reads (the board reads either): GitHub mails a red run to whoever started it (mostly mergify[bot]), so only a
+  # scheduled run, whose red mails the owner, marks an alarm as seen or escalated (review of #3817, M1). So while an alarm
+  # is open every push and full run on main is red too, mailing nobody; the escalation mail waits for the next scheduled
+  # run. No issue_comment: anyone can comment, and while conformance fails every run is red (M2). The concurrency group
+  # keeps one run and one waiting: a newer event can replace a waiting scheduled run, and the next schedule makes up for
+  # it. Manifest heartbeat.events_required; test_conformance_check.py.
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
 permissions:
   contents: read
   actions: read
@@ -41,11 +56,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 -I "$P/tools/pipeline-heartbeat.py" --conformance "$RUNNER_TEMP/heartbeat/conformance.json" --json "$RUNNER_TEMP/heartbeat/heartbeat.json" --md "$GITHUB_STEP_SUMMARY"
-      - name: result for the next run and the board
+      - name: result for the next run (scheduled and by-hand runs only, OS-83) and the board (every run)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-heartbeat
+          name: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'pipeline-heartbeat' || 'pipeline-heartbeat-event' }}
           path: ${{ runner.temp }}/heartbeat/
           retention-days: 3
           if-no-files-found: warn
