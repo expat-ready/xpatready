@@ -41,8 +41,8 @@ export const ERASE_SQL: ReadonlyArray<readonly [string, string]> = [
   ["prospects", `UPDATE fo_prospect SET lost_note = NULL WHERE firm_id = $1::uuid AND subject_person_id = $2::uuid AND lost_note IS NOT NULL`],
   ["calls", `UPDATE fo_call SET notes = NULL WHERE firm_id = $1::uuid AND person_id = $2::uuid AND notes IS NOT NULL`],
   ["arrival receipts", `UPDATE fo_arrival_receipt SET ip_hash = NULL WHERE firm_id = $1::uuid AND person_id = $2::uuid AND ip_hash IS NOT NULL`],
-  ["bookings", `UPDATE fo_booking SET cancel_reason = NULL, visitor_time_zone = 'UTC'
-     WHERE firm_id = $1::uuid AND person_id = $2::uuid AND (cancel_reason IS NOT NULL OR visitor_time_zone <> 'UTC')`],
+  // The booking keeps the booker's zone (a required IANA zone, never a person's words; B164 reads its column name as a program).
+  ["bookings", `UPDATE fo_booking SET cancel_reason = NULL WHERE firm_id = $1::uuid AND person_id = $2::uuid AND cancel_reason IS NOT NULL`],
   ["consult records", `UPDATE fo_consult_record r SET notes = NULL, recommended = ARRAY[]::text[] FROM fo_booking b
      WHERE r.firm_id = $1::uuid AND b.firm_id = $1::uuid AND b.id = r.booking_id AND b.person_id = $2::uuid AND (r.notes IS NOT NULL OR cardinality(r.recommended) > 0)`],
 ];

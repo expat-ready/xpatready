@@ -96,7 +96,7 @@ try {
       (select string_agg(lost_note, ';') from fo_prospect where firm_id = '${firm}' and subject_person_id = '${p}'),
       (select string_agg(notes, ';') from fo_call where firm_id = '${firm}' and person_id = '${p}'),
       (select string_agg(ip_hash, ';') from fo_arrival_receipt where firm_id = '${firm}' and person_id = '${p}'),
-      (select string_agg(nullif(concat_ws(',', cancel_reason, nullif(visitor_time_zone, 'UTC')), ''), ';') from fo_booking where firm_id = '${firm}' and person_id = '${p}'),
+      (select string_agg(cancel_reason, ';') from fo_booking where firm_id = '${firm}' and person_id = '${p}'),
       (select string_agg(nullif(concat_ws(',', r.notes, array_to_string(r.recommended, ',')), ''), ';') from fo_consult_record r join fo_booking b on b.id = r.booking_id where b.person_id = '${p}'))`);
 
   // ------------------------------------------------------------------------------------------------ the column list
