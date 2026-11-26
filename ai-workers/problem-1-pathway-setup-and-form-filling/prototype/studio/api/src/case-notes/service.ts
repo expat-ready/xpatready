@@ -21,7 +21,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { INVISIBLE, LONE } from "../../../contracts/runtime.ts";
-import { caseScope, caseScopeWhere } from "../case-access.ts";
+import { caseScope, caseScopeWhere, staffWhoMaySee } from "../case-access.ts";
 import { clientCode } from "../clients.ts";
 import { Audit, Db } from "../core.ts";
 import { NOTIFICATION_KIND, type NotificationPort } from "../../../ports/notifications.ts";
@@ -113,7 +113,11 @@ export class CaseNotes {
     // CS-NT1 part 4 (the tech lead's ruling 1 on #3694): on a case, only active staff who may open it are told.
     if (c.kind === "case") {
       const may = new Set((await this.peopleOf(tx, c)).map((p) => p.staffId));
-      if (want.some((id) => !may.has(id))) invalid("mentions", "Mention people who can open this case.");
+      const out = want.filter((id) => !may.has(id));
+      if (out.length) {
+        const names = (await tx.platformStaff.findMany({ where: { id: { in: out }, firmId: c.firmId }, select: { displayName: true } })).map((s) => s.displayName);
+        invalid("mentions", `Mention people who can open this case (not: ${names.join(", ")}).`);   // break m6: say who
+      }
     }
     if (!this.notifications) return problem(503, "Not possible now", "Mentions cannot be sent here (no notifications); nothing was saved.", { code: "MENTIONS_UNAVAILABLE" });
     const told = want.filter((id) => id !== ctx.staffId.toLowerCase());
@@ -190,19 +194,7 @@ export class CaseNotes {
 
   /** Who may be mentioned on a case (part 4, ruling 1 on #3694): the firm's active staff whose caseScope holds it, the
    *  case team (the client's file owner, an open team row) first, then by name. */
-  private async peopleOf(db: Tx | Db, c: Subject) {
-    const kase = await db.case.findUnique({ where: { id: c.id }, select: { clientId: true, team: { where: { endedAt: null }, select: { userId: true } } } });
-    const owner = kase?.clientId ? (await db.caseClient.findFirst({ where: { id: kase.clientId }, select: { fileOwner: true } }))?.fileOwner : null;
-    const staff = await db.platformStaff.findMany({ where: { firmId: c.firmId, status: "ACTIVE" }, select: { id: true, displayName: true, actorId: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
-    const team = new Set([owner ?? "", ...(kase?.team ?? []).map((t) => t.userId)].filter(Boolean));
-    const out: { staffId: string; name: string; onCase: boolean }[] = [];
-    for (const s of staff) {
-      const scope = await caseScope(db, { firmId: c.firmId, staffId: s.id });
-      if (!(await db.case.count({ where: { AND: [{ id: c.id }, caseScopeWhere(scope)] } }))) continue;
-      out.push({ staffId: s.id, name: s.displayName, onCase: team.has(s.id) || (!!s.actorId && team.has(s.actorId)) });
-    }
-    return out.sort((a, b) => Number(b.onCase) - Number(a.onCase));
-  }
+  private peopleOf(db: Tx | Db, c: Subject) { return staffWhoMaySee(db, c.firmId, c.id); }
 
   /** GET cases/:id/notes/people (agent/case:show): who the writer may mention on this case. */
   async people(ctx: StaffContext, caseId: string) {
