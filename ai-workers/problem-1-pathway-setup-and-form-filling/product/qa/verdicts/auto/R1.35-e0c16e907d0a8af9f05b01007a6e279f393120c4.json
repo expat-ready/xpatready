@@ -1,0 +1,30 @@
+{
+  "item": "R1.35",
+  "name": "35 Contacts import from a spreadsheet",
+  "pr": 3824,
+  "sha": "e0c16e907d0a8af9f05b01007a6e279f393120c4",
+  "run_id": "45870214666",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45870214666",
+  "at": "2026-11-26T17:47:19.113Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_35.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45870214666/artifacts/15142722047",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.35-e0c16e907d0a8af9f05b01007a6e279f393120c4.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
