@@ -79,14 +79,14 @@ try {
     const n = await tx.$executeRaw`delete from pf21d_rows where firm_id = ${currentFirm()}::uuid and person_id = ${o.personId}::uuid`;
     return n ? { outcome: "ERASED", note: `${n} row(s)` } : { outcome: "NOTHING", note: "no rows" };
   } };
-  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" | "loseCommit" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
+  let mode: "nothing" | "throw" | "kept" | "wait" | "merge" | "breakRecord" | "loseCommit" | "keptThenBreak" = "nothing", mergeTry: (() => void) | null = null, entered = false, gate: () => void = () => undefined;
   const secondEraser: Eraser<any> = { module: "test.second", async erase() {
     if (mode === "throw") throw new Error("Sample: the second module is down");
     if (mode === "wait") { entered = true; await new Promise<void>((r) => { gate = r; }); }
     if (mode === "merge" && mergeTry) mergeTry();   // review r4 M1: a merge tries to land while the run erases
     if (mode === "loseCommit") testDb.loseNextCommit = true;   // Lead 27: this transaction commits, then its answer is lost
-    if (mode === "breakRecord") sql(`alter function plat_data_request_erasure_finish(uuid, text, text, date, text, timestamptz) rename to pf21d_finish_away`);   // Lead 26: the record fails after the erasers commit
-    return mode === "kept" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
+    if (mode === "breakRecord" || mode === "keptThenBreak") sql(`alter function plat_data_request_erasure_finish(uuid, text, text, date, text, timestamptz) rename to pf21d_finish_away`);   // Lead 26: the record fails after the erasers commit
+    return mode === "kept" || mode === "keptThenBreak" ? { outcome: "KEPT", note: "client_financial: 2 rows kept 7 years, name replaced by a reference" } : { outcome: "NOTHING", note: "no rows" };
   } };
   const rowsOf = (firm: string, person: string) => Number(sql(`select count(*) from pf21d_rows where firm_id = '${firm}' and person_id = '${person}'`));
   const addRows = (firm: string, person: string, n = 2) => { for (let i = 0; i < n; i++) sql(`insert into pf21d_rows (firm_id, person_id) values ('${firm}', '${person}')`); };
@@ -169,11 +169,21 @@ try {
   clock.t = start + 14 * DAY; const skipped = await svc.run(); await svc.run();
   ok("PF-21d fail (SA-11-16 (d)): with the switch off, day 14 erases nothing: one ERASURE_SKIPPED step over two runs; the order stays scheduled",
     again.eraseOn === addDays(addDays(day0, 7), 7) && skipped.skipped.includes(r1) && rowsOf(A, P1) === 2 && (kinds(r1).match(/ERASURE_SKIPPED/g) ?? []).length === 1 && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { skipped, k: kinds(r1) });
-  const lateCancel = await throws(() => svc.cancel(as, null, r1, {}), /WINDOW_ENDED/);
   const byHand = await throws(() => requests.move(as, null, r1, { status: "COMPLETED", actionsTaken: "Sample: done by hand" }), /ERASURE_SCHEDULED/);
-  ok("PF-21d fail (break M3): on its day the window has ended (cancel → 409); a hand move of a scheduled request → 409 ERASURE_SCHEDULED; the request unchanged",
-    lateCancel && byHand && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { lateCancel, byHand, s: statusOf(r1) });
+  ok("PF-21d fail (break M3): a hand move of a scheduled request → 409 ERASURE_SCHEDULED; the request unchanged",
+    byHand && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { byHand, s: statusOf(r1) });
+  // PF-21d part 2a, item 1 (Lead 4, #3235 comment 7095583893): while "Data erasure" is off (the emergency stop), an approved
+  // erasure past its day can still be withdrawn; erasure cannot be undone. With the switch on, the window has ended (409).
+  const wDay = clock.t, PW = person(A); addRows(A, PW);
+  const rW = await deletion(A, PW); await svc.approve(as, null, rW); clock.t = wDay + 8 * DAY;
+  const offCancel = await svc.cancel(as, null, rW, { note: "Sample: withdrawn during the emergency stop" }).then((b) => ({ ok: true, b }), (e) => ({ ok: false, e: `${(e as any)?.response?.code ?? ""} ${String(e)}` }));
+  clock.t = wDay;
+  ok("PF-21d pass (part 2a item 1, Lead 4): with the switch off, cancel after the day goes through (eraseOn cleared, an ERASURE_CANCELLED step); the person's rows stay",
+    offCancel.ok && (offCancel as any).b.eraseOn === null && kinds(rW).endsWith("ERASURE_CANCELLED") && statusOf(rW).endsWith("|-") && rowsOf(A, PW) === 2, { offCancel, k: kinds(rW), s: statusOf(rW) });
   const turnedOn = await swOn(); seen.length = 0;
+  const lateCancel = await throws(() => svc.cancel(as, null, r1, {}), /WINDOW_ENDED/);
+  ok("PF-21d fail (break M3, part 2a item 1): with the switch on, on its day the window has ended (cancel → 409); the request unchanged",
+    lateCancel && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { lateCancel, s: statusOf(r1) });
   const empty = await svc.run();
   ok("PF-21d fail (review M1, SA-11-28): with no module registered, nothing is erased and nothing reads COMPLETED; the order stays scheduled",
     empty.skipped.includes(r1) && empty.erased.length === 0 && statusOf(r1) === `IN_PROGRESS|${again.eraseOn}`, { empty, s: statusOf(r1) });
@@ -291,12 +301,15 @@ try {
   sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
   sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P10}', 'Sample: a late inquiry', 'staff:${OWNER}')`);
   sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r10}'`);
+  const gapCancel10 = await throws(() => svc.cancel(as, null, r10, { note: "Sample: withdrawn in the gap" }), /ERASURE_RUNNING/);   // part 2a item 6
   const retook = await svc.run();
   const notes10 = sql(`select string_agg(coalesce(note, ''), ' / ' order by seq) from plat_data_request_event where request_id = '${r10}'`);
   const cancel10 = await throws(() => svc.cancel(as, null, r10, {}), /NOT_SCHEDULED|ERASURE_RUNNING/);
+  ok("PF-21d fail (part 2a item 6, Lead 4): after a crash, 30 minutes and a new hold, a cancel in the gap → 409; the retake then ends HELD and the rows stay",
+    gapCancel10 && !kinds(r10).includes("ERASURE_CANCELLED") && rowsOf(A, P10) === 0 && statusOf(r10) === "HELD|-", { gapCancel10, k: kinds(r10), rows: rowsOf(A, P10) });
   ok("PF-21d fail (review r6 M2): a retaken claim under a new hold → HELD, no erase day, the step says an earlier run may have erased and its result was not recorded (never \"nothing was erased\"); cancel → 409",
     retook.partial.includes(r10) && statusOf(r10) === "HELD|-" && cancel10 && /not recorded/.test(notes10) && /a late inquiry/.test(notes10)
-    && !/On legal hold; nothing was erased/.test(notes10) && /may have erased/.test(sql(`select actions_taken from plat_data_request where id = '${r10}'`)), { retook, s: statusOf(r10), notes10 });
+    && !/On legal hold; nothing was erased/.test(notes10) && /may have erased|its marks say: test\.rows: ERASED/.test(sql(`select actions_taken from plat_data_request where id = '${r10}'`)), { retook, s: statusOf(r10), notes10 });
   // review r6 M2: a retaken claim whose eraser then fails keeps the claim (an earlier run may have erased): cancel → 409.
   const P11 = person(A); addRows(A, P11);
   const r11 = await deletion(A, P11); await svc.approve(as, null, r11); clock.t += 7 * DAY;
@@ -307,16 +320,75 @@ try {
   const cancel11 = await throws(() => svc.cancel(as, null, r11, {}), /ERASURE_RUNNING/);
   ok("PF-21d fail (review r6 M2): a retaken claim whose eraser fails keeps the claim (never \"nothing was erased\" over an earlier unrecorded run): cancel → 409",
     retakeFail.failed === 1 && cancel11 && sql(`select erasing_since is not null from plat_data_request where id = '${r11}'`) === "t", { retakeFail, cancel11, k: kinds(r11) });
+  const notes11 = sql(`select string_agg(coalesce(note, ''), ' / ' order by seq) from plat_data_request_event where request_id = '${r11}'`);
+  ok("PF-21d fail (part 2a item 8, R7-3): a retake whose own eraser fails names that module and says \"may\"; it never claims the erasers ran",
+    /test\.second: FAILED on a run after an earlier one that may have erased/.test(notes11) && !/The erasers ran, but/.test(notes11), { notes11 });
+  // ----------------------------------------------------------------------------------------- PF-21d part 2a, items 2-8
+  // Item 5 (round 2 m3, R7-2): the lost-COMMIT run's marks committed with its erasers, so the run that records it says what
+  // the earlier run erased, never only "NOTHING".
+  const actions9 = sql(`select coalesce(actions_taken, '') from plat_data_request where id = '${r9}'`);
+  ok("PF-21d fail (part 2a item 5): a retake records the earlier run's marks (test.rows: ERASED), so the register never understates what was erased",
+    /its marks say: test\.rows: ERASED/.test(actions9), { actions9 });
+  // Item 8 (R7-1): a request a run retook stays marked. Approved again with the hold still on: cancel → 409, and the next run
+  // never says "nothing was erased"; with many long hold reasons the words still end "Nothing more was erased." (R7-4).
+  for (let i = 0; i < 5; i++) sql(`insert into plat_legal_hold (id, firm_id, scope_kind, target_id, reason, placed_by) values (gen_random_uuid(), '${A}', 'PERSON', '${P10}', 'Sample: a long reason ${"x".repeat(470)}', 'staff:${OWNER}')`);
+  const again10 = await svc.approve(as, null, r10);
+  const cancelMarked = await throws(() => svc.cancel(as, null, r10, {}), /MAY_HAVE_ERASED/);
+  clock.t += 7 * DAY; const reRun10 = await svc.run();
+  const last10 = sql(`select note from plat_data_request_event where request_id = '${r10}' and kind = 'ERASURE_HELD' order by seq desc limit 1`);
+  ok("PF-21d fail (part 2a item 8, R7-1, R7-4): a request a run retook, approved again under a hold → cancel 409 MAY_HAVE_ERASED; the run ends HELD with the earlier run's words, ending \"Nothing more was erased.\"",
+    !!again10.eraseOn && cancelMarked && reRun10.partial.includes(r10) && statusOf(r10) === "HELD|-" && !/^On legal hold; nothing was erased/.test(last10)
+    && /earlier run/.test(last10) && last10.endsWith("Nothing more was erased.") && last10.length <= 2000, { cancelMarked, reRun10, last10: last10.slice(-120), n: last10.length });
+  // R7-4: the retake's gone path, with its next step.
+  const P13 = person(A), P13to = person(A); addRows(A, P13);
+  const r13 = await deletion(A, P13); await svc.approve(as, null, r13); clock.t += 7 * DAY;
+  mode = "breakRecord"; await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  sql(`update fo_person set merged_into_id = '${P13to}', merged_at = now() where id = '${P13}'`);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r13}'`);
+  const gone13 = await svc.run();
+  const last13 = sql(`select note from plat_data_request_event where request_id = '${r13}' and kind = 'ERASURE_HELD' order by seq desc limit 1`);
+  ok("PF-21d fail (part 2a item 8, R7-4): a retake whose person was merged away since → HELD, no erase day; the words give the earlier run's marks, the next step, and \"Nothing more was erased.\"",
+    gone13.partial.includes(r13) && statusOf(r13) === "HELD|-" && /its marks say: test\.rows: ERASED/.test(last13) && /log the request on the right person record/.test(last13) && last13.endsWith("Nothing more was erased."), { gone13, last13 });
+  // Item 4 (round 2 m4): an order another run still holds (a fresh claim) is counted as skipped, never silent.
+  const P14 = person(A); addRows(A, P14);
+  const r14 = await deletion(A, P14); await svc.approve(as, null, r14); clock.t += 7 * DAY;
+  sql(`update plat_data_request set erasing_since = now() where id = '${r14}'`);
+  const held14 = await svc.run();
+  ok("PF-21d fail (part 2a item 4): an order still claimed by another run → counted as skipped, nothing erased",
+    held14.skipped.includes(r14) && rowsOf(A, P14) === 2, { held14 });
+  // Round 1 of #3583 (reviewer m2, breaker m3): an earlier run's KEPT mark makes the end PARTIAL, never COMPLETED, even when
+  // an eraser that kept something answers NOTHING the next time (port rule 4 broken). This run's results come first, so
+  // the 2000-character limit never hides them (reviewer m3, breaker m1).
+  const P15 = person(A); addRows(A, P15);
+  const r15 = await deletion(A, P15); await svc.approve(as, null, r15); clock.t += 7 * DAY;
+  // r14 keeps its fresh claim: every run below counts it as skipped and never touches it.
+  mode = "keptThenBreak"; await svc.run(); mode = "nothing";
+  sql(`alter function pf21d_finish_away(uuid, text, text, date, text, timestamptz) rename to plat_data_request_erasure_finish`);
+  sql(`update plat_data_request set erasing_since = erasing_since - interval '31 minutes' where id = '${r15}'`);
+  const kept15 = await svc.run();
+  const actions15 = sql(`select coalesce(actions_taken, '') from plat_data_request where id = '${r15}'`);
+  ok("PF-21d fail (#3583 round 1: reviewer m2, m3): an earlier run's KEPT mark → PARTIAL (HELD), never COMPLETED; the words start with this run's results",
+    kept15.partial.includes(r15) && statusOf(r15) === "HELD|-" && actions15.startsWith("This run: ") && /its marks say: [^]*KEPT/.test(actions15), { kept15, s: statusOf(r15), actions15 });
+  // The port's rules on the table itself (reviewer m1, breaker m2): a module name, a note of at most 300 characters, no "@".
+  ok("PF-21d fail (#3583 round 1: reviewer m1, breaker m2): the mark table refuses a bad module name, a note over 300 characters, or one with \"@\"",
+    refusedBySql(`insert into plat_data_request_erasure_mark (request_id, claim, module, outcome, note) values ('${r15}', now(), 'Bad Name', 'ERASED', 'x')`, /plat_data_request_erasure_mark_rules/)
+    && refusedBySql(`insert into plat_data_request_erasure_mark (request_id, claim, module, outcome, note) values ('${r15}', now(), 'test.rows', 'ERASED', '${"x".repeat(301)}')`, /plat_data_request_erasure_mark_rules/)
+    && refusedBySql(`insert into plat_data_request_erasure_mark (request_id, claim, module, outcome, note) values ('${r15}', now(), 'test.rows', 'ERASED', 'mail a@b.c')`, /plat_data_request_erasure_mark_rules/));
   // -------------------------------------------------------------------------------------- the database's rules
   ok("PF-21d fail (database): an erase day on an access request or not after the day received, a forged mark through the job's step → refused",
     refusedBySql(`update plat_data_request set erase_on = received_on + 7 where id = '${access}'`, /plat_data_request_erase_on_set/)
     && refusedBySql(`update plat_data_request set erase_on = received_on where id = '${r3}'`, /plat_data_request_erase_on_set/)
+    && refusedBySql(`update plat_data_request set erasing_since = now() where id = '${access}'`, /plat_data_request_erase_on_set/)   // part 2a item 2: a claim needs an erase day
     && refusedBySql(`select plat_data_request_erasure_step('${r3}', 'OVERDUE_ALERTED', 'x', 'system:x', false, null)`, /not an erasure step/));
   ok("PF-21d fail (walls): a firm's session cannot approve, cancel, read or run an order (refused by the database)",
     refusedAsApp(A, `select plat_data_request_erasure_approve('${r1}', '2027-01-01', 'staff:x')`, /only ExpatReady's own staff/)
     && refusedAsApp(A, `select plat_data_request_erasure_cancel('${r1}', null, 'staff:x', '2027-01-01')`, /only ExpatReady's own staff/)
     && refusedAsApp(A, `select plat_data_request_erasure_of('${r1}')`, /only ExpatReady's own staff/)
-    && refusedAsApp(A, `select plat_data_request_erasure_due('2027-01-01', 10)`, /only ExpatReady's own staff/));
+    && refusedAsApp(A, `select plat_data_request_erasure_due('2027-01-01', 10)`, /only ExpatReady's own staff/)
+    && refusedAsApp(B, `select plat_data_request_erasure_mark_add('${r1}', now(), 'test.rows', 'ERASED', 'x')`, /not an order of this firm|permission denied/)   // part 2a: a mark only for the session's own firm, under the run's claim
+    && refusedBySql(`select plat_data_request_erasure_mark_add('${r1}', now(), 'test.rows', 'ERASED', 'x')`, /not an order of this firm/)
+    && refusedBySql(`delete from plat_data_request_erasure_mark`, /plat_data_request_kept/));
   // ------------------------------------------------------------------------------------- the migration right after itself
   const prior = all.filter((d) => d < NEW);
   ok(`PF-21d: the migration has its own stamp, after every one before it (newest before: ${prior.at(-1)})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1);
