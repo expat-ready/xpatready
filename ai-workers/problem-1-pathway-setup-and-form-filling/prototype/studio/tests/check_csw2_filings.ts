@@ -1,6 +1,6 @@
 // CS-W2 part filings (Release 1 row R1.3; BACKLOG CS-W2; brief design/briefs/CS-W2.md part 1; contract v0.1 §8 steps 2,
 // 2a, conditions 1 and 3; P-575, P-588 (4)): the platform firm on the nine filings tables. Each named case has a pass and a fail.
-//   1. a scratch database: every migration before 20261126090000_filings__csw2_firm_id, two Sample firms, a case of each
+//   1. a scratch database: every migration before 20261126090000_shared__csw2_firm_id, two Sample firms, a case of each
 //      and one of a key with no platform firm, each with rows in all nine tables (one case's stage ended, its assessment
 //      frozen); then the migration and every later one. DW1.1 (backfill), DW1.2 (fill), DW1.3 (each composite key),
 //      DW1.4 (names, INVOKER, the follow past the write-once and stage guards). A second scratch database: a filing under
@@ -17,7 +17,7 @@ import { needVisitorVisa, openCase, prepare, sql as copySql } from "../acceptanc
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126090000_filings__csw2_firm_id";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126090000_shared__csw2_firm_id";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", HOST = "127.0.0.1:54329", pg = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const TABLES = ["submission_group", "filing", "filing_applicant", "filing_item", "assessment", "assessment_override", "assessment_review", "filing_change", "filing_form_addition"];
