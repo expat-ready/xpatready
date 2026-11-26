@@ -153,3 +153,18 @@ Scope: `git diff 8eccabb30..21fce934c` without the record files. Evidence: the n
 D1 4 · D2 4 · D5 4 · D10 4 · D11 4 · D16 4 (a pass and a fail for each round fix). Others as in round 1. No Blocker or Major is open; R3-1, R3-2, the per-view queries and the 400/422 note go to the follow-up and the Lead.
 
 Verdict: Approve 21fce934c89868b4855446f450c56ec5ac89170b
+
+## Round 4 (diff only): head `277dbeda616cd36136a30df7eff5fc44640fd233`
+Scope: `git diff 21fce934c..277dbeda6` without the record files (4 files, +19/−12). I reran `check_pf22v_saved_views` on this commit: **40/40**.
+
+| Item | Now | Evidence |
+|---|---|---|
+| R3-1 a personal save confirms another person's source | Closed | `service.ts` `checked()` uses the "share" mode (firm-wide) only when the view is shared and the caller holds the share key. Every personal save, and every change of a personal view, is judged by what the saver sees. In `change()`, `b.shared ?? (owner === null)` parses as intended. New V9 fail case: a personal save naming another Agent's "Web form" gets 400 "…you can see", the same answer as a made-up source. |
+| Breaker R3-m2 cf part past the match limit | Fine | The part is left out and the view opens `empty` with words ("…so the view shows nothing; narrow it"), never wider. At save the same reason gives a 400. |
+| R3-2 a source gone from the whole firm opens empty, not dropped | Left for the Lead | Stated in the PR. A share-key holder's label now says "No lead in the firm has…", which helps. Nothing is widened. It stays a Minor for the Lead's decision, not a merge condition. |
+
+No new findings. Open for the follow-up or the Lead, none blocking: R3-2, the per-view queries on GET (round 1 Minor 2), the 400/422 row note, and the screen honouring `empty` (PF-22s, Board included).
+
+Journey score unchanged: **9.4 / 10, pass** (plain words ½ for R3-2). D-scores as in round 3.
+
+Verdict: Approve 277dbeda616cd36136a30df7eff5fc44640fd233

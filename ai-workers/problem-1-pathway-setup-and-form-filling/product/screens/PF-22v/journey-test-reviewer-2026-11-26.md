@@ -60,3 +60,6 @@ Journeys 5, 6, 9 (the version half) and 10 now hold. Journey 3 now opens (200), 
 
 ## Round 3 (head 21fce934c): 9.4 / 10, pass
 Journey 3 now holds: with mixed sources the seen ones apply; with none seen the view says `empty`, "shows nothing for you". Journey 9's retry holds: three keys in another order → same view. Plain words stay at ½ (review R3-2). The score table is in `review.md`, Round 3.
+
+## Round 4 (head 277dbeda6): 9.4 / 10, pass, unchanged
+I reran the suite on this commit (40/40). The guess-a-source path for a personal save is closed (400, the same as a made-up source).

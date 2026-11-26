@@ -121,3 +121,21 @@ Fix: judge firm-wide only for a caller who sees all leads, or who is sharing (`s
 **Held again:** injection and wildcards, visibility on both lists, permissions (403/404), firm walls, leavers, odd keys and text, and the Prisma limit (32,000 ids pass, 33,000 fail). The 10× race of delete (`?version=`), take-back and the Agent's rename has one winner each time, no 500, and audit lines matching the outcomes.
 
 Verdict: Changes 21fce934c89868b4855446f450c56ec5ac89170b
+
+## Round 4 (diff only, 277dbeda6)
+**What was run:** `break-r4.mts` and `inlist-r4.mts`, against a clean `git archive` of 277dbeda6 (`/tmp/claude-0/pf22v-r4src`). `break-r4.mts` is round 3's script plus about 20 new calls. Twice, the first request after the 62 k-row bulk insert failed with "fetch failed": `psql` blocks the event loop, so the keep-alive socket is lost. I added one retry to the harness; on the third run no retry was needed and nothing failed. The database was dropped. Rounds 1 to 3 re-ran, and every difference from round 3 is one of the intended fixes.
+
+**Closed**
+* **R3-M1:** the save oracle is gone. A `view.own` Agent's personal POST with "Referral: Acme Holdings" (another Agent's lead), "Referral: Nobody Ltd" or "Web form" → the same 400 for all three, with the same words, apart from the quoted source. A PATCH of a personal view's filter → the same 400 for Acme and Nobody, including when `shared:true` is sent without the key (no 403 that would show which is which). POST `shared:true` without the key → 403 before any check.
+* **Share mode only with the key:** the Admin (key, sees only their own leads, has none) can share `{source:Acme}` (201); `{source:Nobody}` → 400 "No lead in the firm has…". The same Admin's *personal* `{source:Acme}` → 400 "No lead you can see has…". A PATCH of a shared view's filter is judged in share mode; `shared:false` together with a filter is judged by what the saver sees. Someone holding the configure-pipeline key can confirm sources across the firm; I accept that for Owner and Admin.
+* **R3-m2:** "R3 vip three" (its cf part now past 30 k) opens with `empty: true` and the words "…so the view shows nothing; narrow it." It no longer opens wider.
+* **Agent's view of a shared Acme view:** the source is dropped and named (the firm's shared words, as challenge M3 judged), with `empty: true`.
+
+**Minor**
+* **R4-m1: a view can still open to the list's 422.** This happens when one cf part is archived and another is past 30,000. Repro: save `{cf.temp:"keep", cf.vip_four:"true"}` while it matches 1 prospect; then `vip_four` grows to 30.5 k and `temp` is archived. GET views → `dropped: [cf.temp archived]`, `empty: false`, `applies: {cf.vip_four:"true"}`. Opening it → **422** "This filter matches too many records". Cause: `customFieldIdsWhere` refuses the archived key before it runs any query, so the count is never checked (`saved-view-lists.ts:82-95`). Fix: check the remaining cf parts again after dropping the archived ones. Rare, and it says what is wrong, never shows more.
+* **Wording:** at share, a refusal ends with "…so the view shows nothing for you", although nothing was saved.
+* **Stated in the PR, not re-opened:** R3-m1 (the screen must honour `empty`; PF-22s should test it), R3-m3 (a DELETE body is ignored; the builder says the real app does not parse DELETE bodies, which I did not check in the full app), R2-m2 (optional version, for the Lead), m5 (queries per view), and the upper-case owner retry.
+
+**Held again:** injection and wildcards, visibility on both lists, permissions, firm walls, leavers, odd keys and text, the size bound (n=190 saves, n=200 → 422), versions and idempotent retries, and the races (one winner each time, no 500, audit lines matching). The Prisma limit: 32,000 ids pass, 33,000 fail. No open Blocker or Major.
+
+Verdict: Approve 277dbeda616cd36136a30df7eff5fc44640fd233
