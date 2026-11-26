@@ -1,5 +1,7 @@
 # Resume on the new account (P-344 (1)): one page, kept by the tech lead
 
+🔐 **Owed 27 Nov (founder, 23:2x IST 26 Nov; not a blocker): Factory v3 step 0, done by the Lead in the built-in browser, the founder only enables it:** https://github.com/expat-ready/xpatready/settings/actions → "Approval for running fork pull request workflows from contributors" → "Require approval for all external contributors" → Save (the Mac runner xr-mac serves this public repository). Then limit xr-mac to queue-gate.yml (plan step 3). Survives account switches; remove only when done.
+
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
 ## Standing account-switch strategy (founder A403/A404, 26 Nov: "that should be our strategy"; the Lead owns it, changed only by a new founder row)
