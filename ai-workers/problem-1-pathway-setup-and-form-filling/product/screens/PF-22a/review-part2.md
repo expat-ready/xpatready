@@ -116,3 +116,8 @@ Reviewer: Changes 80ff11890a475870eb49be1aedb5ab78e91c8856
 **Ship (Approve).** r2-1 is fixed: the 409 `STALE_VERSION` now carries only `current` (the house shape), and the unused `byKeyOf` helper is removed. The test now checks `current.values` and that `current.version` differs from the version first read. The suite at cd73d1b74 is **50/50**. The rest of the diff is only my round-2 records. No Blocker or Major is open. r2-2 (the Activity log shows `cf_<id>`; needs AUD-4's owner) and r2-3 (race tests that depend on timing) stay open as Minors; the coordinator says the PR lists them as known.
 
 Reviewer: Approve cd73d1b7444fd2f1b7a367a56d785f656721ab5e
+
+## Round 4 (diff-only, 26 Nov 2026): head `3226c5754e7cd9d9f11afb7d54b6e6df6fadf237`
+Scope: cd73d1b74 to 3226c5754. That is the records commit dfd74f9bd, the merge ea91e76d1 of part 1's new head 560e9b820, and 3226c5754. I compared part 2's own change from part 1 then (`a3bd7eb2c..cd73d1b74`) with now (`560e9b820..3226c5754`), file by file. The 12 files are the same and every line of code is identical except one comment line in `ports/custom-fields.ts`, which now names `20261126155300_shared__pf22a_custom_fields`. The rest of the two-dot diff comes from part 1 and main. dfd74f9bd only adds round 3 records: it merges some "What held" bullets in break-report-part2.md, and no fact is lost. No old stamp is left in code. The coordinator ran check_pf22a_custom_fields: 50/50. The journey test was not re-run, because nothing in behaviour changed. Open Minors are unchanged (r2-2, r2-3).
+
+Reviewer: Approve 3226c5754e7cd9d9f11afb7d54b6e6df6fadf237
