@@ -5,6 +5,17 @@
 import { z } from "zod";
 import { shortId } from "./contract";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Review M1 (B2): the dialog's own plain words before anything is sent (the API's refusals stay the backstop). */
+export function holdDraftErrors(d: HoldDraft, firmChosen: boolean, advanced: boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!firmChosen) out.firmId = HOLD_COPY.firmNotChosen;
+  if (advanced && (d.kind === "PERSON" || d.kind === "CASE") && !UUID.test(d.id.trim())) out.id = HOLD_COPY.idWords;
+  if (advanced && d.kind === "DATE_RANGE") { if (!d.from || !d.to) out[!d.from ? "from" : "to"] = HOLD_COPY.datesNeeded; else if (d.to < d.from) out.to = HOLD_COPY.datesOrder; }
+  if (!d.reason.trim()) out.reason = HOLD_COPY.reasonNeeded;
+  return out;
+}
+
 /** SA-07 Appendix A "Place and release legal holds" (the Platform Owner only, SA7-D74 (a)). */
 export const LEGAL_HOLD_KEY = "system/compliance:legal-hold";
 /** PF-21b's categories (ports/legal-hold.ts LEGAL_HOLD_CATEGORY), in a person's words. */
@@ -70,4 +81,9 @@ export const HOLD_COPY = {
   releaseLead: "Deletion of what it covers may go ahead again once it is released. This cannot be undone: a new hold would be placed afresh.",
   released: "The hold is released.",
   failed: "Could not save. Please try again.",
+  firmNotChosen: "Choose the firm from the list under the search box: typing its name is not enough.",
+  idWords: "Paste the record's id as the firm gives it: 36 characters, like 3f2a0c1e-…-c91e.",
+  datesNeeded: "Pick both dates: from, and to.", datesOrder: "The end date must be on or after the start date.",
+  reasonNeeded: "Write the legal matter the hold is for.",
+  releaseReasonNeeded: "Write why the hold may be released.",
 } as const;

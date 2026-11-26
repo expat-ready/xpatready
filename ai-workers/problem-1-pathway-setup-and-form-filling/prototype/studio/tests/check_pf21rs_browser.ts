@@ -459,7 +459,15 @@ try {
   await hd.getByRole("button", { name: "Place the hold" }).click();
   await hd.locator("[role=alert]").first().waitFor({ timeout: 5000 }).catch(() => undefined);
   const holdErrs = await hd.locator("[role=alert]").allInnerTexts();
-  ok("PF-21rs B2 W3 fail: no firm and no reason → each refusal shown (the API's words), nothing placed", holdErrs.length >= 2 && holdCount() === h0, holdErrs);
+  ok("PF-21rs B2 W3 fail (review M1): no firm chosen and no reason → each refusal in plain words saying what to do, nothing placed",
+    holdErrs.includes(HOLD_COPY.firmNotChosen) && holdErrs.includes(HOLD_COPY.reasonNeeded) && holdCount() === h0, holdErrs);
+  // Typing the firm's name without choosing it, and an id that is not one: said in plain words, nothing sent.
+  await hd.locator("[data-firm-search]").fill(nameA); await hd.locator("[data-advanced]").check(); await hd.getByLabel("Covers").selectOption("PERSON");
+  await hd.getByLabel("Person record id").fill(nameA); await hd.getByLabel("Reason for the hold").fill("Sample"); await hd.getByRole("button", { name: "Place the hold" }).click();
+  const slipErrs = await hd.locator("[role=alert]").allInnerTexts();
+  ok("PF-21rs B2 W3 fail (review M1): a firm name typed but not chosen, and a person id that is not one, each say what to do; nothing placed",
+    slipErrs.includes(HOLD_COPY.firmNotChosen) && slipErrs.includes(HOLD_COPY.idWords) && holdCount() === h0, slipErrs);
+  await hd.locator("[data-advanced]").uncheck(); await hd.getByLabel("Reason for the hold").fill("");
   await hd.locator("[data-firm-search]").fill(nameA); await hd.locator(`[data-add-firm="${A}"]`).click({ timeout: 10_000 });
   await hd.locator("[data-advanced]").check(); await hd.getByLabel("Covers").selectOption("PERSON"); await hd.getByLabel("Person record id").fill(heldPerson);
   await hd.getByLabel("Reason for the hold").fill(`Sample litigation (PF-21rs ${run})`); await hd.getByRole("button", { name: "Place the hold" }).click();
@@ -472,11 +480,12 @@ try {
     !!holdId && rowText.includes(nameA) && rowText.includes(coversWords({ kind: "PERSON", id: heldPerson })) && rowText.includes("Platform Owner (Sample)") && (await p1.locator("[data-done]").innerText().catch(() => "")) === HOLD_COPY.placed, { holdId, rowText });
   ok("PF-21rs B2 W3 pass (j_85 W4): the app's delete check now answers HELD for that person, with the hold's reason (shown in our console only)", held.v === "HELD" && held.why.includes(`Sample litigation (PF-21rs ${run})`), held);
   await p1.screenshot({ path: join(SHOTS, "b2-01-holds-active-1440.png"), fullPage: true });
-  await p1.getByRole("button", { name: `Release the hold on ${nameA}: ${coversWords({ kind: "PERSON", id: heldPerson })}`, exact: true }).click();
+  await p1.locator(`[data-release="${holdId}"]`).click();
   const rd = p1.getByRole("dialog", { name: HOLD_COPY.releaseTitle }); await rd.waitFor();
+  const relWords = await rd.getByText(`Sample litigation (PF-21rs ${run})`).count();   // break m3: the dialog names the matter
   await rd.getByRole("button", { name: "Release the hold" }).click();
   const relErr = await rd.locator("[role=alert]").first().innerText({ timeout: 5000 }).catch(() => "");
-  ok("PF-21rs B2 W3 fail (BR-6): Release without a reason → refused under the field; the hold stays active and the check still HELD", !!relErr && sql(`select released_at is null from plat_legal_hold where id = '${holdId}'`) === "t" && (await verdictFor(heldPerson)).v === "HELD", relErr);
+  ok("PF-21rs B2 W3 fail (BR-6): Release without a reason → refused under the field; the hold stays active and the check still HELD", relErr === HOLD_COPY.releaseReasonNeeded && relWords > 0 && sql(`select released_at is null from plat_legal_hold where id = '${holdId}'`) === "t" && (await verdictFor(heldPerson)).v === "HELD", relErr);
   await rd.getByLabel("Reason for the release").fill("Sample: the matter settled"); await rd.getByRole("button", { name: "Release the hold" }).click();
   await rd.waitFor({ state: "hidden", timeout: 15_000 }).catch(() => undefined);
   await p1.locator('[data-hold-chip="released"]').click(); await p1.locator(`[data-hold-row="${holdId}"] [data-released]`).waitFor({ timeout: 10_000 }).catch(() => undefined);

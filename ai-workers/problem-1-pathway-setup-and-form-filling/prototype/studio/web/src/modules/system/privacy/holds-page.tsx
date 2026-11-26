@@ -10,25 +10,28 @@ import { SystemFrame, useSystemStaff } from "../frame";
 import { systemApi, SystemApiError, useSystemToken } from "../session";
 import { actorWords, firmWords, momentUtc } from "./contract";
 import { OneFirm, type Firm } from "./one-firm";
-import { coversWords, HOLD_CATEGORIES, HOLD_COPY as C, holdBody, holdFieldErrors, HoldList, LEGAL_HOLD_KEY, type Hold, type HoldDraft } from "./holds";
+import { coversWords, HOLD_CATEGORIES, HOLD_COPY as C, holdBody, holdDraftErrors, holdFieldErrors, HoldList, LEGAL_HOLD_KEY, type Hold, type HoldDraft } from "./holds";
 
 const blank = (): HoldDraft => ({ firmId: "", kind: "FIRM", id: "", category: HOLD_CATEGORIES[0][0], from: "", to: "", reason: "" });
 
-function PlaceHold({ open, onOpenChange, onPlaced, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; onPlaced: () => void; returnFocus: () => HTMLElement | null }) {
+function PlaceHold({ open, onOpenChange, onPlaced, returnFocus, onTry }: { open: boolean; onOpenChange: (o: boolean) => void; onPlaced: () => void; returnFocus: () => HTMLElement | null; onTry?: () => void }) {
   const [d, setD] = React.useState<HoldDraft>(blank), [firm, setFirm] = React.useState<Firm | null>(null), [advanced, setAdvanced] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false), [refused, setRefused] = React.useState(0), form = React.useRef<HTMLFormElement>(null);
   React.useEffect(() => { if (open) { setD(blank()); setFirm(null); setAdvanced(false); setErrors({}); } }, [open]);
   React.useEffect(() => { if (refused) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); }, [refused]);
   const put = <K extends keyof HoldDraft>(k: K, v: HoldDraft[K]) => { setD((o) => ({ ...o, [k]: v })); setErrors((o) => { if (!(k in o)) return o; const { [k]: _gone, ...rest } = o; return rest; }); };
   const send = async (e: React.FormEvent) => {
-    e.preventDefault(); if (busy) return; setBusy(true); setErrors({});
+    e.preventDefault(); if (busy) return; onTry?.();   // break m6: an earlier success line goes once a new place is tried
+    const mine = holdDraftErrors(d, !!firm, advanced);
+    if (Object.keys(mine).length) { setErrors(mine); setRefused((n) => n + 1); return; }
+    setBusy(true); setErrors({});
     try { await systemApi("/register/holds", { method: "POST", json: holdBody({ ...d, firmId: firm?.id ?? "", kind: advanced ? d.kind : "FIRM" }) }); onPlaced(); }
     catch (x) { setErrors(x instanceof SystemApiError && x.problem.fields ? holdFieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : C.failed }); setRefused((n) => n + 1); }
     finally { setBusy(false); }
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={C.placeTitle} description={C.placeLead} guard returnFocus={returnFocus}
-      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="place-hold" busy={busy} data-place-send>Place the hold</Button></>}>
+      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="place-hold" busy={busy} className="max-sm:min-h-11" data-place-send>Place the hold</Button></>}>
       <form id="place-hold" ref={form} onSubmit={send} noValidate className="flex flex-col gap-4">
         <OneFirm chosen={firm} onChange={(f) => { setFirm(f); setErrors(({ firmId: _g, ...r }) => r); }} error={errors.firmId} />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} data-advanced />{C.advanced}</label>
@@ -49,20 +52,27 @@ function PlaceHold({ open, onOpenChange, onPlaced, returnFocus }: { open: boolea
   );
 }
 
-function ReleaseHold({ hold, onOpenChange, onReleased }: { hold: Hold | null; onOpenChange: (o: boolean) => void; onReleased: () => void }) {
-  const [reason, setReason] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false);
+function ReleaseHold({ hold, onOpenChange, onReleased, onStale }: { hold: Hold | null; onOpenChange: (o: boolean) => void; onReleased: () => void; onStale: (words: string) => void }) {
+  const [reason, setReason] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [busy, setBusy] = React.useState(false), form = React.useRef<HTMLFormElement>(null);
+  // Review m2: after a refusal the refused field takes the focus.
+  React.useEffect(() => { if (errors.reason) form.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); }, [errors]);
   React.useEffect(() => { if (hold) { setReason(""); setErrors({}); } }, [hold]);
   const go = async (e: React.FormEvent) => {
-    e.preventDefault(); if (busy || !hold) return; setBusy(true); setErrors({});
+    e.preventDefault(); if (busy || !hold) return;
+    if (!reason.trim()) { setErrors({ reason: C.releaseReasonNeeded }); return; }
+    setBusy(true); setErrors({});
     try { await systemApi(`/register/holds/${hold.id}/release`, { method: "POST", json: { reason } }); onReleased(); }
-    catch (x) { setErrors(x instanceof SystemApiError && x.problem.fields ? holdFieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : C.failed }); }
+    catch (x) {
+      // Break m2: released elsewhere meanwhile: the dialog closes, the list reloads and says so.
+      if (x instanceof SystemApiError && x.status === 409) { onStale(x.message); return; }
+      setErrors(x instanceof SystemApiError && x.problem.fields ? holdFieldErrors(x.problem.fields) : { other: x instanceof SystemApiError ? x.message : C.failed }); }
     finally { setBusy(false); }
   };
   return (
-    <Dialog open={!!hold} onOpenChange={onOpenChange} title={C.releaseTitle} description={hold ? `${firmWords({ id: hold.firmId, name: hold.firmName ?? null })}: ${coversWords(hold.scope)}. ${C.releaseLead}` : ""}
+    <Dialog open={!!hold} onOpenChange={onOpenChange} title={C.releaseTitle} description={hold ? <span className="[overflow-wrap:anywhere]">{firmWords({ id: hold.firmId, name: hold.firmName ?? null })}: {coversWords(hold.scope)}, placed {momentUtc(hold.placedAt)} for “{hold.reason}”. {C.releaseLead}</span> : ""}
       returnFocus={() => document.getElementById("holds-heading")}
-      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="release-hold" variant="destructive" busy={busy} data-release-send>Release the hold</Button></>}>
-      <form id="release-hold" onSubmit={go} noValidate className="flex flex-col gap-4">
+      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="release-hold" variant="destructive" busy={busy} className="max-sm:min-h-11" data-release-send>Release the hold</Button></>}>
+      <form id="release-hold" ref={form} onSubmit={go} noValidate className="flex flex-col gap-4">
         <Field label="Reason for the release" hint="Why it may be released: kept on the hold and on the audit line." error={errors.reason}><Input value={reason} onChange={(e) => setReason(e.target.value)} data-field="release-reason" /></Field>
         {errors.other ? <Notice tone="danger"><span data-release-error>{errors.other}</span></Notice> : null}
       </form>
@@ -91,7 +101,7 @@ function HoldsBody() {
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {title}
       <div role="group" aria-label="Show holds" className="flex flex-wrap gap-2">
-        {(["active", "released", "all"] as const).map((x) => <Button key={x} variant={state === x ? "default" : "outline"} size="sm" aria-pressed={state === x} onClick={() => setState(x)} data-hold-chip={x}>{x === "active" ? "Active" : x === "released" ? "Released" : "All"}</Button>)}
+        {(["active", "released", "all"] as const).map((x) => <Button key={x} variant={state === x ? "default" : "outline"} size="sm" aria-pressed={state === x} onClick={() => { setState(x); setDone(null); }} data-hold-chip={x}>{x === "active" ? "Active" : x === "released" ? "Released" : "All"}</Button>)}
       </div>
       {!d && !list.isError ? <p role="status" className="text-sm text-text-muted" data-loading>Loading the holds…</p>
         : list.isError ? <Notice tone="danger" title="Not available" action={<Button variant="outline" size="sm" onClick={() => void list.refetch()}>Retry</Button>}><span data-holds-error>{refused ? refused.message : C.loadFailed}</span></Notice>
@@ -99,19 +109,19 @@ function HoldsBody() {
             : <>
               <Table label="Legal holds" head={["Firm", "Covers", "Reason", "Placed", "Release"]}>
                 {d!.holds.map((h) => <tr key={h.id} data-hold-row={h.id} data-active={h.active}>
-                  <td className="min-w-32 [overflow-wrap:anywhere]">{firmWords({ id: h.firmId, name: h.firmName ?? null })}</td>
-                  <td className="min-w-40">{coversWords(h.scope)}</td>
-                  <td className="min-w-48 max-w-md [overflow-wrap:anywhere]">{h.reason}</td>
+                  <td className="min-w-28 [overflow-wrap:anywhere]">{firmWords({ id: h.firmId, name: h.firmName ?? null })}</td>
+                  <td className="min-w-32 [overflow-wrap:anywhere]">{coversWords(h.scope)}{h.scope.kind === "PERSON" || h.scope.kind === "CASE" ? <code className="block select-all font-mono text-xs text-text-muted [overflow-wrap:anywhere]">{h.scope.id}</code> : null}</td>
+                  <td className="min-w-40 [overflow-wrap:anywhere]">{h.reason}</td>
                   <td className="whitespace-nowrap text-sm"><time dateTime={h.placedAt}>{momentUtc(h.placedAt)}</time><span className="block text-xs text-text-muted">{actorWords(h.placedBy, h.placedByName ?? null)}</span></td>
-                  <td className="min-w-40 text-sm">{h.active ? (manage ? <Button variant="outline" size="sm" className="text-text-danger" onClick={() => setReleasing(h)} aria-label={`Release the hold on ${firmWords({ id: h.firmId, name: h.firmName ?? null })}: ${coversWords(h.scope)}`}>Release</Button> : "Active")
-                    : <span data-released><time dateTime={h.releasedAt ?? ""}>{h.releasedAt ? momentUtc(h.releasedAt) : ""}</time><span className="block text-xs text-text-muted [overflow-wrap:anywhere]">{actorWords(h.releasedBy ?? "", h.releasedByName ?? null)}{h.releaseReason ? `: ${h.releaseReason}` : ""}</span></span>}</td>
+                  <td className="min-w-24 text-sm">{h.active ? (manage ? <Button variant="outline" size="sm" className="text-text-danger" onClick={() => setReleasing(h)} data-release={h.id} aria-label={`Release the hold on ${firmWords({ id: h.firmId, name: h.firmName ?? null })}: ${coversWords(h.scope)}, placed ${momentUtc(h.placedAt)}`}>Release</Button> : "Active")
+                    : <span data-released><span className="block font-medium">Released</span><time dateTime={h.releasedAt ?? ""}>{h.releasedAt ? momentUtc(h.releasedAt) : ""}</time><span className="block text-xs text-text-muted [overflow-wrap:anywhere]">{actorWords(h.releasedBy ?? "", h.releasedByName ?? null)}{h.releaseReason ? `: ${h.releaseReason}` : ""}</span></span>}</td>
                 </tr>)}
               </Table>
               <p className="text-xs text-text-muted">{d!.truncated ? C.truncated : `${d!.holds.length} ${d!.holds.length === 1 ? "hold" : "holds"}`}</p>
             </>}
       {manage ? <>
-        <PlaceHold open={open} onOpenChange={(o) => { setOpen(o); if (!o) refresh(); }} returnFocus={() => placeButton.current} onPlaced={() => { setOpen(false); setDone(C.placed); setState("active"); refresh(); }} />
-        <ReleaseHold hold={releasing} onOpenChange={(o) => { if (!o) { setReleasing(null); refresh(); } }} onReleased={() => { setReleasing(null); setDone(C.released); refresh(); }} />
+        <PlaceHold open={open} onOpenChange={(o) => { setOpen(o); if (!o) refresh(); }} returnFocus={() => placeButton.current} onPlaced={() => { setOpen(false); setDone(C.placed); setState("active"); refresh(); }} onTry={() => setDone(null)} />
+        <ReleaseHold hold={releasing} onOpenChange={(o) => { if (!o) { setReleasing(null); refresh(); } }} onReleased={() => { setReleasing(null); setDone(C.released); refresh(); }} onStale={(w) => { setReleasing(null); setDone(w); refresh(); }} />
       </> : null}
     </div>
   );
