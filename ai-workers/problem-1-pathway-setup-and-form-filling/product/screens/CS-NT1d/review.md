@@ -157,3 +157,23 @@ Not re-run: c95 and A24-3; their suites write screenshots into the tree. The bui
 **Verdict: Approve**: no open Blocker or Major.
 
 Verdict: Approve 4e8d59b6969aa8ee2769d84283c5a97b075ee4a6
+
+## Merge check (4804d5ef7): reviewer, 26 Nov
+**4804d5ef7402611631c1e273a18041a7817cc7c6** merges main (f63c2b321) into 0b369fefe. 4e8d59b69..0b369fefe adds only records: `review.md` round 4 and `break-report-round4.md`.
+* **`git show --cc 4804d5ef7` is empty:** no hunk in the merge result differs from both parents, so nothing was resolved by hand.
+* **`git diff 0b369fefe 4804d5ef7` = main's files only:** 201 files. These are exactly the 201 files main changed since the two branches' merge base, and none comes from elsewhere.
+* **Two of those files are also this PR's:** `check_csnt1_notes.ts` and `check_csnt1_timeline.ts`. Main's hunks there are CS-W1 part 2's `firm_id` on *other* fixture inserts (the `SAMPLE_FIRMS_SQL` import). This PR's own hunks, `firm_id` on `newCase` and on the firm-B case, are byte-identical before and after the merge (`git diff f63c2b321 4804d5ef7` on both files shows only part 4's 3 lines).
+* **`git diff origin/main...4804d5ef7` lists 32 files, all part 4's** (985 lines added, 18 removed):
+  * the CS-NT1d records and walk shots;
+  * `case-access.ts`, `case-notes/{routes,service,timeline}.ts` and `contracts/runtime.ts`;
+  * `case-notes.tsx`, `cases.tsx`, `status.tsx`, `filing-changes.tsx` and the notifications words;
+  * the tests: the panel test, CS-W3, `j_76`, and the notes/timeline fixture lines;
+  * the two MODULE rows.
+  * **No #3649 file is listed** (no CS-NT1c migration, records, ports or case-client routes).
+* **Not re-run:** the two shared suites. The demo Postgres on :54329 stopped answering during this check (`pg_isready`: no response). Also, the shared Prisma client is now older than main's merged schema files, and I did not run prisma generate. The hunks are disjoint and this PR's lines are unchanged, so I expect no difference; CI's pr-suites will confirm.
+
+**Issues:** none. The open Minors are as in round 4.
+
+**Verdict: Approve**: no open Blocker or Major.
+
+Verdict: Approve 4804d5ef7402611631c1e273a18041a7817cc7c6
