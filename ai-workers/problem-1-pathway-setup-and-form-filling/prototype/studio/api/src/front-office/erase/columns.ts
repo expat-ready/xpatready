@@ -15,7 +15,7 @@ export type EraseTreatment = "ERASE" | "KEEP" | "LINK" | "ELSEWHERE" | "NOT-PERS
 export const ERASE_COLUMNS: Readonly<Record<string, readonly [EraseTreatment, string]>> = {
   "fo_lead.person_id": ["ERASE", "the person's leads: interested_in_text, close_note and source_detail cleared"],
   "fo_lead.possible_match_person_id": ["LINK", "a possible-match flag on a lead: an id only"],
-  "fo_note.person_id": ["KEEP", "not_yet_erasable: notes are insert-only; part 2b-2's narrow exception clears their text"],
+  "fo_note.person_id": ["ERASE", "the person's notes: text becomes 'Erased.' under part 2b-2's narrow exception (insert-only otherwise)"],
   "fo_call.person_id": ["ERASE", "the person's calls: notes cleared"],
   "fo_arrival_receipt.person_id": ["ERASE", "the person's arrival receipts: ip_hash cleared (the payload hash and intake key hold no words)"],
   "fo_company_contact.person_id": ["LINK", "a company link: ids, role and dates only"],
@@ -34,7 +34,7 @@ export const ERASE_COLUMNS: Readonly<Record<string, readonly [EraseTreatment, st
   "fo_retainer.signer_person_id": ["KEEP", "retainer: the agreement names who signed it (Sample, P-819)"],
   "fo_retainer.company_id": ["NOT-PERSON", "names a company"],
   "fo_signer.person_id": ["KEEP", "signing: signing evidence names who signed (Sample, P-819)"],
-  "msg_outbox.subject_id": ["KEEP", "not_yet_erasable: a message's address must stay a valid address (msg_address_ok); part 2b-2 clears it"],
+  "msg_outbox.subject_id": ["KEEP", "message_addresses: a message's address must stay a valid address (msg_address_ok); it says whom the message was sent to (Sample, P-819); its events' detail is cleared"],
   "plat_complaint.subject_id": ["ELSEWHERE", "the platform's eraser (part 2c); until it is registered the front office counts these rows as KEPT (awaiting_other_eraser)"],
   "plat_data_request.person_id": ["ELSEWHERE", "the register of requests is our record of the request, kept (part 2c, SA-11-28)"],
   "case_client.fo_person_id": ["ELSEWHERE", "the case side's eraser (CS-X2); until it is registered the front office counts these rows as KEPT (awaiting_other_eraser)"],
@@ -62,10 +62,10 @@ export const ERASE_COLUMNS: Readonly<Record<string, readonly [EraseTreatment, st
 
 /** Rows that name the person by another path than a person column (FO-9b's inventory does not list them). */
 export const ERASE_OTHER: Readonly<Record<string, readonly [EraseTreatment, string]>> = {
-  "fo_lead_attribution.lead_id": ["KEEP", "not_yet_erasable: attribution is insert-only; part 2b-2 clears its words"],
-  "fo_dup_merge.loser_id": ["KEEP", "not_yet_erasable: merge snapshots are insert-only; part 2b-2 clears them"],
-  "fo_dup_merge.survivor_id": ["KEEP", "not_yet_erasable: merge snapshots are insert-only; part 2b-2 clears them"],
-  "msg_event.outbox_id": ["KEEP", "not_yet_erasable: message events are insert-only; part 2b-2 clears detail"],
+  "fo_lead_attribution.lead_id": ["ERASE", "the person's leads' attribution: click_id, landing_page, referrer_url, platform_lead_id and utm_* cleared under part 2b-2's exception"],
+  "fo_dup_merge.loser_id": ["ERASE", "merge snapshots naming the person become {\"erased\": true} under part 2b-2's exception; the Undo then refuses"],
+  "fo_dup_merge.survivor_id": ["ERASE", "merge snapshots naming the person become {\"erased\": true} under part 2b-2's exception; the Undo then refuses"],
+  "msg_event.outbox_id": ["ERASE", "events of messages sent to the person: detail cleared under part 2b-2's exception"],
   "msg_suppression.address": ["KEEP", "do_not_contact: the address stays suppressed (Sample, P-819)"],
   "audit_event.entity_key": ["KEEP", "activity_log: AUD-5's floor (7 years), never touched: lines keyed on the person or their rows, or whose detail holds their email or phone"],
   "msg_email.filed_id": ["KEEP", "mail_not_yet_erasable: mail filed to the person (nothing writes it yet; its eraser is a later row)"],
