@@ -119,11 +119,20 @@ try {
   const kept = TABLES.map((t) => A.err(`update ${t} set firm_id = null where firm_id = '${F1}'`));
   ok("CS-W2 DW6.3 fail: a firm once set cannot be emptied (which would skip the keys) in any of the six tables, nor changed, as owner and as xr_app",
     kept.every((e) => /case_submission_firm_keep: a \w+ row keeps its firm/.test(e)) && /case_submission_firm_keep/.test(A.err(`update sign_step set firm_id = null, item_id = '${b.IT}' where id = '${a.SS}'`, "xr_app")), kept.map((e) => e.slice(0, 90)));
+  // #3831's breaker M1: a firm-less case's rows cannot name another case's item, filing or group (the keys skip them).
+  const g = ids(3);
+  const cross = [
+    A.err(`update sign_step set item_id = '${a.IT}' where id = '${g.SS}'`, "xr_app"),
+    A.err(`update filing_record set submission_group_id = '${a.G}' where id = '${g.FR}'`, "xr_app"),
+    A.err(`insert into signed_scan (id, workspace_id, case_id, item_id, file_name, media_type, size_bytes, sha256, path, uploaded_by) values ('${u(345)}', '${W}', '${g.K}', '${a.IT}', 'a.pdf', 'application/pdf', 1, '${SHA}', 'p', 'x')`, "xr_app"),
+  ];
+  ok("CS-W2 DW6.3 fail (#3831's breaker M1): a firm-less case's sign step, record or scan cannot name another case's item or group, as xr_app",
+    cross.every((e) => /case_submission_same_case: a \w+ row can only name rows of its own case|case_stage_ended|changes only in/.test(e)) && cross.filter((e) => /case_submission_same_case/.test(e)).length >= 2, cross.map((e) => e.slice(0, 110)));
   const moveCase = A.err(`update runtime_case set firm_id = '${F2}' where id = '${a.K}'`);
   ok("CS-W2 DW6.3 fail: a case's firm cannot move while its submission rows name it (ON UPDATE RESTRICT)", /violates RESTRICT setting of foreign key constraint/.test(moveCase), moveCase.slice(0, 160));
 
   // ---------------------------------------------------------------- DW6.4: names, rights, the follow, the guards
-  ok("CS-W2 DW6.4 pass: the migration adds exactly three functions, all case_submission_*", added.sort().join(",") === "case_submission_firm_backfill,case_submission_firm_follow,case_submission_firm_keep", added);
+  ok("CS-W2 DW6.4 pass: the migration adds exactly four functions, all case_submission_*", added.sort().join(",") === "case_submission_firm_backfill,case_submission_firm_follow,case_submission_firm_keep,case_submission_same_case", added);
   const defs = A.sql(`select string_agg(proname || ':' || prosecdef || ':' || coalesce(array_to_string(proconfig, ';'), ''), ' | ' order by proname) from pg_proc where proname like 'case_submission_%'`);
   ok("CS-W2 DW6.4 fail: none is SECURITY DEFINER, each pins its search_path with pg_temp last", !defs.includes(":true:") && defs.split(" | ").every((d) => /search_path=pg_catalog, public, pg_temp$/.test(d)), defs);
   ok("CS-W2 DW6.4 fail: the backfill is not callable by PUBLIC", A.sql(`select has_function_privilege('public', 'case_submission_firm_backfill()', 'EXECUTE')`) === "f");
