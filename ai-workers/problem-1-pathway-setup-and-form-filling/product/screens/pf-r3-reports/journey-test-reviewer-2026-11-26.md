@@ -3,24 +3,15 @@
 Commit `b6b117848271d9062b29e2e2b46de4f56c21d725` (PR #3864). Isolated copies: :4741 (`pfr3r`) and :4742 (`j79r`), never :4400. Sample data, US$0, live AI off. The reviewer's one score for this check. Review: `review.md`.
 
 ## Journeys (written from concept r2 before walking)
-1. **Main path.** The Owner wants to know how this month is going.
-   - Sign in on the card, go to Home → Reports (758 ms), read the Owner dashboard.
-   - Pick Person "Case officer (Sample)", then reload.
+1. **Main path.** The Owner wants to know how this month is going: sign in on the card, Home → Reports (758 ms), read the Owner dashboard, pick Person "Case officer (Sample)", reload.
 2. **Alternate.** The Owner exports Tax collected from the Billing / Finance dashboard and reads the Activity log.
 3. **Empty.** The Owner opens January 2020 by address.
-4. **Wrong role.**
-   - Billing / Finance: own scope for cases and sales, firm-wide money, no people.
-   - Read-only: lands on Case Officer.
-   - Case Officer: a `person=` in the address.
-   - Case Manager: money WITHHELD.
+4. **Wrong role.** Billing / Finance (own scope for cases and sales, firm-wide money, no people); Read-only (lands on Case Officer); Case Officer (a `person=` in the address); Case Manager (money WITHHELD).
 5. **Error.** One figure is made UNAVAILABLE (the builder's route rewrite, re-run). Typing From after To.
 6. **Recovery.** Reload keeps the filters; `?dashboard=nope`; double-clicking Export.
 7. **Keyboard only.** Tab from the page top through the filters, the cards' (i), Export and the table regions.
 8. **Sizes.** 1440, 1024, 512 px (1024 at 200 %) and 375 px, with axe.
-9. **Break it (API).**
-   - Case Officer: `staffId` of another person; `scope: all`.
-   - Billing export; unknown, unregistered and extra-key exports; empty-table export.
-   - Owner: another firm's `staffId`; anonymous export.
+9. **Break it (API).** Case Officer: another person's `staffId`, `scope: all`. Billing export; unknown, unregistered and extra-key exports; empty-table export. Owner: another firm's `staffId`; anonymous export.
 10. **Across the boundary.** Export → Activity log shows "Report table exported: Tax collected, 2 rows."
 
 ## What held
@@ -74,3 +65,33 @@ Commit `b6b117848271d9062b29e2e2b46de4f56c21d725` (PR #3864). Isolated copies: :
 
 ## Not tested
 A real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); the walk video (no ffmpeg in this container); timings on the Mac or CI.
+
+## Round 2 · commit `2af419e2e07be078159f1874028f91d9f507400c`
+**Re-walked:** journeys 1, 2, 5, 6, 7 and 8, with the query slowed by 2.5 s to see the in-between state. Runs: `check_pfr3_reports_browser.ts` 35/35 on a fresh copy (a second run refuses the used copy); J-79 12/12 on its own fresh copy.
+
+**What held:**
+- **Person switch.** Picking a person shows busy skeletons (`aria-busy`), with no badge and no Export, until the person's own figures arrive.
+- **Month picker.** November 2026 back to December 2025, plus "Custom dates…".
+- **From after To.** An error on the To field; both dates kept; no query sent.
+- **"What this counts".** Opens by Enter, tap or click; closes on Escape, blur or a tap elsewhere.
+- **CSV.** Header in the page's words, amounts as numbers. An empty table → 422 with no line.
+- **Screen sizes.** axe 0 serious at 375, 1024 (custom dates open) and 1440. No page error.
+
+**New findings (Minor):**
+- The toggletip bubble spills off the right edge: 63 px at 1440 on the right-hand tile, 20-29 px at 375; 0 at 1024 and at 200 %.
+- A bad range leaves endless skeletons.
+- M2's rule has no in-flight test.
+
+| Criterion | R1 | R2 | Round-2 evidence |
+|---|---|---|---|
+| Task completed | 1 | 1 | Every persona; export; J-79 12/12 |
+| Next step obvious | ½ | 1 | A month is one choice |
+| Plain words | ½ | 1 | "(inactive)"; the refusal names its cause; per-metric empties |
+| Feedback and state | ½ | 1 | Busy skeletons; field error (endless skeleton on a bad range is minor) |
+| Correct data | ½ | 1 | Badge and figures always from the same answer; empty export refused |
+| Error recovery | 1 | 1 | Retry 44 px at 375; dates kept on an error |
+| Accessibility and sizes | ½ | ½ | Toggletip reachable by keyboard and touch, but the bubble clips at the right edge |
+| Speed | 1 | 1 | LCP check passes; one query per view |
+| Visual quality | 1 | 1 | No nested table border; Person select capped |
+| Trust and sources | ½ | 1 | Source words readable; scope matches the figures |
+| **Total** | **7** | **9.5/10** | **Pass (8+ and no 0)** |
