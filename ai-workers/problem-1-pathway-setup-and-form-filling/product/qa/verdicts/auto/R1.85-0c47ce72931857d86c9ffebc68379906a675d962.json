@@ -1,0 +1,30 @@
+{
+  "item": "R1.85",
+  "name": "85 Data-request register with legal hold",
+  "pr": 3841,
+  "sha": "0c47ce72931857d86c9ffebc68379906a675d962",
+  "run_id": "45860876248",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45860876248",
+  "at": "2026-11-26T16:43:16.104Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_85.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45860876248/artifacts/15137438861",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.85-0c47ce72931857d86c9ffebc68379906a675d962.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
