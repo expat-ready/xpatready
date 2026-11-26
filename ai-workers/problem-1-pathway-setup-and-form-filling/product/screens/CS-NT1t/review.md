@@ -96,3 +96,28 @@ The walk at 1440 and 375 px:
 **Still open, unchanged (Minor, Should; not blocking):** m-a (an empty first page with more lines shows the false empty on screen) and m-b (the cap words point to a prospect page that has no timeline). Both need a fix or a follow-up row.
 
 **Verdict: Approve a51c9763b703525aa81d997518c249ffb5d8473f.** No Blocker or Major is open.
+
+## Round 4 (diff only): 47b0210ce..4d584155fe34de599c2f77b00b8834f79bc57ed6
+Scope: 46fa048e0 (merge of origin/main, with #3822 merged) and 4d584155f (CS-W3 census entry).
+
+**The merge.** `git show --cc 46fa048e0` is empty: nothing was resolved by hand. `git diff origin/main...4d584155f` lists only CS-NT1t's 17 files (+582 / -34, including these records).
+
+Outside `check_csw3_firm_scope.ts`, this PR's studio diff against main is line for line the diff I approved in round 3 (`139a34847..a51c9763b`). I checked by comparing the two diffs: they are the same.
+
+**The census entry (4d584155f).** The commit adds `case-notes/person-timeline` to the allow-list, with a comment, and moves the count from 59 to 60. The claim in the comment holds; I checked it in the code:
+* **The client is firm-scoped first.** `PersonTimeline.read` calls `CaseNotes.subjectFor(ctx, "client", id)` before any case read. `subjectOf` (`case-notes/service.ts:135-145`) finds the `case_client` by `{ id, firmKey: ctx.firmKey }`, then checks the firm's id against `ctx.firmId`, and answers 404 otherwise.
+* **The case read cannot cross firms.** `db.case.findMany({ where: { clientId: s.id } })` reads only cases of that firm's client. `runtime_case`'s composite foreign key `(client_id, workspace_id, firm_key)` → `case_client(id, workspace_id, firm_key)` (`prisma/schema/cases.prisma:84`) keeps every such case in the same firm and workspace. The breaker's round-1 attempt to move a case across firms was refused by that key.
+* **Each case then passes caseScope.** Each case is read only through `CaseTimeline.pageAfter` → `keyed` → `subjectFor(ctx, "case", id)`, which applies `{ id, firmKey }` plus `caseScopeWhere(caseScope(...))`. A 404 there skips the case.
+* **Nothing about an out-of-scope case leaks.** Its `caseNumber` is selected but never sent: lines are pushed only for a case whose page came back (PT6: a Case manager without `view.all` sees no case line).
+
+**Re-run at 4d584155f**, on :4434 only (copy stopped afterwards, no `prisma generate`; suites run one after another on one copy, by hand rather than through `run-suites.sh`, whose usage lines use other ports):
+* `check_csw3_firm_scope.ts` 48/48, including the census pass at 60;
+* `check_csnt1t_person_timeline.ts` 32/32. The builder's 33rd assertion is the conditional "configured checkpoint loads" setup step, which does not run once an earlier suite has loaded the checkpoint. I confirmed this by running it again.
+* `check_csnt1d_panel_browser.cjs` 55/55, against the builder's 56. The extra step looks like the same kind of conditional setup step; I did not confirm that.
+* `check_bk2_fold_outs.ts` 16/16.
+
+I did not re-run c95 and A24-3: this range does not touch their files.
+
+**Still open, unchanged (Minor, Should; not blocking):** m-a (an empty first page with more lines shows the false empty) and m-b (the cap words point to a prospect page with no timeline).
+
+**Verdict: Approve 4d584155fe34de599c2f77b00b8834f79bc57ed6.** No Blocker or Major is open.
