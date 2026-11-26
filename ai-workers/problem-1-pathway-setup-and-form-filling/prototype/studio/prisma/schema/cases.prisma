@@ -86,6 +86,15 @@ model Case {
 
   /// C6.11 break M2, M3: a reference and an idempotency key are unique within a firm, so one firm neither collides with
   /// nor learns of another firm's cases.
+  /// CS-W2 (contract §8 step 2a): the case side's children point at (id, firm_id) so a child cannot name another firm's case.
+  submissionGroupsFirm    SubmissionGroup[]    @relation("SubmissionGroupCaseFirm")
+  filingsFirm             Filing[]             @relation("FilingCaseFirm")
+  filingItemsFirm         FilingItem[]         @relation("FilingItemCaseFirm")
+  assessmentsFirm         Assessment[]         @relation("AssessmentCaseFirm")
+  filingChangesFirm       FilingChange[]       @relation("FilingChangeCaseFirm")
+  filingFormAdditionsFirm FilingFormAddition[] @relation("FilingFormAdditionCaseFirm")
+
+  @@unique([id, firmId])
   @@unique([workspaceId, firmKey, idempotencyKey])
   @@unique([workspaceId, firmKey, reference])
   @@unique([workspaceId, firmKey, caseNumber])

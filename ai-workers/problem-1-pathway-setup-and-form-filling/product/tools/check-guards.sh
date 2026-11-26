@@ -40,6 +40,8 @@ TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
+TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
 bad=0
@@ -151,6 +153,7 @@ W24 once|product/tools/merge-wake.py|s/^            if k in mem:/            if 
 W24 unwritable|product/tools/merge-wake.py|s/o.post = False; print(f"ACT   wake: memory {clean/print(f"ACT   wake: memory {clean/|check-merge-wake.sh
 W24 cap|product/tools/merge-wake.py|s/if posted >= POSTS:/if False:/|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
+4 drop|prototype/studio/tools/isolated.sh|s/^  dropdb .*--force "\$DB" .*/  true/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
 A351 c2 wrap|product/tools/checks-changed.py|s/ or words(old) == words(nw):/:/|check-checks-changed.sh
@@ -219,6 +222,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 9 dispatch|../../.github/workflows/label-guard.yml|s/ github.event_name == .workflow_dispatch. ..//|check-label-sweep.sh
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
 11|product/tools/push-guard.sh|s/^\( *\)\[ "\$h" = "\$want" \] \(..\)/\1true \2/|check-push-guard-fixtures.sh
+11 const|product/tools/push-guard.sh|s/sed -E "\$CONST_SED"/cat/|check-push-guard-fixtures.sh
 11 records|product/tools/check-stale-paths.sh|/prototype\/\*-manifest\*.sha256/d|check-cleanup-checks.sh
 12 who|../../.github/workflows/comment-run.yml|s/OWNER.MEMBER.COLLABORATOR) ;;/*) ;;/|check-comment-run.sh
 12 if|../../.github/workflows/comment-run.yml|s/ \&\& contains(fromJSON([^)]*), github.event.comment.author_association)//|check-comment-run.sh
@@ -273,7 +277,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 full records|product/tools/queue-gate.sh|s/^  records \&\& return 0/  true \&\& return 0/|check-queue-gate.sh
 15 full reclabel|product/tools/queue-gate.sh|s/^records() { has records \&\& /records() { /|check-queue-gate.sh
 15 full recfiles|product/tools/queue-gate.sh|s/^records() { has records \&\& .*/records() { has records; }/|check-queue-gate.sh
-15 full unread|product/tools/queue-gate.sh|s/ \[ "\${full_state:-}" = unread \] \&\& exit 3; exit 1;;/ exit 1;;/|check-queue-gate.sh
+15 full unread|product/tools/queue-gate.sh|s/{ \[ "\${full_state:-}" = unread \] .. /{ /|check-queue-gate.sh
 15 full sweep3|product/tools/label-sweep.sh|s/^    if \[ "\$g" = 3 \]; then/    if false; then/|check-label-sweep.sh
 15 full nottested|../../.github/workflows/ci.yml|s/, FULL_PR: "\${{ inputs.pr }}", GATE_B_NOT_TESTED: "[^"]*" }/, FULL_PR: "${{ inputs.pr }}" }/|check-queue-gate.sh
 15 batch only|product/tools/queue-gate.sh|s/(map(select(. != "ci")) . if length > 0 then . else empty end) \/\/ ./map(select(. != "ci"))/|check-queue-gate.sh
@@ -300,12 +304,12 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
-15 lead soft|product/tools/queue-gate.sh|s/^    grep -qiEf "\$H.soft" <<< "\$f" .. continue$/    continue/|check-queue-gate.sh
-15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .%s\\n. "\$f"; continue; fi$/    true/|check-queue-gate.sh
+15 lead soft|product/tools/queue-gate.sh|s/^      \[ -s "\$H.k.\$k" \] \&\& grep -qiEf "\$H.k.\$k" <<< "\$f" .. continue$/      true/|check-queue-gate.sh
+15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .first..%s... "\$f"; continue; fi$/    true/|check-queue-gate.sh
 15 lead rec|product/tools/queue-gate.sh|s/^    \[ "\$rec" = 1 \] \&\& continue$/    continue/|check-queue-gate.sh
 15 lead label|product/tools/queue-gate.sh|s/^  records \&\& rec=1$/  rec=1/|check-queue-gate.sh
 15 lead img|product/tools/queue-gate.sh|/^    grep -qiE .\/product\/tools\/. <<< "\$f" .. ! grep/d|check-queue-gate.sh
-15 lead list|product/tools/queue-gate.sh|s/^  \[ -r "\$all" \] \&\& grep -q .^# --- records-exempt. "\$all" .. {[^}]*}$/  true/|check-queue-gate.sh
+15 lead list|product/tools/queue-gate.sh|s/^    \[ -r "\$all" \] \&\& grep -q "^# --- \$mk" "\$all" .. {.*}; done$/    true; done/|check-queue-gate.sh
 15 start rid|product/tools/queue-gate.sh|s/ \&\& held \&\& \[ "\$held_state" = failed \]; then start/ \&\& held; then start/|check-queue-gate.sh
 15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
 15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
@@ -357,6 +361,8 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh
 24 trig|product/tools/conformance-check.py|s/elif sorted(have or \[\]) != sorted(types):/elif False:/|check-conformance-check.sh
 24 beat|product/tools/conformance-check.py|s/    if per_hour \* hb\["every_min"\] < 60:/    if False:/|check-conformance-check.sh
+24 events|product/tools/conformance-check.py|s/            if not isinstance(on, dict) or e not in on\]/            if False]/|check-conformance-check.sh
+24 allowed|product/tools/conformance-check.py|s/            if ins != sorted(want.get("inputs_exact", \[\])):/            if False:/|check-conformance-check.sh
 24 gate|product/tools/conformance-check.py|s/             if n == cfg\["gate_job"\] and k != cfg\["gate_job"\]\]/             if False]/|check-conformance-check.sh
 25 merge|product/tools/pipeline-heartbeat.py|s/             > hb\["no_merge_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
 25 queue|product/tools/pipeline-heartbeat.py|s/             > hb\["queue_no_progress_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
@@ -407,6 +413,14 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 31|product/tools/founder-click-guard.sh|s/^\[ -z "\$hits" \] \&\& exit 0/exit 0/|check-founder-click-guard.sh
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
+31 E-c words|product/tools/founder-click-guard.sh|s/(close.closed.archive.archived.merge.merged.reopen.reopened).s+/(Xclose)\\s+/|check-founder-click-guard.sh
+31 E-c run|product/tools/founder-click-guard.sh|s/.b(dispatch.trigger).s+((the/\\bXdispatch\\s+((the/|check-founder-click-guard.sh
+31 E-c imp|product/tools/founder-click-guard.sh|s/\(.edit\).close.archive.merge.dispatch.trigger.label"/\1"/|check-founder-click-guard.sh
+31 E-c offer|product/tools/founder-click-guard.sh|s/k = NOT_ASK.sub(" OFFERED ", s) if need_you else s/k = s/|check-founder-click-guard.sh
+31 E-c ask|product/tools/founder-click-guard.sh|s/needs you.(^.\[\\s\*(-\])ask:/needs you/|check-founder-click-guard.sh
+E-a age|product/tools/question-gate.py|s/        if age > limit:/        if False:/|check-question-gate.sh
+E-a tooling|product/tools/question-gate.py|s/^PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 60, 35/PRODUCT_MIN, TOOLING_MIN, STALE_MIN = 20, 20, 35/|check-question-gate.sh
+E-a wired|product/tools/stop-check.sh|/question-gate.py" --sle/d|check-question-gate.sh
 HANG env|product/tools/hang-report.py|s/if d.get("environmentVariables"):/if False:/|check-hang-report.sh
 HANG dir|product/tools/hang-report.py|s/^FILE = .*/FILE = re.compile(r"(.*)(:\\d+:\\d+)")/|check-hang-report.sh
 HANG line|product/tools/hang-report.py|s/(f or "(line not shown)")/(f or s)/|check-hang-report.sh
@@ -679,7 +693,7 @@ A348 first|product/tools/proof-number.py|s/git("log", "--first-parent", "-s",/gi
 A348 app|product/tools/proof-number.py|s/"web.src", //|check-proof-number.sh
 A348 paths|product/tools/proof-number.py|s/^        if not git("ls-tree".*/        if False:/|check-proof-number.sh
 A348 edge|product/tools/proof-number.py|s/^    if today is None or rp.*/    if False:/|check-proof-number.sh
-A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 11, 30/RELEASE_END = datetime(2026, 12, 13/|check-proof-number.sh
+A348 date|product/tools/flow-measure.py|s/^RELEASE_END = datetime(2026, 12, 13/RELEASE_END = datetime(2026, 11, 30/|check-proof-number.sh
 A348 fetch|product/tools/lead-watch.sh|/origin.main not fetched/d|check-proof-number.sh
 A348 ran|product/tools/lead-watch.sh|/proof-number.py did not run/d|check-proof-number.sh
 A348 wired|product/tools/lead-watch.sh|s/^pn=/# pn=/|check-proof-number.sh'
@@ -689,6 +703,41 @@ SPD2 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:
 SPD2 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
 SPD2 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
 SPD2 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh'
+# P-822 (founder, 25 Nov): pr-suites green on the exact head before the label; only "success" counts
+MUT="$MUT"'
+P822 judge|product/tools/queue-gate.sh|s/^  suitesok "\$head" .. return 1/  true/|check-queue-gate.sh
+P822 only|product/tools/queue-gate.sh|s/    if \[ "\$st \$co" = "completed success" \]; then/    if true; then/|check-queue-gate.sh
+P822 own run|product/tools/queue-gate.sh|s/^    \[ "\$ok" = true \] .. continue/    true/|check-queue-gate.sh
+P822 proof|product/tools/queue-gate.sh|s/if \[ "\${RELABEL:-}" = 1 \]; then suitesok/if false; then suitesok/|check-queue-gate.sh
+P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.conclusion .. "")\(.\) <<< "\$r")" = "completed success" \] \&\& { suites_state=success/{ suites_state=success/|check-queue-gate.sh
+P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
+P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
+P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
+MUT="$MUT"'
+P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
+P823 calls|product/tools/migration-additive.py|s/ or calls(s) or dots(s) or ops(s):/ or dots(s) or ops(s):/|check-migration-additive.sh
+P823 quoted call|product/tools/migration-additive.py|s/^        if not \(re.search(r.(.bREFERENCES\)/        if False and \1/|check-migration-additive.sh
+P823 dots|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or ops(s):/|check-migration-additive.sh
+P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-migration-additive.sh
+P823 narrow index|product/tools/migration-additive.py|s/^            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index/            ok = True   # an index/|check-migration-additive.sh
+P823 narrow alter|product/tools/migration-additive.py|s/^            ok = True   # one column of a built-in type, no default, no constraint/            ok = True\n        elif s.upper().startswith("ALTER"):\n            ok = True/|check-migration-additive.sh
+P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
+P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
+P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh
+P823 edit|product/tools/queue-gate.sh|s/elif \$x.status != "added" then/elif false then/|check-queue-gate.sh
+P823 schema|product/tools/queue-gate.sh|s/any(\$l\[\]; startswith("-"))/false/|check-queue-gate.sh
+P823 owed|product/tools/queue-gate.sh|s/^  afterline; }/  true; }/|check-queue-gate.sh
+P823 draw|product/tools/queue-gate.sh|s/elif \[ \$((PR % 3)) = 0 \]; then/elif false; then/|check-queue-gate.sh
+P823 public|product/tools/queue-gate.sh|s/\&\& opens "\$f" \&\&/\&\& false \&\&/|check-queue-gate.sh
+P823 list|product/tools/lead-read-paths.txt|s/^# --- read-after money.*/# moved/|check-queue-gate.sh
+P823 overdue|product/tools/after-read-owed.sh|s/ min overdue"; rc=1/ min overdue"; rc=0/|check-after-read-owed.sh
+P823 read line|product/tools/after-read-owed.sh|s/grep -qx "\$head"; then/grep -q .; then/|check-after-read-owed.sh'
+# OS-17 (P-526c): records PRs open over 24 h; the row switches the age rule off.
+MUT="$MUT"'
+OS17 age|product/tools/known-failures.py|s/(p for p in recs if hours(p) > lim)/(p for p in recs)/|check-known-failures.sh
+OS17 page|product/tools/known-failures.py|s/^    if cap and len(prs) >= int(cap):/    if False:/|check-known-failures.sh
+OS17 wired|product/tools/lead-watch.sh|s/"prs": prs, "prs_all": prs_all,/"prs": prs, "prs_all": None,/|check-known-failures.sh'
 # OS-72: the verify skill's plan; each row switches one rule off.
 MUT="$MUT"'
 OS72 cap|prototype/studio/tools/verify-plan.sh|s/-lt "\$MAX" ]; then caps+=/-lt 99 ]; then caps+=/|check-verify-plan.sh
