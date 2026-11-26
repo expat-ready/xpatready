@@ -40,6 +40,7 @@ TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads 
 TESTS="$TESTS check-tools-fresh.sh"   # A363, A368: the Lead's tools are main's, its copy under 24 h old, its plan this cycle's
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
+TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
@@ -152,6 +153,7 @@ W24 once|product/tools/merge-wake.py|s/^            if k in mem:/            if 
 W24 unwritable|product/tools/merge-wake.py|s/o.post = False; print(f"ACT   wake: memory {clean/print(f"ACT   wake: memory {clean/|check-merge-wake.sh
 W24 cap|product/tools/merge-wake.py|s/if posted >= POSTS:/if False:/|check-merge-wake.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
+4 drop|prototype/studio/tools/isolated.sh|s/^  dropdb .*--force "\$DB" .*/  true/|check-isolated-ttl.sh
 A351 c2 lines|product/tools/checks-changed.py|s/^        if left:/        if False:/|check-checks-changed.sh
 A351 c2 moved|product/tools/checks-changed.py|s/^            if to and (re.search.*/            if False:/|check-checks-changed.sh
 A351 c2 wrap|product/tools/checks-changed.py|s/ or words(old) == words(nw):/:/|check-checks-changed.sh
@@ -302,12 +304,12 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
-15 lead soft|product/tools/queue-gate.sh|s/^    grep -qiEf "\$H.soft" <<< "\$f" .. continue$/    continue/|check-queue-gate.sh
-15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .%s\\n. "\$f"; continue; fi$/    true/|check-queue-gate.sh
+15 lead soft|product/tools/queue-gate.sh|s/^      \[ -s "\$H.k.\$k" \] \&\& grep -qiEf "\$H.k.\$k" <<< "\$f" .. continue$/      true/|check-queue-gate.sh
+15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .first..%s... "\$f"; continue; fi$/    true/|check-queue-gate.sh
 15 lead rec|product/tools/queue-gate.sh|s/^    \[ "\$rec" = 1 \] \&\& continue$/    continue/|check-queue-gate.sh
 15 lead label|product/tools/queue-gate.sh|s/^  records \&\& rec=1$/  rec=1/|check-queue-gate.sh
 15 lead img|product/tools/queue-gate.sh|/^    grep -qiE .\/product\/tools\/. <<< "\$f" .. ! grep/d|check-queue-gate.sh
-15 lead list|product/tools/queue-gate.sh|s/^  \[ -r "\$all" \] \&\& grep -q .^# --- records-exempt. "\$all" .. {[^}]*}$/  true/|check-queue-gate.sh
+15 lead list|product/tools/queue-gate.sh|s/^    \[ -r "\$all" \] \&\& grep -q "^# --- \$mk" "\$all" .. {.*}; done$/    true; done/|check-queue-gate.sh
 15 start rid|product/tools/queue-gate.sh|s/ \&\& held \&\& \[ "\$held_state" = failed \]; then start/ \&\& held; then start/|check-queue-gate.sh
 15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
 15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
@@ -359,6 +361,8 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh
 24 trig|product/tools/conformance-check.py|s/elif sorted(have or \[\]) != sorted(types):/elif False:/|check-conformance-check.sh
 24 beat|product/tools/conformance-check.py|s/    if per_hour \* hb\["every_min"\] < 60:/    if False:/|check-conformance-check.sh
+24 events|product/tools/conformance-check.py|s/            if not isinstance(on, dict) or e not in on\]/            if False]/|check-conformance-check.sh
+24 allowed|product/tools/conformance-check.py|s/            if ins != sorted(want.get("inputs_exact", \[\])):/            if False:/|check-conformance-check.sh
 24 gate|product/tools/conformance-check.py|s/             if n == cfg\["gate_job"\] and k != cfg\["gate_job"\]\]/             if False]/|check-conformance-check.sh
 25 merge|product/tools/pipeline-heartbeat.py|s/             > hb\["no_merge_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
 25 queue|product/tools/pipeline-heartbeat.py|s/             > hb\["queue_no_progress_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
@@ -735,6 +739,31 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
+MUT="$MUT"'
+P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
+P823 calls|product/tools/migration-additive.py|s/ or calls(s) or dots(s) or ops(s):/ or dots(s) or ops(s):/|check-migration-additive.sh
+P823 quoted call|product/tools/migration-additive.py|s/^        if not \(re.search(r.(.bREFERENCES\)/        if False and \1/|check-migration-additive.sh
+P823 dots|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or ops(s):/|check-migration-additive.sh
+P823 ops|product/tools/migration-additive.py|s/ or dots(s) or ops(s):/ or dots(s):/|check-migration-additive.sh
+P823 narrow index|product/tools/migration-additive.py|s/^            ok = key(t.group(7) + (t.group(8) or "")) in created   # an index/            ok = True   # an index/|check-migration-additive.sh
+P823 narrow alter|product/tools/migration-additive.py|s/^            ok = True   # one column of a built-in type, no default, no constraint/            ok = True\n        elif s.upper().startswith("ALTER"):\n            ok = True/|check-migration-additive.sh
+P823 markers|product/tools/queue-gate.sh|s/ "read-after migration" "read-after public"; do/; do/|check-queue-gate.sh
+P823 config|product/tools/lead-read-paths.txt|/^\/prisma\\\.config/d|check-queue-gate.sh
+P823 author|product/tools/after-read-owed.sh|s/\$l != (\$author . ascii_downcase) and //|check-after-read-owed.sh
+P823 edit|product/tools/queue-gate.sh|s/elif \$x.status != "added" then/elif false then/|check-queue-gate.sh
+P823 schema|product/tools/queue-gate.sh|s/any(\$l\[\]; startswith("-"))/false/|check-queue-gate.sh
+P823 owed|product/tools/queue-gate.sh|s/^  afterline; }/  true; }/|check-queue-gate.sh
+P823 draw|product/tools/queue-gate.sh|s/elif \[ \$((PR % 3)) = 0 \]; then/elif false; then/|check-queue-gate.sh
+P823 public|product/tools/queue-gate.sh|s/\&\& opens "\$f" \&\&/\&\& false \&\&/|check-queue-gate.sh
+P823 list|product/tools/lead-read-paths.txt|s/^# --- read-after money.*/# moved/|check-queue-gate.sh
+P823 overdue|product/tools/after-read-owed.sh|s/ min overdue"; rc=1/ min overdue"; rc=0/|check-after-read-owed.sh
+P823 read line|product/tools/after-read-owed.sh|s/grep -qx "\$head"; then/grep -q .; then/|check-after-read-owed.sh'
+# OS-17 (P-526c): records PRs open over 24 h; the row switches the age rule off.
+MUT="$MUT"'
+OS17 age|product/tools/known-failures.py|s/(p for p in recs if hours(p) > lim)/(p for p in recs)/|check-known-failures.sh
+OS17 page|product/tools/known-failures.py|s/^    if cap and len(prs) >= int(cap):/    if False:/|check-known-failures.sh
+OS17 wired|product/tools/lead-watch.sh|s/"prs": prs, "prs_all": prs_all,/"prs": prs, "prs_all": None,/|check-known-failures.sh'
 # OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'
 OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
