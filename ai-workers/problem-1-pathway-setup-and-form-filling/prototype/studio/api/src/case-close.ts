@@ -52,7 +52,7 @@ export class CaseClose {
   /** The case locked for this transaction, if it is the session's firm's; 404 otherwise (never 403: BR-20). */
   private async locked(tx: Tx, ctx: StaffContext, id: string) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
-    const hit = await tx.$queryRaw<{ id: string }[]>`select id::text from runtime_case where id = ${id}::uuid and firm_key = ${ctx.firmKey} for update`;
+    const hit = await tx.$queryRaw<{ id: string }[]>`select id::text from runtime_case where id = ${id}::uuid and firm_id = ${ctx.firmId}::uuid for update`;
     if (!hit.length) return notFound();
     const c = await tx.case.findUniqueOrThrow({
       where: { id },
@@ -97,7 +97,7 @@ export class CaseClose {
   async view(ctx: StaffContext, id: string): Promise<CaseDecisionsView> {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
     const c = await this.db.case.findFirst({
-      where: { id, firmKey: ctx.firmKey },
+      where: { id, firmId: ctx.firmId },   // CS-W1 part 2b: by the case's platform firm (breaker m1)
       include: {
         filings: { where: { active: true }, orderBy: { createdAt: "asc" }, select: { id: true, subjectId: true, stage: { select: { id: true, staffName: true, ord: true } }, record: { select: { submittedOn: true } } } },
         stages: { select: { id: true, staffName: true, state: true } },

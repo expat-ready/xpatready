@@ -14,6 +14,22 @@
 --   the three runtime_case_workspace_id_firm_key_* ones (as in their earlier migrations); then delete this folder's row
 --   from _prisma_migrations. Nothing is lost.
 
+-- A duplicate under the new rules would only be a row whose firm id disagrees with its key (part 2a refuses those for new
+-- rows); stop in words before any index changes (breaker m2), so the migration never stops half-way.
+DO $chk$
+DECLARE bad text;
+BEGIN
+  SELECT string_agg(x, ', ') INTO bad FROM (
+    SELECT 'case number ' || case_number x FROM runtime_case WHERE case_number IS NOT NULL GROUP BY workspace_id, firm_id, case_number HAVING count(*) > 1
+    UNION ALL SELECT 'reference ' || reference FROM runtime_case WHERE reference IS NOT NULL GROUP BY workspace_id, firm_id, reference HAVING count(*) > 1
+    UNION ALL SELECT 'idempotency key ' || idempotency_key FROM runtime_case WHERE idempotency_key IS NOT NULL GROUP BY workspace_id, firm_id, idempotency_key HAVING count(*) > 1
+    UNION ALL SELECT 'case counter ' || year FROM firm_case_counter GROUP BY workspace_id, firm_id, year HAVING count(*) > 1
+    LIMIT 20) q;
+  IF bad IS NOT NULL THEN
+    RAISE EXCEPTION 'CS-W1 part 2b stopped: these would repeat within one firm once keyed by its platform id: % (fix the rows, then: npx prisma migrate resolve --rolled-back 20261126170000_cases__csw1_rekey, and migrate again)', bad USING ERRCODE = '23505';
+  END IF;
+END $chk$;
+
 -- DropIndex
 DROP INDEX "runtime_case_workspace_id_firm_key_case_number_key";
 
@@ -42,7 +58,7 @@ CREATE OR REPLACE FUNCTION runtime_next_case_number(ws uuid, firm text, at times
 DECLARE y integer := extract(year FROM at AT TIME ZONE 'America/Toronto')::integer; n integer; f uuid := case_lookup.case_firm_id_of_key(firm);
 BEGIN
   IF f IS NULL THEN
-    RAISE EXCEPTION 'runtime_next_case_number: the firm "%" has no account on the platform yet, so it cannot number a case', firm USING ERRCODE = '23502';
+    RAISE EXCEPTION 'runtime_next_case_number: the firm "%" has no account on the platform yet, so it cannot number a case', firm USING ERRCODE = 'P0001';   -- a raise in words (review nit: 23502 reads as a NOT NULL failure)
   END IF;
   INSERT INTO firm_case_counter (workspace_id, firm_key, firm_id, year, next_value) VALUES (ws, firm, f, y, 2)
     ON CONFLICT (workspace_id, firm_id, year) DO UPDATE SET next_value = firm_case_counter.next_value + 1

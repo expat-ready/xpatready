@@ -1064,7 +1064,7 @@ export class Runtime {
     // CS-W1 part 2b (part 2a's review m3, breaker B8): a firm with no account on the platform cannot open a case; said in
     // words before anything is written (the database's NOT NULL would otherwise answer with a server error).
     const firmId = await firmIdOfActor(this.db, actor);
-    if (!firmId) fail(`${firm!.name} has no account on the platform yet, so it cannot open a case. Nothing was created.`, HttpStatus.CONFLICT);
+    if (!firmId) fail(`${firm!.name} has no account on the platform yet, so it has no case numbers.`, HttpStatus.CONFLICT);   // review m4: its own words
     const workspaceId = await this.ws.id();
     const [{ n }] = await this.db.$queryRaw<{ n: string }[]>`SELECT 'C-' || y.y || '-' || lpad(v.v::text, greatest(5, length(v.v::text)), '0') AS n
       FROM (SELECT extract(year FROM now() AT TIME ZONE 'America/Toronto')::integer AS y) y,

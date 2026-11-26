@@ -61,9 +61,11 @@ const c = await openCase(vv);
 const solo = "user-S";
 const [read, list, num] = await Promise.all([call("GET", `/runtime/cases/${c.id}`, undefined, solo), call("GET", `/runtime/cases`, undefined, solo), call("GET", `/runtime/next-case-number`, undefined, solo)]);
 ok("CS-W1 DW3 fail: sample-solo's staff reading a sample-firm case get 404 \"No such case.\", and its list does not show it",
-  read.status === 404 && /No such case/.test(JSON.stringify(read.body)) && !JSON.stringify(list.body ?? "").includes(c.id), [read.status, list.status]);
+  read.status === 404 && /No such case/.test(JSON.stringify(read.body)) && list.status === 200 && !JSON.stringify(list.body ?? "").includes(c.id), [read.status, list.status]);
 ok("CS-W1 DW3 pass: the case's own firm reads it (its officer), by the case's platform firm", (await call("GET", `/runtime/cases/${c.id}`, undefined, c.officer)).status === 200);
-ok("CS-W1 DW3 pass: sample-solo's next number is its own sequence (by its platform firm)", num.status === 200 && /^C-\d{4}-\d{5}$/.test(num.body?.case_number ?? ""), num.body);
+const soloNext = copySql(`select coalesce((select next_value from firm_case_counter k join platform_firm f on f.id = k.firm_id where f.key = 'sample-solo' and k.year = extract(year from now() at time zone 'America/Toronto')::int), 1)`);
+ok("CS-W1 DW3 pass: sample-solo's next number is its own sequence (its counter row, by its platform firm), not sample-firm's",
+  num.status === 200 && Number((num.body?.case_number ?? "").split("-")[2]) === Number(soloNext), [num.body, soloNext]);
 const both = await Promise.all([openCase(vv), openCase(vv)]);
 const nums = both.map((x) => Number(copySql(`select split_part(case_number, '-', 3) from runtime_case where id = '${x.id}'`))).sort((a, b) => a - b);
 ok("CS-W1 DW4 pass (API): two openings at once in one firm get consecutive numbers", nums.length === 2 && nums[1] - nums[0] === 1, nums);
