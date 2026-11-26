@@ -19,7 +19,7 @@ import { firmScope } from "../../../platform/firm-scope.ts";
 import { platformAuditWorkspaceId } from "../../../platform/identity/audit.ts";
 import { forbidden } from "../../../platform/identity/keys.ts";
 import { registerSetting, writeSetting } from "../../../platform/settings.ts";
-import { FIELD_ERROR_STATUS, parseInput } from "../../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, plainIssue } from "../../../platform/http/input.ts";
 
 type Db = Prisma.TransactionClient | PrismaClient;
 const EDIT = "agent/booking-event-type:edit";
@@ -139,7 +139,7 @@ export class FirmTimingsService {
    *  change applies to new slots and bookings only (rule 8). */
   async write(ctx: StaffContext, body: unknown) {
     parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
-    const r = FirmTimingsBody.safeParse(body ?? {});
+    const r = FirmTimingsBody.safeParse(body ?? {}, { error: plainIssue });   // PF-28 A2: zod's own words never reach a field
     if (!r.success) {
       const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (break m1)
       for (const i of r.error.issues) { const f = String(i.path[0] ?? (i as { keys?: string[] }).keys?.[0] ?? "body"); fields[f] ??= i.code === "unrecognized_keys" ? "Not a booking timing." : i.message; }
