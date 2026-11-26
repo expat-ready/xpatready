@@ -5,7 +5,7 @@
 // withdrawal names its invoice (a link waits on the invoice's id in the ledger's answer: contract gap); a balance below zero (only after a reversal) is red with "Trust shortfall after a reversal".
 // Out of the caller's view, another firm's or unknown: one plain "not found", never "CAD 0 held" (C5). Not here yet: Pay from
 // trust and Refund to client (FO-7s3b part 1b), Send statement (FO-7s5), the case's own view /money/cases/:id (part 1b).
-import type * as React from "react";
+import * as React from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { Button, Notice, Table } from "@/components/ui/controls";
@@ -29,36 +29,40 @@ const ROWS: { label: string; of: (f: Figures) => React.ReactNode; trust?: boolea
 ];
 const at = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-function Ledger({ param, id, cases }: { param: string; id: string; cases: Map<string, string | null> }) {
-  const token = useStaffToken();
+/** One ledger per currency (BR-4; concept (e) "Trust ledger — … (CAD)"): FO-7t's order (seq) is per party and currency, so
+ *  newest first holds only within one currency (break M2). */
+function Ledger({ param, id, currency, cases }: { param: string; id: string; currency: string; cases: Map<string, string | null> }) {
+  const token = useStaffToken(), firstNew = React.useRef<number | null>(null);
   const q = useInfiniteQuery({
-    queryKey: ["fo", "money", "trust", "ledger", token, param, id], enabled: !!token, retry: false, initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => LedgerPage.parse(await staffApi(`/front-office/money/trust/ledger?${new URLSearchParams({ [param]: id, ...(pageParam ? { after: pageParam } : {}) })}`)),
+    queryKey: ["fo", "money", "trust", "ledger", token, param, id, currency], enabled: !!token, retry: false, initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => LedgerPage.parse(await staffApi(`/front-office/money/trust/ledger?${new URLSearchParams({ [param]: id, currency, ...(pageParam ? { after: pageParam } : {}) })}`)),
     getNextPageParam: (last) => last.next,
   });
-  if (q.isError) return <Notice tone="danger" title="Could not load the trust ledger"><span data-ledger-error>{q.error instanceof StaffApiError ? q.error.message : "Please reload the page."}</span></Notice>;
-  if (q.isPending) return <Loading label="Loading the trust ledger" rows={3} />;
+  const failed = q.isError ? <Notice tone="danger" title={q.data ? "Could not load more entries" : "Could not load the trust ledger"}><span data-ledger-error>{q.error instanceof StaffApiError ? q.error.message : "Please try again."}</span></Notice> : null;
+  if (!q.data) return failed ?? <Loading label="Loading the trust ledger" rows={3} />;
   const rows = q.data.pages.flatMap((p) => p.items);
-  if (!rows.length) return <p data-ledger-empty className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">No trust entries for this client yet.</p>;
+  if (!rows.length) return <p data-ledger-empty className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">No {currency} trust entries for this client yet.</p>;
   return (
     <>
-      <Table label="Trust ledger" head={["Date", "Entry", "Reference", "Payer", "Amount", "Balance"]} headClass={[undefined, undefined, "hidden md:table-cell", "hidden lg:table-cell", undefined, undefined]}>
-        {rows.map((e) => {
+      <Table label={`Trust ledger in ${currency}`} head={["Date", "Entry", "Reference", "Payer", "Amount", "Balance"]} headClass={[undefined, undefined, "hidden md:table-cell", "hidden lg:table-cell", undefined, undefined]}>
+        {rows.map((e, i) => {
           const short = e.balanceAfterMinor < 0, where = e.caseId ? cases.get(e.caseId) ?? "A case" : "Before a case";
           return (
-            <tr key={`${e.id}-${e.currency}`} data-ledger-row={e.kind} data-short={short || undefined}>
+            <tr key={e.id} data-ledger-row={e.kind} data-short={short || undefined} tabIndex={i === firstNew.current ? -1 : undefined}
+              ref={i === firstNew.current ? (el) => { if (el) { el.focus(); firstNew.current = null; } } : undefined}>
               <td className="whitespace-nowrap">{at(e.at)}</td>
               <td>{entryWords(e)}
                 <span className="block text-xs text-text-muted">{where}</span></td>
-              <td className="hidden md:table-cell">{e.reference ?? "—"}</td>
-              <td className="hidden lg:table-cell">{e.payer ?? "—"}</td>
+              <td className="hidden md:table-cell [overflow-wrap:anywhere]">{e.reference ?? "—"}</td>
+              <td className="hidden lg:table-cell [overflow-wrap:anywhere]">{e.payer ?? "—"}</td>
               <td className="whitespace-nowrap tabular-nums" data-figure>{e.amountMinor < 0 ? `${money(-e.amountMinor, e.currency)} out` : money(e.amountMinor, e.currency)}</td>
               <td className="whitespace-nowrap">{short ? <Short minor={e.balanceAfterMinor} currency={e.currency} /> : <span className="tabular-nums" data-balance>{money(e.balanceAfterMinor, e.currency)}</span>}</td>
             </tr>
           );
         })}
       </Table>
-      {q.hasNextPage ? <div><Button variant="outline" busy={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()} data-show-more>Show more</Button></div> : null}
+      {failed}
+      {q.hasNextPage ? <div><Button variant="outline" busy={q.isFetchingNextPage} onClick={() => { firstNew.current = rows.length; void q.fetchNextPage(); }} data-show-more>Show more</Button></div> : null}
     </>
   );
 }
@@ -75,8 +79,11 @@ function Body() {
   }
   if (!q.data) return <Loading label="Loading this client's money" rows={4} />;
   const s = q.data, cols = s.totals, rows = ROWS.filter((r) => s.trustShows || !r.trust), cases = new Map(s.cases.filter((c) => c.caseId).map((c) => [c.caseId!, c.caseLabel]));
-  const held = s.trustShows ? cols.filter((f) => (f.trustMinor ?? 0) >= 0).map((f) => heldWords(s.cases, f.currency, money)).filter((x): x is string => !!x) : [];
+  const held = s.trustShows ? cols.filter((f) => (f.trustMinor ?? 0) >= 0).map((f) => heldWords(s.cases, f.currency, money, f.trustMinor ?? 0)).filter((x): x is string => !!x) : [];
   const short = s.trustShows ? cols.filter((f) => (f.trustMinor ?? 0) < 0) : [];
+  // break M1: a case (or the money before a case) below zero is shown on its own, red and labelled, even when the client's
+  // total in that currency is above zero; it is never counted as holding money.
+  const shortCases = s.trustShows ? s.cases.filter((c) => (c.trustMinor ?? 0) < 0 && !short.some((f) => f.currency === c.currency)) : [];
   return (
     <div className="flex flex-col gap-8" data-party-money>
       <header className="flex flex-col gap-2"><MoneyMenuSmall keys={me.keys} /><h1 className="text-2xl font-semibold [overflow-wrap:anywhere]">{s.party.name ?? "Client"} — Money</h1>
@@ -98,8 +105,20 @@ function Body() {
               <span data-trust-short><span className="font-semibold tabular-nums text-text-danger">{money(f.trustMinor ?? 0, f.currency)}</span>. {shortfallWords(f.trustMinor ?? 0, f.currency, money)} Unconfirmed: no counsel.</span>
             </Notice>
           ))}
-          <h3 className="text-base font-semibold">Trust ledger</h3>
-          <Ledger param={param} id={id} cases={cases} />
+          {shortCases.length ? (
+            <Notice tone="danger" title={SHORTFALL_LABEL}>
+              <ul data-trust-short-cases className="flex flex-col gap-1">{shortCases.map((c) => (
+                <li key={`${c.caseId}-${c.currency}`}>{c.caseId ? c.caseLabel ?? "A case" : "Before a case"}: <span className="font-semibold tabular-nums text-text-danger">{money(c.trustMinor ?? 0, c.currency)}</span> <span className="text-xs text-text-danger">({SHORTFALL_LABEL})</span>. {shortfallWords(c.trustMinor ?? 0, c.currency, money)} Unconfirmed: no counsel.</li>
+              ))}</ul>
+            </Notice>
+          ) : null}
+          {!cols.length ? <p data-ledger-empty className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">No trust entries for this client yet.</p> : null}
+          {cols.map((f) => (
+            <div key={f.currency} className="flex flex-col gap-3">
+              <h3 className="text-base font-semibold">Trust ledger — {f.currency}</h3>
+              <Ledger param={param} id={id} currency={f.currency} cases={cases} />
+            </div>
+          ))}
         </section>
       ) : null}
     </div>

@@ -23,12 +23,12 @@ function Finder() {
   return (
     <section aria-labelledby="find-client" className="flex flex-col gap-2">
       <h2 id="find-client" className="text-lg font-semibold">A client's ledger</h2>
-      <Field label="Find a client" hint="Type at least 2 letters of the name." className="max-w-md">
+      <Field label="Find a client" hint="Type at least 2 letters of the name. Lists clients you have won or who have a case; a client below zero is also on the list above." className="max-w-md">
         <Input type="search" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" data-trust-find />
       </Field>
       {q.length < 2 ? null : hits.isError ? <p className="text-sm text-text-danger" data-find-error>{hits.error instanceof StaffApiError ? hits.error.message : "Could not search now."}</p>
         : !hits.data ? <p className="text-sm text-text-muted">Searching…</p>
-          : !hits.data.items.length ? <p className="text-sm text-text-muted" data-find-none>No client you can see matches “{q}”.</p>
+          : !hits.data.items.length ? <p className="text-sm text-text-muted" data-find-none>No won client or client with a case matches “{q}”.</p>
             : <ul className="flex max-w-md flex-col gap-1" aria-label="Matching clients">{hits.data.items.map((h) => (
               <li key={h.id}><Link to={`/money/parties/${h.kind === "PERSON" ? "person" : "company"}/${h.id}`} className="text-text-link underline underline-offset-2" data-find-hit={h.name}>{h.name}</Link></li>
             ))}</ul>}
@@ -60,7 +60,7 @@ function Body() {
               const to = partyPath(r);
               return (
                 <tr key={`${r.personId ?? r.companyId}-${r.currency}`} data-shortfall-row={r.name ?? ""}>
-                  <td className="font-medium">{to ? <Link to={to} className="text-text-link underline underline-offset-2">{r.name ?? "Client"}</Link> : r.name ?? "Client"}</td>
+                  <td className="font-medium [overflow-wrap:anywhere]">{to ? <Link to={to} className="text-text-link underline underline-offset-2">{r.name ?? "Client"}</Link> : r.name ?? "Client"}</td>
                   <td className="whitespace-nowrap"><span className="font-semibold tabular-nums text-text-danger" data-shortfall-figure>{money(r.balanceMinor, r.currency)}</span><span className="block text-xs text-text-danger">{SHORTFALL_LABEL}</span></td>
                   <td className="hidden text-sm md:table-cell">{shortfallWords(r.balanceMinor, r.currency, money)} <span className="text-text-muted">Unconfirmed: no counsel.</span></td>
                 </tr>

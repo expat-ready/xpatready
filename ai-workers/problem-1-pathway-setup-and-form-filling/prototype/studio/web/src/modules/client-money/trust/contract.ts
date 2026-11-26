@@ -68,10 +68,12 @@ export const shortfallWords = (minor: number, currency: string, money: (m: numbe
   `Your firm needs to put ${money(Math.abs(minor), currency)} of its own money into trust for this client.`;
 
 /** "Trust held: CAD 1,300.00 (2 cases, CAD 150.00 before a case)" (AG-6-60 r6), one line per currency, from the summary's rows. */
-export function heldWords(cases: z.infer<typeof CaseFigures>[], currency: string, money: (m: number, c: string) => string): string | null {
-  const mine = cases.filter((c) => c.currency === currency && c.trustMinor !== null && c.trustMinor !== 0);
+/** `totalMinor` is the server's own total for the currency (the summary's `trustMinor`; review m1: never re-added here). */
+export function heldWords(cases: z.infer<typeof CaseFigures>[], currency: string, money: (m: number, c: string) => string, totalMinor: number): string | null {
+  // only money held (above zero): a case below zero is shown on its own, red and labelled (break M1), never counted here
+  const mine = cases.filter((c) => c.currency === currency && c.trustMinor !== null && c.trustMinor > 0);
   if (!mine.length) return null;
-  const total = mine.reduce((s, c) => s + (c.trustMinor ?? 0), 0), onCases = mine.filter((c) => c.caseId).length, before = mine.find((c) => !c.caseId);
+  const total = totalMinor, onCases = mine.filter((c) => c.caseId).length, before = mine.find((c) => !c.caseId);
   const parts = [onCases ? `${onCases} case${onCases === 1 ? "" : "s"}` : null, before ? `${money(before.trustMinor ?? 0, currency)} before a case` : null].filter(Boolean);
   return `Trust held: ${money(total, currency)}${parts.length ? ` (${parts.join(", ")})` : ""}`;
 }

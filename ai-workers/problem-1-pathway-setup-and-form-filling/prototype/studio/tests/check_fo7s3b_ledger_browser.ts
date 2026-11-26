@@ -33,7 +33,7 @@ if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never 
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "fo-7s-money", "build"); mkdirSync(SHOTS, { recursive: true });
 const { ok, summary } = recorder();
-const { sql: rawSql } = client(PORT, DBNAME);
+const { sql: rawSql, call } = client(PORT, DBNAME);
 const sql = (q: string) => (rawSql(q) ?? "").split("\n")[0].trim();
 type Ans = { status: number; body: any; text: string };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 const api = async (t: string | null, method: string, path: string, body?: unknown): Promise<Ans> => {
@@ -68,11 +68,18 @@ const person = (n: string) => sql(`insert into fo_person (id, firm_id, given_nam
 // C5 (CS-MV1): a party is visible when it is the subject of a prospect the person may see. Client B and Client R: the Billing
 // person's and the Owner's; Client H: the Owner's only (DW9).
 const PB = person("B"), PR = person("R"), PH = person("H");
+// Client M is the client of a real case (break M1 needs money on a case): Demo › Load the configured checkpoint when not yet
+// loaded, then firm A's case officer opens a case, whose case client is born linked to its own person (as j_58's client C).
+const released = () => sql(`select count(*) from config_release r join combination c on c.id = r.combination_id where c.combination_key = 'vv.single' and r.status = 'RELEASED'`) !== "0";
+if (!released()) await call("POST", "/demo/load", { sample: "configured" }, "user-A");
+const opened = await call("POST", "/runtime/cases", { combinationId: sql(`select id from combination where combination_key = 'vv.single'`), reference: `S3B-${run}-M`, clientActor: "user-P", principal: { displayName: `ClientM${run} Sample` }, representative: "user-R", caseOfficers: ["user-O"] }, "user-O");
+const CASEM = (opened.body as { id?: string } | null)?.id ?? "";
+const PM = CASEM ? sql(`select coalesce((select c.fo_person_id::text from runtime_case k join case_client c on c.id = k.client_id and c.firm_id = k.firm_id where k.id = '${CASEM}'), '')`) : "";
 let pn = 0;
 const prospect = (who: string, owner: string) => sql(`set session_replication_role = replica; insert into fo_prospect (id, firm_id, number, lead_id, type, stage_id, subject_person_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
     values (gen_random_uuid(), '${A}', 'P-${String(10000 + ((Date.now() + 7919 * ++pn) % 89999))}', gen_random_uuid(), 'INDIVIDUAL', gen_random_uuid(), '${who}', null, '${who}', '${staffOf(owner)}', 'seed:FO-7s3b', now())`);
-prospect(PB, "user-T"); prospect(PB, "user-R"); prospect(PR, "user-T"); prospect(PR, "user-R"); prospect(PH, "user-R");
-ok("FO-7s3b setup: user-T is a Billing person; trust Unanswered; three Sample clients", role.status === 200 && trustAtStart === "UNANSWERED" && !!PB && !!PR && !!PH, { role: role.status });
+prospect(PB, "user-T"); prospect(PB, "user-R"); prospect(PR, "user-T"); prospect(PR, "user-R"); prospect(PH, "user-R"); prospect(PM, "user-T"); prospect(PM, "user-R");
+ok("FO-7s3b setup: user-T is a Billing person; trust Unanswered; three Sample clients and Client M of a real case", role.status === 200 && trustAtStart === "UNANSWERED" && !!PB && !!PR && !!PH && !!PM, { role: role.status, opened: opened.status });
 
 // ------------------------------------------------------------------------------------------------ the browser
 const browser: Browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : process.platform === "darwin" ? { channel: "chrome" } : {}) });
@@ -129,14 +136,25 @@ try {
   const dep = (who: string, amountMinor: number, currency: string, method: string, n: string) =>
     api(TOWNER, "POST", `${M}/trust/deposits`, { personId: who, amountMinor, currency, method, reference: `S3B-${run}-${n}`, idempotencyKey: `s3b-${run}-${n}` });
   const d1 = await dep(PB, 113000, "CAD", "E_TRANSFER", "b1"), d2 = await dep(PB, 5000, "USD", "WIRE", "b2");
+  // break M2: CAD entries after the USD one, then a newer USD one (each currency's ledger newest first on its own)
+  const d3 = await dep(PB, 1000, "CAD", "E_TRANSFER", "b3"), d4 = await dep(PB, 2500, "USD", "WIRE", "b4");
   // Client R: a cheque of 200.00 deposited by hand, refunded, then reversed as Returned: −200.00 (P-694; FO-7v part T).
   const chq = await dep(PR, 20000, "CAD", "CHEQUE", "r1");
   const ref = await api(TOWNER, "POST", `${M}/trust/refunds`, { personId: PR, currency: "CAD", amountMinor: 20000, reason: "Client asked for it back (Sample)", reference: `S3B-${run}-rf`, method: "E_TRANSFER", unclearedAcknowledged: true });
+  // break M1: Client M (the case's client) holds CAD 500.00 before a case and is short CAD 200.00 on a case (a cheque there refunded, then reversed)
+  const m1 = await dep(PM, 50000, "CAD", "E_TRANSFER", "m1");
+  const mchq = await api(TOWNER, "POST", `${M}/trust/deposits`, { personId: PM, caseId: CASEM, amountMinor: 20000, currency: "CAD", method: "CHEQUE", reference: `S3B-${run}-m2`, idempotencyKey: `s3b-${run}-m2` });
+  const mref = await api(TOWNER, "POST", `${M}/trust/refunds`, { personId: PM, caseId: CASEM, currency: "CAD", amountMinor: 20000, reason: "Client asked for it back (Sample)", reference: `S3B-${run}-mrf`, method: "E_TRANSFER", unclearedAcknowledged: true });
+  const mplan = await api(TOWNER, "GET", `${M}/payments/${mchq.body?.paymentId}/reverse-preview`);
+  const mrev = await api(TOWNER, "POST", `${M}/payments/${mchq.body?.paymentId}/reverse`, { reasonCode: "RETURNED", previewHash: mplan.body?.hash });
+  const caseBal = sql(`select coalesce(sum(amount_minor), 0) from money_trust_entry where person_id = '${PM}' and case_id = '${CASEM}'`);
+  ok("FO-7s3b setup (break M1's data): Client M holds CAD 500.00 before a case and CAD −200.00 on a case after a reversal",
+    m1.status === 201 && mchq.status === 201 && mref.status < 300 && mrev.status < 300 && caseBal === "-20000", { m1: m1.status, mchq: [mchq.status, mchq.body?.detail], mref: [mref.status, mref.body?.detail], mrev: [mrev.status, mrev.body?.detail], caseBal });
   const plan = await api(TOWNER, "GET", `${M}/payments/${chq.body?.paymentId}/reverse-preview`);
   const rev = await api(TOWNER, "POST", `${M}/payments/${chq.body?.paymentId}/reverse`, { reasonCode: "RETURNED", previewHash: plan.body?.hash });
   const bal = (who: string, cur: string) => sql(`select coalesce(sum(amount_minor), 0) from money_trust_entry where person_id = '${who}' and currency = '${cur}'`);
-  ok("FO-7s3b setup (trust on): Yes recorded; Client B holds CAD 1,130.00 and USD 50.00; Client R is at −CAD 200.00 after a reversal (FO-7t, FO-7v routes)",
-    yes.status === 200 && d1.status === 201 && d2.status === 201 && ref.status < 300 && rev.status < 300 && bal(PB, "CAD") === "113000" && bal(PB, "USD") === "5000" && bal(PR, "CAD") === "-20000",
+  ok("FO-7s3b setup (trust on): Yes recorded; Client B holds CAD 1,140.00 and USD 75.00; Client R is at −CAD 200.00 after a reversal (FO-7t, FO-7v routes)",
+    yes.status === 200 && d1.status === 201 && d2.status === 201 && d3.status === 201 && d4.status === 201 && ref.status < 300 && rev.status < 300 && bal(PB, "CAD") === "114000" && bal(PB, "USD") === "7500" && bal(PR, "CAD") === "-20000",
     { yes: yes.status, d1: d1.status, d2: d2.status, chq: chq.status, ref: [ref.status, ref.body?.detail], rev: [rev.status, rev.body?.detail], R: bal(PR, "CAD") });
 
   // ---------------------------------------------------------------------------------------------- W1, DW7, K: the walk
@@ -170,18 +188,30 @@ try {
 
   // ---------------------------------------------------------------------------------------------- DW3: the ledger adds up
   await partyPage(p, PB);
-  const ledger = await p.locator("[data-ledger-row]").evaluateAll((rs) => rs.map((r) => ({ fig: r.querySelector("[data-figure]")?.textContent ?? "", bal: r.querySelector("[data-balance]")?.textContent ?? "" })));
+  const ledger = await p.locator("[data-ledger-row]").evaluateAll((rs) => rs.map((r) => ({ table: r.closest("[role=region]")?.getAttribute("aria-label") ?? "", fig: r.querySelector("[data-figure]")?.textContent ?? "", bal: r.querySelector("[data-balance]")?.textContent ?? "" })));
   const held = await p.locator("[data-trust-held] li").allInnerTexts();
   const newest = (cur: string) => ledger.find((x) => x.bal.includes(cur))?.bal.trim();
+  const byTable = (cur: string) => ledger.filter((x) => x.table === `Trust ledger in ${cur}`);
+  ok("FO-7s3b DW3 / break M2: one ledger per currency, each newest first: CAD's first row is the CAD 10.00 deposit, USD's the USD 25.00 one, and no row sits in the other currency's table",
+    byTable("CAD")[0]?.fig === "CAD 10.00" && byTable("USD")[0]?.fig === "USD 25.00" && byTable("CAD").every((x) => x.fig.includes("CAD")) && byTable("USD").every((x) => x.fig.includes("USD")) && byTable("CAD").length + byTable("USD").length === ledger.length, ledger);
   const fakeCases = [{ caseId: null, caseLabel: null, currency: "CAD", trustMinor: Number(bal(PB, "CAD")) }, { caseId: null, caseLabel: null, currency: "USD", trustMinor: Number(bal(PB, "USD")) }] as Parameters<typeof heldWords>[0];
-  const want = ["CAD", "USD"].map((c) => heldWords(fakeCases, c, money));
+  const want = ["CAD", "USD"].map((c) => heldWords(fakeCases, c, money, Number(bal(PB, c))));
   ok("FO-7s3b DW3 pass: Client B's newest CAD and USD running balances equal the database's sums and \"Trust held\" per currency, shown apart",
     newest("CAD") === money(Number(bal(PB, "CAD")), "CAD") && newest("USD") === money(Number(bal(PB, "USD")), "USD") && JSON.stringify(held) === JSON.stringify(want), { ledger, held, want });
-  ok("FO-7s3b DW3 fail: the two currencies are never added (no CAD 1,180.00 anywhere) and a wrong balance is caught",
-    !(await p.locator("main").innerText()).includes("1,180.00") && newest("CAD") !== money(Number(bal(PB, "CAD")) + 1, "CAD"));
+  ok("FO-7s3b DW3 fail: the two currencies are never added (no CAD 1,215.00 anywhere) and a wrong balance is caught",
+    !(await p.locator("main").innerText()).includes("1,215.00") && newest("CAD") !== money(Number(bal(PB, "CAD")) + 1, "CAD"));
   const sumRows = await p.locator("[data-summary-row]").allInnerTexts();
   ok("FO-7s3b DW3: the summary has one column per currency and Unbilled reads \"Not tracked yet\", never 0", sumRows.some((r) => /^Unbilled\s+Not tracked yet/.test(r)), sumRows);
   axeAll.push(...(await serious(p)).map((x) => `party B: ${x}`)); await shot(p, "party-1440");
+
+  // ---------------------------------------------------------------------------------------------- break M1: a short case inside a positive total
+  await partyPage(p, PM);
+  const mHeld = await p.locator("[data-trust-held] li").allInnerTexts(), mShort = p.locator("[data-trust-short-cases] li");
+  ok("FO-7s3b break M1 pass: Client M's short case shows on its own, red, labelled \"Trust shortfall after a reversal\", and \"Trust held\" counts no case",
+    (await mShort.count()) === 1 && /−CAD 200\.00/.test(await mShort.innerText()) && (await p.locator("[data-trust-short-cases]").locator("xpath=ancestor::*[@role='alert'][1]").innerText()).includes(SHORTFALL_LABEL)
+      && (await isRed(mShort.locator(".text-text-danger").first())) && JSON.stringify(mHeld) === JSON.stringify(["Trust held: CAD 300.00 (CAD 500.00 before a case)"]), { mHeld, short: await mShort.allInnerTexts() });
+  const negM = await p.evaluate(NEGATIVES) as Neg[];
+  ok("FO-7s3b break M1 fail: every negative figure on Client M's page is red and labelled (the case is never counted as holding money)", negM.length > 0 && negM.every((n) => n.red && n.labelled) && !mHeld.some((h) => /1 case/.test(h)), negM);
 
   // ---------------------------------------------------------------------------------------------- DW9: C5
   // The Sample firm lets everyone see every record (platform.everyone_sees_all); C5 is tested with it off, as FO-7s3a's DW10.
@@ -195,6 +225,11 @@ try {
   const po = await tab(TOWNER); await partyPage(po, PH);
   ok("FO-7s3b DW9 fail: the Owner, who can see Client H, gets the Money view", (await po.locator("[data-party-money]").count()) === 1);
   await po.context().close();
+  // C5 on the shortfall list (review m8): the Case Officer, who sees none of these clients, gets no row for Client R
+  const pc = await tab(await signIn("sample-firm", "user-O")); await trustPage(pc);
+  ok("FO-7s3b DW9 pass (shortfall list): a Case Officer who cannot see Client R finds no row and no figure for them on Money › Trust",
+    (await pc.locator("[data-trust-home], [data-trust-refused]").count()) === 1 && (await pc.locator(`[data-shortfall-row="ClientR${run} Sample"]`).count()) === 0 && !(await pc.locator("main").innerText()).includes("200.00"));
+  await pc.context().close();
   restoreSeesAll(); restoreSeesAll = null;
 
   // ---------------------------------------------------------------------------------------------- K: widths
