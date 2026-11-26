@@ -23,7 +23,8 @@ export const TIMELINE_PAGE = 50;
 export const TIMELINE_KINDS = ["NOTE", "DOCUMENT", "DECISION", "ACTIVITY"] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 type Source = "audit" | "note";
-type Key = { us: bigint; source: Source; id: string };
+/** A line's place in time order (AG-13-31), shared with a person's timeline (case-notes/person-timeline.ts). */
+export type Key = { us: bigint; source: string; id: string };
 type Raw = { id: string; ust: string; actor: string; kind: TimelineKind; type: string; summary: string; entity?: string; entity_key?: string | null; case_id?: string | null; firm_id?: string | null; visibility?: string; pinned?: boolean };
 export type CaseTimelineLine = { at: string; kind: TimelineKind; type: string; actor: string; actorName: string | null; summary: string; refId: string; source: Source; visibility?: string; pinned?: boolean };
 
@@ -31,7 +32,7 @@ const BIGINT_MAX = 9223372036854775807n;   // break F1: a larger cursor would fa
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const invalid = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
-const cmp = (a: Key, b: Key) => (a.us === b.us ? (a.source === b.source ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.source < b.source ? -1 : 1) : a.us < b.us ? -1 : 1);
+export const cmp = (a: Key, b: Key) => (a.us === b.us ? (a.source === b.source ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.source < b.source ? -1 : 1) : a.us < b.us ? -1 : 1);
 const keyOf = (r: Raw, source: Source): Key => ({ us: BigInt(r.ust), source, id: r.id });
 const encode = (k: Key) => Buffer.from(JSON.stringify([k.us.toString(), k.source, k.id])).toString("base64url");
 function decode(c: string): Key {
@@ -118,7 +119,19 @@ export class CaseTimeline {
 
   /** GET /api/runtime/cases/:id/timeline (agent/case:show): one page, newest first, and the cursor of the next. */
   async read(ctx: StaffContext, caseId: string, q: unknown) {
-    const f = filterOf(parsed(TimelineQuery, q));
+    const { lines, more, last } = await this.keyed(ctx, caseId, filterOf(parsed(TimelineQuery, q)));
+    return { lines: lines.map((x) => x.line), more, nextCursor: more && last ? encode(last) : null, pageSize: TIMELINE_PAGE };
+  }
+
+  /** One page after `cursor` (null: the newest), each line with its key: a person's timeline merges these
+   *  (CS-NT1t). The case is reached as the notes routes reach it (404 outside the reader's firm or caseScope). */
+  async pageAfter(ctx: StaffContext, caseId: string, cursor: Key | null) {
+    const c = cursor && (cursor.source === "audit" || cursor.source === "note") ? cursor
+      : cursor ? { us: cursor.us, source: "note", id: "ffffffff-ffff-ffff-ffff-ffffffffffff" } : null;   // after "note" in "C" order
+    return this.keyed(ctx, caseId, { cursor: c, kinds: [...TIMELINE_KINDS], author: null, from: null, to: null });
+  }
+
+  private async keyed(ctx: StaffContext, caseId: string, f: Filter) {
     const c = await this.notes.subjectFor(ctx, "case", caseId);
     let actors: string[] = [];
     if (f.author) {
@@ -150,11 +163,11 @@ export class CaseTimeline {
       cursor = last;
     }
     const names = await this.names(c.firmId, page.map((x) => x.r.actor));
-    const lines: CaseTimelineLine[] = page.map(({ r, source }) => ({
+    const lines: { line: CaseTimelineLine; k: Key }[] = page.map(({ r, source, k }) => ({ k, line: {
       at: new Date(Number(BigInt(r.ust) / 1000n)).toISOString(), kind: r.kind, type: r.type, actor: r.actor, actorName: names.get(r.actor) ?? (r.actor.startsWith("system:") ? "The system" : null),
       summary: r.summary, refId: r.id, source, ...(source === "note" ? { visibility: r.visibility, pinned: r.pinned } : {}),
-    }));
-    return { lines, more, nextCursor: more && last ? encode(last) : null, pageSize: TIMELINE_PAGE };
+    } }));
+    return { lines, more, last };
   }
 
   /** The audit source's floor: the key of its 51st row past the cursor before case-feed.ts's filter, or null. */

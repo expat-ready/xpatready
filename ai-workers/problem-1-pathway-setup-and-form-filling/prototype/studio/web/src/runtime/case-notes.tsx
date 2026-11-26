@@ -64,7 +64,7 @@ export function CaseNotesPanel({ caseId }: { caseId: string }) {
                 {keys.includes(EDIT) ? <Writer caseId={caseId} share={keys.includes(SHARE)} draft={draft} /> : <p className="text-[13px] text-text-muted" data-notes-read-only>Your role can read notes but not add them.</p>}
                 <NoteList caseId={caseId} notes={notes.data!.notes} mayEdit={keys.includes(EDIT)} share={keys.includes(SHARE)} />
               </div>
-              <Timeline caseId={caseId} />
+              <Timeline path={`/runtime/cases/${caseId}/timeline`} chips />
             </div>}
     </section>
   );
@@ -216,13 +216,14 @@ function NoteCard({ caseId, note, mayEdit, share }: { caseId: string; note: Case
   );
 }
 
-function Timeline({ caseId }: { caseId: string }) {
+/** A timeline, newest first, with Show older: a case's (with kind chips) or, CS-NT1t, a person's (`path` is its read). */
+export function Timeline({ path, chips = false, heading = 3 }: { path: string; chips?: boolean; heading?: 2 | 3 }) {
   const token = useStaffToken();
   const [kind, setKind] = React.useState("");
   const [limit, setLimit] = React.useState(FIRST_LINES);
   const q = useInfiniteQuery({
-    queryKey: ["pf", "case-timeline", caseId, kind, token], enabled: !!token, retry: false, initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => CaseTimelinePage.parse(await staffApi(`/runtime/cases/${caseId}/timeline?${new URLSearchParams({ ...(pageParam ? { cursor: pageParam } : {}), ...(kind ? { kinds: kind } : {}) })}`)),
+    queryKey: ["pf", "case-timeline", path.split("/")[3], kind, token], enabled: !!token, retry: false, initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => CaseTimelinePage.parse(await staffApi(`${path}?${new URLSearchParams({ ...(pageParam ? { cursor: pageParam } : {}), ...(kind ? { kinds: kind } : {}) })}`)),
     getNextPageParam: (p) => (p.more ? p.nextCursor : null),
   });
   const lines = (q.data?.pages ?? []).flatMap((p) => p.lines).filter((l) => !ACCESS.has(l.type));
@@ -230,24 +231,24 @@ function Timeline({ caseId }: { caseId: string }) {
   const older = async () => { if (lines.length <= limit && q.hasNextPage) await q.fetchNextPage(); setLimit(limit + 50); };
   return (
     <div className="space-y-3 px-4 py-3" data-case-timeline>
-      <h3 className="text-sm font-semibold">Timeline</h3>
-      <div role="group" aria-label="Show on the timeline" className="flex gap-2 overflow-x-auto pb-1">
+      {heading === 3 ? <h3 className="text-sm font-semibold">Timeline</h3> : <h2 id="client-timeline" className="text-lg font-semibold">Timeline</h2>}
+      {chips ? <div role="group" aria-label="Show on the timeline" className="flex gap-2 overflow-x-auto pb-1">
         {KINDS.map(([k, label]) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setLimit(FIRST_LINES); }}
           className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium focus-visible:ring-[3px] focus-visible:ring-ring/50 ${kind === k ? "border-primary bg-primary text-primary-foreground" : "border-border bg-surface-raised"}`} data-timeline-kind={k || "ALL"}>{label}</button>)}
-      </div>
+      </div> : null}
       {q.isLoading ? <Skeleton className="h-32 w-full" /> : q.isError ? <Notice tone="danger" title="The timeline could not be loaded">{errWords(q.error, "timeline")}</Notice>
-        : !shown.length ? <p className="text-sm text-text-muted" data-timeline-empty>Nothing has happened on this case yet.</p>
+        : !shown.length ? <p className="text-sm text-text-muted" data-timeline-empty>{chips ? "Nothing has happened on this case yet." : "Nothing has happened for this client yet."}</p>
           : <ol className="space-y-2" data-timeline-lines>{shown.map((l) => (
               <li key={`${l.source}:${l.refId}`} className="flex gap-2 text-sm" data-timeline-line={l.kind} data-timeline-type={l.type}>
                 <Pill className="mt-0.5 w-20 justify-center">{KIND_WORD[l.kind]}</Pill>
                 <div className="min-w-0 flex-1">
-                  {l.source === "note" ? <p className="line-clamp-2 whitespace-pre-wrap [overflow-wrap:anywhere]" data-timeline-note><bdi>{l.summary}</bdi></p> : <p>{lineWords(l)}</p>}
+                  {l.source === "note" || (l.source === "prospect" && l.kind === "NOTE") ? <p className="line-clamp-2 whitespace-pre-wrap [overflow-wrap:anywhere]" data-timeline-note><bdi>{l.summary}</bdi></p> : <p>{lineWords(l)}</p>}
                   <p className="text-xs text-text-muted">{who(l.actorName)} · <time dateTime={l.at}>{when(l.at)}</time></p>
-                  {l.source === "audit" ? <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary><span className="[overflow-wrap:anywhere]">{l.summary}</span></details> : null}
+                  {l.source === "audit" || (l.source === "prospect" && l.kind !== "NOTE") ? <details className="text-xs text-text-muted"><summary className="cursor-pointer">Details</summary><span className="[overflow-wrap:anywhere]">{l.summary}</span></details> : null}
                 </div>
               </li>))}</ol>}
       {shown.length && (lines.length > limit || q.hasNextPage) ? <Button size="sm" variant="secondary" busy={q.isFetchingNextPage} onClick={() => void older()} data-timeline-older>Show older</Button>
-        : shown.length ? <p className="text-xs text-text-muted" data-timeline-end>That is everything on this case.</p> : null}
+        : shown.length ? <p className="text-xs text-text-muted" data-timeline-end>{chips ? "That is everything on this case." : "That is everything for this client."}</p> : null}
     </div>
   );
 }
