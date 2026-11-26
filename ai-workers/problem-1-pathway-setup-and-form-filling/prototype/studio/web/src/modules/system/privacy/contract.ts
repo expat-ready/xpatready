@@ -8,8 +8,9 @@ export const BREACH_READ_KEY = "system/breach:read";
 /** The same row: only the Platform Owner records breaches and sends their notices (SA7-D74 (b)). */
 export const BREACH_MANAGE_KEY = "system/breach:manage";
 
-/** The console's "Privacy" menu group (concept §4): each link shown only with its key. Requests and holds come with part B. */
-export const PRIVACY_SECTIONS = [{ path: "/system/privacy/breaches", label: "Breaches", key: BREACH_READ_KEY }];
+/** The console's "Privacy" menu group (concept §4): each link shown only with its key. Holds come with part B2. */
+export const PRIVACY_SECTIONS = [{ path: "/system/privacy/breaches", label: "Breaches", key: BREACH_READ_KEY },
+  { path: "/system/privacy/requests", label: "Requests to us", key: "system/compliance:dsr-manage" }];
 
 /** PF-21c's list (SA-11-24 names the field, not its list: Sample), in the API's order, with the words the notice uses. */
 export const CATEGORIES = [
