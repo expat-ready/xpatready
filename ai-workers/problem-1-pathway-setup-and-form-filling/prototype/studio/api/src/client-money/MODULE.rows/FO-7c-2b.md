@@ -1,0 +1,2 @@
+Entry points: card payments booked from Stripe's events (FO-7c part 2b, `card/payments.ts` `CardPayments`: `payment_intent.succeeded` and `payment_intent.payment_failed` on `POST /api/hooks/stripe-connect`, routed by `card/account.ts`; the hourly poll on queue `client_money.card_poll`); `InvoiceMoney.recordCard` and `afterCard` (`invoices/money.ts`, OPERATING only); event `payment.failed` (`ports/client-money.ts`).
+Tests: tests/check_fo7c_card_events.ts

@@ -168,14 +168,21 @@ export const MONEY_EVENT = {
   PAYMENT_REFUNDED: "payment.refunded",
   /** What was still due on an issued invoice was written off (R1.96 part 1; AG-6-76 rule 9). */
   INVOICE_WRITTEN_OFF: "invoice.written_off",
+  /** A card payment on an invoice's pay link was declined (FO-7c part 2b, R1.57: "a failed card leaves the invoice unpaid
+   *  with the reason"); the invoice is unchanged. */
+  PAYMENT_FAILED: "payment.failed",
 } as const;
 const uuid = z.string().regex(UUID);
 /** invoice.*: ids and the stored figures only (no name, no email). The tax and total are the stored lines' sums (R9). */
 export const InvoiceEventPayload = z.strictObject({ invoiceId: uuid, number: z.string(), personId: uuid.nullable(), companyId: uuid.nullable(), caseId: uuid.nullable(),
   currency: MoneyCurrency, subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(), dueDate: z.string(), creditNoteId: uuid.optional() });
 export type InvoiceEventPayload = z.infer<typeof InvoiceEventPayload>;
-export const PaymentEventPayload = z.strictObject({ paymentId: uuid, externalId: z.string(), invoiceId: uuid, method: HandMethod, amountMinor: z.number().int(), currency: MoneyCurrency, receivedInto: ReceivedInto, receiptNumber: z.string() });
+/** CARD: FO-7c part 2b, a payment booked from the card webhook. */
+export const PaymentEventPayload = z.strictObject({ paymentId: uuid, externalId: z.string(), invoiceId: uuid, method: z.union([HandMethod, z.literal("CARD")]), amountMinor: z.number().int(), currency: MoneyCurrency, receivedInto: ReceivedInto, receiptNumber: z.string() });
 export type PaymentEventPayload = z.infer<typeof PaymentEventPayload>;
+/** payment.failed (FO-7c part 2b): the intent, the invoice, the amount asked and the processor's decline code (a fixed word or "other"); no card data, no text. */
+export const PaymentFailedPayload = z.strictObject({ externalId: z.string(), invoiceId: uuid, amountMinor: z.number().int(), currency: MoneyCurrency, code: z.string().regex(/^[a-z_]{1,40}$/) });
+export type PaymentFailedPayload = z.infer<typeof PaymentFailedPayload>;
 
 // -------------------------------------------------------------------------------------------------------------- port
 /** The bill-to party another module asks about: a person or a company of the firm (exactly one). */

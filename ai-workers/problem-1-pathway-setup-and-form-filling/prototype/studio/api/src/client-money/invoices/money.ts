@@ -145,6 +145,38 @@ export class InvoiceMoney {
     return PaymentView.parse({ ...payment, receiptEmail: await this.emailReceipt(ctx.firmId, view.payment, view.extraNow) });
   }
 
+  /** FO-7c part 2b (R1.57; Lead 4's decision (2) on #3633): a card payment Stripe confirmed, booked in the caller's
+   *  transaction (the webhook's or the poll's, as the firm), by `system:stripe-connect`, into OPERATING only (P-567 (3):
+   *  card never into trust). The same lock order, figures, receipt, audit line and events as `record`; there is no staff
+   *  and no C5 scope (the money has already moved). Money past what is due, a cancelled invoice included, is the extra,
+   *  never refused (amendment 1). The same intent twice is the one payment. Its receipt email is `afterCard`, after commit. */
+  async recordCard(tx: Tx, firm: string, invoiceId: string, c: { intentId: string; amountMinor: number; currency: "CAD" | "USD" }): Promise<{ paymentId: string; replayed: boolean }> {
+    const id = idOf(invoiceId), firmId = firmScope(firm).firmId, now = this.clock.now(), today = dayOf(now), by = "system:stripe-connect";
+    const inv = await this.lock(tx, firmId, id, "ALL");
+    const had = await tx.moneyPayment.findFirst({ where: firmScope(firmId, { stripePaymentIntentId: c.intentId }), select: { id: true, invoiceId: true } });
+    if (had) return had.invoiceId === id ? { paymentId: had.id, replayed: true } : refuse("INTENT_ELSEWHERE", "This card payment is already booked on another invoice. Nothing was saved.");
+    if (!inv.issued) refuse("DRAFT", "A draft takes no payment. Nothing was saved.");
+    if (c.currency !== inv.currency) refuse("CURRENCY", `This invoice is in ${inv.currency}; a card payment in ${c.currency} is not booked on it. Nothing was saved.`);
+    const before = await this.facts(tx, firmId, id, today), dueBefore = before.view.dueMinor, applied = Math.min(c.amountMinor, Math.max(0, dueBefore)), extra = c.amountMinor - applied;
+    const pay = await tx.moneyPayment.create({ data: { firmId, invoiceId: id, method: "CARD", amountMinor: c.amountMinor, currency: inv.currency, receivedInto: "OPERATING", receivedAt: now,
+      reference: null, stripePaymentIntentId: c.intentId, idempotencyKey: `card:${c.intentId}`, recordedBy: by, cleared: true }, select: { id: true } });
+    const receipt = await tx.moneyReceipt.create({ data: { firmId, kind: "PAYMENT", paymentId: pay.id }, select: { number: true } });
+    const after = await this.facts(tx, firmId, id, today), head = await this.letterhead(tx, firmId, after.view);
+    await this.audit.record(tx, { firmId, actor: by, action: "payment.recorded", entity: "money_payment", entityKey: pay.id,
+      summary: `Card payment of ${inv.currency} ${MONEY(c.amountMinor)} received on ${inv.number}, receipt ${receipt.number}${extra ? `; ${inv.currency} ${MONEY(extra)} is extra` : ""}.`,
+      detail: { invoiceId: id, paymentId: pay.id, receiptNumber: receipt.number, amountMinor: c.amountMinor, appliedMinor: applied, extraMinor: extra, shortfallMinor: 0, dueAfterMinor: after.view.dueMinor, paidTwice: dueBefore <= 0, receivedInto: "OPERATING", method: "CARD", intentId: c.intentId },
+      before: null, after: { amountMinor: c.amountMinor, currency: inv.currency, method: "CARD", receivedInto: "OPERATING", receivedOn: today, reference: null, cleared: true, receiptNumber: receipt.number, invoiceDueMinor: after.view.dueMinor, ...lettered(head) } });
+    await tx.moduleEvent.create({ data: { firmId, type: MONEY_EVENT.PAYMENT_SUCCEEDED, subjectId: pay.id, payload: PaymentEventPayload.parse({ paymentId: pay.id, externalId: c.intentId, invoiceId: id, method: "CARD", amountMinor: c.amountMinor, currency: inv.currency, receivedInto: "OPERATING", receiptNumber: receipt.number! }) } });
+    if (dueBefore > 0 && after.view.dueMinor === 0) await this.event(tx, firmId, MONEY_EVENT.INVOICE_PAID, after);
+    return { paymentId: pay.id, replayed: false };
+  }
+
+  /** After the card payment's transaction committed: its receipt email to the bill-to (never throws; AG-6-63 rule 5). */
+  async afterCard(firm: string, paymentId: string): Promise<"SENT" | "NO_ADDRESS" | "NOT_SENT"> {
+    const today = dayOf(this.clock.now());
+    try { const v = await this.db.$transaction((tx) => this.paymentView(tx, firm, paymentId, false, today)); return await this.emailReceipt(firm, v.payment, v.extraNow); } catch { return "NOT_SENT"; }
+  }
+
   /** POST …/invoices/:id/credit-notes: part (a gross amount) or full (all that is left: a cancel), with a reason. */
   async credit(ctx: StaffContext, invoiceId: string, body: unknown): Promise<CreditNoteView> {
     const id = idOf(invoiceId), c = parse(CreditNoteIn, body), today = dayOf(this.clock.now()), firmId = firmScope(ctx.firmId).firmId;

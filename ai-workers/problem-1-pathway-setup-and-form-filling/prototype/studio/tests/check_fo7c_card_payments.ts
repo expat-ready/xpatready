@@ -45,7 +45,7 @@ const header = (secret: string, body = eventBody, at = Date.now()) => stripeLib.
 const refusedSig = (f: () => unknown) => { try { f(); return false; } catch (e) { return e instanceof RailSignatureError; } };
 for (const [name, rail] of rails) {
   const e = rail.verifyEvent(eventBody, header(hookSecret));
-  ok(`FO-7c rail pass (${name}): an event signed with the connected-accounts secret is read: its id, type and account, nothing else`, JSON.stringify(e) === JSON.stringify({ id: "evt_1SampleFo7cActive", type: "account.updated", account: "acct_1SampleFo7c000001" }), e);
+  ok(`FO-7c rail pass (${name}): an event signed with the connected-accounts secret is read: its id, type, account and its object's id (part 2b), nothing else`, JSON.stringify(e) === JSON.stringify({ id: "evt_1SampleFo7cActive", type: "account.updated", account: "acct_1SampleFo7c000001", objectId: "acct_1SampleFo7c000001" }), e);
   ok(`FO-7c rail fail (${name}): no header, another secret (the platform webhook's), a changed body or a signature over 5 minutes old → refused`,
     refusedSig(() => rail.verifyEvent(eventBody, undefined)) && refusedSig(() => rail.verifyEvent(eventBody, header(otherSecret))) && refusedSig(() => rail.verifyEvent(eventBody.replace("acct_1Sample", "acct_1Other0"), header(hookSecret)))
     && refusedSig(() => rail.verifyEvent(eventBody, header(hookSecret, eventBody, Date.now() - 6 * 60_000))));
@@ -57,7 +57,7 @@ for (const [name, rail] of rails) {
   ok("FO-7c rail pass (round 2 n2): on odd headers (two v1 values, odd timestamps, repeated t, a leading space, non-ASCII bytes) the fake and the Stripe adapter answer alike, and never anything but read or refused",
     JSON.stringify(fake) === JSON.stringify(real) && fake.every((v) => v === "read" || v === "refused") && fake[0] === "read" && fake[1] === "read" && fake[7] === "refused", { fake, real }); }
 ok("FO-7c rail pass: the fake signs as Stripe's library checks (its header passes the Stripe adapter with the same secret)", (rails[1][1].verifyEvent(eventBody, (rails[0][1] as ReturnType<typeof fakeCardRail>).sign(eventBody))).id === "evt_1SampleFo7cActive");
-ok("FO-7c fixtures: each file says it is not recorded from Stripe and names the type file and date it was built from", readdirSync(FIX).length === 4 && readdirSync(FIX).every((f) => /NOT recorded from Stripe.*Events\.d\.ts.*22 Nov 2026/.test((JSON.parse(readFileSync(join(FIX, f), "utf8")) as { source: string }).source)));
+ok("FO-7c fixtures: each file says it is not recorded from Stripe and names the type file and date it was built from", readdirSync(FIX).length === 6 && readdirSync(FIX).every((f) => /NOT recorded from Stripe.*Events\.d\.ts.*2[26] Nov 2026/.test((JSON.parse(readFileSync(join(FIX, f), "utf8")) as { source: string }).source)));
 
 // ------------------------------------------------------------------------------------- the mapping alone (AG-16-15)
 const P = { status: "PENDING", chargesEnabled: false, payoutsEnabled: false } as const, on = { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false }, off = { chargesEnabled: false, payoutsEnabled: false, requirementsDue: true };

@@ -4,10 +4,11 @@
 // NOT PROVEN ON STRIPE YET: step 0's docs read was blocked on the cloud network, so only the event check below runs in
 // the suite (it needs no network); the calls are written to the library's types and wait on the founder's test account.
 import Stripe from "stripe";
-import { AccountId, AccountLinkInput, CreateAccountInput, EventEnvelope, HostedPaymentInput, RailAccountGone, RailRefused, RailSignatureError, RefundInput, type CardRail, type RailAccount, type RailIntent } from "./rail.ts";
+import { AccountId, AccountLinkInput, codeWord, CreateAccountInput, EventEnvelope, railEvent, HostedPaymentInput, RailAccountGone, RailRefused, RailSignatureError, RefundInput, type CardRail, type RailAccount, type RailIntent } from "./rail.ts";
 
 const currencyOf = (c: string): "CAD" | "USD" => { const u = c.toUpperCase(); if (u !== "CAD" && u !== "USD") throw new Error(`a payment in ${u} is not ours`); return u; };
-const intentOf = (p: Stripe.PaymentIntent): RailIntent => ({ id: p.id, status: p.status, amountMinor: p.amount, currency: currencyOf(p.currency), metadata: { ...p.metadata } });
+const intentOf = (p: Stripe.PaymentIntent): RailIntent => ({ id: p.id, status: p.status, amountMinor: p.amount, currency: currencyOf(p.currency), metadata: { ...p.metadata },
+  lastError: p.last_payment_error ? { code: p.last_payment_error.decline_code ?? p.last_payment_error.code ?? null, message: (p.last_payment_error.message ?? "The card payment did not go through.").slice(0, 300) } : null });
 
 export class StripeCardRail implements CardRail {
   constructor(private readonly stripe: Stripe, private readonly connectWebhookSecret: string | null = null) {}
@@ -56,7 +57,7 @@ export class StripeCardRail implements CardRail {
       if (e instanceof Stripe.errors.StripePermissionError || (e as { code?: string }).code === "account_invalid") throw new RailAccountGone();
       // Break n2: Stripe down, rate-limited or refusing our key is still "card not offered now" for the client (offline
       // details, never a 500); the reason, with Stripe's type and code (never a key), goes to the log by the caller.
-      if (e instanceof Stripe.errors.StripeError) { const kind = `stripe ${e.type}${e.code ? `/${e.code}` : ""}${e.statusCode ? ` (${e.statusCode})` : ""}`; throw new RailRefused("the processor refused this hosted payment", kind.replace(/[^\w ./()-]/g, "").slice(0, 80)); }
+      if (e instanceof Stripe.errors.StripeError) { throw new RailRefused("the processor refused this hosted payment", `stripe ${codeWord(e.rawType)}${e.code ? `/${codeWord(e.code)}` : ""}${e.statusCode ? ` (${Number(e.statusCode) | 0})` : ""}`); }   // #3633 round 4: fixed words only
       throw e;
     }
     if (!s.url) throw new Error("Stripe answered a Checkout session without a url");
@@ -92,7 +93,6 @@ export class StripeCardRail implements CardRail {
     if (!this.connectWebhookSecret) throw new Error("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET is not set");
     // The signature over the exact bytes first (Stripe's own check, 300 seconds' tolerance); the body is read after it.
     try { this.stripe.webhooks.signature!.verifyHeader(rawBody, signature ?? "", this.connectWebhookSecret); } catch { throw new RailSignatureError(); }
-    const env = EventEnvelope.parse(JSON.parse(rawBody));
-    return { id: env.id, type: env.type, account: env.account ?? null };
+    return railEvent(EventEnvelope.parse(JSON.parse(rawBody)));
   }
 }

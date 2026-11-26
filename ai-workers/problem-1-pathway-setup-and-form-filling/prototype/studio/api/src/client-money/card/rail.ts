@@ -17,8 +17,14 @@ const Minor = z.number().int().positive().max(99_999_999_99);
 /** What the processor says about a connected account now: the two switches and whether it asks for more information. */
 export type RailAccount = { id: string; chargesEnabled: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean; requirementsDue: boolean };
 /** A verified event's envelope: its id, its type and the connected account it is about (null: not an account's event). */
-export type RailEvent = { id: string; type: string; account: string | null };
-export type RailIntent = { id: string; status: string; amountMinor: number; currency: "CAD" | "USD"; metadata: Record<string, string> };
+/** Part 2b: `objectId` is the id of the object the event is about (a payment intent's `pi_…`), or null. Only the id is read
+ *  from the body: the intent itself is read back from the processor (never trusted from the event). */
+export type RailEvent = { id: string; type: string; account: string | null; objectId: string | null };
+/** `lastError` (part 2b, R1.57 "a failed card leaves the invoice unpaid with the reason"): the processor's decline code
+ *  (a fixed word, else null) and its message to the payer, never card data. */
+export type RailIntent = { id: string; status: string; amountMinor: number; currency: "CAD" | "USD"; metadata: Record<string, string>; lastError: { code: string | null; message: string } | null };
+/** A processor's code kept only when it is a fixed word (#3633 round 4 minor): anything else is "other". */
+export const codeWord = (c: unknown) => (typeof c === "string" && /^[a-z_]{1,40}$/.test(c) ? c : "other");
 
 export const CreateAccountInput = z.strictObject({ firmId: Firm, idempotencyKey: Key });
 export const AccountLinkInput = z.strictObject({ account: AccountId, refreshUrl: Url, returnUrl: Url });
@@ -60,7 +66,10 @@ export interface CardRail {
 }
 
 /** The envelope of a signed event. Not strict: the processor adds fields over time, and the signature proves the sender. */
-export const EventEnvelope = z.object({ id: z.string().regex(/^evt_[A-Za-z0-9_]{1,250}$/), object: z.literal("event"), type: z.string().min(1).max(100), account: AccountId.nullish() });
+export const EventEnvelope = z.object({ id: z.string().regex(/^evt_[A-Za-z0-9_]{1,250}$/), object: z.literal("event"), type: z.string().min(1).max(100), account: AccountId.nullish(),
+  data: z.object({ object: z.object({ id: z.string().max(255).optional() }).passthrough() }).passthrough().optional() });
+/** The verified envelope as the rail answers it (both rails read it the same way). */
+export const railEvent = (e: z.infer<typeof EventEnvelope>): RailEvent => ({ id: e.id, type: e.type, account: e.account ?? null, objectId: e.data?.object.id ?? null });
 
 export type FakeCardRail = CardRail & {
   /** Sets what the processor says about an account (as the hosted sign-up, or the processor's own review, would). */
@@ -69,6 +78,8 @@ export type FakeCardRail = CardRail & {
   deauthorize(account: string): void;
   /** A paid hosted payment (part 2's tests). */
   succeed(account: string, paymentId: string, at: Date): RailIntent;
+  /** A declined card on a hosted payment (part 2b): the intent stays unpaid and carries the decline. */
+  fail(account: string, paymentId: string, code: string, message: string): RailIntent;
   refuseRefunds(on: boolean): void;
   /** A signature header for a body, as the processor signs it (`t=<seconds>,v1=<hmac>`), with this or another secret. */
   sign(rawBody: string, secret?: string, at?: Date): string;
@@ -97,7 +108,7 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
       const { idempotencyKey: _k, ...asked } = i, said = JSON.stringify(asked), was = sent.get(i.idempotencyKey);
       if (was !== undefined && was !== said) { log.push({ name: "createHostedPayment", key: i.idempotencyKey }); throw new RailRefused("this idempotency key was used with other parameters"); }
       sent.set(i.idempotencyKey, said);
-      return once("createHostedPayment", i.idempotencyKey, () => { const id = `cs_fake_${++n}`, intent: RailIntent = { id: `pi_fake_${n}`, status: "requires_payment_method", amountMinor: i.amountMinor, currency: i.currency, metadata: { ...i.metadata } }; payments.set(id, { account: i.account, intent, created: now(), paid: null, expiresAt: i.expiresAtSec ? i.expiresAtSec * 1000 : null, open: true }); return { id, url: `https://pay.fake-rail.example/${id}` }; });
+      return once("createHostedPayment", i.idempotencyKey, () => { const id = `cs_fake_${++n}`, intent: RailIntent = { id: `pi_1Fake${String(n).padStart(6, "0")}`, status: "requires_payment_method", amountMinor: i.amountMinor, currency: i.currency, metadata: { ...i.metadata }, lastError: null }; payments.set(id, { account: i.account, intent, created: now(), paid: null, expiresAt: i.expiresAtSec ? i.expiresAtSec * 1000 : null, open: true }); return { id, url: `https://pay.fake-rail.example/${id}` }; });
     },
     async expireOtherHostedPayments(account, invoiceId, keepId) {
       have(account); log.push({ name: "expireOtherHostedPayments" }); let n = 0;
@@ -115,14 +126,15 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
       // Checked by Stripe's own library (its signature rule and 300 seconds' tolerance), so the fake and the adapter cannot
       // read a header differently (round 2 n2).
       try { Stripe.webhooks.signature!.verifyHeader(rawBody, signature ?? "", signing); } catch { throw new RailSignatureError(); }
-      const e = EventEnvelope.parse(JSON.parse(rawBody));
-      return { id: e.id, type: e.type, account: e.account ?? null };
+      return railEvent(EventEnvelope.parse(JSON.parse(rawBody)));
     },
     set(account, state) { Object.assign(have(account), state); },
     deauthorize(account) { gone.add(account); },
     succeed(account, paymentId, at) { const p = payments.get(paymentId); if (!p || p.account !== account) throw new Error("no such hosted payment on this account");
       // As Stripe (break n4): an expired page, or one past its expires_at, takes no card.
-      if (!p.open || (p.expiresAt !== null && at.getTime() >= p.expiresAt)) throw new Error("this hosted payment has expired"); p.intent.status = "succeeded"; p.paid = at; return { ...p.intent }; },
+      if (!p.open || (p.expiresAt !== null && at.getTime() >= p.expiresAt)) throw new Error("this hosted payment has expired"); p.intent.status = "succeeded"; p.intent.lastError = null; p.paid = at; return { ...p.intent }; },
+    fail(account, paymentId, code, message) { const p = payments.get(paymentId); if (!p || p.account !== account) throw new Error("no such hosted payment on this account");
+      p.intent.status = "requires_payment_method"; p.intent.lastError = { code, message }; return { ...p.intent }; },
     refuseRefunds(on) { refusing = on; },
     sign(rawBody, withSecret = signing, at = now()) { return Stripe.webhooks.generateTestHeaderString({ payload: rawBody, secret: withSecret, timestamp: Math.floor(at.getTime() / 1000) }); },
     calls: () => log.map((c) => ({ ...c })),

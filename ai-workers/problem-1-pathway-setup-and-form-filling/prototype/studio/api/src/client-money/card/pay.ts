@@ -77,6 +77,8 @@ export type PayAnswer = {
   card: { offered: boolean };
   /** When the card is not offered: the firm's offline details (AG-6-49 r1(a)), else its contact line (r1(b)). */
   offline: { message: string; details: string | null; contact: string | null; reference: string } | null;
+  /** FO-7c part 2b (R1.57 "with the reason"): the last declined card on this link (since it was made), in the processor's words. */
+  lastCardFailure: { reason: string; at: string } | null;
 };
 
 export class CardPay {
@@ -135,16 +137,24 @@ export class CardPay {
     return { message, details, contact: details ? null : `Please contact ${firm.name}${reach ? `, ${reach}` : ""} to arrange payment.`, reference: v.number ?? "" };
   }
 
-  private answer(v: InvoiceView, firm: Firm, offered: boolean, offline: PayAnswer["offline"]): PayAnswer {
-    return { firm: { name: firm.name }, card: { offered }, offline,
+  private answer(v: InvoiceView, firm: Firm, offered: boolean, offline: PayAnswer["offline"], lastCardFailure: PayAnswer["lastCardFailure"] = null): PayAnswer {
+    return { firm: { name: firm.name }, card: { offered }, offline, lastCardFailure,
       invoice: { number: v.number ?? "", currency: v.currency, dueDate: v.dueDate, statusWord: v.statusWord, lines: v.lines.map((l) => ({ description: l.description, amountMinor: l.amountMinor, taxMinor: l.taxMinor })), totalMinor: v.totalMinor, paidMinor: v.paidMinor, dueMinor: v.dueMinor } };
+  }
+
+  /** The newest card decline on the invoice after its current link was made (part 2b's audit line), else null. */
+  private async lastFailure(db: PrismaClient, firmId: string, invoiceId: string): Promise<PayAnswer["lastCardFailure"]> {
+    const at = (action: string) => db.auditEvent.findFirst({ where: firmScope(firmId, { entity: "money_invoice", entityKey: invoiceId, action }), orderBy: { at: "desc" }, select: { at: true, detail: true } });
+    const [made, failed] = [await at("invoice.pay_link_made"), await at("payment.card_failed")];
+    const reason = (failed?.detail as { reason?: unknown } | null)?.reason;
+    return failed && typeof reason === "string" && (!made || failed.at > made.at) ? { reason, at: failed.at.toISOString() } : null;
   }
 
   /** GET /api/public/pay/:token: creates nothing. */
   read(token: unknown): Promise<PayAnswer> {
     return this.open(token, async (db, firmId, v, firm) => {
       const account = await this.cardAccount(db, firmId);
-      return this.answer(v, firm, account !== null, account ? null : await this.offline(db, firmId, v, firm));
+      return this.answer(v, firm, account !== null, account ? null : await this.offline(db, firmId, v, firm), await this.lastFailure(db, firmId, v.id));
     });
   }
 
