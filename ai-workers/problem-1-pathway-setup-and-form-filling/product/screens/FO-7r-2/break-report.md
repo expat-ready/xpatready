@@ -222,3 +222,70 @@ Verdict (round 3): Changes 6434d8e31accb76362c7e07f9170a823d0836461
 - Part 1's JSON answers 200 for a case outside the Officer's scope, while the PDF answers 404. Both behave as before this diff.
 
 Verdict (round 4): Changes 67c4afd3af33a03e600f4fd8d52af98cf2c0cc63
+
+## Round 5 (diff-only, 2eaba6c70)
+
+**Head tested:** `2eaba6c704955b7fedb47659762dde81389f3943`, only the diff from `67c4afd3`. The code is the same at `653cbcd42`, which adds records only.
+
+**Setup**
+- Isolated copy `brk5fo7r` on :4435 (`PLATFORM_IDENTITY=local`, the real mail stack, live AI off, US$0).
+- For like-for-like timings, a second server on :4436 ran the base `6434d8e3` from a git worktree against the same database.
+- Both were stopped afterwards; the database was dropped and the worktree removed.
+- Autovacuum was off on the money, case and party tables.
+- Each path was identified from auto_explain plans without ANALYZE, which I turned off for the timings below:
+  - the `inv0` estimate;
+  - whether the count ran;
+  - whether a list was bound.
+- The PR's check passes 34/34.
+
+**R5-m1 (Minor). The new estimate step costs every read about 30 ms of planning plus a 742 KB plan, once a firm's C5 scope is large.**
+- **Cause:** `invoiceIdsOf` (`statement.ts:64-66`) runs `explain (format json)` on the scope filter. With 20,000 prospects, as for the Owner when everyone sees all, the parties array is bound as a constant.
+  - The JSON plan prints all 20,000 uuids in the filter: 742 KB, which then goes through `JSON.parse`.
+  - The planning itself takes 28–31 ms (measured in psql).
+  - The PDF and Send run this step twice: in `allLines` and in `summaryIn`.
+- **Measured** on the same data, alternating the base (:4436) and this head (:4435), 3 rounds:
+  - 18-line client: JSON 114–136 ms → 170–198 ms; summary 130–160 ms → 172–220 ms; PDF 235–275 ms → 311–402 ms.
+  - 10,000 analyzed invoices: JSON median 225 ms → 239 ms; summary 245 ms → 283 ms.
+- **Impact:** no budget is breached here, and S8 passes in its own firm. But the cost grows with the firm's prospect count rather than with the client's own size.
+
+**What held**
+- **The threshold.** I seeded 20,000 prospects so that the parties half of the scope is realistic; with only a few prospects, every estimate fell under 100 and the list path ran. Then each client was analyzed at a few hundred invoices and grown, unanalyzed, to 5,000 lines:
+
+  | Client (analyzed → total) | Estimate | Path | PDF | Send | Summary | JSON |
+  |---|---|---|---|---|---|---|
+  | 120 → 2,500 invoices + payments | 107 | single query | 514 ms | 569 ms | 305 ms | 248 ms |
+  | 200 → 2,500 | 249 | single query | 511 ms | | | |
+  | 300 → 2,500 | 302 | single query | 665 ms | 561 ms | 238 ms | 248 ms |
+  | 600 → 2,500 | 722 | single query | 473 ms | | | |
+  | 1,000 → 2,500 | 1,121 | single query | 572 ms | | | |
+  | 2,000 → 2,500 | 2,370 | single query | 508 ms | | | |
+  | 300 → 5,000 unpaid | 372 | single query | 542 ms | | | |
+  | 110 / 125 / 140 → 5,000 unpaid | 119 / 124 / 177 | single query | 543–574 ms | 569–690 ms | | |
+  | Never analyzed, estimate 4 | 4 | list (count > 500) | about 0.55 s | | | |
+  | 480 invoices × 9 payments (4,800 lines), never analyzed | 4 | single query (count 480 ≤ 500) | 935 ms | 914 ms | | |
+  | 500 × 8 payments (4,500 lines), never analyzed | 4 | single query | 847 ms | | | |
+
+  - Every statement was 200, with the right closing.
+  - Above an estimate of about 100, the single query hashes even on lagging fact tables. I found no estimate between 100 and 2,400 that made it slow.
+- **Case and Officer scope** (round 3's client G: 150 + 150 invoices on two cases, plus 50 with no case, analyzed, then 2,300 and 2,350 more on the cases, unanalyzed; client H was never analyzed):
+  - G, Owner, `caseId` = case 0, 4,900 lines: the list was bound (case estimate wrong), 598 ms PDF and 661 ms Send.
+  - G, Officer on case 0: single query, estimate 420, real 2,500. 5,000 lines in 566 ms, CAD 15,000.00 = case 0 plus the no-case invoices.
+  - G, Officer on the other case: 404.
+  - H, never analyzed: the list was bound. The Officer gets 5,000 lines, CAD 15,000.00, without case 1's 2,000 invoices.
+- **Round 4's sizes again** (new clients, unanalyzed, 20,000-prospect scope):
+  - 800, 2,000, 4,000 and 5,000 lines, and 5,000 unpaid invoices: PDF 0.49–0.73 s, Send 0.54–0.66 s, summary and JSON 0.24–0.35 s.
+  - 6,000 lines: 422 in 0.35 s. 20,000 invoices: 422 in 0.52 s. 100,000 invoices: 422 in 1.7 s, summary 1.4 s, JSON 1.1 s.
+  - No 500 anywhere.
+- **S8, alternating the two heads:**
+
+  | Head | Page-1 route | Summary route | Part 1 check |
+  |---|---|---|---|
+  | `6434d8e3` (base) | 261 ms, 248 ms | 220 ms, 205 ms | 46/46 |
+  | `2eaba6c7` (this head) | 254 ms, 275 ms | 227 ms, 215 ms | 46/46 |
+
+  R4-M1 is closed.
+- **Figures:** round 3's client again matches part 1's JSON, the PDF and the audit closing in all 7 periods.
+  - 40 cases, case narrowing (with dates and in upper case) and the Officer's C5 view are identical to round 4.
+  - Clients with nothing, a draft only, or trust only: empty answers, "No entries", Send 200.
+
+Verdict (round 5): Approve 2eaba6c704955b7fedb47659762dde81389f3943 (no Blocker or Major; R5-m1 is Minor)
