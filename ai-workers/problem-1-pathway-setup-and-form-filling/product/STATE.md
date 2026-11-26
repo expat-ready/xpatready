@@ -2,7 +2,7 @@
 
 current_lead: local_33c127af Lead 6 · 26 Nov 22:33 IST (after Lead 5 local_1c8b2ecd at about 295k, ~190k past its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-26 22:4x IST (clock): **Lead 6 running (check a1b9cf16, cron 3,33; lane-watch re-armed).** #3697 CI running on bf7d190e (Approve posted): label when green. #3753 red for real (port contract for StatementDocuments; send.ts not through MessagePort): fixes posted on the PR, card task_a54c1612 for a cloud builder awaits the founder. 66/110 Works on main. Weekly ~75%.
+updated: 2026-11-26 23:0x IST (clock): **Lead 6 running (check a1b9cf16).** #3697 labelled (green). #3872 (P-214: PF-21d stamp test demanded the newest migration forever; took #3831 out of the queue) Approve + labelled; then requeue #3831. #3753: cloud builder started by the founder from card task_a54c1612. Lead 7 standby NOT started (the app's classifier refused start_session); asked the founder. 66/110 Works on main. Weekly ~75%.
 
 ## Hand-over Lead 5 → Lead 6, 22:3x IST 26 Nov (Lead 5 at ~295k, P-446; the earlier block word for word: `history/STATE-2026-11-26-2235-lead5-handover-old-block.md`)
 **Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 5's 2ee5c4a4 is deleted. Re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Start one more standby at the founder's next typed turn (P-286).
