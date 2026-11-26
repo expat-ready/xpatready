@@ -360,6 +360,8 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh
 24 trig|product/tools/conformance-check.py|s/elif sorted(have or \[\]) != sorted(types):/elif False:/|check-conformance-check.sh
 24 beat|product/tools/conformance-check.py|s/    if per_hour \* hb\["every_min"\] < 60:/    if False:/|check-conformance-check.sh
+24 events|product/tools/conformance-check.py|s/            if not isinstance(on, dict) or e not in on\]/            if False]/|check-conformance-check.sh
+24 allowed|product/tools/conformance-check.py|s/            if ins != sorted(want.get("inputs_exact", \[\])):/            if False:/|check-conformance-check.sh
 24 gate|product/tools/conformance-check.py|s/             if n == cfg\["gate_job"\] and k != cfg\["gate_job"\]\]/             if False]/|check-conformance-check.sh
 25 merge|product/tools/pipeline-heartbeat.py|s/             > hb\["no_merge_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
 25 queue|product/tools/pipeline-heartbeat.py|s/             > hb\["queue_no_progress_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
@@ -730,6 +732,11 @@ P823 public|product/tools/queue-gate.sh|s/\&\& opens "\$f" \&\&/\&\& false \&\&/
 P823 list|product/tools/lead-read-paths.txt|s/^# --- read-after money.*/# moved/|check-queue-gate.sh
 P823 overdue|product/tools/after-read-owed.sh|s/ min overdue"; rc=1/ min overdue"; rc=0/|check-after-read-owed.sh
 P823 read line|product/tools/after-read-owed.sh|s/grep -qx "\$head"; then/grep -q .; then/|check-after-read-owed.sh'
+# OS-17 (P-526c): records PRs open over 24 h; the row switches the age rule off.
+MUT="$MUT"'
+OS17 age|product/tools/known-failures.py|s/(p for p in recs if hours(p) > lim)/(p for p in recs)/|check-known-failures.sh
+OS17 page|product/tools/known-failures.py|s/^    if cap and len(prs) >= int(cap):/    if False:/|check-known-failures.sh
+OS17 wired|product/tools/lead-watch.sh|s/"prs": prs, "prs_all": prs_all,/"prs": prs, "prs_all": None,/|check-known-failures.sh'
 # OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'
 OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
