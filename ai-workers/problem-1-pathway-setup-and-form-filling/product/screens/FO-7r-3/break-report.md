@@ -98,3 +98,16 @@ Breaker, Opus 5.5, high. The suite passes (46 passed, 0 failed). My round-3 harn
 * **The new columns are safe:** `related_document` and `entry_type` cells hold no live formula (`'=CR()`), and each file keeps a constant width (13/13/9).
 
 Verdict: Changes daae517f87552fea82c1e5cfa43ea1c5642e46cd
+
+## Round 4 (diff daae517f..206a6a51; Lead 1's ruling (c) on #3887: UTC days, as the statement)
+Breaker, Opus 5.5, high. The suite passes (49 passed, 0 failed). My round-4 harness (scratchpad `brk/h5.ts`, outside the repo) runs on a scratch database, now dropped; no :4400, no AI call, US$0. The client in every test is the company Maple Works.
+* **M4 is answered.** EVE-1 (CAD 33, issued 23:00 Toronto on 31 Mar 2026) is in April in both: April export 3300 = statement 3300; March export 0 = statement 0. The state answers `zone: UTC`.
+* **Equality across kinds at the UTC midnight edge holds.**
+  * Setup: each kind placed at 30 Jun 23:59:59.999999Z or 1 Jul 00:00Z. On 30 Jun: an invoice issued, a payment, a credit note, a withdrawal from trust to an invoice. On 1 Jul: a payment, a refund, a write-off, an APPLIED credit entry.
+  * Export against statement: June 59800 = 59800 (trust withdrawal -900), July -11300 = -11300 (credit -400), 30 Jun–1 Jul -11500 = -11500. Over all time, with KEPT, APPLIED, both reversals and REFUNDED, 12500 = 12500.
+* **Day-only payments** (received on 30 Apr, 1 May, 31 May and 1 Jun, each stored at 00:00Z): May's file holds exactly the 1 May and 31 May payments, each with `date` = `counted_on`.
+* **Widths:** in all seven files every row is as wide as its header (INVOICES, PAYMENTS, REFUNDS, WRITE_OFFS 13; CREDIT_NOTES and CREDITS 14; TRUST_LEDGER 10). Every header ends "Period cut in UTC" and every row's last cell is empty.
+* **Gone with the zone read:** m10 (order within a day) and m11 (the 500 on a bad zone setting). m12 remains, now the statement's own rule: a payment at exactly 00:00:00.000000 UTC is taken as day-only, and in UTC that is its day anyway.
+* **New findings:** none. Round 1 Minors m1-m5 and m7, and round 2's m8 and m9, stand as recorded.
+
+Verdict: Approve 206a6a5134baef81319dee3a3ee9702e91482983
