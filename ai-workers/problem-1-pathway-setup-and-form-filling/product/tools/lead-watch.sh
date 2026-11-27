@@ -108,6 +108,10 @@ fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead'
 if [ -n "${LEAD_WEEKLY:-}" ]; then cp=$(bash "$TOOLS/switch.sh" close-prep "$LEAD_WEEKLY" 2>&1) && say "$cp" || ACT "$cp"; fi
 ss=$(bash "$TOOLS/switch.sh" status 2>&1); case "$ss" in *"baseline none"*) ACT "$ss: get_usage, then switch.sh baseline <pct> (AS-4)";; *open*) say "$ss";; esac
 fresh "switch.sh: LEAD_WEEKLY from the Lead's get_usage, the switch state in ~/.claude/xr-switch, git status of STATE and RESUME, now"
+# 1c3. LR-156 (founder A433/A434): the Lead copy's branch age, every check; stale (base over 24 h or 200 behind) is an
+# ACT with the recut command (lead-age.sh; the fetch is step 1d's, so this reads the previous check's origin/main).
+la=$(bash "$TOOLS/lead-age.sh" line 2>&1) && say "$la" || ACT "$la"
+fresh "lead-age.sh: this copy's branch and origin/main as last fetched"
 
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
