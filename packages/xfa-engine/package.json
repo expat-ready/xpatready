@@ -48,6 +48,6 @@
     "@xmldom/xmldom": "0.9.12",
     "acorn": "8.17.0",
     "quickjs-emscripten-core": "0.32.0",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   }
 }
