@@ -93,8 +93,8 @@ Why: b
 What could break: c'; ok "(5) a line naming explainer-check.py is not an Explainer line" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
 ex "$D/src/fees/fee-rules.ts" $'**Explainer** — three lines\n1. What changed: a\n2. **Why:** b\n3. What could break: c'; ok "(5) numbered or bold labels and a heading with a suffix pass" "$([ $r = 0 ] && echo 1)" "exit $r: $o"
 ex "$D/src/fees/fee-rules.ts" $'```\n'"$X"$'\n```'; ok "(5) an explainer inside a code fence does not count" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
-s=$(date +%s); ex "$D/src/fees/fee-rules.ts" "$(printf '```\n%.0s' $(seq 1 30000); echo "$X")"; e=$(( $(date +%s) - s ))
-ok "(5) 30,000 fence lines are read in under 5 s (linear)" "$([ $e -lt 5 ] && echo 1)" "${e}s exit $r"
+s=$(date +%s); ex "$D/src/fees/fee-rules.ts" "$(printf '\n%.0s' $(seq 1 60000); echo "$X")"; e=$(( $(date +%s) - s ))
+ok "(5) a body of 60,000 blank lines is read in under 5 s (linear; the old fence regex took about 18 s)" "$([ $e -lt 5 ] && [ $r = 0 ] && echo 1)" "${e}s exit $r: $o"
 ex ".github/workflows/ci.yml" "$X"$'\nmore\nand more\nand more'; ok "(5) more than 5 lines: a warning, exit 0" "$([ $r = 0 ] && grep -q '::warning' <<<"$o" && echo 1)" "exit $r: $o"
 o=$(echo "$X" | python3 -I "$TOOLS/explainer-check.py" --files "$T/nope" 2>&1); r=$?
 ok "(5) planted: a file list that cannot be read: exit 2, never ok" "$([ $r = 2 ] && ! grep -q '^ok' <<<"$o" && echo 1)" "exit $r: $o"
