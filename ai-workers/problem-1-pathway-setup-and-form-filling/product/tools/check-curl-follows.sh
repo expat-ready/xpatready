@@ -3,9 +3,10 @@
 # redirect (a renamed repository answers 301) is followed, not read as an empty answer. Tests (check-*, test_*) and
 # github-write-guard.py's examples are not tools. curl does not send the Authorization header on to another host.
 #   bash product/tools/check-curl-follows.sh [dir]     exit 1 naming each curl without -L
+# With no dir it reads product/tools and first proves itself on planted tools (a shell and a Python curl without -L).
 set -u
-D="${1:-$(cd "$(dirname "$0")" && pwd)}"
-python3 -I - "$D" <<'PY'
+scan() {  # $1 dir
+python3 -I - "$1" <<'PY'
 import glob, os, re, sys
 d = sys.argv[1]; bad = []; n = 0
 SH = re.compile(r"(?:^|[\s;&|(`]|\$\()curl\s+(?=[-\"$'])")
@@ -37,3 +38,9 @@ for l in bad:
 print(f"curl: {n} call(s) read, {len(bad)} without -L")
 sys.exit(1 if bad or n == 0 else 0)
 PY
+}
+[ $# -gt 0 ] && { scan "$1"; exit $?; }
+T=$(mktemp -d "${TMPDIR:-/tmp}/curlL.XXXXXXXX") || exit 2; trap 'rm -rf "$T"' EXIT
+printf 'api() { curl -sS -H x "$@"; }\n' > "$T/a.sh"; printf 'r = run(["curl", "-sS", url])\n' > "$T/b.py"
+p=$(scan "$T"); [ "$(grep -c '^REFUSED' <<< "$p")" = 2 ] || { echo "FAIL  the check missed a planted curl without -L: $p"; exit 1; }
+scan "$(cd "$(dirname "$0")" && pwd)"
