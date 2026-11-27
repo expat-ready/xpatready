@@ -77,7 +77,7 @@ field() { grep -m1 "^$1:" "$2" 2>/dev/null | cut -d' ' -f2-; }
 table_() {
   echo "| Lane | Item | Stage | Who acts | Next |"; echo "|---|---|---|---|---|"
   for ln in $LANES; do
-    m="$MAIN/$P/product/lanes/$ln.md"; [ -f "$m" ] || m="$RECS/lanes/$ln.md"; [ -f "$m" ] || continue
+    m="$RECS/lanes/$ln.md"; [ -f "$m" ] || m="$MAIN/$P/product/lanes/$ln.md"; [ -f "$m" ] || continue   # the records place first (PS-1b)
     # Stage, owner and next action come from the lane's own newest copy: main's file is newer whenever the Lead edits
     # its note, but its lane fields are only as fresh as the lane's last merged commit. A candidate (a worktree or a
     # pushed branch) counts only when its newest lane commit on this file (not "lead:") is in neither this copy nor
@@ -160,7 +160,7 @@ case "$1" in
     git -C "$MAIN" worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
       [ "$wt" = "$MAIN" ] && continue
       ln=$(cat "$wt/.claude/lane" 2>/dev/null || echo unbound); f="$wt/$P/product/lanes/$ln.md"
-      st=$(field stage "$f"); ow=$(field owner "$f"); mo=$(field owner "$MAIN/$P/product/lanes/$ln.md")
+      st=$(field stage "$f"); ow=$(field owner "$f"); mo=$(field owner "$RECS/lanes/$ln.md")
       [ -n "$mo" ] && [ "$mo" != "$ow" ] && ow="$ow (main says: $mo)"
       up=$(git -C "$wt" log -1 --format='%cd' --date=format:'%d %b %H:%M' 2>/dev/null)
       dirty=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')

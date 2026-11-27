@@ -12,8 +12,13 @@
 id_only=0; where=0; fetch=1; for a in "$@"; do case "$a" in --id) id_only=1;; --where) where=1;; --no-fetch) fetch=0;; esac; done
 cd "$(dirname "$0")/.." || exit 2
 pre="$(git rev-parse --show-prefix 2>/dev/null)"; rel="${pre}STATE.md"; crel="${pre}CURRENT-LEAD.md"
-# The file a ref holds the line in: CURRENT-LEAD.md when it has a line there, else STATE.md.
-line_of() { git show "$1:$crel" 2>/dev/null | grep '^current_lead: ' || git show "$1:$rel" 2>/dev/null | grep '^current_lead: '; }
+# The file a ref holds the line in: of CURRENT-LEAD.md and STATE.md, the one with a line whose last commit on that ref is
+# newer (a tie goes to CURRENT-LEAD.md). A hand-over made with an older handover.sh rewrites STATE.md only; the newer
+# STATE.md line then still wins after a merge brings an older CURRENT-LEAD.md along (#3924 review).
+line_of() { local f l t bt=-1 bl=""
+  for f in "$crel" "$rel"; do l=$(git show "$1:$f" 2>/dev/null | grep '^current_lead: ') || continue
+    t=$(git log -1 --format=%ct "$1" -- ":/$f" 2>/dev/null); t=${t:-0}; [ "$t" -gt "$bt" ] && { bt=$t; bl=$l; }; done
+  [ -n "$bl" ] && printf '%s\n' "$bl"; }
 best=""
 if git remote get-url origin >/dev/null 2>&1; then
   [ "$fetch" = 1 ] && git fetch -q origin main 'refs/heads/lead/*:refs/remotes/origin/lead/*' 2>/dev/null

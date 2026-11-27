@@ -56,6 +56,14 @@ out=$(bash "$L" --id); ok "current-lead: CURRENT-LEAD.md on the newer lead branc
 git -C "$T/s" checkout -q main; sleep 1; sed -i.bak 's/^current_lead: .*/current_lead: local_ddd-0000-1111 Lead 4 · d/' "$T/s/$PRODREL/STATE.md"
 git -C "$T/s" commit -qam "newer STATE on main" && git -C "$T/s" -c push.negotiate=false push -q origin main
 out=$(bash "$L" --id); ok "current-lead: a newer STATE.md line on a ref without CURRENT-LEAD.md still wins" "$([ "$out" = local_ddd-0000-1111 ] && echo 1)" "got: $out"
+# #3924 review: a hand-over by an older handover.sh rewrites STATE.md only; once a merge brings an older CURRENT-LEAD.md
+# onto that ref, the newer STATE.md line must still win (one ref, both files, the newer commit decides).
+git -C "$T/s" checkout -q lead/x; sleep 1; sed -i.bak 's/^current_lead: .*/current_lead: local_eee-0000-1111 Lead 5 · e/' "$T/s/$PRODREL/STATE.md"
+git -C "$T/s" commit -qam "old-style hand-over: STATE.md only" && git -C "$T/s" -c push.negotiate=false push -q origin lead/x
+out=$(bash "$L" --id); ok "current-lead: on one ref, a newer STATE.md line beats an older CURRENT-LEAD.md" "$([ "$out" = local_eee-0000-1111 ] && echo 1)" "got: $out"
+sleep 1; echo 'current_lead: local_fff-0000-1111 Lead 6 · f' > "$T/s/$PRODREL/CURRENT-LEAD.md"
+git -C "$T/s" commit -qam "new-style hand-over" && git -C "$T/s" -c push.negotiate=false push -q origin lead/x
+out=$(bash "$L" --id); ok "current-lead: ... and a newer CURRENT-LEAD.md beats the older STATE.md line" "$([ "$out" = local_fff-0000-1111 ] && echo 1)" "got: $out"
 mkdir -p "$T/solo" && cp -r "$T/c/ai-workers" "$T/solo/" && rm -f "$T/solo/$PRODREL/STATE.md"
 out=$(bash "$T/solo/$PRODREL/tools/current-lead.sh" --where); ok "current-lead: no origin, no STATE.md: reads this copy's CURRENT-LEAD.md" "$([ "$out" = "CURRENT-LEAD.md (this copy)" ] && echo 1)" "got: $out"
 finish
