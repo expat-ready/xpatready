@@ -42,12 +42,20 @@ plant hang g.sh 'sleep 30'
 t0=$(date +%s); r=$(printf '%s' "$IN" | run "$T/hang" 2 g.sh); t1=$(date +%s)
 ok "a guard that hangs past its limit blocks, within the limit" "$([ "$r" = "exit 2" ] && grep -q 'ran over 2 s' "$T/err" && [ $((t1 - t0)) -le 5 ] && echo 1)" "$r in $((t1 - t0)) s"
 plant junk g.sh 'cat >/dev/null; echo not json'
-r=$(printf '%s' "$IN" | run "$T/junk" 5 g.sh); ok "a guard that prints junk blocks" "$([ "$r" = "exit 2" ] && grep -q 'not JSON' "$T/err" && echo 1)" "$r"
+r=$(printf '%s' "$IN" | run "$T/junk" 5 g.sh); ok "a guard that prints junk blocks" "$([ "$r" = "exit 2" ] && grep -q 'not one JSON object' "$T/err" && echo 1)" "$r"
 r=$(printf '%s' "$IN" | run "$T/pass" 5 missing.sh); ok "a missing guard blocks" "$([ "$r" = "exit 2" ] && grep -q 'missing.sh is missing' "$T/err" && echo 1)" "$r"
 r=$(printf '%s' "$IN" | run "$T/pass" 5 ../g.sh); ok "a guard outside the tools folder blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
 r=$(printf '%s' "$IN" | run "$T/pass" x g.sh); ok "a wrapper call without a limit blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
-r=$(printf '' | run "$T/pass" 5 g.sh); ok "empty input blocks" "$([ "$r" = "exit 2" ] && grep -q 'not a JSON object' "$T/err" && echo 1)" "$r"
+r=$(printf '' | run "$T/pass" 5 g.sh); ok "empty input blocks" "$([ "$r" = "exit 2" ] && grep -q 'not one JSON object' "$T/err" && echo 1)" "$r"
 r=$(printf '{"cut' | run "$T/pass" 5 g.sh); ok "unreadable input blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
+r=$(printf '[1] {"a":1}' | run "$T/pass" 5 g.sh); ok "input of two JSON values blocks, even when the last is an object" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
+plant twoout g.sh 'cat >/dev/null; echo "{}"; echo "{\"decision\":\"block\"}"'
+r=$(printf '%s' "$IN" | run "$T/twoout" 5 g.sh); ok "a guard that prints two JSON documents blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
+plant nul g.sh 'cat >/dev/null; echo null'
+r=$(printf '%s' "$IN" | run "$T/nul" 5 g.sh); ok "a guard that prints null blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
+plant late g.sh 'cat >/dev/null; sleep 30 & echo $! > "$HFC_PIDF"; exit 0'
+out=$(printf '%s' "$IN" | HFC_PIDF="$T/late.pid" bash "$T/late/hook-fail-closed.sh" 5 g.sh 2>/dev/null; echo "exit $?"); sleep 0.5
+ok "a child a guard leaves behind is stopped once the guard answers" "$([ "$out" = "exit 0" ] && [ -s "$T/late.pid" ] && ! ps -o stat= -p "$(cat "$T/late.pid")" 2>/dev/null | grep -qv Z && echo 1)" "$out"
 r=$( (sleep 7) | run "$T/pass" 5 g.sh); ok "no input within 5 s blocks" "$([ "$r" = "exit 2" ] && grep -q 'within 5 s' "$T/err" && echo 1)" "$r"
 mkdir -p "$T/nojq"; for b in bash cat head tr mktemp rm dirname; do ln -s "$(command -v $b)" "$T/nojq/$b"; done
 r=$(printf '%s' "$IN" | PATH="$T/nojq" run "$T/pass" 5 g.sh); ok "no jq blocks" "$([ "$r" = "exit 2" ] && grep -q 'jq is missing' "$T/err" && echo 1)" "$r"

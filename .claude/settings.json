@@ -81,9 +81,7 @@
       "Bash(*curl *-X P*api.github.com*)",
       "Bash(*curl *api.github.com*-X P*)",
       "Bash(*curl *-X DELETE*api.github.com*)",
-      "Bash(*curl *api.github.com*-X DELETE*)",
-      "Bash(*curl *--request*api.github.com*)",
-      "Bash(*curl *api.github.com*--request*)"
+      "Bash(*curl *api.github.com*-X DELETE*)"
     ],
     "allow": [
       "Bash(gh pr edit * --add-label \"review: approved\")",

@@ -23,7 +23,7 @@ case "$GUARD" in */*|..*) refuse "guard '$GUARD' must be a file name in $TOOLS";
 command -v jq >/dev/null 2>&1 || refuse "jq is missing, so the input cannot be read"
 input=""; IFS= read -r -d '' -t 5 input; rc=$?
 [ "$rc" -gt 128 ] && refuse "no hook input within 5 s"
-printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1 || refuse "the hook input is empty or not a JSON object"
+printf '%s' "$input" | jq -s -e 'length == 1 and (.[0] | type) == "object"' >/dev/null 2>&1 || refuse "the hook input is empty or not one JSON object"
 [ -f "$TOOLS/$GUARD" ] || refuse "guard $GUARD is missing"
 case "$GUARD" in *.py) run=(python3 -I "$TOOLS/$GUARD");; *) run=(bash "$TOOLS/$GUARD");; esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/hook-fc.XXXXXXXX") || refuse "no temporary folder"
@@ -33,12 +33,12 @@ set -m   # the guard gets its own process group, so a timeout stops its children
 "${run[@]}" "$@" <"$T/in" >"$T/out" 2>"$T/err" & pid=$!
 ( sleep "$LIMIT"; touch "$T/late"; kill -TERM -- "-$pid"; sleep 1; kill -KILL -- "-$pid" ) >/dev/null 2>&1 & dog=$!
 set +m
-wait "$pid"; rc=$?
+wait "$pid"; rc=$?; kill -KILL -- "-$pid" 2>/dev/null   # a child left behind writes nothing after the answer is read
 kill -- "-$dog" 2>/dev/null; wait "$dog" 2>/dev/null
 err=$(head -c 600 "$T/err" | tr '\n' ' ')
 [ -e "$T/late" ] && refuse "guard $GUARD ran over ${LIMIT} s"
 case "$rc" in
-  0) if [ -s "$T/out" ] && ! jq -e . "$T/out" >/dev/null 2>&1; then refuse "guard $GUARD printed output that is not JSON: $(head -c 200 "$T/out" | tr '\n' ' ')"; fi
+  0) if [ -s "$T/out" ] && ! jq -s -e 'length == 1 and (.[0] | type) == "object"' "$T/out" >/dev/null 2>&1; then refuse "guard $GUARD printed output that is not one JSON object: $(head -c 200 "$T/out" | tr '\n' ' ')"; fi
      cat "$T/out"; cat "$T/err" >&2; exit 0;;
   2) cat "$T/out"; cat "$T/err" >&2; exit 2;;
   *) refuse "guard $GUARD failed with exit $rc${err:+: $err}";;
