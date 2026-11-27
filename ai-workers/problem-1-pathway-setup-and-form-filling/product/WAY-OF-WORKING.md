@@ -34,6 +34,7 @@ The Mac runs the tech lead, the :4400 demo, qa and at most two builders with tes
 * **The item's last PR** has a line `Completes: R1.n` (several: `Completes: R1.77, R1.78`; pr-rules checks it): at its merge `.github/workflows/item-proof.yml` runs the item's pack and `tests/journeys/j_<n>.ts` on GitHub's runners, records the journey's video and comments the verdict (P-728 (3), P-729); qa reads it and walks once (gate A).
 * Adds `qa/built/<ID>.md` per capability it finishes (one line: the PR and what a person can now do; P-221).
 * **Builders never edit** `STATE.md`, `DECISIONS.md` or `qa/CAPABILITIES.md`; status goes in the PR body; the tech lead updates the records daily.
+* **Private split (27 Nov):** the tech lead's records (`STATE.md`, `history/`, `lanes/`, `inbox/`, `reports/`, `ops/`) move to expat-ready/private (`PRIVATE-RECORDS.md`); tools find them with `tools/records-dir.sh`, and lanes find the Lead in `CURRENT-LEAD.md`.
 * Every business rule has a passing and a failing test; check labels name the capability IDs they prove (`C1.6: …`); `node P/tools/graph.mjs --check` passes; explicit `any` must not rise (`count-any.mjs`).
 * A wait a test relies on fails loudly when it times out (no `.catch(() => undefined)` after a wait).
 * Screens use skill **screen-build**. Minor bugs go in one PR per area per day.
