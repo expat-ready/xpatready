@@ -13,6 +13,8 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/BACKLOG.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/trace-requirements.py"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_trace_requirements.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/task-spec.py"   # LR-106: built on --brief
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_task_spec.py"
       - ".github/workflows/trace.yml"
 permissions:
   contents: read
@@ -35,8 +37,8 @@ jobs:
       - name: unit tests (only when the tool changes)
         run: |
           git diff --name-only "$BASE...HEAD" > "$RUNNER_TEMP/changed.txt"
-          if grep -qE 'trace-requirements|trace\.yml' "$RUNNER_TEMP/changed.txt"; then
-            python3 -I "$T/test_trace_requirements.py"
+          if grep -qE 'trace-requirements|trace\.yml|task-spec|test_task_spec' "$RUNNER_TEMP/changed.txt"; then
+            python3 -I "$T/test_trace_requirements.py" && python3 -I "$T/test_task_spec.py"
           else
             echo "the tool did not change: tests skipped"
           fi
