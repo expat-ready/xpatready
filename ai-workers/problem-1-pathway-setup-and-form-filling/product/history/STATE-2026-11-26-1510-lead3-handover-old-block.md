@@ -1,0 +1,14 @@
+# STATE top lines before the Lead 3 → Lead 4 hand-over, 26 Nov 15:1x IST, word for word
+
+current_lead: local_adad5033 Lead 3 · 26 Nov 14:40 IST (after Lead 2 local_43b637a0 at about 290k past its start read, P-446; Opus 5.5 medium, P-788)
+
+updated: 2026-11-26 14:5x IST (clock): **Lead 3 running (check b2f38ec4, cron 3,33; event watch re-armed).** #3846 (Lead 3) fixes main's `module-cards` red (PF-R2cm card path from #3812): label it with `lead-pr.sh label` when green, then re-run `module-cards` on #3696, #3809, #3832, #3836, #3841. Answered 14:5x: #3841 (migration Lead read: Approve; label once pr-suites is green), #3809 (2b-2 is inside R1.85; re-run j_85 after #3841), #3832 (pr-suites red for its own reasons: BK-2 FoldArrow, missing xr_studio_fo4p2b DB), #3836, #3696, #3837 (round 3 allowed; outside start date stays weekly). #3411: review-rounds re-run (the stale 06:32 run came before round 7 was allowed). 64/110 Works (main). Weekly 61% at 14:2x, ~3%/h; switch at 95% (A406).
+
+## Hand-over Lead 2 → Lead 3, 14:40 IST 26 Nov (Lead 2 at ~290k past its start read, P-446; the earlier block and every Lead 2 line, word for word: `history/STATE-2026-11-26-1440-lead2-handover-old-block.md`)
+**Do first:** done by Lead 3 (check b2f38ec4). Run lead-watch from `$TMPDIR/fx` reset to origin/main with LEAD_CONTEXT and LEAD_STANDBYS. Re-arm the 3-minute event watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Standbys: Lead 4, 5, 6 (A408).
+**Read first:** RESUME top block (A404 switch strategy, A405 pre-approvals), Start here (A401 one format, A406 first-principles forecast), control room https://claude.ai/artifact/GJGfWa5DE9yvvPWiHD9K8m (`design/control-room-2026-11-26.html`, v6: republish the same file each full report, same section order), OS by hand: `design/os-manual-enforcement-2026-11-26.md` (OS-01: `lead-pr.sh label <n>` only, it refuses red or missing pr-suites; Lead 2 broke this at 13:1x and ~8 labels were removed).
+**Switch:** at weekly 95% (61% at 14:2x, ~3%/h: about 01:00-02:00 IST 27 Nov); from 90% check every 15 min; then A404 steps. Proof first until then (A403): qa 2 and qa 1b messaged; no new rows or OS parts.
+**Owed now (14:35 check):** answered or carried by Lead 3 at 14:5x (see the updated line); Lead 2's full line, word for word: `history/STATE-2026-11-26-1500-lead3-leads-report-owed-lines.md`.
+**Records owed:** DECISIONS rows for P-731 ruling, A401-A406; P-843, P-839..P-841 into RULES (RULES near its 25 KB wall: refresh to one page first, P-440); rows R1.58 move-to-case, R1.98 FO-4c, R1.22 case export, R1.5 QA-643, PF-4bs, R1.35 import duplicates, PF-28 allow-list, PF-4bc shared hand-off codes, OS-86 switch-start check; shape R1.113-R1.121; seven RULES lines with no check (P-582, P-604, P-542, P-504, P-505, P-473, P-607).
+**Founder:** signs in to claude.ai in the built-in browser on 27 Nov; hand check R1.24, R1.109 open.
+

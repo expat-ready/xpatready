@@ -1,0 +1,3 @@
+# STATE updated line before 13:00 IST 27 Nov (Lead 4, word for word)
+
+updated: 2026-11-27 12:19 IST (clock): **Lead 4 (local_9f3ea9d5) took over 12:17 IST: check da499079 (3,33, first 12:46) and watch b1rup91pz armed. Lead 3 hands over to Lead 4 at ~460k context (P-446). LAB RUN in progress (P-847: product paused until the lab is proven). Register frozen at 153 rows (`design/lab-register-2026-11-27.md`, LR-121..153 arrive with #3909). Built ~6/111 at 12:1x; forecast built ~23:00 IST, proven ~10:00 IST 28 Nov. Weekly 9%.** Lead 3's earlier top word for word: `history/STATE-2026-11-27-1215-lead3-handover-old-block.md`.
