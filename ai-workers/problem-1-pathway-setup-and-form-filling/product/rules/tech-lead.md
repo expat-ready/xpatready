@@ -225,10 +225,18 @@ Added 23 Nov (Lead 4; full rows in DECISIONS): P-805 size exceptions #3042, #236
 Added 23 Nov (Lead 10; full rows in DECISIONS): P-810 size exception #3185 · P-811 the four stacked tooling PRs land as one through #2444 (founder) · P-812 size exception #3174 · P-813 size exceptions #3184, #3193.
 Added 24 Nov (Lead 13; full rows in DECISIONS): P-814 case rows RQ-02 to RQ-08 first within the 101, RQ-01 shaped only until the founder confirms, four rows stay, programs by official volume, the list beyond the 101 · P-815 Release 1 keeps all 101, committed 12 Dec, aim 6-7 Dec (replaces P-609's date).
 
-### IDX-15 line
-Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+## IDX-27 (moved word for word from RULES.md, 25 Nov 09:0x IST, Lead 4, P-611)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-690 | `design/full-power-plan-2026-11-17.md` is the one action list; items leave only when done or dropped by the founder; briefs quote item IDs. | script: plan-watch.py via check-docs.sh and lead-watch.sh | 18 Nov |
 | IDX-15 | 17 Nov rows (P-664 qa records first, P-665 CI-B, P-666 high effort and 48 h stop, P-667 rules v2, P-668 cards, P-669 5-hour bar, P-670 T7 deny lines; P-693 multi-cloud compute) stand: word for word in `rules/tech-lead.md` › Moved 19 Nov (Lead 94). | prose (see rows) | 19 Nov |
-
-### IDX-23 line
-Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 | IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23 (P-770, P-778 the Lead does every step; P-780 recovery swap; P-781 Opus 5.5 medium for all, Fable 5.2 medium critical). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |
+
+## IDX-29 (moved word for word from RULES.md, 25 Nov 22:2x IST, Lead 10, size)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-635 | Enforcement defaults (overnight hooks, daily settings batch, pr-rules timing, hook speed): row word for word in `rules/tech-lead.md`. | prose | 16 Nov |
+| P-673 | Cloud environment reads canada.ca for citations; Limited network, no secrets. | prose | 17 Nov |
+| P-674 | Clean-up plan (with P-675 to P-677): row in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
+| P-680 | Spend master kept private; board card parked (P-681); architecture sized for ~500 capabilities with an AI layer. | prose | 17 Nov |
+| P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
