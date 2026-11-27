@@ -1,0 +1,12 @@
+# Code owners (Factory v2 switch PR, Factory v3 review): GitHub asks the owner for a review on these paths.
+# The owner is the GitHub team below (a role, not a person; AGENTS.md rule 5). Create the team, or change this line,
+# at switch time: until the team exists GitHub marks these lines as unknown owners. "Require review from Code Owners"
+# stays OFF while the approver question is open (all builders push as one account); see
+# ai-workers/problem-1-pathway-setup-and-form-filling/product/design/factory-v2-github-settings-2026-11-26.md.
+/.github/                         @expat-ready/tech-lead
+/.mergify.yml                     @expat-ready/tech-lead
+/.githooks/                       @expat-ready/tech-lead
+/.claude/                         @expat-ready/tech-lead
+/REVIEW.md                        @expat-ready/tech-lead
+/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/       @expat-ready/tech-lead
+/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/   @expat-ready/tech-lead
