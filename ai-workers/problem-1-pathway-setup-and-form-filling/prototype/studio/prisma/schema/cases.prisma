@@ -95,9 +95,9 @@ model Case {
   filingFormAdditionsFirm FilingFormAddition[] @relation("FilingFormAdditionCaseFirm")
 
   @@unique([id, firmId])
-  @@unique([workspaceId, firmKey, idempotencyKey])
-  @@unique([workspaceId, firmKey, reference])
-  @@unique([workspaceId, firmKey, caseNumber])
+  @@unique([workspaceId, firmId, idempotencyKey])
+  @@unique([workspaceId, firmId, reference])
+  @@unique([workspaceId, firmId, caseNumber])
   @@index([workspaceId, createdAt])
   @@index([firmId, createdAt])
   @@index([clientId])
@@ -168,7 +168,7 @@ model FirmCaseCounter {
   year        Int
   nextValue   Int    @map("next_value")
 
-  @@id([workspaceId, firmKey, year])
+  @@id([workspaceId, firmId, year])
   @@index([firmId, year])
   @@map("firm_case_counter")
 }
