@@ -13,7 +13,7 @@ Test: check-queue-red.sh."""
 import argparse, json, sys
 
 FAILED = {"FAILURE", "TIMED_OUT", "ERROR", "STARTUP_FAILURE"}
-MERGIFY = {"ci", "xfa-engine", "skeleton", "pr-rules", "completes-ready"}   # .mergify.yml queue_rules: check-success = ci, xfa-engine, skeleton; -check-failure = completes-ready; pr-rules (#2595, and the tech lead's ruling)
+MERGIFY = {"ci", "xfa-engine", "skeleton", "pr-rules", "completes-ready", "guards"}   # guards: F4 (P-853). .mergify.yml queue_rules: check-success = ci, xfa-engine, skeleton; -check-failure = completes-ready; pr-rules (#2595, and the tech lead's ruling)
 
 
 def failed(p):
