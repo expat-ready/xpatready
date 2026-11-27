@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # lead-label.sh <pr> — the Lead's one label command for a Lead-read PR (founder A435, 27 Nov; LR-157). Routine PRs need
 # nothing: queue-gate.yml (main's copy) puts `review: approved` on by itself once the reviewer's Approve names the head,
-# ci and pr-suites are green and no path keeps the Lead's read (queue-gate.sh label; B194, P-823). A PR that touches a
-# Lead-read path (.github/, .mergify.yml, product/tools/, .claude/, schema, migrations, money, permissions:
-# lead-read-paths.txt) is refused there, and the Lead labels it after the read. This script is that label, narrowed so
-# the founder can allow it with one standing permission rule:
+# ci and pr-suites are green and no path keeps the Lead's read first (queue-gate.sh label; B194, P-823). A PR touching a
+# "read first" path of lead-read-paths.txt (.github/, .mergify.yml, product/tools/, .claude/, the guards, permissions, a
+# destructive migration or schema change) is refused there, and the Lead labels it after the read. This script is that
+# label, narrowed so the founder can allow it with one standing permission rule, in the Lead copy's own
+# .claude/settings.local.json only (never the shared settings.json, which every builder copy loads), with Edit and Write
+# on this file denied there, since the rule runs whatever file sits at this path:
 #   Bash(bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-label.sh:*)
 # It puts `review: approved` on PR <pr> only when
 #   (a) <pr> is a number, and the PR is open, not a draft, based on main, not a merge-queue batch, its head this
@@ -12,7 +14,10 @@
 #   (b) the last "Reviewer:" line about the head, by the repository owner's account or a login in REVIEWERS with write
 #       access (OWNER, MEMBER, COLLABORATOR), is "Reviewer: Approve <the head's full 40-hex SHA>" — the same rule as
 #       queue-gate.sh approved(): a later "Reviewer: Changes" on the head wins, a short SHA or an older head refuses;
-#   (c) the head is still the same after the label went on (else the label comes off again).
+#   (c) a comment by someone with write access holds the Lead's read of that head, alone on its line, in
+#       lead-read-gate.sh's form: "Lead read the diff: <full head SHA>" (or "Lead read: OK <full head SHA>"; P-423, P-637),
+#       so the label never goes on without a recorded read (review r1 M1);
+#   (d) the head is still the same after the label went on (else the label comes off again).
 # Anything else: exit 1 and the reason, nothing changed. The label is then judged again on GitHub's side by main's
 # label-guard.yml (pull_request_target; an Approve on the head, pr-suites green) and label-sweep.sh: this script narrows
 # what the Lead can do, the server-side guards stay the boundary.
@@ -29,7 +34,7 @@ no() { echo "lead-label: refused: $*"; exit 1; }
 PR="${1:-}"
 [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] && [ $# = 1 ] || no "usage: lead-label.sh <pr number> (one argument, a number)"
 command -v jq >/dev/null || no "jq is missing"
-HERE=$(cd "$(dirname "$0")" && pwd)
+HERE=$(cd "$(dirname "$0")" && pwd -P)   # physical, as git's --show-toplevel (review r1 M2: macOS /tmp is a symlink)
 
 # An accident guard, not a wall (a changed copy could drop it): the command the founder allowed is main's.
 if [ "${LEAD_LABEL_MAIN_CHECK:-1}" != 0 ]; then
@@ -86,7 +91,13 @@ done <<< "$lines"
 grep -qiE "^[[:space:]]*reviewer:[[:space:]]*approve[sd]?[[:space:]]+$head\b" <<< "$last" \
   || no "#$PR: the last \"Reviewer:\" line about the head $head from the owner's account or a known reviewer is not \"Reviewer: Approve $head\"${last:+ (it is: $(cut -c1-120 <<< "$last"))}"
 
-# The label, then (c) the head again: a push between the read and the label takes it off.
+# (c) the Lead's read of this head, by someone with write access (lead-read-gate.sh's reading)
+read_ok=$(jq -r '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR") | (.body // "" | tostring)' <<< "$cs" \
+  | tr -d '*_`\r' | grep -v -e '^    ' -e "^$(printf '\t')" \
+  | grep -iE '^[[:space:]]*Lead read(: *OK| the diff:?)[[:space:]]+[0-9a-f]{40}[[:space:]]*\.?[[:space:]]*$' | grep -oiE '[0-9a-f]{40}' | tr 'A-F' 'a-f' | grep -x "$head")
+[ -n "$read_ok" ] || no "#$PR: no line \"Lead read the diff: $head\" by someone with write access (P-423: the read first, then the label)"
+
+# The label, then (d) the head again: a push between the read and the label takes it off.
 enc=$(jq -rn --arg l "$LABEL" '$l|@uri')
 api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || no "#$PR: GitHub refused the label"
 now=$(api "$API/repos/$REPO/pulls/$PR" 2>/dev/null | jq -r '.head.sha // ""' 2>/dev/null)

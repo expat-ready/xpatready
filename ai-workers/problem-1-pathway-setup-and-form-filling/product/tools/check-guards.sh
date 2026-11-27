@@ -43,7 +43,7 @@ TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: t
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
-TESTS="$TESTS check-lead-label.sh"   # A435: the Lead's one label command; the auto-queue's cases kept
+TESTS="$TESTS check-lead-label.sh check-auto-queue-cases.sh"   # A435: the Lead's one label command; the auto-queue's cases kept
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -764,7 +764,9 @@ A435 moved|product/tools/lead-label.sh|s/^if \[ "\$now" != "\$head" \]; then/if 
 A435 main|product/tools/lead-label.sh|s/^  git -C "\$top" show "FETCH_HEAD:\$rel" 2>\/dev\/null .*/  true \\/|check-lead-label.sh
 A435 pages|product/tools/lead-label.sh|s/^while \[ "\$p" -le 30 \]; do/while [ "$p" -le 1 ]; do/|check-lead-label.sh
 A435 shape|product/tools/lead-label.sh|s/length == 1 and (.\[0\] . type == "array" and all(.\[\]; type == "object"))/true/|check-lead-label.sh
-A435 locale|product/tools/lead-label.sh|s/^export LC_ALL=C /: /|check-lead-label.sh'
+A435 locale|product/tools/lead-label.sh|s/^export LC_ALL=C /: /|check-lead-label.sh
+A435 read|product/tools/lead-label.sh|s/^\[ -n "\$read_ok" \] .. no/true .. no/|check-lead-label.sh
+A435 cap|product/tools/lead-label.sh|s/^\[ "\$p" -le 30 \] .. no/true .. no/|check-lead-label.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1

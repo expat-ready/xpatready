@@ -5,10 +5,9 @@
 # about the head is "Reviewer: Approve <full head SHA>", and refuses (exit 1, nothing changed) a stale head, a short SHA,
 # a later Changes line, a forged or unknown commenter, a draft, a closed PR, a fork, a batch, a bad argument, unreadable
 # comments, a head that moves while labelling, and a copy of the script that is not origin/main's.
-# Part 2 keeps the auto-queue's own cases (they live with their scripts; this names them so none is dropped silently):
-# check-queue-gate.sh (queue-gate.sh label: a reviewed green head is labelled; a stale-head Approve, a forged Approve
-# and every Lead-read path are refused) and check-label-sweep.sh (a label a workflow's token put on, the self-applied
-# approval, comes off unless main's queue gate judges the PR eligible). US$0, no network.
+# It also needs the Lead's read line on the head ("Lead read the diff: <full head>", lead-read-gate.sh's form).
+# The auto-queue's own cases are kept by check-auto-queue-cases.sh (kept apart: the mutation rows of this test then do
+# not re-run check-queue-gate.sh each time; review r1 m3). US$0, no network.
 #   bash product/tools/check-lead-label.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
@@ -24,7 +23,9 @@ case "$m $p" in
   "GET pulls/"*) [ -f "$FX/pr.json" ] || { echo '{"message":"Not Found"}'; exit 22; }
     if [ -f "$FX/labelled" ] && [ -f "$FX/pr-after.json" ]; then cat "$FX/pr-after.json"; else cat "$FX/pr.json"; fi;;
   "GET issues/"*/comments*) [ -n "${FAIL_COMMENTS:-}" ] && { echo '{"message":"Server Error"}'; exit 22; }
-    if [ "${pg:-1}" = 1 ]; then cat "$FX/comments.json"; elif [ -f "$FX/comments-p$pg.json" ]; then cat "$FX/comments-p$pg.json"; else echo '[]'; fi;;
+    if [ -n "${ALLPAGES:-}" ]; then cat "$FX/comments.json"   # every page full: the 3000-comment cap
+    elif [ "${pg:-1}" = 1 ]; then if [ -f "$FX/read.json" ]; then jq -s add "$FX/comments.json" "$FX/read.json"; else cat "$FX/comments.json"; fi   # the Lead's read line, added to page 1
+    elif [ -f "$FX/comments-p$pg.json" ]; then cat "$FX/comments-p$pg.json"; else echo '[]'; fi;;
   "GET actions/variables/REVIEWERS") [ -f "$FX/reviewers" ] && jq -n --arg v "$(cat "$FX/reviewers")" '{name: "REVIEWERS", value: $v}' || { echo '{"message":"Not Found"}'; exit 22; };;
   "POST issues/"*/labels) echo "LABEL $(echo "$d" | jq -r '.labels[0]')" >> "$FX/log"; : > "$FX/labelled"; echo '[]';;
   "DELETE issues/"*/labels/*) echo "UNLABEL" >> "$FX/log"; echo '[]';;
@@ -46,10 +47,13 @@ run() {  # run [args...] → $out $log $r (REVIEWERS from $REV when set; the var
   if [ -n "${REV+x}" ]; then out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS="$REV" FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?
   else out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?; fi
   log=$(cat "$T/fx/log"); }
+rd() {  # rd <login> <association> <body> → read.json, the comment appended to page 1 (no argument: none)
+  if [ $# = 0 ]; then rm -f "$T/fx/read.json"; else jq -n --arg l "$1" --arg a "$2" --arg b "$3" '[{user: {login: $l}, author_association: $a, body: $b}]' > "$T/fx/read.json"; fi; }
 labelled() { [ $r = 0 ] && [ "$log" = "LABEL review: approved" ] && echo 1; }
 refused() { [ $r = 1 ] && [ -z "$log" ] && grep -q '^lead-label: refused: ' <<< "$out" && echo 1; }
 
-# --- part 1: lead-label.sh
+# --- lead-label.sh
+rd o OWNER "Lead read the diff: $HEAD1"   # every case below has the Lead's read of HEAD1 unless it says otherwise
 prj $HEAD1; cmt o OWNER "Reviewer: Approve $HEAD1"; REV="" run 7
 ok "the owner's \"Reviewer: Approve <full head>\": labelled, exit 0" "$(labelled)" "exit $r: $out / $log"
 cmt o OWNER "**Reviewer: Approve** \`$HEAD1\` (Opus, diff-only)"; REV="" run 7
@@ -72,7 +76,7 @@ REV="other helper" run 7
 ok "a known reviewer (REVIEWERS) with write access: labelled" "$(labelled)" "exit $r: $out / $log"
 cmt helper NONE "Reviewer: Approve $HEAD1"; REV=helper run 7
 ok "forged: a known reviewer's login without write access is refused" "$(refused)" "exit $r: $out / $log"
-cmt helper MEMBER "Reviewer: Approve $HEAD1"; echo "helper" > "$T/fx/reviewers"; unset REV; run 7
+cmt helper MEMBER "Reviewer: Approve $HEAD1"; echo "helper" > "$T/fx/reviewers"; unset REV; LEAD_LABEL_REVIEWERS=leak; unset LEAD_LABEL_REVIEWERS; run 7
 ok "REVIEWERS unset: the repository variable is read (a known reviewer labels)" "$(labelled)" "exit $r: $out / $log"
 rm -f "$T/fx/reviewers"; run 7
 ok "REVIEWERS unset and the variable unreadable: the owner alone counts (refused)" "$(refused)" "exit $r: $out / $log"
@@ -88,6 +92,19 @@ prj $HEAD1 open false main claude/x o/r "review: approved,queued"; REV="" run 7
 ok "already labelled: exit 0, nothing posted" "$([ $r = 0 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 prj $HEAD1; rm -f "$T/fx/pr.json"; REV="" run 7; ok "the PR cannot be read: refused" "$(refused)" "exit $r: $out / $log"
 prj $HEAD1; FAIL_COMMENTS=1 REV="" run 7; ok "the comments cannot be read: refused (fails closed)" "$(refused)" "exit $r: $out / $log"
+# review r1 M1: the Lead's read of this head, recorded, before the label
+cmt o OWNER "Reviewer: Approve $HEAD1"
+rd; REV="" run 7; ok "no \"Lead read the diff\" line: refused (the read first, then the label)" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "Lead read the diff: $OLD"; REV="" run 7; ok "a read of an older head: refused" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "Lead read the diff: ${HEAD1:0:12}"; REV="" run 7; ok "a read naming a short SHA: refused" "$(refused)" "exit $r: $out / $log"
+rd someone NONE "Lead read the diff: $HEAD1"; REV="" run 7; ok "a read line by an account without write access: refused" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "    Lead read the diff: $HEAD1"; REV="" run 7; ok "a read line inside a code block (4 spaces): refused" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "I will post Lead read the diff: $HEAD1 later"; REV="" run 7; ok "a read named inside a sentence: refused (alone on its line)" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "Lead read: OK $HEAD1."; REV="" run 7; ok "\"Lead read: OK <head>.\" counts as the read (lead-read-gate.sh's form)" "$(labelled)" "exit $r: $out / $log"
+rd o OWNER "Lead read the diff: $HEAD1"
+jq -n --arg h "$HEAD1" '[range(100) | {user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h + "\nLead read the diff: " + $h)}]' > "$T/fx/comments.json"
+ALLPAGES=1 REV="" run 7; ok "more than 3000 comments: refused (fails closed)" "$(refused)" "exit $r: $out / $log"
+cmt o OWNER "Reviewer: Approve $HEAD1"
 # break r1: every page counts, a malformed page fails closed, the locale and the session's env cannot widen it
 p100=$(jq -n --arg h "$HEAD1" '[range(100) | {user: {login: "o"}, author_association: "OWNER", body: "note"}] | .[0].body = ("Reviewer: Approve " + $h)')
 echo "$p100" > "$T/fx/comments.json"; cmt o OWNER "Reviewer: Changes needed $HEAD1"; mv "$T/fx/comments.json" "$T/fx/comments-p2.json"; echo "$p100" > "$T/fx/comments.json"
@@ -96,8 +113,9 @@ cmt o OWNER "Reviewer: Approve $HEAD1"; REV="" run 7; ok "... and page 2 alone i
 rm -f "$T/fx/comments-p2.json"
 jq -c --arg h "$HEAD1" '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, 5, {user: {login: "o"}, author_association: "OWNER", body: "Reviewer: Changes needed"}]' -n > "$T/fx/comments.json"
 REV="" run 7; ok "a page with a value that is not a comment: refused (a jq error never drops a later verdict)" "$(refused)" "exit $r: $out / $log"
-cmt o OWNER "Reviewer: Changes needed"; mv "$T/fx/comments.json" "$T/fx/c2"; cmt o OWNER "Reviewer: Approve $HEAD1"; cat "$T/fx/c2" >> "$T/fx/comments.json"; rm -f "$T/fx/c2"   # [Approve] then [Changes]
-REV="" run 7; ok "a page of two JSON documents: refused" "$(refused)" "exit $r: $out / $log"
+cmt o OWNER "Reviewer: Changes needed"; mv "$T/fx/comments.json" "$T/fx/c2"; cmt o OWNER "Reviewer: Approve $HEAD1
+Lead read the diff: $HEAD1"; cat "$T/fx/c2" >> "$T/fx/comments.json"; rm -f "$T/fx/c2"   # [Approve + read] then [Changes]
+rd; REV="" run 7; rd o OWNER "Lead read the diff: $HEAD1"; ok "a page of two JSON documents: refused" "$(refused)" "exit $r: $out / $log"
 cmt helper MEMBER "Reviewer: Approve $HEAD1"; mkdir -p "$T/cwd" && : > "$T/cwd/helper"
 out=$(cd "$T/cwd" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS='*' bash "$L" 7 2>&1); r=$?; log=$(cat "$T/fx/log")
 ok "REVIEWERS '*' is not globbed into the folder's file names: refused" "$(refused)" "exit $r: $out / $log"
@@ -124,23 +142,11 @@ echo "# changed" >> "$C/tools/lead-label.sh"; mc
 ok "the copy's script differs from origin/main's: refused before any API call" "$([ $r = 1 ] && [ -z "$log" ] && grep -q "not origin/main's" <<< "$out" && echo 1)" "exit $r: $out / $log"
 git -C "$C" commit -qam "changed copy"; git -C "$C" update-ref refs/remotes/origin/main HEAD; git -C "$C" config --unset-all remote.origin.fetch; mc
 ok "a stale local origin/main that matches the changed copy does not pass: main as just fetched decides (break r1 m4)" "$([ $r = 1 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
+git -C "$C" remote set-url origin "$T/nowhere.git"; mc
+ok "main cannot be fetched: refused before any API call" "$([ $r = 1 ] && [ -z "$log" ] && grep -q "cannot fetch" <<< "$out" && echo 1)" "exit $r: $out / $log"
+# review r1 M2: a copy reached through a symlinked path (macOS /tmp) still finds itself on main
+git -C "$C" remote set-url origin "$O"; git -C "$C" reset -q --hard origin/main 2>/dev/null; git -C "$C" fetch -q origin main && git -C "$C" reset -q --hard FETCH_HEAD
+ln -s "$C" "$T/link"; : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_REVIEWERS="" bash "$T/link/tools/lead-label.sh" 7 2>&1); r=$?; log=$(cat "$T/fx/log")
+ok "run through a symlinked path, main's copy is still recognised and labels" "$(labelled)" "exit $r: $out / $log"
 
-# --- part 2: the auto-queue's own cases stay (A435 (1)): run their tests, and each named case must pass
-need() {  # need <test> <grep -F line>...: the test is green and prints PASS for each
-  local t=$1 o rc; shift; o=$(bash "$TOOLS/$t" 2>&1); rc=$?
-  ok "$t is green" "$([ $rc = 0 ] && echo 1)" "exit $rc: $(tail -3 <<< "$o")"
-  local c; for c in "$@"; do ok "  $t keeps: $c" "$(grep -qF "PASS  $c" <<< "$o" && echo 1)" "no such PASS line"; done; }
-need check-queue-gate.sh \
-  "label: the owner's \"Reviewer: Approve <head>\", ci green, no Lead-read path: labelled" \
-  "label refused: the Approve names an older commit" \
-  "label refused: an Approve from an account that is not the owner's nor a known reviewer" \
-  "label refused: .github/workflows/x.yml keeps the Lead's read" \
-  "label refused: .mergify.yml keeps the Lead's read" \
-  "label refused: ai-workers/x/product/tools/queue-gate.sh keeps the Lead's read" \
-  "label refused: .claude/skills/next/SKILL.md keeps the Lead's read" \
-  "label refused: ai-workers/x/prototype/studio/prisma/schema/cases.prisma keeps the Lead's read" \
-  "label refused: ai-workers/x/prototype/studio/api/src/permissions.ts keeps the Lead's read"
-need check-label-sweep.sh \
-  "19 Nov: a bot label queue-gate.sh refuses comes off" \
-  "B194: a github-actions[bot] label on a PR queue-gate.sh judges eligible is kept"
 finish
