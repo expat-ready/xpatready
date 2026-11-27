@@ -48,6 +48,8 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: SHOTS ? 2 : 1 });
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-O"); });
   const p = await ctx.newPage();
+  // A state the app reaches after a timer (focus moved back): wait for it (up to 5 s, past the app's 2 s), never a fixed sleep.
+  const focusOn = (fn) => p.waitForFunction(fn, null, { timeout: 5000 }).then(() => true, () => false);
   const shot = async (n) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await p.screenshot({ path: path.join(SHOTS, `${n}.png`), fullPage: false }); } };
   try {
     await p.goto(`${BASE}/cases/${id}`);
@@ -83,7 +85,9 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
     const row = section.locator("tr", { hasText: "Sample Spouse A" });
     await row.getByText(/Removed .* by .*Added by mistake \(Sample\)/).waitFor(T);
     ok("C6.13 walk 6 pass (BR-1, BR-6): the spouse stays on the case with no filing, and the reason shows on their row", /No filing: not travelling/.test(await row.innerText()));
-    ok("C6.13 walk 6a pass (review M4): after the change, focus is back on the person's row (its menu button)", await p.evaluate(() => !!document.activeElement?.closest("[data-person-row]") && document.activeElement?.hasAttribute("data-person-menu")));
+    // The app moves focus once the table re-renders (filing-changes.tsx focusRow: 50 ms, then every 100 ms up to 2 s), so the
+    // check waits on that state, never on the row's text alone (nightly 46030957721, 27 Nov: read 0-100 ms too early, on <body>).
+    ok("C6.13 walk 6a pass (review M4): after the change, focus is back on the person's row (its menu button)", await focusOn(() => !!document.activeElement?.closest("[data-person-row]") && document.activeElement?.hasAttribute("data-person-menu")));
     await shot("04-removed-with-undo");
 
     await section.locator("[data-undo]").click();
@@ -108,8 +112,7 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
       await dlg.getByText("Changed since you opened this", { exact: true }).isVisible() && /What changes now is shown below/.test(await dlg.innerText()) && /Own application/.test(await section.locator("tr", { hasText: "Sample Child A2" }).innerText()));
     await shot("04b-changed-since-you-opened");
     await dlg.getByRole("button", { name: "Cancel" }).click();
-    await p.waitForTimeout(400);
-    ok("C6.13 walk 7b pass (review M4): Cancel puts focus back on that person's row", await p.evaluate(() => document.activeElement?.closest("[data-person-row]")?.textContent?.includes("Sample Child A2") === true));
+    ok("C6.13 walk 7b pass (review M4): Cancel puts focus back on that person's row", await focusOn(() => document.activeElement?.closest("[data-person-row]")?.textContent?.includes("Sample Child A2") === true));
     await section.getByRole("button", { name: "Actions for Sample Spouse A" }).click();
     await p.getByRole("menu").getByText("Make principal…").click();
     await dlg.locator("[data-change-filing]").first().waitFor(T);
