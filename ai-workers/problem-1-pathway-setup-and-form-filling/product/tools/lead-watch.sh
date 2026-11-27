@@ -38,9 +38,8 @@ fi
 mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
 # Private split (PS-1b, design/private-split-plan-2026-11-27.md): STATE.md is read where the records are (records-dir.sh:
-# the private copy, else this copy's while it is still here). No private copy is an ACT, so the Lead clones it before PS-1c.
+# the private copy, else this copy's while it is still here). No private copy is an ACT (step 1c), so the Lead clones it before PS-1c.
 RECS=$(bash "$TOOLS/records-dir.sh" 2>/dev/null) || RECS="$TOOLS/.."
-bash "$TOOLS/records-dir.sh" --private >/dev/null 2>&1 || ACT "records: no private copy of the Lead's records (expat-ready/private at ${PRIVATE_HOME_DIR:-\$TMPDIR/private-home}/xpatready/product): clone or pull it (private split; reading $RECS/STATE.md)"
 SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN" "$GH_TLS_NOTE_ONCE"; type pre_off >/dev/null 2>&1 && pre_off' EXIT   # B202: lines step 12 reuses
 export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"; rm -f "$GH_TLS_NOTE_ONCE"   # ENF-761 part 5: gh.sh's curl notice once per run
 GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN" ]; then export GH_TOKEN; else unset GH_TOKEN; fi   # the token is read once a run, not once a call
@@ -99,6 +98,7 @@ say "disk  ${free} GB free · test databases ${dbs:-?} · idle at two checks: ${
 fresh "df / and PostgreSQL 127.0.0.1:54329"
 # 1c. The Lead's context (E12, P-446 (1)): hand over at the first check after 200k beyond the start read; at 150k the first
 # standby reads RULES+STATE. get_usage is the Lead's tool only, so the Lead passes it: LEAD_CONTEXT=<k> (no value = ACT).
+bash "$TOOLS/records-dir.sh" --private >/dev/null 2>&1 || ACT "records: no private copy of the Lead's records (expat-ready/private at ${PRIVATE_HOME_DIR:-\$TMPDIR/private-home}/xpatready/product): clone or pull it (private split; reading $RECS/STATE.md)"
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$RECS/STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead's get_usage"
 
