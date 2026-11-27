@@ -4,21 +4,8 @@ current_lead: local_92d34440-0b5c-4dea-b822-a841ad8da9cf Lead 1 (new account) ·
 
 updated: 2026-11-27 06:1x IST (clock): **Lead 1 on the new account started 06:05. Weekly 0% at 06:05 (Ultra; resets 4 Dec 04:29 IST) = the baseline. Check a99c5f07 (3,33) and watch b2ydhlsjn armed. Old-account sessions: none visible on this account (list_sessions empty), nothing to archive. #3872: `Checks changed:` body line added 06:1x (founder approval, typed 06:05) but it is now dirty: merge main owed. #3829 unstable, no label. claude.ai signed in in the pane 06:1x (founder "Done"). Founder 06:2x (typed): signed in to GitHub and claude.ai in the pane; "you are going to do everything" (A418). #3869: Lead read + Reviewer Approve 0e6255688 + label 06:2x (author is the founder, so no GitHub review possible). Canary cloud lane requested 06:2x (task_1f2757cc, #3872 merge main); lanes 1/12. Canary PUSHED 06:1x (00:43Z, head d61f07b8c): cloud lanes push on the new account. #3872 now has no diff vs main (fix already on main via #3870); the Lead's close was refused by the classifier 06:2x: founder OK to close owed. Wave 1 next at the founder's next typed turn.** Previous line (Lead 7): ACCOUNT SWITCH 06:0x; old account 95% at 05:58. In flight: #3829, #3869, #3831, #3633, #3878, #3639, #3872. 66/110 Works on main.
 
-## Hand-over Lead 6 → Lead 7, 00:1x IST 27 Nov (Lead 6 at ~225k, ~185k past its start read, P-446; the earlier block and Lead 6's lines, word for word: `history/STATE-2026-11-27-0015-lead6-handover-old-block.md`)
-**Do first:** create your check (cron 3,33; prompt `run lead-watch; read STATE Start here`); Lead 6's a1b9cf16 is deleted. Re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). No standby after you: start one at the founder's next typed turn (P-286).
-**Lanes cannot be reached tonight:** Claude in Chrome was signed out of claude.ai at 23:3x and the built-in pane is signed out too; the founder signs in on 27 Nov (Start here). Until then steps go as PR comments (read only by active lanes).
-**Founder decisions tonight (typed):** Factory v3 approved with all three recommendations (P-845, records PR #3873, labelled 00:1x); #3851 out of draft. A410 settled by P-845. Step 0 (fork-PR approval) and the claude.ai sign-in are owed 27 Nov (Start here). He started the #3753 builder (merged 23:5x) and Lead 7.
-**Merged since 22:33:** #3697 (R1.22 lock), #3824 (R1.35 import), #3753 (R1.111 statements).
-**Queue and next steps:**
-* #3872 (Lead 6's P-214 fix to `check_pf21d_fo_eraser.ts:247`; Approve + Lead read posted; labelled): Mergify waits because pr-rules wants a body line `Checks changed: ...`. The app's classifier refused Lead 6's PR-body edit (never route around it, P-504): ask the founder, or merge it in the browser when signed in (P-757). #3870 and #3831 carry the same line change: whichever merges second takes main's line.
-* #3870 (R1.3 CS-W1 2a migration): Lead read OK, green, labelled 00:1x.
-* #3831 (R1.3 review tables): rounds 4 and 5 allowed 00:1x; label on `Reviewer: Approve f399dd85` and green pr-suites (P-423 migration read already done by Lead 5).
-* #3814, #3825 (OS-PM 4): dirty again (conflict with main); steps posted 23:2x; relabel after merge main + diff-only Approve.
-* #3733 (R1.34 export): red on the migration slot (stamp older than main's newest); steps posted 23:2x.
-* #3822 (R1.76): round 4 allowed 23:4x with a breaker on `case-access.ts` and an Escape ruling.
-* #3808, #3639, #3303, #3411, #3860, #3861, #3829, #3849: as in the old block (history file).
-* qa owed: R1.85 (#3841) and R1.96 (#3792) proofs; R1.35 (#3824) next.
-**Owed by the Lead:** RULES.md refresh to one page (P-440; owed by Leads 4-6; it is at 25 KB of its 24.5 KB wall: move long text word for word to `product/rules/` before the next records PR); Lead reads #3843, #3808 (head 07b0e4ec1), #3715, #3506, #3693, #3219; shape PF-10b part 2 (R1.35 next part); the SLE list's quiet PRs.
+## Hand-over Lead 6 → Lead 7 (00:1x IST 27 Nov)
+Word for word in `history/STATE-2026-11-27-0625-lead1-lead6-to-lead7-handover-block.md` (queue steps, owed Lead reads, RULES refresh owed).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
