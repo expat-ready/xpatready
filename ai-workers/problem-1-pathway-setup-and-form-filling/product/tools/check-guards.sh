@@ -767,6 +767,10 @@ OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (
 OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
 OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
 OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
+# F2, F4 (P-853, founder A446): main fixes first in their queue; pipeline PRs need guards green on guards.yml's paths
+MUT="$MUT"'
+F2 rule|../../.mergify.yml|s/^  - name: fixes-main$/  - name: fixes-main-off/|check-mergify-scopes.sh
+F4 guards|../../.mergify.yml|s/^          - check-success = guards$/          - check-success = ci/|check-mergify-scopes.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
@@ -776,6 +780,7 @@ while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
   cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$ROOTD/$P/product/design/night-checklist.json" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"; cp -R "$ROOTD/.claude/agents" "$M/.claude/"; cp "$ROOTD/CLAUDE.md" "$ROOTD/AGENTS.md" "$M/"; cp "$ROOTD/$P/product/WAY-OF-WORKING.md" "$M/$P/product/"   # M788: check-model-rule.sh reads these
+  mkdir -p "$M/$P/product/screens"; cp -R "$ROOTD/$P/product/screens/B119" "$M/$P/product/screens/"   # OS-50: check-mergify-scopes runs B119's check-queue-rules.py
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"
