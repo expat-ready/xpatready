@@ -41,6 +41,7 @@ TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads 
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-qa-due.sh check-tools-on-main.sh check-comment-filter.sh"   # lab automation-measures: qa after merge, OS-11, OS-78 (a)
 TESTS="$TESTS check-lead-age.sh"   # LR-156: the Lead copy on live main, records on a branch under 24 h
+TESTS="$TESTS check-lane-read.sh check-lane-death.sh check-nudge-lane.sh"   # LR-154 app view enforced, LR-147 lane deaths, LR-146 nudge
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -614,7 +615,7 @@ MUT="$MUT"'
 40 parts round|product/tools/check-guards.sh|s/\$((part - 1)) \] .. continue$/$((part - 1)) ] \&\& true/|check-guard-parts.sh
 40 parts tests|product/tools/check-guards.sh|s/^if \[ "\$part" = 1 \]; then$/if true; then/|check-guard-parts.sh
 40 parts refuse|product/tools/check-guards.sh|s/\[ "\$part" -le "\$parts" \] .. {/false \&\& {/|check-guard-parts.sh
-40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4\]$/        part: [1, 2, 3]/|check-guard-parts.sh
+40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4, 5, 6\]$/        part: [1, 2, 3, 4, 5]/|check-guard-parts.sh
 40 parts always|../../.github/workflows/guards.yml|s/always() \&\& //|check-guard-parts.sh
 40 parts result|../../.github/workflows/guards.yml|s/\[ "\$PARTS" = success \]/[ -n "$PARTS" ]/|check-guard-parts.sh
 37 merge read|product/tools/lead-merge.sh|s/; then post "Lead read the diff: <head sha>" (P-423)//|check-lead-merge.sh
@@ -655,6 +656,9 @@ MUT="$MUT"'
 LR156 age|product/tools/lead-age.sh|s/^    \[ "\$age_h" -gt "\$H" \] \&\& want=/    false \&\& want=/|check-lead-age.sh
 LR156 ci|product/tools/lead-age.sh|s/^    if \[ "\$gap_h" -gt "\$H" \]; then$/    if false; then/|check-lead-age.sh
 LR156 keep|product/tools/lead-age.sh|s/^      if \[ "\$extra" != 0 \]; then$/      if false; then/|check-lead-age.sh
+LR154 push|product/tools/lead-check-guard.sh|s/^  \[ "\$pushed" = yes \] \&\& exit 0$/  exit 0/|check-lane-read.sh
+LR147 read|product/tools/lane-death.sh|s/^      \[\[ "\$t" =~ .*/      continue/|check-lane-death.sh
+LR146 hour|product/tools/nudge-lane.sh|s/ -lt "\$min" \]; then$/ -lt 0 ]; then/|check-nudge-lane.sh
 OS05 red part|product/tools/queue-gate.sh|s/^    \[ -n "\$url" \] .*/    url=x/|check-queue-gate.sh
 M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
 M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh

@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-849**, 27 Nov 11:51 IST; earlier: `history/RULES-2026-11-27-0115-lead7-as-of-P-842.md` + older)
+# Rule register (Lead keeps it; as of **P-853**, 27 Nov 19:35 IST; earlier: `history/RULES-2026-11-27-1935-lead8-as-of-P-849.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -9,20 +9,21 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
-| G-847 | Product work stops until the lab is done; text and restart condition word for word in DECISIONS P-847. | prose (STATE) | P-847, 27 Nov |
-| G-848 | A bot may write the "Batch failures covered" line from run data (every failed part green on the same head); a person only when a part is red or needs judgment; amends P-731 (4). | CI: queue-gate.sh (owed, lab-automation) | P-848, 27 Nov |
+| G-847 | Product stops until the lab is done (P-847); the restart line is P-853 (amends P-852), word for word in DECISIONS. | prose (STATE) | P-853, 27 Nov |
+| IDX-30 | P-850, P-851 stand in their DECISIONS rows. | prose | 27 Nov |
+| G-848 | A bot may write the "Batch failures covered" line from run data; word for word in DECISIONS P-848 (amends P-731 (4)). | CI: queue-gate.sh (owed, lab-automation) | P-848, 27 Nov |
 | G-849 | Claude Approvals is the GitHub approver (no machine account); risky paths need Code Review pass; Lead after-read stays (P-823); amends P-845 (1). | prose (approvals.yml owed, lab-ship-security) | P-849, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | IDX-27 | IDX-15, IDX-23 and P-690 stand, word for word in `rules/tech-lead.md` › IDX-27. | prose | 25 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
 | IDX-18 | Factory and finish-by-capability rows P-724, P-719 stand: word for word in `rules/goal-and-order.md` › Moved 20 Nov. | prose | 20 Nov |
 | P-418 | Pick order each check: red main, merged work awaiting qa, blockers, Partials, drafted, new. Full row: `rules/tech-lead.md`. | prose | P-612 |
-| P-464 | XFA reuse: ours and theirs head to head per functionality, the better wins, a tie keeps ours; adopt and improve theirs when it is the better base (P-465, P-467). | prose | 11 Nov |
-| P-470 | The XFA code is ours: small fixes in PATCHES.md, extended only where our pathways use the form; never read the ER v2 repository. | prose | 11 Nov |
 | P-462 | A cloud lane for every ready independent row; lanes push after each step; Mac starts under the preflight caps (P-468). | hook: lane-preflight.sh --hook (part: Mac caps) | 11 Nov |
 | P-468 | Stale copies are deleted only when the work is on GitHub, nothing is uncommitted, untracked files are in `archive/`, no session uses them; databases via prune-test-dbs.sh. | prose | 11 Nov |
-| IDX-2 | One-time or standing process directions (with P-508, P-512, P-514, P-547, P-566, P-580, P-583, P-589, P-592); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
+| P-464 | XFA reuse: ours and theirs head to head per functionality, the better wins, a tie keeps ours; adopt and improve theirs when it is the better base (P-465, P-467). | prose | 11 Nov |
+| P-470 | The XFA code is ours: small fixes in PATCHES.md, extended only where our pathways use the form; never read the ER v2 repository. | prose | 11 Nov |
 | P-473 | UX style: calm work app, plain second-person client questions with "Why we ask", quiet surfaces, no motion library. | prose | 11 Nov |
+| IDX-2 | One-time or standing process directions (with P-508, P-512, P-514, P-547, P-566, P-580, P-583, P-589, P-592); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
 | P-558 | Two Leads: Lead B holds platform and front office in fenced modules; the release Lead holds release, Bake, case side, join, DB-SPLIT, firm walls, shared records (P-559). | prose | 13 Nov |
 | IDX-5 | Product and Release 1 scope rulings stand as recorded (+P-698, P-700 to P-702, P-704); list in `rules/goal-and-order.md`. | prose | 15 Nov |
 | IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 14 Nov |
