@@ -10,8 +10,8 @@
 version: 1
 mode: observe
 locals:
-  # The Lead's read: one approval from the GitHub team expat-ready/leads (the Lead creates it; design file step 2).
-  lead: { count: 1, from: [expat-ready/leads] }
+  # The Lead's read: one approval from the GitHub team expat-ready/tech-lead (the Lead creates it; design file step 2).
+  lead: { count: 1, from: [expat-ready/tech-lead] }
 rules:
   - purpose: "Routine product and records work: the reviewer agent's approval fills the seat, then Claude approves."
     paths:

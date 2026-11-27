@@ -21,7 +21,7 @@ checks each one against the page in the browser.
 | Rule | Paths | Who fills the seat | Claude | Billed? |
 |---|---|---|---|---|
 | Routine | everything else (product code, tests, records) | 1 seat: the reviewer agent's `@claude approve <head sha>` comment (any account with write, the author included) | **approves** once the seat is filled | No: no classifier, no review |
-| Pipeline | `.github/**`, `.mergify.yml`, `.githooks/**`, `CLAUDE.md`, `AGENTS.md`, `product/tools/**`, `product/screens/B119/**`, `studio/tools/**`, `**/prisma.config.*` | `@lead`: team `expat-ready/leads` | comments; approves only when `claude/code_review = pass` | Yes, one Code Review (Standard) per head |
+| Pipeline | `.github/**`, `.mergify.yml`, `.githooks/**`, `CLAUDE.md`, `AGENTS.md`, `product/tools/**`, `product/screens/B119/**`, `studio/tools/**`, `**/prisma.config.*` | `@lead`: team `expat-ready/tech-lead` | comments; approves only when `claude/code_review = pass` | Yes, one Code Review (Standard) per head |
 | Review rules | `**/.claude/**` (`nested: inherit`, as the docs' own starter) | `@lead` | same | Yes |
 | Schema and migrations | `**/prisma/schema/**`, `**/prisma/migrations/**` | `@lead` | same | Yes |
 | Permissions and public routes | identity, `core.ts`, firm wall, terms gate, notification groups, `*permission*`, `api/src/**/*public*`, `web/src/**/*-public/**` | `@lead` | same | Yes |
@@ -56,7 +56,7 @@ The paths are `product/tools/lead-read-paths.txt` turned into globs (that file i
 ```
 Mergify cannot tell which app posted a check called "Claude Approvals". The GitHub ruleset enforces the check's source (step 8). Mergify merges each original PR (`merge_method: merge`), so the ruleset's approval rule applies to each PR, not to the `mergify/merge-queue/*` batch branches. The ruleset targets `main` only. `product/screens/B119/check-queue-rules.py` and `engineering-approved-setup.json` follow in the same PR.
 
-**The reviewer agent's step (skills, in the switch PR):** after `Reviewer: Approve <head sha>`, it posts a second comment whose only text is `@claude approve <head sha>`. On Lead-read paths, the Lead posts that comment from an account in `expat-ready/leads`.
+**The reviewer agent's step (skills, in the switch PR):** after `Reviewer: Approve <head sha>`, it posts a second comment whose only text is `@claude approve <head sha>`. On Lead-read paths, the Lead posts that comment from an account in `expat-ready/tech-lead`.
 
 ## 3. PR Steward: Manual first
 
@@ -89,7 +89,7 @@ cc/pr-steward-setup: Manual = "When a person with write access comments `@claude
 
 **Now (no change to how PRs merge):**
 1. Merge this PR once Approvals has commented that the policy file is valid. Then open any open PR and check that a **Claude Approvals** check appears with a title starting "(observe mode)". If the Claude Ship page still says "expat-ready is shared with another Claude organization", an Owner clicks **Connect** there and pushes a commit (cc/approvals-troubleshooting).
-2. Create the team: github.com/orgs/expat-ready/teams → **New team** → name `leads` → add the account(s) that do the Lead's read → then xpatready → Settings → **Collaborators and teams** → **Add teams** → `leads` → role **Write**.
+2. Create the team: github.com/orgs/expat-ready/teams → **New team** → name `tech-lead` (secret visibility; the same team draft #3851's CODEOWNERS names) → add the account(s) that do the Lead's read → then xpatready → Settings → **Collaborators and teams** → **Add teams** → `tech-lead` → role **Write**.
 3. Code Review stays **Manual, Standard**. Confirm the Code Review spend limit (US$100) and the credit balance cover the observe window (claude.ai/admin-settings/usage).
 4. Mac runner `xr-mac` to `queue-gate.yml` only (**unverified**, check against the page): repository-level runners cannot be limited to workflows, so move it into an organisation runner group. github.com/organizations/expat-ready/settings/actions/runner-groups → **New runner group** → name `mac-gate` → Repository access: **Selected repositories** → `xpatready`; tick **Allow public repositories** (xpatready is public); Workflow access: **Selected workflows** → `expat-ready/xpatready/.github/workflows/queue-gate.yml@refs/heads/main` → Create. Every queue-gate trigger runs main's copy, so `@refs/heads/main` matches it.
 5. Re-register `xr-mac` into that group (on the Mac, founder or Lead): set the repository variable `GATE_RUNNER` to `"ubuntu-latest"` (JSON, with the quotes) so the gate keeps running meanwhile → `cd ~/actions-runner-xpatready && ./svc.sh stop && ./config.sh remove --token <removal token from xpatready › Settings › Actions › Runners › xr-mac>` → `./config.sh --url https://github.com/expat-ready --token <token from the org's New runner page> --runnergroup mac-gate --name xr-mac --labels xr-mac --unattended && ./svc.sh start` → delete `GATE_RUNNER` → the next queue-gate run shows runner `xr-mac`.
@@ -104,6 +104,17 @@ cc/pr-steward-setup: Manual = "When a person with write access comments `@claude
 
 **Rollback (reverse order):** Steward Off → ruleset back to 0 approvals and remove the `Claude Approvals` required check → revert the switch PR (Mergify back to the label only) → `mode: observe`.
 
-## 6. Questions for the tech lead (also posted on the PR)
+## 6. Overlap with draft #3851 (Factory v2 switch, 26 Nov, "do not merge before the founder's yes")
+
+#3851 adds its own `.claude/approvals.yml`, plus `CODEOWNERS`, `dependabot.yml` and `REVIEW.md`. Whichever of the two merges second conflicts on the policy file. What this lane changes, and why:
+- **Routine paths:** #3851 has `claude: comments, seats: 0`, so Claude never approves anywhere and GitHub's "1 approval" rule can never be met. Here, Claude approves once the reviewer agent's `@claude approve <sha>` fills one seat. That is what lets "1 approval + dismiss stale" go on at all (the lane's goal: approvals replace labels).
+- **Lead-read paths:** the paths are the same in substance. Here, the seat is named (`@lead` = `expat-ready/tech-lead`) instead of any person. Claude approves only after `claude/code_review = pass`, which fails closed when the budget runs out.
+- **Mergify:** #3851 proposes `or: [#approved-reviews-by >= 1, check-success = Claude Approvals]`. Here it is **and**, plus the label during the overlap. With "or", a passing check alone would merge a PR. A neutral observe-mode check, or a check from another source (Mergify cannot see the check's source), would then be enough.
+- **Pins:** #3851 left them out because two tools asserted `actions/checkout@v4` word for word. This PR changes those two tools and pins.
+- Kept from #3851 and not repeated here: `dependabot.yml` (it will keep the SHA pins current), `CODEOWNERS`, `REVIEW.md`, CodeQL.
+
+**Recommendation:** this PR carries the policy file. #3851 drops its `.claude/approvals.yml` and keeps the rest.
+
+## 7. Questions for the tech lead (also posted on the PR)
 - **Q1 P-823 versus this policy.** P-823 lets money, additive migrations and public routes merge with the Lead reading *after*. This policy puts a Lead seat on them (read *first*), as the lane's task asks. In observe mode nothing is decided, so no conflict bites yet. **Recommendation:** before enforcement, the founder decides: keep read-first (the policy as written), or give those three rules `seats: 1` (reviewer) with Claude approving on `claude/code_review = pass`, keeping the after-read.
-- **Q2 One account.** The `leads` team can only hold the founder's account today, which is also every PR's author. Whether an author counts in a named team's seat is not stated (cc/approvals-policy: "In a set of named people, name at least one more than `count`, or an author's own pull request can wait"). The observe-mode check will show it. **Recommendation:** add the machine user (the best-practice file's step 4) to `leads` before the switch. Either way the reviewer agent and the Lead share one login until then, so who filled the seat is a procedure, not a technical control.
+- **Q2 One account.** The `tech-lead` team can only hold the founder's account today, which is also every PR's author. Whether an author counts in a named team's seat is not stated (cc/approvals-policy: "In a set of named people, name at least one more than `count`, or an author's own pull request can wait"). The observe-mode check will show it. **Recommendation:** add the machine user (the best-practice file's step 4) to `tech-lead` before the switch. Either way the reviewer agent and the Lead share one login until then, so who filled the seat is a procedure, not a technical control.
