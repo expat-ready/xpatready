@@ -21,6 +21,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { INVISIBLE, LONE } from "../../../contracts/runtime.ts";
+import { caseScope, caseScopeWhere, staffWhoMaySee } from "../case-access.ts";
 import { clientCode } from "../clients.ts";
 import { Audit, Db } from "../core.ts";
 import { NOTIFICATION_KIND, type NotificationPort } from "../../../ports/notifications.ts";
@@ -76,7 +77,7 @@ function parsed<S extends z.ZodType>(schema: S, b: unknown): z.infer<S> {
 }
 
 type Row = { id: string; firmId: string; workspaceId: string; caseId: string | null; noteKey: string; version: number; text: string; visibility: string; pinned: boolean; author: string; byActor: string; createdAt: Date };
-type Current = Row & { firstAt: Date };
+type Current = Row & { firstAt: Date; firstText: string };
 const staffIdOf = (actor: string) => actor.replace(/^staff:/, "");
 /** What a note is on (part 3): a case, or a case client (a person or company the firm acts for). */
 export type SubjectKind = "case" | "client";
@@ -109,6 +110,15 @@ export class CaseNotes {
     if (!want.length) return [];
     const found = await tx.platformStaff.findMany({ where: { id: { in: want }, firmId: c.firmId }, select: { id: true } });
     if (found.length !== want.length) invalid("mentions", "Mention people of your firm only.");
+    // CS-NT1 part 4 (the tech lead's ruling 1 on #3694): on a case, only active staff who may open it are told.
+    if (c.kind === "case") {
+      const may = new Set((await this.peopleOf(tx, c)).map((p) => p.staffId));
+      const out = want.filter((id) => !may.has(id));
+      if (out.length) {
+        const names = (await tx.platformStaff.findMany({ where: { id: { in: out }, firmId: c.firmId }, select: { displayName: true } })).map((s) => s.displayName);
+        invalid("mentions", `Mention people who can open this case (not: ${names.join(", ")}).`);   // break m6: say who
+      }
+    }
     if (!this.notifications) return problem(503, "Not possible now", "Mentions cannot be sent here (no notifications); nothing was saved.", { code: "MENTIONS_UNAVAILABLE" });
     const told = want.filter((id) => id !== ctx.staffId.toLowerCase());
     for (const staffId of told) await this.notifications.notify(tx, { staffId }, NOTIFICATION_KIND.NOTE_MENTION, { kind: c.kind === "case" ? "case" : "case-client", id: c.id });
@@ -120,10 +130,12 @@ export class CaseNotes {
 
   /** The session's firm's case or case client (404 otherwise, as case-close.ts: its firm key names the session's
    *  platform firm). */
+  //  Part 4 (the "part 3s" order on #3694): a case is reached only inside the reader's caseScope (case-access.ts), read
+  //  from the person's live role grants, the tables the guard reads; outside it, 404 as another firm's.
   private async subjectOf(db: Tx | Db, ctx: StaffContext, kind: SubjectKind, id: string): Promise<Subject> {
     if (typeof id !== "string" || !UUID.test(id)) return notFound(kind);
     const s = kind === "case"
-      ? await db.case.findFirst({ where: { id, firmKey: ctx.firmKey }, select: { id: true, workspaceId: true, firmKey: true } }).then((c) => c && { ...c, label: `case ${c.id.slice(0, 8)}` })
+      ? await db.case.findFirst({ where: { AND: [{ id, firmKey: ctx.firmKey }, caseScopeWhere(await caseScope(db, { firmId: ctx.firmId, staffId: ctx.staffId }))] }, select: { id: true, workspaceId: true, firmKey: true } }).then((c) => c && { ...c, label: `case ${c.id.slice(0, 8)}` })
       : await db.caseClient.findFirst({ where: { id, firmKey: ctx.firmKey }, select: { id: true, workspaceId: true, firmKey: true, clientNumber: true } }).then((c) => c && { ...c, label: `client ${clientCode(c.clientNumber)}` });
     if (!s) return notFound(kind);
     const firm = await db.platformFirm.findUnique({ where: { key: s.firmKey }, select: { id: true } });
@@ -136,14 +148,15 @@ export class CaseNotes {
 
   /** The current version of every note of a case or client (or of one note), with when its first version was written. */
   private async current(db: Tx | Db, s: { kind: SubjectKind; id: string; firmId: string }, noteKey?: string): Promise<Current[]> {
-    const rows = await db.$queryRaw<(Omit<Row, "firmId" | "workspaceId" | "caseId" | "noteKey" | "byActor" | "createdAt"> & { firm_id: string; workspace_id: string; case_id: string; note_key: string; by_actor: string; created_at: Date; first_at: Date })[]>`
+    const rows = await db.$queryRaw<(Omit<Row, "firmId" | "workspaceId" | "caseId" | "noteKey" | "byActor" | "createdAt"> & { firm_id: string; workspace_id: string; case_id: string; note_key: string; by_actor: string; created_at: Date; first_at: Date; first_text: string })[]>`
       select * from (
         select distinct on (n.note_key) n.id::text, n.firm_id::text, n.workspace_id::text, n.case_id::text, n.note_key::text, n.version, n.text, n.visibility, n.pinned, n.author, n.by_actor, n.created_at,
-          (select v.created_at from case_note v where v.note_key = n.note_key and v.version = 1) as first_at
+          (select v.created_at from case_note v where v.note_key = n.note_key and v.version = 1) as first_at,
+          (select v.text from case_note v where v.note_key = n.note_key and v.version = 1) as first_text
         from case_note n where ${column(s.kind)} = ${s.id}::uuid and n.firm_id = ${s.firmId}::uuid and (${noteKey ?? null}::uuid is null or n.note_key = ${noteKey ?? null}::uuid)
         order by n.note_key, n.version desc) cur
       order by pinned desc, first_at desc, note_key`;
-    return rows.map((r) => ({ id: r.id, firmId: r.firm_id, workspaceId: r.workspace_id, caseId: r.case_id, noteKey: r.note_key, version: r.version, text: r.text, visibility: r.visibility, pinned: r.pinned, author: r.author, byActor: r.by_actor, createdAt: r.created_at, firstAt: r.first_at }));
+    return rows.map((r) => ({ id: r.id, firmId: r.firm_id, workspaceId: r.workspace_id, caseId: r.case_id, noteKey: r.note_key, version: r.version, text: r.text, visibility: r.visibility, pinned: r.pinned, author: r.author, byActor: r.by_actor, createdAt: r.created_at, firstAt: r.first_at, firstText: r.first_text }));
   }
 
   private async names(db: Tx | Db, firmId: string, actors: string[]) {
@@ -154,7 +167,7 @@ export class CaseNotes {
   private view(n: Current, names: Map<string, string>, ctx: StaffContext) {
     const who = (a: string) => ({ staffId: staffIdOf(a), name: names.get(staffIdOf(a)) ?? null });
     return { id: n.noteKey, versionId: n.id, version: n.version, text: n.text, visibility: n.visibility as NoteVisibility, pinned: n.pinned,
-      author: who(n.author), lastChangedBy: who(n.byActor), writtenAt: n.firstAt.toISOString(), updatedAt: n.createdAt.toISOString(), edited: n.version > 1,
+      author: who(n.author), lastChangedBy: who(n.byActor), writtenAt: n.firstAt.toISOString(), updatedAt: n.createdAt.toISOString(), edited: n.text !== n.firstText,   // part 4 (challenge M1): only when the words changed, never for a pin
       canEditText: n.author === `staff:${ctx.staffId}` || mayEditAny(ctx) };
   }
 
@@ -177,6 +190,16 @@ export class CaseNotes {
     const log = new Audit(tx as unknown as Db), by = `staff:${ctx.staffId}`, words = `${summary} on ${c.label}`, d = { ...detail, firmId: c.firmId };
     if (c.kind === "case") await log.log(c.workspaceId, by, action, "case note", c.id, words, d);
     else await log.log(c.workspaceId, by, action, "case client", c.id, words, d);
+  }
+
+  /** Who may be mentioned on a case (part 4, ruling 1 on #3694): the firm's active staff whose caseScope holds it, the
+   *  case team (the client's file owner, an open team row) first, then by name. */
+  private peopleOf(db: Tx | Db, c: Subject) { return staffWhoMaySee(db, c.firmId, c.id); }
+
+  /** GET cases/:id/notes/people (agent/case:show): who the writer may mention on this case. */
+  async people(ctx: StaffContext, caseId: string) {
+    const c = await this.subjectOf(this.db, ctx, "case", caseId);
+    return { people: await this.peopleOf(this.db, c) };
   }
 
   /** GET notes: the case's (or client's) current notes, pinned first, then newest (agent/case:show). */

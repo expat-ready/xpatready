@@ -9,6 +9,7 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 import { firmScope, FirmScopeError, inFirm } from "../api/src/platform/firm-scope.ts";
 import { readSampleFirms, seedSampleFirms, unmatchedCaseFirmKeys } from "../api/src/platform/seed-sample-firms.ts";
 import { readSetting, readSettings, registerSetting, SettingRefused, writeSetting } from "../api/src/platform/settings.ts";
@@ -72,7 +73,9 @@ try {
       ('${u(12)}', '${W}', '${CMB}', 'user-P', 'user-S', 'sample-solo', 'C-2026-00001');
     insert into audit_event (id, workspace_id, actor, action, entity, summary) values (gen_random_uuid(), '${W}', 'user-R', 'case.open', 'runtime_case', 'Sample');`);
   const before = sql(DEMO, `select (select count(*) from runtime_case) || ':' || (select count(*) from audit_event) || ':' || (select string_agg(firm_key || '/' || case_number, ',' order by id) from runtime_case)`);
-  for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks (the seed matching the cases'
+  // firm keys, a case with no platform firm named) run on the migrations before it; part 2 has its own suite check_csw1_part2.ts.
+  for (const d of all.filter((x) => x >= NEW && x < CSW1_PART2)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-3 pass: the migration applies to a demo-data copy and leaves its rows as they were", sql(DEMO, `select (select count(*) from runtime_case) || ':' || (select count(*) from audit_event) || ':' || (select string_agg(firm_key || '/' || case_number, ',' order by id) from runtime_case)`) === before, before);
   ok("PF-3 pass: migrate diff after it on the demo-data copy names no PF-3 table or type", platformDiff(DEMO).length === 0, platformDiff(DEMO));
 

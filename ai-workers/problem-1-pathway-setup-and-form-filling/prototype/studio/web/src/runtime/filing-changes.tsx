@@ -13,7 +13,7 @@ import { api, ApiError, useApi } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Field, Notice, Pill, Textarea } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tip, TipProvider } from "@/components/status";   // CS-NT1 part 4: the shared Tip keeps a focused tip open when focus scrolls the page
 import { noRetryOnRefusal, type CanAdd, type CasePerson } from "./questionnaire";
 
 type Kind = "make_principal" | "remove_filing" | "add_back";
@@ -77,7 +77,7 @@ export function PeopleAndFilings({ caseId, people, canAdd, onAdd, roleOf, nameOf
         // wider table scrolls here and never widens the page.
         <div className="relative overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-text-muted"><th className="px-4 py-2 font-medium">Person</th><th className="px-2 py-2 font-medium"><span className="inline-flex items-center gap-1">Role<span tabIndex={0} role="img" title={ROLE_TIP} aria-label={ROLE_TIP} className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info className="size-3" aria-hidden /></span></span></th><th className="px-2 py-2 font-medium">Filing</th><th className="px-2 py-2 font-medium"><span className="inline-flex items-center gap-1">Principal applicant<TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><span tabIndex={0} role="img" aria-label={APPLICANT_TIP} className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring" data-applicant-tip><Info className="size-3" aria-hidden /></span></TooltipTrigger><TooltipContent className="max-w-xs text-xs font-normal">{APPLICANT_TIP}</TooltipContent></Tooltip></TooltipProvider></span></th><th className="px-2 py-2 font-medium">Status</th><th className="px-4 py-2"><span className="sr-only">Actions</span></th></tr></thead>
+            <thead><tr className="border-b border-border text-left text-xs text-text-muted"><th className="px-4 py-2 font-medium">Person</th><th className="px-2 py-2 font-medium"><span className="inline-flex items-center gap-1">Role<span tabIndex={0} role="img" title={ROLE_TIP} aria-label={ROLE_TIP} className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info className="size-3" aria-hidden /></span></span></th><th className="px-2 py-2 font-medium">Filing</th><th className="px-2 py-2 font-medium"><span className="inline-flex items-center gap-1">Principal applicant<TipProvider><Tip tip={APPLICANT_TIP}><span tabIndex={0} role="img" aria-label={APPLICANT_TIP} className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring" data-applicant-tip><Info className="size-3" aria-hidden /></span></Tip></TipProvider></span></th><th className="px-2 py-2 font-medium">Status</th><th className="px-4 py-2"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {shown.map((p) => {
                 const f = filingOf(p.subject_id), on = f ? null : onFiling(p.subject_id), removal = !p.applies ? lastRemoval(p.subject_id) : undefined;

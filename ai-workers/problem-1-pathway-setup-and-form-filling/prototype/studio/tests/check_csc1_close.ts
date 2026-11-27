@@ -16,6 +16,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261115160000_csc1a_case_decision";
@@ -49,7 +50,7 @@ ok(`CS-C1 M1 pass: the migration has its own stamp, later than every one before 
 for (const d of all.filter((x) => x < NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
 const W0 = randomUUID();
 sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number) values ('${randomUUID()}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001'), ('${randomUUID()}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00002')`, DEMO);
-for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
+for (const d of all.filter((x) => x >= NEW)) { if (d.startsWith(CSW1_PART2)) sql(SAMPLE_FIRMS_SQL, DEMO); psql(DEMO, ["-f", join(MIG, d, "migration.sql")]); }   // CS-W1 part 2 needs the cases' firm
 ok("CS-C1 M2 pass: on a copy with existing (OPEN) cases the migration applies; they stay OPEN with no closing fields",
   sql(`select count(*) from runtime_case where status = 'OPEN' and closed_at is null and close_outcome is null`, DEMO) === "2");
 ok("CS-C1 M2 fail: the migration does not apply twice", (() => { try { psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]); return false; } catch (e) { return /already exists/.test(String((e as { stderr?: string }).stderr)); } })());
