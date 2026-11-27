@@ -206,7 +206,7 @@ def problems(cfg, have_script):
             out.append("queue pipeline: allow_checks_interruption set (a pipeline PR must not restart a running product batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
-    out += priority(cfg)
+    out += fixes_main(cfg)
     out += guards_required(cfg)
     # P-717 (a), whatever the order (P-827 lists pipeline first, so routing alone no longer shows it): product keeps its
     # own pipeline-path exclusion, the same pattern pipeline selects with, so no PR falls between the two queues.
@@ -233,10 +233,12 @@ FIXES = [("Fixes main: run 19912 red fast", True), ("**Fixes main:** guards red 
          ("> Fixes main: fast", True), ("Plan.\nFixes main: red main 27 Nov\nDone when: x", True), ("fixes main: guards", True),
          ("Fixes main: none", False), ("Fixes main: n/a", False), ("Fixes main: No", False), ("Fixes main:", False),
          ("Fixes main:\nDone when: x", False), ("no such line", False), ("this PR fixes main: in prose", False),
-         ("Completes: R1.5", False)]
+         ("Completes: R1.5", False), ("1. Fixes main: fast red", True), ("Fixes main: no-op revert of #3950", True),
+         ("**Fixes main:** none", False), ("**Fixes main:** n/a", False), ("Fixes main: **none**", False),
+         ("Fixes main: `none`", False), ("Fixes main: _no_", False), ("Fixes main: **", False)]
 
 
-def priority(cfg):
+def fixes_main(cfg):
     """F2 (P-853, P-214): the top-level priority rule fixes-main (Mergify refuses priority_rules inside a queue rule, #3825)."""
     out = [f"queue {q.get('name')}: has priority_rules, which Mergify refuses inside a queue rule (put them at the top level)"
            for q in cfg.get("queue_rules", []) if "priority_rules" in q]
@@ -291,7 +293,8 @@ def guards_required(cfg):
     except (OSError, KeyError, TypeError, AttributeError, yaml.YAMLError, re.error) as e:
         return [f"queue pipeline: the guards rule cannot be compared with guards.yml's paths ({e}) (F4)"]
     files = subprocess.run(["git", "-C", ROOT, "ls-files", "-z"], capture_output=True, text=True).stdout.split("\0")
-    files = sorted({f for f in files if f} | {g for g in globs if "*" not in g})
+    probes = {g.replace("**", "p/q.x").replace("*", "p") for g in globs}   # a glob with no tracked file under it (review m2)
+    files = sorted({f for f in files if f} | probes | {"x/" + g for g in probes})   # "x/…": an unanchored regex takes it
     gx = [_glob(g) for g in globs]
     out = []
     for f in files:
@@ -343,11 +346,11 @@ def mutations(cfg):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
     def swap12(c):
         c = copy.deepcopy(c); c["queue_rules"][1], c["queue_rules"][2] = c["queue_rules"][2], c["queue_rules"][1]; return c
-    def prio(c, fn):   # F2: a changed fixes-main rule (top level)
+    def fm_change(c, fn):   # F2: a changed fixes-main rule (top level); not named prio (#3825's helper)
         c = copy.deepcopy(c); fn(next(r for r in c["priority_rules"] if r["name"] == "fixes-main")); return c
-    def no_prio(c):
+    def fm_drop(c):
         c = copy.deepcopy(c); c["priority_rules"] = [r for r in c["priority_rules"] if r["name"] != "fixes-main"]; return c
-    def prio_inqueue(c):   # the rule moved inside the pipeline queue, where Mergify refuses it (#3825)
+    def fm_inqueue(c):   # the rule moved inside the pipeline queue, where Mergify refuses it (#3825)
         c = copy.deepcopy(c); r = next(r for r in c["priority_rules"] if r["name"] == "fixes-main")
         c["priority_rules"].remove(r)
         next(q for q in c["queue_rules"] if q["name"] == "pipeline")["priority_rules"] = [r]
@@ -390,16 +393,16 @@ def mutations(cfg):
         ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
         ("verdicts listed after pipeline (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
-        ("no top-level fixes-main priority rule (F2)", no_prio(cfg)),
-        ("fixes-main inside the pipeline queue, where Mergify refuses it (F2, #3825)", prio_inqueue(cfg)),
-        ("fixes-main interrupts running checks (F2)", prio(cfg, lambda r: r.update({"allow_checks_interruption": True}))),
-        ("fixes-main without allow_checks_interruption: false (F2)", prio(cfg, lambda r: r.pop("allow_checks_interruption"))),
-        ("fixes-main matches every PR (F2)", prio(cfg, lambda r: r.update({"conditions": ["body ~= ."]}))),
-        ("fixes-main has no conditions (F2)", prio(cfg, lambda r: r.update({"conditions": []}))),
-        ("fixes-main matches 'Fixes main' anywhere in prose (F2)", prio(cfg, lambda r: r.update({"conditions": ["body ~= (?i)Fixes main:\\s*\\S", "-label = records"]}))),
-        ("fixes-main counts 'Fixes main: none' (F2)", prio(cfg, lambda r: r.update({"conditions": ["body ~= (?im)^[\\s>*-]*(\\*\\*|__)?Fixes main(\\*\\*|__)?\\s*:(\\*\\*|__)?[ \\t]*\\S", "-label = records"]}))),
-        ("fixes-main takes records PRs (F2)", prio(cfg, lambda r: r.update({"conditions": [x for x in r["conditions"] if "records" not in x]}))),
-        ("fixes-main at medium priority, Mergify's default (F2)", prio(cfg, lambda r: r.update({"priority": "medium"}))),
+        ("no top-level fixes-main priority rule (F2)", fm_drop(cfg)),
+        ("fixes-main inside the pipeline queue, where Mergify refuses it (F2, #3825)", fm_inqueue(cfg)),
+        ("fixes-main interrupts running checks (F2)", fm_change(cfg, lambda r: r.update({"allow_checks_interruption": True}))),
+        ("fixes-main without allow_checks_interruption: false (F2)", fm_change(cfg, lambda r: r.pop("allow_checks_interruption"))),
+        ("fixes-main matches every PR (F2)", fm_change(cfg, lambda r: r.update({"conditions": ["body ~= ."]}))),
+        ("fixes-main has no conditions (F2)", fm_change(cfg, lambda r: r.update({"conditions": []}))),
+        ("fixes-main matches 'Fixes main' anywhere in prose (F2)", fm_change(cfg, lambda r: r.update({"conditions": ["body ~= (?i)Fixes main:\\s*\\S", "-label = records"]}))),
+        ("fixes-main counts 'Fixes main: none' (F2)", fm_change(cfg, lambda r: r.update({"conditions": ["body ~= (?im)^[\\s>*-]*(\\*\\*|__)?Fixes main(\\*\\*|__)?\\s*:(\\*\\*|__)?[ \\t]*\\S", "-label = records"]}))),
+        ("fixes-main takes records PRs (F2)", fm_change(cfg, lambda r: r.update({"conditions": [x for x in r["conditions"] if "records" not in x]}))),
+        ("fixes-main at medium priority, Mergify's default (F2)", fm_change(cfg, lambda r: r.update({"priority": "medium"}))),
         ("pipeline drops the guards condition (F4)", guards_or(cfg, lambda x: None)),
         ("pipeline needs guards only for .mergify.yml (F4)", guards_or(cfg, narrow)),
         ("pipeline's guards condition needs ci instead of guards (F4)", guards_or(cfg, lambda x: {"or": [s.replace("guards", "ci") if s.startswith("check") else s for s in x["or"]]})),

@@ -428,14 +428,15 @@ scopes:
 # F2 (P-853, founder A446, 27 Nov; P-214): a PR that fixes main (a red main, or a red `fast` or `guards` check) goes first
 # among the PRs waiting in its queue, so the PRs blocked behind the fix wait less. queue-gate.sh and lead-watch.sh name no
 # main fix (no label, no body line), so the PR body says so on a line of its own, "Fixes main: <the red run or check>"
-# (optionally a list item, quote or bold; "Fixes main: none", "no" or "n/a" does not count); a records PR never. The
+# (optionally a list item, numbered item, quote or bold; "Fixes main: none", "no" or "n/a", bold or not, does not count);
+# a records PR never. The
 # queue's conditions are unchanged: the label, green ci, guards (F4) and the rest still hold. Top level, as Mergify reads
 # priority rules (inside a queue rule it refused the file, #3825). No allow_checks_interruption: it goes ahead of waiting
 # PRs only, never restarting a running batch. Checked by product/screens/B119/check-queue-rules.py.
 priority_rules:
   - name: fixes-main
     conditions:
-      - body ~= (?im)^[\s>*-]*(\*\*|__)?Fixes main(\*\*|__)?\s*:(\*\*|__)?[ \t]*(?!(none|no|n/a)\b)\S
+      - body ~= (?im)^[\s>*-]*(\d+[.)][ \t]+)?(\*\*|__)?Fixes main(\*\*|__)?[ \t]*:[ \t*_`]*(?!(none|no|n/a)(?![a-z0-9/-]))[^\s*_`]
       - -label = records
     priority: high
     allow_checks_interruption: false
