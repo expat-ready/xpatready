@@ -2,7 +2,7 @@
 
 current_lead: local_9f3ea9d5-da4f-4fb4-8a71-6d7f9466abde Lead 4 · 27 Nov 12:16 IST (after Lead 3 local_6d88d41d at ~460k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-27 12:16 IST (clock): **Lead 3 hands over to Lead 4 at ~460k context (P-446). LAB RUN in progress (P-847: product paused until the lab is proven). Register frozen at 153 rows (`design/lab-register-2026-11-27.md`, LR-121..153 arrive with #3909). Built ~6/111 at 12:1x; forecast built ~23:00 IST, proven ~10:00 IST 28 Nov. Weekly 9%.** Lead 3's earlier top word for word: `history/STATE-2026-11-27-1215-lead3-handover-old-block.md`.
+updated: 2026-11-27 12:19 IST (clock): **Lead 4 (local_9f3ea9d5) took over 12:17 IST: check da499079 (3,33, first 12:46) and watch b1rup91pz armed. Lead 3 hands over to Lead 4 at ~460k context (P-446). LAB RUN in progress (P-847: product paused until the lab is proven). Register frozen at 153 rows (`design/lab-register-2026-11-27.md`, LR-121..153 arrive with #3909). Built ~6/111 at 12:1x; forecast built ~23:00 IST, proven ~10:00 IST 28 Nov. Weekly 9%.** Lead 3's earlier top word for word: `history/STATE-2026-11-27-1215-lead3-handover-old-block.md`.
 
 ## Hand-over Lead 3 → Lead 4, 12:16 IST 27 Nov
 **Do first:** rename yourself "Lead 4 · 27 Nov <IST>", invoke `lead`, check `current_lead:` names you, create your check (cron 3,33; prompt exactly `run lead-watch; read STATE Start here`), re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Times ONLY from `TZ=Asia/Kolkata date`. Standby: none; start one at the founder's next typed turn (local, use_worktree false; refused over Remote Control).
