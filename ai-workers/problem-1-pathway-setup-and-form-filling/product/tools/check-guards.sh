@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh check-comment-words.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh check-model-rule.sh check-comment-words.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
 TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
@@ -28,6 +28,7 @@ TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #
 TESTS="$TESTS check-checks-changed.sh"   # A351 C2: checks weakened or removed
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
+TESTS="$TESTS check-records-dir.sh"   # private split PS-1b: records-dir.sh, CURRENT-LEAD.md
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
@@ -38,6 +39,7 @@ TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT 
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
+TESTS="$TESTS check-qa-due.sh check-tools-on-main.sh check-comment-filter.sh"   # lab automation-measures: qa after merge, OS-11, OS-78 (a)
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -53,6 +55,7 @@ rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
 # Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
+1 split|product/tools/check-docs.sh|/CURRENT LEAD: CURRENT-LEAD.md has/d|check-records-dir.sh
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
 2 who|product/tools/label-guard.sh|s/^team=.*/team=true/|check-label-guard.sh
@@ -507,6 +510,7 @@ MUT="$MUT"'
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
 38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
+38 notes only|product/tools/private-sync.sh|s/^git add -A notes$/git add -A/|check-lead-upkeep.sh
 38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(git ls-files -s -- notes\/side-session-notes\/ .*then$/if false; then/|check-lead-upkeep.sh
 38 origin|product/tools/private-sync.sh|s/^if ! same_repo .*then$/if false; then/|check-lead-upkeep.sh
 38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh
@@ -646,7 +650,12 @@ MUT="$MUT"'
 29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
-29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
+29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
+M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
+M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh
+M788 prose|product/tools/model-rule-check.py|s/^        m = OTHER_MODEL.search(line) or OTHER_EFFORT.search(line)/        m = None/|check-model-rule.sh
+M788 env|product/tools/model-rule-check.py|s/^    if re.fullmatch(/    if False and re.fullmatch(/|check-model-rule.sh
+M788 skillfm|product/tools/model-rule-check.py|s/^    if "model" in fm and/    if False and/|check-model-rule.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
 MUT="$MUT"'
 OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh
@@ -719,6 +728,16 @@ OS78c rounds|../../.github/workflows/review-rounds.yml|s/(contains(github.event.
 OS78c markdown|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\&/(contains(github.event.comment.body, \x27reviewer:\x27) \&\&/|check-comment-words.sh
 OS78c read|../../.github/workflows/lead-read.yml|s/(github.event.action != .created. \&\&/(true \&\&/|check-comment-words.sh
 OS78c takeback|../../.github/workflows/lead-read.yml|s/(contains(github.event.changes.body.from, .Lead.) \&\& contains(github.event.changes.body.from, .read.))/false/|check-comment-words.sh'
+# OS-82 (OS-PM 4): a head whose only pr-suites run predates job "pr-suites" counts only when its parts were skipped
+MUT="$MUT"'
+OS82 wired|product/tools/queue-gate.sh|s/\[ "\$suites_state" = missing \] \&\& noparts "\$s"; return 0; }/return 0; }/|check-queue-gate.sh
+OS82 skipped|product/tools/queue-gate.sh|s/length > 0 and all(.conclusion == "skipped")/length > 0/|check-queue-gate.sh
+OS82 warned|product/tools/queue-gate.sh|s/startswith("pr-suites"))/startswith("~"))/|check-queue-gate.sh
+OS82 job|product/tools/queue-gate.sh|s/(\$j . any(.name == "pr-suites"))/(false)/|check-queue-gate.sh
+OS82 green|product/tools/queue-gate.sh|s/select(.status == "completed" and .conclusion == "success" and/select(/|check-queue-gate.sh
+OS82 before|product/tools/queue-gate.sh|s/ and (.created_at .. "9") < .before)/)/|check-queue-gate.sh
+OS82 level|product/tools/queue-gate.sh|s/ or .annotation_level == "warning" or .annotation_level == "failure")/)/|check-queue-gate.sh
+OS82 code|product/tools/queue-gate.sh|s/^  \[ -z "\$(grep -E .\/prototype\/.^packages\/. <<< "\${files:-}"/  [ -z "$(grep -E "^~" <<< "${files:-}"/|check-queue-gate.sh'
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
@@ -759,7 +778,7 @@ while IFS='|' read -r g f edit t; do
   [ "$list" = 1 ] && { echo "ROW $k $g"; continue; }
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
-  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$ROOTD/$P/product/design/night-checklist.json" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"
+  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$ROOTD/$P/product/design/night-checklist.json" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"; cp -R "$ROOTD/.claude/agents" "$M/.claude/"; cp "$ROOTD/CLAUDE.md" "$ROOTD/AGENTS.md" "$M/"; cp "$ROOTD/$P/product/WAY-OF-WORKING.md" "$M/$P/product/"   # M788: check-model-rule.sh reads these
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"

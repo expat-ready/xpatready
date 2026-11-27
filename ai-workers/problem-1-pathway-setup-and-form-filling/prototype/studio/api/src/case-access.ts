@@ -46,3 +46,22 @@ export function caseVisibleSql(s: CaseScope, c: Prisma.Sql = Prisma.raw("c")): P
   return Prisma.sql`(exists (select 1 from case_client o where o.id = ${c}.client_id and o.file_owner = ${s.staffId})
     or exists (select 1 from case_team_member t where t.case_id = ${c}.id and t.ended_at is null and t.user_id = any(${s.teamIds}::text[])))`;
 }
+
+/** The firm's active staff who may see one case, by the same rule as `caseScope` and `caseVisibleSql` (view.all, or
+ *  view.own and the client's file owner or an open team row naming their staff or actor id), in one query, so a
+ *  picker over many staff makes no call per person (CS-NT1 part 4, review M3). `onCase`: the file owner or a team row. */
+export async function staffWhoMaySee(db: Reader, firmId: string, caseId: string): Promise<{ staffId: string; name: string; onCase: boolean }[]> {
+  const holds = (key: string) => Prisma.sql`exists (select 1 from platform_role_grant g join platform_role_permission rp on rp.role = g.role
+    where g.firm_id = s.firm_id and g.staff_id = s.id and g.ended_at is null and rp.permission_key = ${key})`;
+  const rows = await db.$queryRaw<{ id: string; name: string; on_case: boolean }[]>`
+    select s.id::text, s.display_name as name, (own.file_owner or own.team) as on_case
+      from platform_staff s
+      join runtime_case c on c.id = ${caseId}::uuid and c.firm_id = s.firm_id
+      cross join lateral (select
+        exists (select 1 from case_client o where o.id = c.client_id and o.file_owner = s.id::text) as file_owner,
+        exists (select 1 from case_team_member t where t.case_id = c.id and t.ended_at is null and t.user_id = any(array_remove(array[s.id::text, s.actor_id], null))) as team) own
+     where s.firm_id = ${firmScope(firmId).firmId}::uuid and s.status = 'ACTIVE'
+       and (${holds(CASE_VIEW_ALL)} or (${holds(CASE_VIEW_OWN)} and (own.file_owner or own.team)))
+     order by (own.file_owner or own.team) desc, s.display_name, s.id`;
+  return rows.map((r) => ({ staffId: r.id, name: r.name, onCase: r.on_case }));
+}

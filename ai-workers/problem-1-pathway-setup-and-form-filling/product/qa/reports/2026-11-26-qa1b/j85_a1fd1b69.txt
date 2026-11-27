@@ -1,0 +1,25 @@
+PASS  J-85 setup: the Sample firm and its front office are seeded — []
+  note: stand-in: our Platform Owner written by SQL (PF-4s has no invite)
+PASS  J-85 W1 (PF-4s part 1, PF-21b part 3, on main): our register answers as a guarded area (401 with no session, never 404) — 401
+PASS  J-85 W1 (parts missing: PF-21rs, PF-17): our console's Privacy › Requests page opens with "Log a request" — "ExpatReady console Sample Platform Owner Sign out Firms Support Privacy Breaches Requests to us Legal holds ExpatReady console › Data requests to us Data requests to us Requests made to ExpatReady its"
+PASS  J-85 W1 (PF-21b part 3, on main): the register table exists with type, requester, received, target date, status — "actions_taken,completed_on,created_at,erase_on,erasing_since,firm_id,id,may_have_erased,person_id,received_on,recorded_by,requester_email,requester_name,status,target_date,type"
+PASS  J-85 W1 (PF-21b part 3, on main): a request's type is ACCESS | CORRECTION | DELETION and its status PENDING | IN_PROGRESS | COMPLETED | OVERDUE | HELD — {"type":"ACCESS,CORRECTION,DELETION","status":"PENDING,IN_PROGRESS,COMPLETED,OVERDUE,HELD"}
+PASS  J-85 W1 (PF-4s part 1, on main; our Owner by SQL, no invite yet): our Platform Owner signs in to the console (a system session token) — {"ourStaff":"j85.owner.mwxqqwlk@expatready.example"}
+PASS  J-85 W1 (PF-21b part 3, on main): the request is logged, stored once with its target date received + 30 days — {"status":201,"dbReq":"1|30"}
+PASS  J-85 W2 (PF-21b part 3, on main): the request moves In progress then Completed, each change an insert-only event (plat_data_request_event) — {"moved":[200,200],"evs":"3"}
+PASS  J-85 W2 (part missing: PF-21rs, our console's Privacy pages): the request's page lists each event and its outcome — "ExpatReady console › Data requests to us › Request ← Data requests to us Access request from Requestermwxqqwlk Sample ● Completed Completed: nothing more can be changed. The request Requester Requeste"
+PASS  J-85 W3 (PF-21b part 3, on main): a request received 40 days ago is past its target date: it reads OVERDUE and raises one alert for that request (NFR5-14) — {"logged":201,"status":"OVERDUE","alerts":"1"}
+PASS  J-85 W4 (PF-21b part 2, on main): the hold table exists with scope, target, reason, placed and released by/at — "category,firm_id,id,placed_at,placed_by,range_from,range_to,reason,release_reason,released_at,released_by,scope_kind,target_id"
+PASS  J-85 W4 (PF-21b part 2, on main): our Platform Owner places a PERSON hold, kept with its reason — 201
+PASS  J-85 W4 (PF-21b part 2, on main: the real hold adapter under KEEP_CHECK_HOLDS): the app's delete check (AUD-5's KeepPeriods.check) answers HELD for the held person — "HELD"
+PASS  J-85 W4 fail: the hold stops only its own person: the delete check for another person of the firm is not HELD — "FLOOR"
+PASS  J-85 W4 (PF-21b part 1, the port on its fake): a PERSON hold answers held with its reason and owner; another firm's ask is not held; a released hold matches nothing — {"before":{"held":false},"during":{"held":true,"holds":[{"holdId":"dff032a7-7dfc-41dd-8ae0-df0a4437472a","scope":{"kind":"PERSON","id":"87c51445-58c1-4573-9f6e-6a1a89fc243e"},"reason":"Sample litigation (J-85)","placedBy":"seed:J-85","placedAt":"2026-11-26T16:
+PASS  J-85 W5 (part missing: PF-21d part 1b, #3235): our Platform Owner approves the DELETION request for the held person: it reads In progress, erasing on approval day + 7 (SA-11-16 (a)) — {"logged":201,"approved":200,"view":{"requestId":"9b88ec8f-3514-442e-bb00-bb0294e093d0","status":"IN_PROGRESS","eraseOn":"2026-12-03"},"plus7":"2026-12-03"}
+{"time":"2026-11-26T16:02:39.123Z","level":"info","event":"platform_bypass","use":"direct-process","method":"none"}
+PASS  J-85 W5 (part missing: PF-21d part 1b; the daily job's Erasure.run called in this process on day 7 on a fake clock, one stand-in eraser, said; its 07:40 Toronto schedule is not proven here): the held person's order is carried out as HELD: no eraser called, the hold's reason on the request's step, the person's row stays — {"error":"","held":["9b88ec8f-3514-442e-bb00-bb0294e093d0"],"calls":0,"status":"HELD","steps":"RECEIVED: | STATUS_CHANGED: | ERASURE_APPROVED:Erasing on 2026-12-03 | ERASURE_HELD:On legal hold; nothing was erased. hold e961241f-e587-43f5-8598-d98975549500: Sam
+PASS  J-85 W5 (part missing: PF-21d part 2, the platform and front-office erasers): an approved DELETION for a person with no hold is carried out on day 7: the request Completed and the person's record anonymised in place — {"approved":200,"error":"","erased":["88b56079-a21a-45bd-8431-1431ace4ec29"],"skipped":[],"familyName":"Erased person 2293588089"}
+PASS  J-85 W6 (PF-4s part 1, PF-21b parts 2-3, on main): a firm's own Owner is refused on our register and on placing a hold (403, never 404: the routes exist and refuse) — [403,403]
+PASS  J-85 W7 (parts missing: PF-21rs, PF-21c): the walk ends at R1.86's first step: our console's Breaches page offers "Record a breach"
+PASS  J-85: no page error during the walk — []
+
+21/21 passed
