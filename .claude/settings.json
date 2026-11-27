@@ -109,21 +109,21 @@
             "type": "command",
             "if": "Bash(gh pr merge*)",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 merge-guard.sh",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(gh pr close*)",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 merge-guard.sh",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(gh pr review*)",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 merge-guard.sh",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -134,7 +134,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 10 github-write-guard.py",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -145,7 +145,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 lane-preflight.sh --hook",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -156,7 +156,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 agent-model-guard.sh --hook",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -167,7 +167,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 lead-check-guard.sh",
-            "timeout": 15,
+            "timeout": 20,
             "onFailure": "block"
           }
         ]

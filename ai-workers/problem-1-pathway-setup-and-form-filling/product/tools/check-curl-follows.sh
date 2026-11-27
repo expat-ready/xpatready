@@ -9,7 +9,7 @@ scan() {  # $1 dir
 python3 -I - "$1" <<'PY'
 import glob, os, re, sys
 d = sys.argv[1]; bad = []; n = 0
-SH = re.compile(r"(?:^|[\s;&|(`]|\$\()curl\s+(?=[-\"$'])")
+SH = re.compile(r"(?:^|[\s;&|(`]|\$\()curl\s+(?=[-\"$'h])")
 PYL = re.compile(r"""\[\s*["']curl["']\s*,\s*["'](-[^"']*)["']""")
 for f in sorted(glob.glob(os.path.join(d, "*.sh")) + glob.glob(os.path.join(d, "*.py")) + glob.glob(os.path.join(d, "*.mjs"))):
     b = os.path.basename(f)

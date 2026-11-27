@@ -4,9 +4,10 @@
 #   bash product/tools/hook-fail-closed.sh <seconds> <guard script in tools/> [args...]   (hook input on stdin)
 # The guard's own answer passes through (exit 0 with its JSON, or exit 2). Anything else blocks, with exit 2 and the
 # reason on stderr:
-#   * the input cannot be read (none within 5 s, empty, not a JSON object) or jq is missing;
+#   * the input cannot be read (not all there within 5 s, empty, not one JSON object) or jq is missing;
 #   * the guard is missing, exits with any code other than 0 or 2, or prints output that is not JSON;
-#   * the guard runs longer than <seconds> (keep it under the hook's "timeout" in settings.json, so this fires first).
+#   * the guard runs longer than <seconds>. Keep 5 s (input) + <seconds> + 1 s (kill) under the hook's "timeout" in
+#     settings.json, so this fires first.
 # Why a wrapper (docs code.claude.com/docs/en/hooks, read 28 Nov 2026): "Exit code 1 without valid JSON output is a
 # non-blocking error"; "a timed-out command ... hook doesn't block the tool call, except for hooks whose failure blocks
 # the action" (onFailure: "block", v2.1.295 or later), and onFailure has no effect on Stop hooks. Exit 2 blocks on every
@@ -21,14 +22,19 @@ case "$LIMIT" in ''|*[!0-9]*) LIMIT=?; refuse "the wrapper needs <seconds> <guar
 shift 2
 case "$GUARD" in */*|..*) refuse "guard '$GUARD' must be a file name in $TOOLS";; esac
 command -v jq >/dev/null 2>&1 || refuse "jq is missing, so the input cannot be read"
-input=""; IFS= read -r -d '' -t 5 input; rc=$?
-[ "$rc" -gt 128 ] && refuse "no hook input within 5 s"
-printf '%s' "$input" | jq -s -e 'length == 1 and (.[0] | type) == "object"' >/dev/null 2>&1 || refuse "the hook input is empty or not one JSON object"
-[ -f "$TOOLS/$GUARD" ] || refuse "guard $GUARD is missing"
-case "$GUARD" in *.py) run=(python3 -I "$TOOLS/$GUARD");; *) run=(bash "$TOOLS/$GUARD");; esac
 T=$(mktemp -d "${TMPDIR:-/tmp}/hook-fc.XXXXXXXX") || refuse "no temporary folder"
 trap 'rm -rf "$T"' EXIT
-printf '%s' "$input" > "$T/in"
+# The input is copied by cat (fast for megabytes, same on bash 3.2 and 5), stopped after 5 s if it never ends.
+exec 3<&0
+set -m
+cat <&3 >"$T/in" & cpid=$!
+( sleep 5; touch "$T/slow"; kill -KILL "$cpid" ) >/dev/null 2>&1 & cdog=$!
+set +m
+wait "$cpid"; kill -- "-$cdog" 2>/dev/null; wait "$cdog" 2>/dev/null; exec 3<&-
+[ -e "$T/slow" ] && refuse "no hook input within 5 s"
+jq -s -e 'length == 1 and (.[0] | type) == "object"' "$T/in" >/dev/null 2>&1 || refuse "the hook input is empty or not one JSON object"
+[ -f "$TOOLS/$GUARD" ] || refuse "guard $GUARD is missing"
+case "$GUARD" in *.py) run=(python3 -I "$TOOLS/$GUARD");; *) run=(bash "$TOOLS/$GUARD");; esac
 set -m   # the guard gets its own process group, so a timeout stops its children too
 "${run[@]}" "$@" <"$T/in" >"$T/out" 2>"$T/err" & pid=$!
 ( sleep "$LIMIT"; touch "$T/late"; kill -TERM -- "-$pid"; sleep 1; kill -KILL -- "-$pid" ) >/dev/null 2>&1 & dog=$!

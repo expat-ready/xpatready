@@ -19,8 +19,8 @@ plant() {  # $1 name, $2 guard file name, $3 body → a copy of the wrapper next
 cmds=$(jq -r '.hooks.PreToolUse[], .hooks.Stop[] | .hooks[] | select(.type == "command") | "\(.timeout // 600) \(.command)"' "$S")
 bad=$(printf '%s\n' "$cmds" | grep -v 'hook-fail-closed\.sh [0-9]* ' | head -3)
 ok "every PreToolUse and Stop guard runs through hook-fail-closed.sh" "$([ -n "$cmds" ] && [ -z "$bad" ] && echo 1)" "$bad"
-late=$(printf '%s\n' "$cmds" | awk '{for (i = 2; i <= NF; i++) if ($i ~ /hook-fail-closed\.sh$/) {if ($(i + 1) + 0 >= $1 + 0) print; break}}')
-ok "each wrapper limit is under its hook timeout, so the wrapper fires first" "$([ -z "$late" ] && echo 1)" "$late"
+late=$(printf '%s\n' "$cmds" | awk '{for (i = 2; i <= NF; i++) if ($i ~ /hook-fail-closed\.sh$/) {if (5 + $(i + 1) + 1 >= $1 + 0) print; break}}')
+ok "5 s input + each wrapper limit + 1 s kill is under its hook timeout, so the wrapper fires first" "$([ -z "$late" ] && echo 1)" "$late"
 stops=$(jq -r '[.hooks.Stop[].hooks[] | select(.type == "command") | .timeout // 600] | map(select(. < 60)) | length' "$S")
 ok "Stop hook timeouts are 60 s or more (LR-046)" "$([ "$stops" = 0 ] && echo 1)" "$stops under 60"
 pre=$(jq -r '[.hooks.PreToolUse[].hooks[] | select(.type == "command") | select(.onFailure != "block")] | length' "$S")

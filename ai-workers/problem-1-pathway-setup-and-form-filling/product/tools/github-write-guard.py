@@ -9,7 +9,8 @@ allow"; a curl line matches no gh rule). This guard refuses a command line that 
     --body-*, --method);
   * `gh api` with a field or input (-f, -F, --field, --raw-field, --input: gh then sends a POST) and no -X GET;
   * inline python, node, ruby or perl code that names the GitHub API and a write method or body.
-Commands inside `bash -c "..."`, `$(...)` and quotes are read too. The door: the reviewed scripts in product/tools
+Commands inside `bash -c "..."`, `$(...)` and quotes are read too. The doors: the GitHub connector tools in a cloud
+session (gh's pr commands answer 403 there; P-293b, OS-70), gh's pr commands on the Mac, and the reviewed scripts in product/tools
 (lead-pr.sh, gh.sh and the like), run by name, keep their own writes; a line typed in a session does not.
 Reads (GET) pass. A command line that cannot be split (an open quote) is judged on its whole text.
 Test: check-github-write-guard.sh.
@@ -101,7 +102,7 @@ def gh_api_write(args):
         if re.match(r"^(-f|-F|--field|--raw-field|--input)(=|$)", a) or re.match(r"^-[fF].", a):
             field = a[:2] if not a.startswith("--") else a.split("=")[0]
     if "graphql" in args and "--input" not in [a.split("=")[0] for a in args] \
-            and not any(re.search(r"\bmutation\b", a) for a in args):
+            and not any(re.search(r"\bmutation\b", a) or re.match(r"^query=@", a) for a in args):
         return ""   # a GraphQL query is sent as a POST but reads; a mutation, or a query from a file, is refused
     return f"gh api {field} (gh sends a POST)" if field and not get else ""
 
@@ -182,8 +183,10 @@ def main():
         "hookEventName": "PreToolUse", "permissionDecision": "deny",
         "permissionDecisionReason": (
             f"GitHub writes go through one door (LR-060, P-384): this command writes to the GitHub API ({why}). "
-            "Use gh's allowed commands (gh pr create, gh pr comment, gh pr edit --add-label \"review: approved\") or "
-            "the reviewed script in product/tools that does this write; reads (GET) pass. "
+            "In a cloud session, where gh's pr commands answer 403, use the GitHub connector tools "
+            "(mcp__github__create_pull_request, add_issue_comment, update_pull_request, issue_write for the label; "
+            "P-293b, OS-70). On the Mac use gh pr create, gh pr comment, gh pr edit --add-label \"review: approved\", "
+            "or the reviewed script in product/tools that does this write. Reads (GET) pass. "
             "Ask on the PR with \"Question for the tech lead\" if no allowed way exists.")}}))
     return 0
 
