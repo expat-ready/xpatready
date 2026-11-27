@@ -44,6 +44,8 @@
 #            After a failed merge batch (a mergify[bot] batch PR naming this PR whose ci ended failure; the newest one),
 #            the label goes on again only when a PR comment line by someone with write access,
 #            "Batch failures covered: <that run's id>: <part>, <part>", names every failed job of that run.
+#            OS-05 (Lead 3, 27 Nov): or, from run data, every failed part of that run passed in a green full run on the
+#            PR's head; the gate then writes that line itself (autocover). A person writes it only for a part still red.
 #   proof  — for label-guard.sh: exit 0 when the full-run rule holds for one of HEADS (the head, back to its approved
 #            commit) and, with RELABEL=1 (the label was just put on) or on a PR carrying "dequeued", the batch rule too;
 #            with RELABEL=1, pr-suites green on the head too (P-822: a person's label as the gate's own);
@@ -221,7 +223,7 @@ full() {  # $@ commits → full_state (success|failure|pending|none), full_why
       # An ancestor is not enough: an intermediate commit of any merged PR is one, with its own ci.yml (breaker R3-M2).
       [ -s "$H.m" ] || git rev-list --first-parent "$MAIN_REF" > "$H.m" 2>/dev/null
       grep -qx "$sha" "$H.m" || continue
-      if [ "$st $co" = "completed success" ]; then full_state=success; full_why="full run $id green on ${c:0:9}"; return; fi
+      if [ "$st $co" = "completed success" ]; then full_state=success; full_rid=$id; full_why="full run $id green on ${c:0:9}"; return; fi
       [ -n "$first" ] || first="$id"$'\t'"$st"$'\t'"$url"$'\t'"$c"
     done < <(jq -r --arg t "$t" 'select(.title == $t) | [.id, .status, (.conclusion // "none"), .html_url, .head_sha] | @tsv' "$H.f")
   done
@@ -278,12 +280,42 @@ covered() {  # 0 when no failed merge batch held this PR, or a comment line cove
   comments || { why="its comments cannot be read"; return 1; }
   names=$(failing "$rid" all | sort -u); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
   lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | sanl | grep -E "^ *Batch failures covered: *$rid *:"; true)
+  autocover "$rid" "$names" && return 0   # OS-05: every failed part passed in a green full run on the head
   [ -n "$lines" ] || { why="it was in the failed merge batch run $rid (failed: $(tick <<< "$names" | paste -sd ';' - | sed 's/;/; /g')) and no PR comment line \"Batch failures covered: $rid: <every failed part>\" by someone with write access names them (P-731 (4))"; return 1; }
   # A whole name: "kindly" does not name the part "kind", nor "shard (30)" the part "shard (3)".
   while IFS= read -r n; do [ -z "$n" ] || grep -qE -- "(^|[^A-Za-z0-9_-])$(sed 's/[().]/\\&/g' <<< "$n")([^A-Za-z0-9_-]|\$)" <<< "$lines" || miss="$miss${miss:+; }\`$n\`"; done <<< "$names"
   [ -z "$miss" ] || { why="the line \"Batch failures covered: $rid:\" does not name every failed part of that merge batch run: missing $miss (P-731 (4))"; return 1; }
   return 0; }
 
+# OS-05 (Lead 3's ruling on #3902 and #3898, 27 Nov; the founder gave the lab its approvals, A420): the covered line is
+# valid from run data when every part that failed the merge batch run $1 passed in a green full run on this PR's head:
+# the full run (full(): main's ci.yml by /run full, on main's first-parent chain, titled for this PR and head) ended
+# success and each failed part's job in it ended success. Then the gate counts it covered itself, and `label` posts the
+# line "Batch failures covered: <run>: `<part>` (<job link>), ..." once. A person writes the line only when a part is
+# still red, missing from the full run, or needs judgment. $2: the failed parts, one a line. 0 and $auto_line, else 1.
+autocover() {
+  local rid=$1 names=$2 h="${head:-}" js n url line=""; auto_line=""
+  [ -n "$h" ] || h=$(awk '{print $1}' <<< "${HEADS:-}")
+  [[ "$h" =~ ^[0-9a-f]{40}$ ]] || return 1
+  full_rid=""; full "$h"; [ "$full_state" = success ] && [ -n "$full_rid" ] || return 1
+  js=$(api "$API/repos/$REPO/actions/runs/$full_rid/jobs?filter=latest&per_page=100" 2>/dev/null) || return 1
+  while IFS= read -r n; do [ -n "$n" ] || continue
+    url=$(jq -r '.jobs[]? | select(.conclusion == "success") | [.name, (.html_url // "")] | @tsv' <<< "$js" 2>/dev/null \
+      | while IFS=$'\t' read -r jn ju; do [ "$(printf '%s' "$jn" | san | cut -c1-120)" = "$n" ] && { printf '%s\n' "${ju:-run $full_rid}"; break; }; done)
+    [ -n "$url" ] || return 1   # this part did not pass in the full run: a person decides
+    line="$line${line:+, }\`$n\` ($url)"
+  done <<< "$names"
+  [ -n "$line" ] || return 1
+  auto_line="Batch failures covered: $rid: $line"; return 0; }
+autoline() {  # label: post the gate's own covered line once (never twice: the comments already hold it)
+  [ -n "${auto_line:-}" ] || return 0
+  grep -qF -- "$auto_line" <<< "$(jq -r '.[].body // ""' <<< "${cs:-[]}")" && return 0
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "$auto_line
+
+**Queue gate (OS-05):** written from run data: every part that failed merge batch run ${auto_line#Batch failures covered: } passed in the green full run $full_rid on \`${head:0:9}\` (the Lead's ruling of 27 Nov on P-731 (4)). A person writes the line only when a part is still red or needs judgment.
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null || true; }
 why=""
 approved() {  # the last "Reviewer:" verdict about $head by the owner's account or a known reviewer is an Approve naming it; else 1 with $why
   local who; cs=""; comments || { why="its comments cannot be read"; return 1; }
@@ -382,6 +414,7 @@ label() {
 ---
 _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null
     return $src; fi
+  autoline   # OS-05: the covered line the gate wrote itself, for the record
   LABELLING=1 fresh || return 2; did_fresh=1   # review M2: queue-fresh is decided before the label goes on
   afterlabel || return 2   # P-823: the after-read label first, so a PR owing a read never carries review: approved without it
   api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || { echo "#$PR: could not label"; return 2; }

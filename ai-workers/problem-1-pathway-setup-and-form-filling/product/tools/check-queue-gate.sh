@@ -317,6 +317,22 @@ ok "failed batch: ... and naming it is allowed" "$(grep -qx 'LABEL 7' <<< "$log"
 rm -f "$T/fx/jobs-900.json"; run label 7
 ok "failed batch: its failed parts cannot be read: refused, never passed by an empty list" "$(nolabel && grep -q 'cannot be read' <<< "$out" && echo 1)" "$out / $log"
 jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
+# OS-05 (Lead 3's ruling, 27 Nov): the covered line from run data. Full run 50 is green on the head (above).
+jobs 50 "shard (3):success" "regression (C1.1 C1.2, 2):success" "fast:success" "ci:success"; cov "nothing yet"; run label 7
+ok "OS-05: every failed part passed in the green full run on the head, no person's line: labelled, and the gate writes the line naming each part with its run" "$(grep -qx 'LABEL 7' <<< "$log" && grep -qF 'COMMENT 7 Batch failures covered: 900: `regression (C1.1 C1.2, 2)` (run 50), `shard (3)` (run 50)' <<< "$log" && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "github-actions[bot]"}, author_association: "NONE", body: "Batch failures covered: 900: `regression (C1.1 C1.2, 2)` (run 50), `shard (3)` (run 50)\n\n**Queue gate (OS-05):** written from run data"}]' > "$T/fx/comments-7.json"; run label 7
+ok "OS-05: the gate's line already on the PR: labelled, never posted twice" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q '^COMMENT 7 Batch failures covered' <<< "$log" && echo 1)" "$out / $log"
+jobs 50 "shard (3):failure" "regression (C1.1 C1.2, 2):success" "ci:failure"; cov "nothing yet"; run label 7
+ok "OS-05: a part still red in the full run: refused, a person writes the line" "$(nolabel && ! grep -q '^COMMENT 7 Batch failures covered' <<< "$log" && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "$out / $log"
+jobs 50 "regression (C1.1 C1.2, 2):success" "fast:success"; cov "nothing yet"; run label 7
+ok "OS-05: a failed part missing from the full run's jobs: refused" "$(nolabel && echo 1)" "$out / $log"
+jobs 50 "shard (3):success" "regression (C1.1 C1.2, 2):success"; nofull; full 51 7 $HEAD1 completed failure; full 50 7 $OLD completed success; cov "nothing yet"; run label 7
+ok "OS-05: the green full run is on another head, the head's own is red: refused" "$(nolabel && ! grep -q '^COMMENT 7 Batch failures covered' <<< "$log" && echo 1)" "$out / $log"
+nofull; full 50 7 $HEAD1 completed success; HEADS=$HEAD1 RELABEL=1 run proof 7
+ok "OS-05: proof with RELABEL=1 and every failed part green in the full run: exit 0 (no person's line needed)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+jobs 50 "shard (3):success" "regression (C1.1 C1.2, 2):failure"; HEADS=$HEAD1 RELABEL=1 run proof 7
+ok "OS-05: proof with RELABEL=1 and a part red in the full run: exit 1, the line is asked" "$([ $r = 1 ] && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "exit $r: $out"
+rm -f "$T/fx/jobs-50.json"
 cov "nothing yet"; run eligible 7
 ok "failed batch: eligible (the sweep) does not ask for the line: a batch's other PRs keep their label" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 LAT=2026-11-19T04:10:00Z run eligible 7
