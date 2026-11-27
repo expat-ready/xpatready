@@ -256,3 +256,11 @@ Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 ### P-500 line
 Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 | P-500 | The right sample for the purpose in every analysis, named beside the number; speed = app-code PRs or qa-confirmed Works. | script: cockpit-data.py (part: board numbers carry source and class, P-596) | 12 Nov |
+
+### P-526 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-526 | No duplicates: a duplicate check before shaping and building, one `Duplicate check:` line in row and PR. | CI: pr-rules brief-check.sh (part: the "Duplicate check:" line; not yet a required check) | 13 Nov |
+
+### P-615 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-615 | Environment as memory: this register (start read ≤ 70k tokens), module cards checked by CI, why-comments, three behaviour numbers; no memory agent. | script: check-docs.sh (part: register, 25 KB) | 15 Nov |

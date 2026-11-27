@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-849**, 27 Nov 11:51 IST; earlier: `history/RULES-2026-11-27-0115-lead7-as-of-P-842.md` + older)
+# Rule register (Lead keeps it; as of **P-850**, 27 Nov 12:11 IST; earlier: `history/RULES-2026-11-27-0115-lead7-as-of-P-842.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -12,6 +12,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | G-847 | Product work stops until the lab is done; text and restart condition word for word in DECISIONS P-847. | prose (STATE) | P-847, 27 Nov |
 | G-848 | A bot may write the "Batch failures covered" line from run data (every failed part green on the same head); a person only when a part is red or needs judgment; amends P-731 (4). | CI: queue-gate.sh (owed, lab-automation) | P-848, 27 Nov |
 | G-849 | Claude Approvals is the GitHub approver (no machine account); risky paths need Code Review pass; Lead after-read stays (P-823); amends P-845 (1). | prose (approvals.yml owed, lab-ship-security) | P-849, 27 Nov |
+| G-850 | Background model is Opus too: ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-opus-5-5 in .claude/settings.json (extends P-788). | prose (settings change owed, LR-145) | P-850, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | IDX-27 | IDX-15, IDX-23 and P-690 stand, word for word in `rules/tech-lead.md` › IDX-27. | prose | 25 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
@@ -59,7 +60,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-820 | Nearest Partials first; Not-built only where a Partial needs it. | prose | 25 Nov |
 | P-821 | Outside accounts in one sitting; the founder types every key; test mode, US$0. | prose | 25 Nov |
 | IDX-28 | 25 Nov rows P-824 to P-838, P-842 (pipeline first, OS-PM lane, plan no limit, P-822 blocks, switch at 95-96%, self-checking builders, Partial %; P-842 nine more R1 rows, 110) stand in DECISIONS. | prose | 25 Nov |
-| P-615 | Environment as memory: this register (start read ≤ 70k tokens), module cards checked by CI, why-comments, three behaviour numbers; no memory agent. | script: check-docs.sh (part: register, 25 KB) | 15 Nov |
+| P-615 | Word for word in `rules/tech-lead.md` › P-615 line (moved 27 Nov). | script: check-docs.sh (part: register, 25 KB) | 27 Nov |
 | IDX-11 | (P-608: model and effort at every start) stands: word for word in `rules/goal-and-order.md`; P-725 overrides it for the new account's Lead. | hook: lane-preflight.sh | 19 Nov |
 | P-557 | Always committed, always resumable: push every step; STATE says what is true, in flight and next (AGENTS rule 10). | prose | 13 Nov |
 | P-694 | A hand-recorded payment's reversal may take trust below zero, shown red (supersedes P-607 (1)); no other outflow does. | prose (R1.58) | 18 Nov |
@@ -80,7 +81,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | P-278 | One row per session and per PR, fresh branch from origin/main, one session per branch (P-436 (2)). | script: lane.sh (part: binding) | P-612 |
-| P-526 | No duplicates: a duplicate check before shaping and building, one `Duplicate check:` line in row and PR. | CI: pr-rules brief-check.sh (part: the "Duplicate check:" line; not yet a required check) | 13 Nov |
+| P-526 | Word for word in `rules/tech-lead.md` › P-526 line (moved 27 Nov). | CI: pr-rules brief-check.sh (part: the "Duplicate check:" line; not yet a required check) | 27 Nov |
 | P-526b | Rows name what they touch and wait on; overlapping touch lists never run at once. | prose | 13 Nov |
 | P-526c | No ruling lives only in an unmerged PR: records PRs over 24 h are merged or closed. | prose | 13 Nov |
 | P-337 | A lane ends when its PR is labelled; a warm lane may take one more row it knows (P-341). | prose | P-612 |
