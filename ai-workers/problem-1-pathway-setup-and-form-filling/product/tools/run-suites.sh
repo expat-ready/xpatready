@@ -415,6 +415,10 @@ for path in "$TESTS"/check_*.ts "$TESTS"/check_*.cjs; do
     AGAIN=(recopy "$name" "$port" start ${env[@]+"${env[@]}"})
     if [ "$tool" = node ]; then run "$f" "$name" node "$path" $args; else run "$f" "$name" $TSX "$path" $args; fi
     zsh "$S/tools/isolated.sh" "$name" "$port" stop >/dev/null 2>&1
+  elif [[ "$usage" == *isolated.sh* ]]; then
+    # LR-110: a usage line that names a copy but not in the form above ran on no copy and failed far from the cause
+    # (FO-7s3a 25 Nov, 77787fa89; PF-21rs's "tsx --tsconfig …", nightly 27 Nov: database "xr_studio_pf21rs" does not exist).
+    rows+=("| $f | FAIL | | its usage line names isolated.sh but not as \"isolated.sh <name> <port> start [KEY=V ...] && tsx (or node) studio/tests/$f\" |"); fail=1
   else
     # A check that starts its own copy says so as "[port=N] [name=x]" (check_ai_orchestration): with a prefix it gets this
     # copy's port and name, so two lanes never start the same copy (PR #72 review).
