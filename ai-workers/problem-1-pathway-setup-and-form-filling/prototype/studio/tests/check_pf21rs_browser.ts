@@ -16,8 +16,9 @@
 //         1024 and 1440 px (j_86 W9) with the dialog open too; no sideways page scroll.
 // Sample firms and Sample staff only; US$0, no model call, live AI off. Screenshots (deviceScaleFactor 1) in
 // product/screens/PF-21rs/screenshots/. Run from prototype/:
-//   zsh studio/tools/isolated.sh pf21rs 4434 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf21rs_browser.ts 4434 xr_studio_pf21rs
-// (the form run-suites.sh reads; it starts and stops the copy itself. By hand, stop it after: isolated.sh pf21rs 4434 stop)
+//   zsh studio/tools/isolated.sh pf21rs 4434 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SYSTEM_IDENTITY=local && tsx studio/tests/check_pf21rs_browser.ts 4434 xr_studio_pf21rs
+// (the form run-suites.sh reads, "start && tsx studio/tests/…" with nothing between, or it runs on no copy: nightly 27 Nov; it
+// adds --tsconfig studio/api/tsconfig.json itself, and starts and stops the copy. By hand, stop it after: isolated.sh pf21rs 4434 stop)
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
