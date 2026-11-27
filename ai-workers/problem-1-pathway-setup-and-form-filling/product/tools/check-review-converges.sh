@@ -23,6 +23,7 @@ done
 has "$A" 'model: opus' && has "$A" 'effort: medium'; ok "(2) screen-reviewer.md stays on Opus medium (P-788)" "$([ $? = 0 ] && echo 1)"
 L="$ROOTD/.claude/skills/lead/SKILL.md"
 has "$L" 'with "stop after N tries" (LR-121'; ok "(2) lead/SKILL.md: every brief's Done when carries a stop rule (LR-121, the brief template)" "$([ $? = 0 ] && echo 1)" "missing in $L"
+has "$L" 'breaker only for money' && has "$L" 'merge main only on conflict (P-270)'; ok "(2) lead/SKILL.md keeps its two limits (breaker only for risky PRs; merge main only on conflict)" "$([ $? = 0 ] && echo 1)" "missing in $L"
 for w in 'REVIEW.md' 'Stop rule (LR-121)' 'stop after N tries' 'reads only the diff since (P-277)' 'Fix every Important'; do
   has "$S" "$w"; ok "(2) next/SKILL.md says: $w" "$([ $? = 0 ] && echo 1)" "missing in $S"
 done
