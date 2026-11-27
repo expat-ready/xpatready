@@ -12,7 +12,8 @@ verdicts first (Recommended)"): a queue "verdicts", listed first, takes only qa 
 starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. P-827 (founder 25 Nov,
 "Yes, pipeline first", one-time): the queue "pipeline" is listed second, ahead of "product", without
 allow_checks_interruption, until P-822, P-823 and the Lead-tool fixes are on main (undo: move pipeline back after
-product when P-827 ends, here and in .mergify.yml). Each fixed PR lists its files;
+product when P-827 ends, here and in .mergify.yml). Fast route (lab lane, 27 Nov; P-847): "pipeline" is the tooling
+queue, and pipeline work plus records (product/ .md, images, .txt, .html) still joins it, never product. Each fixed PR lists its files;
 its label comes from records-only.sh is-records and must agree with the case's expected label (so the definition and
 the cases cannot drift apart), and the label name the queues use must be the one records-only.sh prints. A missing
 records-only.sh fails the check. Then it breaks the configuration on purpose and expects each
@@ -125,7 +126,12 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a skill: pipeline (P-717 (a))", [".claude/skills/next/SKILL.md"], False, "pipeline"),
     case("agent rules and a git hook: pipeline", ["AGENTS.md", "CLAUDE.md", ".githooks/pre-push"], False, "pipeline"),
     case("a workflow plus app code: product (one non-pipeline file is enough)", [".github/workflows/ci.yml", f"{A}/api/src/core.ts"], False, "product", checks=F),
-    case("a tool plus a record: product, not pipeline or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "product"),
+    # Fast route (lab lane, 27 Nov; P-847): pipeline work may carry records; the queue "pipeline" is the tooling queue.
+    case("a tool plus a record: pipeline (fast route, P-847), never product or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "pipeline"),
+    case("a skill plus a design note and a screenshot: pipeline (P-847)", [".claude/skills/next/SKILL.md", f"{R}/design/lab-register-2026-11-27.md", f"{R}/design/x.png"], False, "pipeline"),
+    case("a tool, a record and app code: product (app code never in pipeline)", [f"{R}/tools/x.sh", f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product", checks=F),
+    case("a workflow plus a JSON file under screens/: product (not a record)", [".github/workflows/guards.yml", f"{R}/screens/12/fixture.json"], False, "product"),
+    case("records only, labelled: still records, not pipeline (P-847)", [f"{R}/STATE.md", f"{R}/design/x.md"], True, "records"),
     case("a look-alike pipeline path: tools/ outside product/", [f"{A}/tools/gate-b.mjs"], False, "product", checks=F),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),

@@ -689,7 +689,7 @@ jobs:
         # the packages graph.mjs reads (TypeScript), no install scripts, no database.
         if: env.MODE != 'same' && env.ROUTE == 'docs' && env.KIND == 'records'
         run: |
-          (cd "$S" && npm ci --ignore-scripts --no-audit --no-fund)
+          npm ci --prefix "$S" --ignore-scripts --no-audit --no-fund
           node "$P/tools/graph.mjs" --check
       - name: notes check 1 of 2, rules files (check-docs.sh; pull requests only, ENF-746c)
         if: env.MODE != 'same' && (env.ROUTE == 'docs') && needs.kind.outputs.queue != 'true' && github.event_name != 'merge_group'
