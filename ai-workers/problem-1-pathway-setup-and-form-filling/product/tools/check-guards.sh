@@ -646,7 +646,8 @@ MUT="$MUT"'
 29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
-29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
+29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
+OS05 red part|product/tools/queue-gate.sh|s/^    \[ -n "\$url" \] .*/    url=x/|check-queue-gate.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
 MUT="$MUT"'
 OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh
