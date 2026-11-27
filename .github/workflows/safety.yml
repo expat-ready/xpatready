@@ -2,8 +2,8 @@
 # continue-on-error, no Mergify condition and no ruleset names it, so a finding is a warning on the PR, never a red check.
 # LR-045: a migration this PR adds is read for destructive or non-additive statements, a stamp not later than the base's
 # newest, and a change to a migration the base has (studio/tools/safety/migration-check.py). LR-074: every route that
-# changes something must be refused to nobody and to a wrong role by a guard, a declared permission or its handler's own
-# check, or be on the reviewed list (studio/tools/safety/route-sweep.ts). Each tool runs its planted self-test first.
+# changes something must be refused to nobody by a guard, a declared permission or a check on its handler's straight
+# path (role or identity, counted apart), or be on the reviewed list (studio/tools/safety/route-sweep.ts). Each tool runs its planted self-test first.
 # Read-only token, no secrets, package scripts off. US$0, no model call. Turning it into a refusal is a later Lead call.
 name: safety
 on:
@@ -12,6 +12,7 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/lib/routes.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/lib/ts-files.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/safety/**"
       - ".github/workflows/safety.yml"
 concurrency:
@@ -36,8 +37,10 @@ jobs:
       - name: migration check, this PR against its base (warning only)
         continue-on-error: true
         run: |
-          python3 -I "$S/tools/safety/migration-check.py" --base HEAD^1 | tee "$RUNNER_TEMP/mig.txt"
-          echo "### Migration check (LR-045, report only)" >> "$GITHUB_STEP_SUMMARY"; sed 's/^::warning:://' "$RUNNER_TEMP/mig.txt" >> "$GITHUB_STEP_SUMMARY"
+          rc=0; python3 -I "$S/tools/safety/migration-check.py" --base HEAD^1 > "$RUNNER_TEMP/mig.txt" || rc=$?
+          cat "$RUNNER_TEMP/mig.txt"   # the ::warning:: lines become annotations; the summary is written before the exit code
+          { echo "### Migration check (LR-045, report only)"; sed 's/^::warning::/- /' "$RUNNER_TEMP/mig.txt"; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
       - uses: actions/setup-node@v4
         continue-on-error: true
         with: { node-version-file: .nvmrc }
@@ -50,5 +53,7 @@ jobs:
       - name: route sweep, the app (warning only)
         continue-on-error: true
         run: |
-          cd "$S" && npx tsx tools/safety/route-sweep.ts | tee "$RUNNER_TEMP/routes.txt"
-          echo "### Route sweep (LR-074, report only)" >> "$GITHUB_STEP_SUMMARY"; sed 's/^::warning:://' "$RUNNER_TEMP/routes.txt" >> "$GITHUB_STEP_SUMMARY"
+          rc=0; (cd "$S" && npx tsx tools/safety/route-sweep.ts) > "$RUNNER_TEMP/routes.txt" || rc=$?
+          cat "$RUNNER_TEMP/routes.txt"
+          { echo "### Route sweep (LR-074, report only)"; sed 's/^::warning::/- /' "$RUNNER_TEMP/routes.txt"; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

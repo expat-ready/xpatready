@@ -2,14 +2,18 @@
 """LR-045 (bundle A5): refuse destructive or non-additive database migrations, and a migration stamped earlier than main's.
 
 A migration this branch adds (prisma/migrations/<stamp>_<name>/migration.sql, new since the base) is read statement by
-statement, comments left out. Reported:
-  * destructive: DROP TABLE / COLUMN / TYPE / SCHEMA / VIEW, TRUNCATE, DELETE FROM (data gone);
-  * non-additive: RENAME of a table, column or enum value, ALTER COLUMN ... TYPE, SET NOT NULL, ADD COLUMN ... NOT NULL with no DEFAULT
-    (old code or old rows break);
+statement: comments, strings and $$ bodies are blanked, so a trigger body or a quoted '--' or ';' is not read as a statement.
+A statement is judged by its first word, an ALTER TABLE clause by clause. Reported:
+  * destructive: DROP TABLE / VIEW / SCHEMA / TYPE / DOMAIN / SEQUENCE / EXTENSION / OWNED, TRUNCATE, DELETE FROM, and
+    ALTER TABLE ... DROP [COLUMN] (data gone). Not: DROP INDEX / CONSTRAINT / DEFAULT / NOT NULL, a BEFORE TRUNCATE trigger,
+    REVOKE ... TRUNCATE (this repo's own protection);
+  * non-additive: RENAME of a table, column or enum value, ALTER [COLUMN] ... TYPE, SET NOT NULL, SET SCHEMA, DISABLE ROW
+    LEVEL SECURITY, ADD COLUMN ... NOT NULL with no DEFAULT (old code or old rows break). Not: ADD CONSTRAINT ... CHECK;
   * a stamp not later than the newest migration on the base (applied out of order, or skipped where main has run);
   * a change to, or removal of, a migration the base already has (history rewritten under a database that ran it).
-A statement may carry a reviewed waiver on the line above it or its own line: `-- destructive-ok: <reason>` (a reason of
-at least three words). Report-only in safety.yml at first (LR-045: warning before it refuses).
+A statement may carry a reviewed waiver: `-- destructive-ok: <reason of 3+ words>` on a line before it, or after its `;` on
+the same line. It covers that whole statement (split an ALTER TABLE to waive one clause); one inside a statement waives
+nothing. Known limits: dynamic SQL (EXECUTE in a body) and DROP FUNCTION / TRIGGER / POLICY are not read. Report-only in safety.yml at first (LR-045: warning before it refuses).
   python3 studio/tools/safety/migration-check.py [--base origin/main]   exit 1 when anything is reported
   python3 studio/tools/safety/migration-check.py --files a.sql b.sql    the statement rules only, on given files
   python3 studio/tools/safety/migration-check.py --self-test            planted good and bad migrations
@@ -17,44 +21,84 @@ at least three words). Report-only in safety.yml at first (LR-045: warning befor
 import os, re, subprocess, sys, tempfile
 
 MIG = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations"
-RULES = [
-    ("destructive", re.compile(r"\bDROP\s+(TABLE|COLUMN|TYPE|SCHEMA|VIEW|MATERIALIZED\s+VIEW)\b", re.I)),
-    ("destructive", re.compile(r"\bALTER\s+TABLE\b[^;]*\bDROP\s+(?!CONSTRAINT|DEFAULT|NOT\s+NULL|INDEX)\"?\w", re.I)),   # ALTER TABLE t DROP "col" (COLUMN is optional in Postgres)
-    ("destructive", re.compile(r"\bTRUNCATE\b", re.I)),
-    ("destructive", re.compile(r"\bDELETE\s+FROM\b", re.I)),
-    ("non-additive", re.compile(r"\bALTER\s+(TABLE|TYPE)\b[^;]*\bRENAME\b(?!\s+CONSTRAINT)", re.I)),   # an index or constraint rename is harmless
-    ("non-additive", re.compile(r"\bALTER\s+COLUMN\s+\"?\w+\"?\s+(SET\s+DATA\s+)?TYPE\b", re.I)),
-    ("non-additive", re.compile(r"\bSET\s+NOT\s+NULL\b", re.I)),
+IDENT = r'(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)'
+QNAME = rf"{IDENT}(?:\s*\.\s*{IDENT})?"
+# Whole statements, read from their first word (so a TRUNCATE trigger or a REVOKE ... TRUNCATE is not a TRUNCATE).
+STATEMENT_RULES = [
+    ("destructive", re.compile(r"^DROP\s+(TABLE|VIEW|MATERIALIZED\s+VIEW|SCHEMA|TYPE|DOMAIN|SEQUENCE|EXTENSION|OWNED)\b", re.I)),
+    ("destructive", re.compile(r"^TRUNCATE\b", re.I)),
+    ("destructive", re.compile(r"^DELETE\s+FROM\b", re.I)),
+    ("non-additive", re.compile(r"^ALTER\s+TYPE\b.*\bRENAME\b", re.I | re.S)),
 ]
-ADD_NOT_NULL = re.compile(r"\bADD\s+(COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?\"?\w+\"?[^,;]*?\bNOT\s+NULL\b(?![^,;]*\bDEFAULT\b)", re.I)
-WAIVER = re.compile(r"--\s*destructive-ok:\s*(\S+\s+\S+\s+\S+.*)$", re.I)
+# The clauses of an ALTER TABLE, split at its top-level commas.
+CLAUSE_RULES = [
+    ("destructive", re.compile(r"^DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(?!(?:CONSTRAINT|DEFAULT|NOT|INDEX|IDENTITY|EXPRESSION)\b)" + IDENT, re.I)),
+    ("non-additive", re.compile(r"^RENAME\b(?!\s+CONSTRAINT\b)", re.I)),
+    ("non-additive", re.compile(rf"^ALTER\s+(?:COLUMN\s+)?{IDENT}\s+(?:SET\s+DATA\s+)?TYPE\b", re.I)),
+    ("non-additive", re.compile(r"\bSET\s+NOT\s+NULL\b", re.I)),
+    ("non-additive", re.compile(r"^SET\s+SCHEMA\b", re.I)),
+    ("non-additive", re.compile(r"^DISABLE\s+ROW\s+LEVEL\s+SECURITY\b", re.I)),
+]
+ADD_COLUMN = re.compile(rf"^ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?!(?:CONSTRAINT|PRIMARY|UNIQUE|FOREIGN|CHECK|EXCLUDE)\b){IDENT}\s", re.I)
+ALTER_TABLE = re.compile(rf"^ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?{QNAME}\s*\*?\s*", re.I)
+WAIVER = re.compile(r"destructive-ok:\s*(\S+\s+\S+\s+\S+)", re.I)
 STAMP = re.compile(r"^(\d{14})_")
+HOW = "make it additive (expand, backfill, contract in a later PR), or waive it on the line above: -- destructive-ok: <reason>"
 
 
 def statements(sql):
-    """(first line number, text without comments, waived) for each statement."""
-    out, buf, start, waived, pending = [], [], None, False, False
-    for n, line in enumerate(sql.splitlines(), 1):
-        w = bool(WAIVER.search(line))
-        code = line.split("--", 1)[0]
-        if not code.strip():
-            pending = pending or w
-            continue
-        if start is None:
-            start, waived = n, pending or w
-            pending = False
-        else:
-            waived = waived or w
-        while ";" in code:
-            head, code = code.split(";", 1)
-            buf.append(head)
-            out.append((start, " ".join(buf), waived))
-            buf, start, waived = [], (n if code.strip() else None), False
-        if code.strip():
-            buf.append(code)
-    if buf and "".join(buf).strip():
-        out.append((start, " ".join(buf), waived))
-    return out
+    """(first line, statement with strings, $$ bodies and comments blanked, waived) for each statement. A waiver is a line
+    comment `-- destructive-ok: <3+ words>` before the statement (only blank lines or comments between), or after its `;` on
+    the same line; one inside a statement waives nothing. Strings, quoted names and $$ bodies are read whole, so a `;`,
+    `--` or waiver inside them is text (dynamic SQL in a body is not read: a known limit)."""
+    out, buf, i, n, line = [], [], 0, len(sql), 1
+    start, pending, last_end = None, False, 0
+    def flush():
+        nonlocal buf, start, pending
+        text = " ".join("".join(buf).split())
+        if text:
+            out.append([start, text, pending, line])
+        buf, start, pending = [], None, False
+    while i < n:
+        c = sql[i]
+        if c == "\n":
+            line += 1; buf.append(" "); i += 1; continue
+        if sql.startswith("--", i):
+            j = sql.find("\n", i); j = n if j < 0 else j
+            if WAIVER.search(sql[i:j]):
+                if not "".join(buf).strip():
+                    if out and out[-1][3] == line and last_end == line: out[-1][2] = True
+                    else: pending = True
+            i = j; continue
+        if sql.startswith("/*", i):
+            j = sql.find("*/", i + 2); j = n if j < 0 else j + 2
+            line += sql.count("\n", i, j); buf.append(" "); i = j; continue
+        if not "".join(buf).strip() and not c.isspace() and start is None:
+            start = line
+        if c in "'\"":
+            j = i + 1
+            while j < n and not (sql[j] == c and not sql.startswith(c * 2, j)):
+                j += 2 if sql.startswith(c * 2, j) else 1
+            line += sql.count("\n", i, j)
+            buf.append(sql[i:j + 1] if c == '"' else "''"); i = j + 1; continue
+        m = re.match(r"\$([A-Za-z_]\w*)?\$", sql[i:i + 64])
+        if m:
+            tag = m.group(0); j = sql.find(tag, i + len(tag)); j = n if j < 0 else j + len(tag)
+            line += sql.count("\n", i, j); buf.append("$$ $$"); i = j; continue
+        if c == ";":
+            flush(); last_end = line; i += 1; continue
+        buf.append(c); i += 1
+    flush()
+    return [(s, t, w) for s, t, w, _ in out]
+
+
+def clauses(rest):
+    out, depth, cur = [], 0, ""
+    for ch in rest:
+        depth += ch == "("; depth -= ch == ")"
+        if ch == "," and depth == 0: out.append(cur.strip()); cur = ""
+        else: cur += ch
+    return out + [cur.strip()]
 
 
 def check_sql(name, sql):
@@ -62,28 +106,36 @@ def check_sql(name, sql):
     for line, text, waived in statements(sql):
         if waived:
             continue
-        hits = [kind for kind, rx in RULES if rx.search(text)]
-        if re.search(r"\bALTER\s+TABLE\b", text, re.I) and ADD_NOT_NULL.search(text):
-            hits.append("non-additive")
-        if hits:
-            found.append(f"{hits[0]} statement: {name}:{line}: {' '.join(text.split())[:140]}")
+        hit = next((k for k, rx in STATEMENT_RULES if rx.search(text)), None)
+        m = ALTER_TABLE.match(text)
+        if not hit and m:
+            for cl in clauses(text[m.end():]):
+                hit = next((k for k, rx in CLAUSE_RULES if rx.search(cl)), None)
+                if not hit and ADD_COLUMN.search(cl) and re.search(r"\bNOT\s+NULL\b", cl, re.I) and not re.search(r"\b(DEFAULT|GENERATED)\b", cl, re.I):
+                    hit = "non-additive"
+                if hit:
+                    break
+        if hit:
+            found.append(f"{hit} statement: {name}:{line}: {text[:140]} ({HOW})")
     return found
 
 
 def git(*a, cwd=None):
-    return subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True, check=True).stdout
+    return subprocess.run(["git", "-c", "core.quotepath=off", *a], cwd=cwd, capture_output=True, text=True, check=True).stdout
 
 
 def check_branch(base, cwd=None, mig=MIG):
     out = []
     cwd = cwd or git("rev-parse", "--show-toplevel").strip()   # the diff's path is read from the top, wherever it runs
-    names = git("ls-tree", "--name-only", f"{base}:{mig}", cwd=cwd).split()
+    names = [x for x in git("ls-tree", "-z", "--name-only", f"{base}:{mig}", cwd=cwd).split("\0") if x]
     stamps = [m.group(1) for d in names if (m := STAMP.match(d))]
     newest = max(stamps) if stamps else ""
-    for row in git("diff", "--name-status", "--no-renames", f"{base}...HEAD", "--", mig, cwd=cwd).splitlines():
-        status, path = row.split("\t", 1)
+    parts = git("diff", "--name-status", "--no-renames", "-z", f"{base}...HEAD", "--", mig, cwd=cwd).split("\0")
+    for status, path in zip(parts[0::2], parts[1::2]):   # -z: a name with any character comes through as it is
         rel = path[len(mig) + 1:]
         folder = rel.split("/", 1)[0]
+        if "/" not in rel:
+            continue   # migration_lock.toml and other files beside the folders are not migrations
         if status != "A":
             if folder in names:
                 out.append(f"history rewritten: {path} ({'removed' if status == 'D' else 'changed'}; a database may have run it)")
@@ -121,6 +173,15 @@ def self_test():
         "set not null": 'ALTER TABLE "Case" ALTER COLUMN "firmId" SET NOT NULL;',
         "add not null, no default": 'ALTER TABLE "Case" ADD COLUMN "firmId" TEXT NOT NULL;',
         "drop over two lines": 'ALTER TABLE "Case"\n  DROP COLUMN "x";',
+        "drop with schema, IF EXISTS, CASCADE": 'ALTER TABLE ONLY "public"."Case" DROP COLUMN IF EXISTS "x" CASCADE;',
+        "drop after a nullable add, one statement": 'ALTER TABLE "Case" ADD COLUMN "y" TEXT, DROP COLUMN "old";',
+        "change type without COLUMN": 'ALTER TABLE "Case" ALTER "n" TYPE INTEGER;',
+        "add decimal not null, no default": 'ALTER TABLE "Invoice" ADD COLUMN "total" DECIMAL(10,2) NOT NULL;',
+        "drop hidden behind a quoted --": 'UPDATE "T" SET "x" = \'--\'; DROP TABLE "Case";',
+        "waiver smuggled in a string": 'INSERT INTO "N" VALUES (\'-- destructive-ok: smuggled in a string\'); DROP TABLE "Case";',
+        "block comments inside": 'ALTER TABLE "Case" /* x */ DROP /* y */ COLUMN "note";',
+        "a ; in a default": 'ALTER TABLE "A" ADD COLUMN "s" TEXT DEFAULT \'x;y\', ADD COLUMN "t" TEXT NOT NULL;',
+        "waiver inside an open statement does not carry over": 'ALTER TABLE "Case"\n  ADD COLUMN "y" TEXT,\n  -- destructive-ok: never shipped beyond local copies\n  DROP COLUMN "old";\nDROP TABLE "Answer";',
         "waiver with a short reason": '-- destructive-ok: fine\nDROP TABLE "T";',
     }
     good = {
@@ -129,6 +190,10 @@ def self_test():
         "add not null with default": 'ALTER TABLE "Case" ADD COLUMN "n" INTEGER NOT NULL DEFAULT 0;',
         "index and foreign key": 'CREATE INDEX "i" ON "T"("a");\nALTER TABLE "T" ADD CONSTRAINT "f" FOREIGN KEY ("a") REFERENCES "U"("id");',
         "drop constraint and index (prisma re-creates)": 'ALTER TABLE "T" DROP CONSTRAINT "f";\nDROP INDEX "i";',
+        "truncate guard trigger and revoke": 'CREATE TRIGGER "t_no_truncate" BEFORE TRUNCATE ON "t" FOR EACH STATEMENT EXECUTE FUNCTION f();\nREVOKE DELETE, TRUNCATE ON "t" FROM xr_data;',
+        "check constraint naming NOT NULL": 'ALTER TABLE "x" ADD CONSTRAINT "c" CHECK ("a" IS NOT NULL);',
+        "delete inside a trigger body": 'CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN IF TG_OP = \'DELETE\' THEN DELETE FROM idx WHERE id = OLD.id; END IF; RETURN NULL; END; $$ LANGUAGE plpgsql;',
+        "decimal not null with default": 'ALTER TABLE "I" ADD COLUMN "t" DECIMAL(65,30) NOT NULL DEFAULT 0;',
         "rename an index or a constraint": 'ALTER INDEX "a" RENAME TO "b";\nALTER TABLE "T" RENAME CONSTRAINT "c" TO "d";',
         "drop default": 'ALTER TABLE "T" ALTER COLUMN "a" DROP DEFAULT;',
         "a DROP only in a comment": '-- DROP TABLE "T" was considered\nCREATE TABLE "U" ("id" TEXT);',
