@@ -1,0 +1,160 @@
+<title>Account Switch Runbook</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one reading column. Findings first, then the numbered switch sequence, then the review and the prompt. */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --fg:#16202a; --muted:#566273; --line:#dce1e8;
+  --accent:#2457b3; --you:#b0500c; --bad:#b3261e; --good:#1d7a46; --warn:#8f6400;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151c; --panel:#18202a; --fg:#e5eaf0; --muted:#98a4b3; --line:#2a3542;
+  --accent:#7ea6ef; --you:#f0a35e; --bad:#f08a80; --good:#5cc48a; --warn:#e2b84f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151c; --panel:#18202a; --fg:#e5eaf0; --muted:#98a4b3; --line:#2a3542;
+  --accent:#7ea6ef; --you:#f0a35e; --bad:#f08a80; --good:#5cc48a; --warn:#e2b84f; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+main{max-width:48rem;margin:0 auto;display:flex;flex-direction:column;gap:30px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.9rem} h2{font-size:1.25rem} h3{font-size:1rem}
+p{margin:0} .lede{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:12px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.box.key{border-left:4px solid var(--bad)}
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:34rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+ol.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:s}
+ol.steps li{counter-increment:s;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px 12px 52px;position:relative}
+ol.steps li::before{content:counter(s);position:absolute;left:14px;top:12px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:.85rem;color:var(--panel);background:var(--accent)}
+ol.steps li.you::before{background:var(--you)}
+.who{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.who.you{color:var(--you)} .who.lead{color:var(--accent)}
+.done{font-size:.85rem;color:var(--muted)}
+ul{margin:4px 0 0;padding-left:1.1rem} li{margin:2px 0}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.bad{color:var(--bad)} .good{color:var(--good)} .warn{color:var(--warn)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;overflow-x:auto;font-family:var(--mono);font-size:.8rem;line-height:1.5;white-space:pre-wrap;margin:0}
+code{font-family:var(--mono);font-size:.85em}
+a{color:var(--accent)}
+.foot{color:var(--muted);font-size:.85rem}
+button{font:inherit;font-size:.85rem;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer;align-self:flex-start}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+<main>
+<header style="display:flex;flex-direction:column;gap:8px">
+  <h1>Account Switch Runbook</h1>
+  <p class="lede">Lead 7, 27 Nov 2026, 05:5x IST. Why the last account burned fast, what work was lost, the switch done one step at a time, and what today should deliver. Every number is from GitHub, <code>STATE.md</code> history or the usage meter. Where something is a hypothesis, it says so.</p>
+</header>
+
+<section>
+  <h2>Why the last account burned so fast</h2>
+  <p>Meter readings on the account we switched to on 26 Nov (from <code>STATE.md</code> history and get_usage):</p>
+  <div class="tbl"><table>
+    <tr><th>When (IST)</th><th>Weekly</th><th>Rate</th><th>What was running</th></tr>
+    <tr><td class="n">26 Nov 01:45</td><td class="n">switch</td><td></td><td>The old Lead stopped. No new Lead started.</td></tr>
+    <tr><td class="n">26 Nov 11:10</td><td class="n">39%</td><td class="n bad">39% in 9.5 h</td><td>"Nothing merged 01:58–11:10 (no Lead, no lanes)": the first reading on the new account.</td></tr>
+    <tr><td class="n">26 Nov 12:45</td><td class="n">52%</td><td class="n bad">8.7% / h</td><td>20 cloud sessions started (2 over the cap of 18). Many were tooling and pipeline work, not product.</td></tr>
+    <tr><td class="n">26 Nov 13:33</td><td class="n">58%</td><td class="n bad">7.5% / h</td><td>The same 20 sessions reading their start files and PR history.</td></tr>
+    <tr><td class="n">26 Nov 15:0x</td><td class="n">62%</td><td class="n">2.7% / h</td><td>Steady work.</td></tr>
+    <tr><td class="n">26 Nov 23:0x</td><td class="n">~75%</td><td class="n">1.6% / h</td><td>Steady work. 7 Leads over the day (a hand-over about every 3 h).</td></tr>
+    <tr><td class="n">27 Nov 00:45 → 05:08</td><td class="n">84% → 94%</td><td class="n warn">2.3% / h</td><td>About 4 active cloud builders, a qa session, and this Lead's checks every 15–30 min.</td></tr>
+  </table></div>
+  <div class="box key">
+    <h3>Four causes, largest first</h3>
+    <ul>
+      <li><b>39% gone before any work started (unexplained by our records).</b> There are two possible causes. (a) The account was not fresh: its week runs from 21 Nov 20:29 to 28 Nov 20:29, so any use earlier that week counts. (b) <i>Hypothesis:</i> a session on this Mac kept running on the new sign-in. A Mac session's timers and event watch keep waking it, and every wake re-sends its whole conversation. Nothing measured the meter at the moment of the switch, so we cannot tell which.</li>
+      <li><b>The restart wave: 13% in 90 minutes.</b> 20 sessions started at once, against the standing rule of at most 12 ranked by nearness to Works (A404). Each new session's first read (instructions, STATE, rules, PR history) is its most expensive moment. The 22 Nov lesson was the same: about 20 sessions in an hour burned 12%.</li>
+      <li><b>Lead churn.</b> 7 Leads in 24 hours. Each new Lead's start read is about 100–120k tokens, and each check re-sends the Lead's growing conversation.</li>
+      <li><b>Noise wakes.</b> Tonight the watch woke the Lead 6 times on false "dequeued" alarms (Mergify editing its own status comment). This is fixed as of 05:5x.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>What work was lost in the 26 Nov switch</h2>
+  <div class="tbl"><table>
+    <tr><th>Loss</th><th>Evidence</th></tr>
+    <tr><td><b>9.5 hours with nothing moving</b> (01:58–11:10 IST): no Lead and no builders, because the switch happened at night and the new Lead started in the morning.</td><td><code>STATE.md</code> 26 Nov 11:2x line</td></tr>
+    <tr><td><b>About 790 lines rebuilt from scratch:</b> R1.95 custom fields part 2. The earlier session had never pushed it.</td><td>#3639 comment, 26 Nov 07:47Z</td></tr>
+    <tr><td>Other PRs whose comments mention unpushed or rebuilt work (to verify one by one): #3649, #3491, #3658, #3659.</td><td>GitHub search, "never pushed" and "from scratch"</td></tr>
+    <tr><td><b>Nothing lost on GitHub.</b> Merged work, branches and records all carried over.</td><td>P-82: the repository is the memory</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>The switch, one step at a time</h2>
+  <p class="lede">The new Lead walks you through these in order and waits for your "done" at each orange step.</p>
+  <ol class="steps">
+    <li><span class="who lead">Old Lead (me), when you say "switching now"</span><br>Push <code>STATE.md</code> and <code>RESUME-ON-NEW-ACCOUNT.md</code>, run private-sync, delete both of my timers, stop my event watch, and rename myself "(ended)". Then I tell you "ready". <span class="done">Done when: no timer and no watch is left in this session.</span></li>
+    <li class="you"><span class="who you">You · 3 min</span><br>Switch the Claude desktop app to the new account, then switch claude.ai in Chrome to the same account. <span class="done">Don't open or message any old session after this. Each one would run on the new account.</span></li>
+    <li class="you"><span class="who you">You · 1 min</span><br>In the desktop app: Code tab, this folder, new session. Paste the prompt below. <span class="done">Done when: the new Lead replies with the usage reading.</span></li>
+    <li><span class="who lead">New Lead · 2 min</span><br><b>Reads the meter before anything else and tells you the number.</b> Above 5%, it stops and asks you whether this account was used this week. <span class="done">This reading is the baseline the whole day is measured from.</span></li>
+    <li><span class="who lead">New Lead · 5 min</span><br>Names itself in <code>STATE.md</code> (<code>current_lead</code>), starts its 30-minute check and its event watch, and archives every old-account session (Leads 1–7 and the standbys) so none can wake on this account. <span class="done">Done when: the sidebar shows only the new Lead.</span></li>
+    <li class="you"><span class="who you">You · 2 min</span><br>Sign in to claude.ai in the Claude app's browser pane, so the Lead can see and type in builder sessions.</li>
+    <li class="you"><span class="who you">You · 2 min</span><br>Approve #3869, the R1.85 proof. The app refused to let the Lead approve it overnight. The Lead opens the page; you press Approve, or you tell it "yes" in chat.</li>
+    <li><span class="who lead">New Lead · 15 min</span><br>One test builder that must push to GitHub. Then <b>wave 1: 4 sessions</b>, qa first (R1.96, R1.35, R1.111 proofs) and the R1.76 last part (#3829). It reads the meter again after the wave.</li>
+    <li><span class="who lead">New Lead · 30 min</span><br><b>Wave 2: 4 more</b> (R1.3 #3831 and #3878, R1.57 #3633 then #3692, R1.95 #3639), 15 minutes after wave 1, only if the meter rose less than 4% in that wave. <b>Wave 3</b> brings the total to 12 at most, in the same way. No tooling or pipeline sessions today unless one blocks the queue.</li>
+    <li class="you"><span class="who you">You + Lead · 40 min, about 08:00</span><br>Factory v3 step 0 (the GitHub fork-approval setting), Claude Team sign-up with spend caps, and the Lead's own GitHub account. You pay and authorize; the Lead does the rest.</li>
+    <li><span class="who lead">New Lead</span><br>One standby Lead (not two) at your next typed message. A second waits until context passes 150k, because each standby's start read costs.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Checked from every direction: mistakes, stale items, better ways</h2>
+  <div class="tbl"><table>
+    <tr><th>Risk or stale item</th><th>Fix in this runbook</th></tr>
+    <tr><td><span class="pill bad">mistake</span> No meter reading at the moment of the switch, so the 39% cannot be explained.</td><td>Step 4: the first action, with a stop at over 5%.</td></tr>
+    <tr><td><span class="pill bad">mistake</span> 20 sessions at once against a cap of 12 (A404).</td><td>Steps 8–9: waves of 4, meter read between waves, 12 at most.</td></tr>
+    <tr><td><span class="pill bad">mistake</span> Old sessions, timers and watches left alive across the switch (hypothesis for part of the 39%).</td><td>Steps 1 and 5: the old Lead stops its timers and watch; the new Lead archives old sessions.</td></tr>
+    <tr><td><span class="pill bad">mistake</span> A switch at night with no Lead until morning: 9.5 idle hours.</td><td>Switch when you are awake (today 07:00–07:30), and the new Lead starts the same minute.</td></tr>
+    <tr><td><span class="pill warn">mistake</span> Builders lost unpushed work.</td><td>Every builder brief keeps "push after every step"; the old Lead asked the active ones on their PRs tonight.</td></tr>
+    <tr><td><span class="pill warn">stale</span> <code>RESUME-ON-NEW-ACCOUNT.md</code> still carries the 24–25 and 25–26 Nov blocks above older text, which a new Lead may act on.</td><td>The prompt says: read only the 27 Nov block and the standing strategy; older blocks are history.</td></tr>
+    <tr><td><span class="pill warn">stale</span> lead-watch flags 17 "unanswered questions", but 12 already have answers.</td><td>The new Lead verifies each against the newest Lead comment before acting. A script fix is a later pipeline row, not today.</td></tr>
+    <tr><td><span class="pill warn">stale</span> Two standbys always (P-286) doubles the start-read cost.</td><td>One standby; a second only when context passes 150k (my recommendation; your call).</td></tr>
+    <tr><td><span class="pill good">better</span> Proof first in the last 35% of a week (A404) was not followed: about half of the morning sessions were tooling.</td><td>Waves are ranked by nearness to Works; tooling only when it blocks the queue.</td></tr>
+    <tr><td><span class="pill good">better</span> The Lead's checks re-send its whole conversation every 30 minutes.</td><td>Keep checks short (one script, three lines) and hand over on time. Factory v3's Claude agents take over review and fix work, which cuts Lead checks.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Delivery: where we are and what today should bring</h2>
+  <div class="tbl"><table>
+    <tr><th>Measure</th><th>Now (05:5x IST)</th><th>Today's expectation</th></tr>
+    <tr><td>Capabilities proven (Works)</td><td class="n">66 of 110</td><td class="n">72–74 by 07:00 28 Nov</td></tr>
+    <tr><td>Proven and waiting on one click</td><td>R1.85 (#3869)</td><td>67 once you approve it in step 7</td></tr>
+    <tr><td>Next to prove</td><td>R1.76: part 4 merged 04:1x; the last part (#3829) is in its final review round</td><td>Merge this morning, proof automatic</td></tr>
+    <tr><td>Merged overnight</td><td>#3870 (R1.3 part 2a), #3879 (records), #3822 (R1.76 part 4)</td><td></td></tr>
+    <tr><td>Waiting on qa only</td><td>R1.96, R1.35, R1.111</td><td>Wave 1 qa sessions</td></tr>
+    <tr><td>Release 1</td><td>44 rows left</td><td>On track for 28 Feb 2027; at 6–7 a day, the last row lands around 6–12 Dec</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>The prompt to paste in step 3</h2>
+  <button type="button" id="copy">Copy prompt</button>
+  <pre id="prompt">/lead You are Lead 1 on the new account (switch of 27 Nov morning). Lead 7 (local_a579023a) has stopped; that is my answer to the two-Leads check. Mac session in the main copy, branch lead/2026-11-07-lead31.
+STEP 1, before anything else: run get_usage and tell me the weekly %. If it is above 5%, stop and ask me whether this account was used this week.
+STEP 2: set current_lead in STATE to yourself and push; create your check (cron 3,33 * * * *, prompt exactly: run lead-watch; read STATE Start here); re-arm the watch (Monitor: bash /tmp/claude-501/lane-watch.sh, allowed_domains api.github.com, github.com); archive every old-account session (Leads 1-7 and standbys) after checking each has nothing unpushed.
+Read only: product/RESUME-ON-NEW-ACCOUNT.md (the 27 Nov morning block and the standing strategy; older blocks are history), STATE "Start here", RULES, and the runbook https://claude.ai/artifact/UTetUeiDVMuSQd4HiB6rbH (file design/account-switch-runbook-2026-11-27.html) and the morning plan https://claude.ai/artifact/G7rHHAZQhi2ZRHaJDCoXQa. Verify every claim against GitHub before acting.
+Then walk me through the runbook one step at a time and wait for my "done" at each of my steps: claude.ai sign-in in the browser pane; my Approve on #3869 (R1.85 proof); one canary cloud lane that pushes; waves of 4 lanes ranked by nearness to Works (qa first), get_usage after each wave, 12 at most, no tooling lanes unless one blocks the queue; at about 08:00 Factory v3 step 0, Claude Team sign-up with caps and your GitHub machine user (I pay and authorize, you do the rest); one standby Lead.
+MY APPROVALS, typed by me here, for this work only (lines I removed are not approved):
+- Start up to 12 cloud lanes in waves of 4 and 1 standby Lead on the Mac (disk check permitting), Opus 5.5 medium.
+- Archive old-account sessions after checking for unpushed work.
+- Add the "Checks changed:" line to #3872's description.</pre>
+</section>
+
+<p class="foot">Sources: <code>STATE.md</code> history on lead/2026-11-07-lead31 (meter lines 26 Nov 11:10 to 15:0x; 20 lanes at 12:4x), get_usage at 00:30, 00:45, 05:08 and 05:28 IST, GitHub PR comments (#3639) and search, memory note of 22 Nov (12% in about 60 min).</p>
+</main>
+<script>
+document.getElementById("copy").addEventListener("click",function(){
+  var t=document.getElementById("prompt").innerText,b=this;
+  try{navigator.clipboard.writeText(t).then(function(){b.textContent="Copied"},function(){sel()});}catch(e){sel()}
+  function sel(){var r=document.createRange();r.selectNodeContents(document.getElementById("prompt"));var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent="Selected: press copy"}
+});
+</script>
