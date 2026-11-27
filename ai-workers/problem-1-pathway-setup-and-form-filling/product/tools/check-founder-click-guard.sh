@@ -116,7 +116,7 @@ ok "lead-watch counts STATE's click asks to the founder" "$(grep -q 'clicks: 2 '
 ok "... and flags each one" "$([ "$(grep -c '^ACT' <<<"$out")" = 2 ] && grep -q 'close #2088' <<<"$out" && grep -q '#2372' <<<"$out" && echo 1)" "$out"
 ok "... a sign-in ask and a row not addressed to the founder are not flagged" "$(! grep -qE 'sign in|#2026' <<<"$out" && echo 1)" "$out"
 ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
-grep -q 'founder-click-guard.sh" --state "$TOOLS/../STATE.md"' "$TOOLS/lead-watch.sh" && grep -q "grep -c '^ACT' <<<\"\$fc\"" "$TOOLS/lead-watch.sh"
+grep -q 'founder-click-guard.sh" --state "$RECS/STATE.md"' "$TOOLS/lead-watch.sh" && grep -q "grep -c '^ACT' <<<\"\$fc\"" "$TOOLS/lead-watch.sh"
 ok "lead-watch.sh runs the STATE count and counts its ACT lines" "$([ $? = 0 ] && echo 1)"
 grep -q '^\[ "\$LANE" = lead \] && { fc=$(printf .%s. "\$input" | bash "\$PH/tools/founder-click-guard.sh"' "$TOOLS/stop-check.sh"
 ok "stop-check.sh runs the guard in the Lead's copy" "$([ $? = 0 ] && echo 1)"

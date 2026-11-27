@@ -1,3 +1,25 @@
 # Paths a repository clean-up stage moved or removed (product/design/repo-cleanup-plan-2026-11-17.md). No live file may
 # name one (check-stale-paths.sh). Each stage adds its lines in the same pull request; docs/PATHS-MOVED.md says where
 # each one went. A path is matched as plain text, so name it exactly as code would write it.
+ai-workers/illustrations
+ai-workers/checks/
+ai-workers/requirements/
+ai-workers/research/
+ai-workers/commercial/
+ai-workers/problem-2-ai-across-case-and-business
+ai-workers/NEXT.md
+ai-workers/PROGRESS.md
+ai-workers/START-HERE.md
+ai-workers/README.md
+ai-workers/assumptions.md
+ai-workers/terminology-register.md
+ai-workers/tools/s2/
+ai-workers/tools/s3/
+ai-workers/tools/session-start.sh
+ai-workers/tools/stop-check.sh
+ai-workers/tools/snapshot.sh
+delivery-reset-2026-10-21
+playbook/
+requirements-planning/
+fresh-start-prompt.md
+devin-review/
