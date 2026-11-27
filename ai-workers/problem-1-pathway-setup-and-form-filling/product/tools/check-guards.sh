@@ -649,7 +649,8 @@ MUT="$MUT"'
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
 29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
 LR156 age|product/tools/lead-age.sh|s/^    \[ "\$age_h" -gt "\$H" \] \&\& want=/    false \&\& want=/|check-lead-age.sh
-LR156 ci|product/tools/lead-age.sh|s/^    if \[ "\$gap_h" -gt "\$H" \]; then$/    if false; then/|check-lead-age.sh'
+LR156 ci|product/tools/lead-age.sh|s/^    if \[ "\$gap_h" -gt "\$H" \]; then$/    if false; then/|check-lead-age.sh
+LR156 keep|product/tools/lead-age.sh|s/^      if \[ "\$extra" != 0 \]; then$/      if false; then/|check-lead-age.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
 MUT="$MUT"'
 OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh

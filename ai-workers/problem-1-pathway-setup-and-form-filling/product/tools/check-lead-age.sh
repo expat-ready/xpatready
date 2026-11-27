@@ -38,13 +38,24 @@ ok "(1) a stale copy with a commit not pushed: LOUD warning naming 1 commit, not
 ss old
 ok "(1) a stale, clean, pushed copy is recut by session-start onto lead/<today IST> from origin/main, one line" "$(grep -q '^Lead copy recut (LR-156, P-388): lead/2026-11-24 → lead/2026-11-27' <<< "$out" && [ "$(git -C "$T/old" branch --show-current)" = lead/2026-11-27 ] && [ "$(git -C "$T/old" rev-parse HEAD)" = "$(git -C "$T/old" rev-parse origin/main)" ] && echo 1)" "$out"
 ok "(1) ... with its upstream set to origin/lead/<today>, and whoami now says lead" "$([ "$(git -C "$T/old" config branch.lead/2026-11-27.merge)" = refs/heads/lead/2026-11-27 ] && [ "$(wh old)" = lead ] && echo 1)" "$(git -C "$T/old" config --get-regexp 'branch.lead')"
-ss fresh; ok "(1) a fresh copy is left alone; the context shows its age line" "$(! grep -q 'recut' <<< "$out" && grep -q '^lead copy: lead/2026-11-27 · base 1 h old · 0 behind origin/main' <<< "$out" && echo 1)" "$out"
+ss fresh; ok "(1) a fresh copy is left alone; the context shows its age line" "$(! grep -q 'recut' <<< "$out" && grep -q '^lead copy: lead/2026-11-27 · base 0 h old · 0 behind origin/main' <<< "$out" && echo 1)" "$out"
+copy yday 2026-11-26; git -C "$T/yday" pull -q --ff-only origin main 2>/dev/null
 (cd "$T/fresh" && echo z > records.txt && git add records.txt && git commit -qm "records" && git push -q 2>/dev/null)
-git -C "$T/seed" fetch -q origin; git -C "$T/seed" merge -q --no-edit origin/lead/2026-11-27; c "main after the records" $((NOW - 300)); git -C "$T/seed" push -q origin main
-ss fresh; ok "(1) records all on main and main moved on: recut even under 24 h" "$(grep -q 'its records are all on main' <<< "$out" && echo 1)" "$out"
+(cd "$T/yday" && echo w > yrecords.txt && git add yrecords.txt && git commit -qm "y records" && git push -q 2>/dev/null)
+git -C "$T/seed" fetch -q origin; git -C "$T/seed" merge -q --no-edit origin/lead/2026-11-27; git -C "$T/seed" merge -q --no-edit origin/lead/2026-11-26
+c "main after the records" $((NOW - 300)); git -C "$T/seed" push -q origin main
+ss yday; ok "(1) an earlier day's branch whose records are all on main, main moved on: recut even under 24 h" "$(grep -q 'its records are all on main' <<< "$out" && [ "$(git -C "$T/yday" branch --show-current)" = lead/2026-11-27 ] && echo 1)" "$out"
+ss fresh; ok "(1) today's branch with its records on main is not recut on that alone (a standby may share the copy)" "$(! grep -q 'recut' <<< "$out" && [ "$(git -C "$T/fresh" branch --show-current)" = lead/2026-11-27 ] && echo 1)" "$out"
+# Review of #3926 (Major): an existing local lead/<today> holding a commit not on main is never reset.
+copy keep 2026-11-25; (cd "$T/keep" && git branch -q lead/2026-11-27 origin/main && git switch -q lead/2026-11-27 && echo k > keep.txt && git add keep.txt && git commit -qm "unpushed record on today's branch" && git switch -q lead/2026-11-25)
+c "later main" $((NOW - 100)); git -C "$T/seed" push -q origin main
+ss keep; ok "(1) an existing local lead/<today> with a commit not on main: NOT recut, named, its commit kept" "$(grep -q 'already exists here with 1 commit' <<< "$out" && git -C "$T/keep" log -1 --format=%s lead/2026-11-27 | grep -q 'unpushed record' && [ "$(git -C "$T/keep" branch --show-current)" = lead/2026-11-25 ] && echo 1)" "$out"
+out=$(cd "$T/keep" && LEAD_FETCH_FAILED=1 bash "$PRODREL/tools/lead-age.sh" recut); ok "(1) after a failed fetch: no recut, said" "$(grep -q 'GitHub could not be reached' <<< "$out" && echo 1)" "$out"
+out=$(cd "$T/old" && NOW=$((NOW + 100 * 3600)) bash "$PRODREL/tools/lead-age.sh" line); r=$?
+ok "(2) a quiet main (no merge for 100 h) never makes a copy cut from its tip stale" "$([ $r = 0 ] && ! grep -q STALE <<< "$out" && echo 1)" "exit $r: $out"
 # (3) the watch line
 out=$(cd "$T/unpushed" && bash "$PRODREL/tools/lead-age.sh" watch once)
-ok "(3) the zero-token watch prints STALE-COPY for a stale Lead copy" "$(grep -qE '^STALE-COPY [0-9]+ behind origin/main, base 60 h old' <<< "$out" && echo 1)" "$out"
+ok "(3) the zero-token watch prints STALE-COPY for a stale Lead copy" "$(grep -qE '^STALE-COPY [0-9]+ behind origin/main, base [0-9]+ h old' <<< "$out" && echo 1)" "$out"
 out=$(cd "$T/old" && bash "$PRODREL/tools/lead-age.sh" watch once); ok "(3) ... and nothing for a fresh one" "$([ -z "$out" ] && echo 1)" "$out"
 # (4) CI on records PRs
 b=$(git -C "$T/seed" rev-parse main); h=$(git -C "$T/unpushed" rev-parse HEAD); git -C "$T/seed" fetch -q "$T/unpushed" "$h" 2>/dev/null

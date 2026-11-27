@@ -95,7 +95,9 @@ jobs:
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         run: bash "$T/agent-model-guard.sh"
       # LR-156 (founder A433/A434; P-388): a records PR, or any PR from a lead/* branch, is cut from main under 24 h before
-      # main's tip, so the Lead never writes records on a stale branch. Runs on records-only PRs too (that is its point).
+      # main's tip, so the Lead never writes records on a stale branch. Runs on records-only PRs too (that is its point):
+      # there it is a red pr-rules for the Lead to see, since the records queue waits only on ci (.mergify.yml); on a
+      # lead/* PR in the product queue it blocks the merge.
       # Reads GitHub's compare answer (base_commit, merge_base_commit); the shas reach it only through env. Test:
       # product/tools/check-lead-age.sh.
       - name: a records or lead/* branch is under 24 h old against main (LR-156)

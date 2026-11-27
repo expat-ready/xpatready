@@ -23,7 +23,7 @@ fi
 # exact commands (lead-age.sh recut, never losing work). Then the copy's age line.
 age=""
 case "$LANE" in lead|lead-stale)
-  age=$(bash "$PH/tools/lead-age.sh" recut 2>/dev/null)
+  age=$(case "$behind" in "NOTE: GitHub could not be reached"*) LEAD_FETCH_FAILED=1;; *) LEAD_FETCH_FAILED=;; esac; LEAD_FETCH_FAILED=$LEAD_FETCH_FAILED bash "$PH/tools/lead-age.sh" recut 2>/dev/null)
   LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null)
   age=$(printf '%s\n%s' "$age" "$(bash "$PH/tools/lead-age.sh" line 2>/dev/null)" | sed '/^$/d');;
 esac
