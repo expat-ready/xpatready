@@ -110,7 +110,7 @@ def scenario(kind, mode):
         "number": 1, "labels": [], "user": {"login": "mergify[bot]" if queue else "a-builder"}}
     suites = queue  # kind.outputs.suites: a batch (a merge_group event is not read as a batch by kind: the guard reads the event)
     code = kind == "code"
-    out = {"kind": kind, "queue": "true" if queue else "false", "suites": "true" if suites else "false", "mode": "",
+    out = {"kind": kind, "route": "docs" if kind == "notes" else "full", "queue": "true" if queue else "false", "suites": "true" if suites else "false", "mode": "",
            "shards": "[1,2]" if code and suites else "[]", "dpacks": '[{"caps":"C1.1"}]' if code and suites else "",
            "mbase": "abc", "battempt": "1", "verdict": "", "base": "abc"}
     return {"github": {"event_name": "merge_group" if mode == "merge_group" else "pull_request", "run_attempt": "1",
