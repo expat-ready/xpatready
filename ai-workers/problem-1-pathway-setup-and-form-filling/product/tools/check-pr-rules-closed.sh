@@ -26,7 +26,7 @@ case "$*" in
 esac
 EOF
 chmod +x "$T/bin/gh"
-rd() { : > "$T/env"; o=$(PATH="$T/bin:$PATH" PRJ="$T/pr.json" DOWN="${1:-}" N="${2:-77}" GITHUB_REPOSITORY=o/r GITHUB_ENV="$T/env" bash "$TOOLS/pr-rules-read.sh" 2>&1); r=$?; }
+rd() { : > "$T/env"; o=$(PATH="$T/bin:$PATH" PRJ="$T/pr.json" DOWN="${1:-}" N="${2-77}" GITHUB_REPOSITORY=o/r GITHUB_ENV="$T/env" bash "$TOOLS/pr-rules-read.sh" 2>&1); r=$?; }
 # envget NAME: the value GitHub's runner would set from $GITHUB_ENV (NAME<<DELIM ... DELIM)
 envget() { awk -v n="$1" 'd == "" && match($0, /^[A-Za-z_]+<</) {k = substr($0, 1, RLENGTH - 2); d = substr($0, RLENGTH + 1); v = ""; f = 1; next}
   d != "" && $0 == d {if (k == n) {print v; exit}; d = ""; next} d != "" {v = (f ? "" : v "\n") $0; f = 0}' "$T/env"; }
@@ -35,7 +35,13 @@ rd; ok "(1) the body and title are read now and handed on through GITHUB_ENV" "$
 rd down; ok "(1) planted: GitHub does not answer: exit 1, an error, nothing set" "$([ $r = 1 ] && grep -q '::error' <<<"$o" && [ ! -s "$T/env" ] && echo 1)" "exit $r: $o"
 echo 'not json' > "$T/pr.json"; rd; ok "(1) planted: an answer that is not JSON fails" "$([ $r = 1 ] && [ ! -s "$T/env" ] && echo 1)" "exit $r: $o"
 jq -n '{number: 78, title: "t", body: "b"}' > "$T/pr.json"; rd; ok "(1) planted: an answer for another PR fails" "$([ $r = 1 ] && grep -q 'not PR #77' <<<"$o" && echo 1)" "exit $r: $o"
-rd "" ""; ok "(1) planted: no PR number fails" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
+jq -n '{number: 77, title: "t", body: "b"}' > "$T/pr.json"; rd "" ""; ok "(1) planted: no PR number fails (the answer itself is good)" "$([ $r = 1 ] && grep -q 'no PR number' <<<"$o" && echo 1)" "exit $r: $o"
+o=$(PATH="$T/bin:$PATH" PRJ="$T/pr.json" N=77 GITHUB_REPOSITORY=o/r GITHUB_ENV="$T/no/such/dir/env" bash "$TOOLS/pr-rules-read.sh" 2>&1); r=$?
+ok "(1) planted: GITHUB_ENV cannot be written: fails" "$([ $r = 1 ] && grep -q 'cannot be written' <<<"$o" && echo 1)" "exit $r: $o"
+mkdir -p "$T/fx"; printf '#!/bin/sh\nprintf "%%s" "0123456789abcdef0123456789abcdef"\n' > "$T/fx/od"; chmod +x "$T/fx/od"
+jq -n '{number: 77, title: "t", body: "a\nPRRULES_0123456789abcdef0123456789abcdef\nNODE_OPTIONS=x"}' > "$T/pr.json"
+: > "$T/env"; o=$(PATH="$T/fx:$T/bin:$PATH" PRJ="$T/pr.json" N=77 GITHUB_REPOSITORY=o/r GITHUB_ENV="$T/env" bash "$TOOLS/pr-rules-read.sh" 2>&1); r=$?
+ok "(1) planted: a body holding the delimiter fails, nothing set" "$([ $r = 1 ] && grep -q 'holds the delimiter' <<<"$o" && [ ! -s "$T/env" ] && echo 1)" "exit $r: $o"
 jq -n '{number: 77, title: "t", body: null}' > "$T/pr.json"; rd
 ok "(1) a PR with no body is an empty body, and the body rule then fails it" "$([ $r = 0 ] && [ -z "$(envget BODY)" ] && ! printf '' | bash "$TOOLS/brief-check.sh" >/dev/null && echo 1)" "exit $r: $o"
 n=$(grep -c 'run: bash .*pr-rules-read.sh"*$' "$W"); ok "(1) both rule jobs (pr-rules, completes-ready) read the body first" "$([ "$n" = 2 ] && echo 1)" "$n"
@@ -85,6 +91,10 @@ ex "$D/prisma/migrations/2026_x/migration.sql" 'explainer-check.py was run
 What changed: a
 Why: b
 What could break: c'; ok "(5) a line naming explainer-check.py is not an Explainer line" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
+ex "$D/src/fees/fee-rules.ts" $'**Explainer** — three lines\n1. What changed: a\n2. **Why:** b\n3. What could break: c'; ok "(5) numbered or bold labels and a heading with a suffix pass" "$([ $r = 0 ] && echo 1)" "exit $r: $o"
+ex "$D/src/fees/fee-rules.ts" $'```\n'"$X"$'\n```'; ok "(5) an explainer inside a code fence does not count" "$([ $r = 1 ] && echo 1)" "exit $r: $o"
+s=$(date +%s); ex "$D/src/fees/fee-rules.ts" "$(printf '```\n%.0s' $(seq 1 30000); echo "$X")"; e=$(( $(date +%s) - s ))
+ok "(5) 30,000 fence lines are read in under 5 s (linear)" "$([ $e -lt 5 ] && echo 1)" "${e}s exit $r"
 ex ".github/workflows/ci.yml" "$X"$'\nmore\nand more\nand more'; ok "(5) more than 5 lines: a warning, exit 0" "$([ $r = 0 ] && grep -q '::warning' <<<"$o" && echo 1)" "exit $r: $o"
 o=$(echo "$X" | python3 -I "$TOOLS/explainer-check.py" --files "$T/nope" 2>&1); r=$?
 ok "(5) planted: a file list that cannot be read: exit 2, never ok" "$([ $r = 2 ] && ! grep -q '^ok' <<<"$o" && echo 1)" "exit $r: $o"

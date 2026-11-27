@@ -21,8 +21,8 @@ OWN = [
     ("schema", re.compile(r"/prisma/schema\.prisma$")),
     ("pipeline", re.compile(r"^/(\.github/|\.githooks/|\.mergify\.yml$|\.claude/(settings\.json$|hooks/)|" + re.escape(P) + r"product/tools/)")),
 ]
-MARK = re.compile(r"^[\s>*_#-]*explainer[*_]*\s*(:.*|\(.*)?$", re.I)
-LABEL = re.compile(r"^[\s>*_-]*(what changed|why|what could break)[*_]*\s*:[*_]*\s*(.*)$", re.I)
+MARK = re.compile(r"^[\s>*_#-]*explainer[*_]*(\s*[:(].*|\s+[\u2014\u2013-]\s.*|\s*)$", re.I)
+LABEL = re.compile(r"^[\s>*_-]*(?:\d+[.)]\s*)?[*_]*(what changed|why|what could break)[*_]*\s*:[*_]*\s*(.*)$", re.I)
 STOP = re.compile(r"^\s*(#|\*\*|duplicate check:|done when)", re.I)
 NEED = ("what changed", "why", "what could break")
 
@@ -41,13 +41,16 @@ def kinds_of(paths):
 def section(body):
     """The explainer's lines: after the "Explainer" line, up to a heading, another bold field, Duplicate check or Done when."""
     body = re.sub(r"<!--.*?(-->|$)", "", body.replace("\r", ""), flags=re.S)
-    body = re.sub(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$", "", body)
-    lines, out, on = body.split("\n"), None, False
-    for l in lines:
+    lines, out, on, fence = body.split("\n"), None, False, ""
+    for l in lines:   # one pass, linear: a fenced block is an example, not an explainer
+        f = re.match(r"\s*(```|~~~)", l)
+        if fence or f:
+            fence = "" if (fence and f and f.group(1) == fence) else (fence or f.group(1))
+            continue
         if not on:
             if MARK.match(l):
                 on, out = True, []
-                rest = re.sub(r"(?i)^[\s>*_#-]*explainer[*_]*\s*:?", "", l).strip(" *_")
+                rest = re.sub(r"(?i)^[\s>*_#-]*explainer[*_]*\s*[:\u2014\u2013-]?", "", l).strip(" *_")
                 if LABEL.match(rest):
                     out.append(rest)
             continue
