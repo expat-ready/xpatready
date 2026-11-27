@@ -6,7 +6,7 @@
 #   tests  the tests that cover it, by the folder's naming: product/tools/X.sh is covered by check-X.sh, test-X.sh and
 #          test_X.py beside it (when they exist); a changed check-*, test-* or test_* file runs itself; a changed script
 #          that handles --self-test runs it; .mergify.yml runs product/screens/B119/check-queue-rules.py.
-# The guard tests by path (guards.yml, lead-tools-tests.yml) still run beside it as before; the nightly runs everything
+# The guard tests by path (guards.yml, lead-tools-tests.yml) still run beside it as before (check-guards.sh only there); the nightly runs everything
 # on main. Exit 0: every lint and test passed (or none applied). Exit 1: one failed (each failure is named).
 # Usage: tooling-checks.sh <base>..<head> | --files (paths on stdin) | --self-test
 set -uo pipefail
@@ -39,6 +39,10 @@ plan() {   # stdin: changed paths → "<lint|test|selftest> <file>" lines, each 
     case "$f" in "$TOOLS"/*) ;; *) continue;; esac
     d=$(dirname "$f"); b=$(basename "$f"); s="${b%.*}"
     case "$b" in
+      # check-guards.sh is the whole guard suite (80+ tests and the mutation rows): guards.yml runs it, in parts, on a
+      # runner with zsh. Running it here again duplicated that run and failed on tests no change touched (#3918, #3920,
+      # #3923, 27 Nov: check-capacity-watch.sh's unreadable-repository case on the fast runner).
+      check-guards.sh) continue;;
       check-*.sh|test-*.sh|test_*.py) echo "test $f"; continue;;
     esac
     for c in "$d/check-$s.sh" "$d/test-$s.sh" "$d/test_${s//-/_}.py"; do [ -f "$c" ] && echo "test $c"; done
@@ -75,6 +79,8 @@ self_test() {
   ok "a tool with --self-test: runs it" "$(grep -qx "selftest $TOOLS/records-only.sh" <<< "$got" && echo 1)" "$got"
   got=$(printf '%s\n' "$TOOLS/check-merge-guard.sh" | plan)
   ok "a changed test runs itself, never as a --self-test" "$(grep -qx "test $TOOLS/check-merge-guard.sh" <<< "$got" && ! grep -q '^selftest' <<< "$got" && echo 1)" "$got"
+  got=$(printf '%s\n' "$TOOLS/check-guards.sh" | plan)
+  ok "check-guards.sh (the whole guard suite) is guards.yml's, never re-run here: lint only" "$([ "$got" = "lint $TOOLS/check-guards.sh" ] && echo 1)" "$got"
   got=$(printf '%s\n' .mergify.yml | plan)
   ok ".mergify.yml: YAML loads and check-queue-rules.py" "$(grep -qx "lint .mergify.yml" <<< "$got" && grep -qx "test $P/product/screens/B119/check-queue-rules.py" <<< "$got" && echo 1)" "$got"
   got=$(printf '%s\n' "$P/product/STATE.md" "$TOOLS/no-such-file.sh" | plan)
