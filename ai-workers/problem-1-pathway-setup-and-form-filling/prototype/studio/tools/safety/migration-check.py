@@ -14,8 +14,8 @@ A statement is judged by its first word, an ALTER TABLE clause by clause. Report
 A statement may carry a reviewed waiver: `-- destructive-ok: <reason of 3+ words>` on a line before it, or after its `;` on
 the same line. It covers that whole statement (split an ALTER TABLE to waive one clause); one inside a statement waives
 nothing. A DO block runs during the migration, so its statements are read like any other (a function or trigger body runs
-later and is not). Known limits: dynamic SQL (EXECUTE '...'), DROP FUNCTION / TRIGGER / POLICY, UPDATE ... SET x = NULL and
-a DELETE inside WITH are not read. Report-only in safety.yml at first (LR-045: warning before it refuses).
+later and is not). Known limits: dynamic SQL (EXECUTE '...'), DROP FUNCTION / TRIGGER / POLICY, and UPDATE ... SET x = NULL
+are not read. Report-only in safety.yml at first (LR-045: warning before it refuses).
   python3 studio/tools/safety/migration-check.py [--base origin/main]   exit 1 when anything is reported
   python3 studio/tools/safety/migration-check.py --files a.sql b.sql    the statement rules only, on given files
   python3 studio/tools/safety/migration-check.py --self-test            planted good and bad migrations
@@ -23,13 +23,14 @@ a DELETE inside WITH are not read. Report-only in safety.yml at first (LR-045: w
 import os, re, subprocess, sys, tempfile
 
 MIG = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations"
-IDENT = r'(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)'
-QNAME = rf"{IDENT}(?:\s*\.\s*{IDENT})?"
+IDENT = r'(?:(?:U&)?"(?:[^"]|"")*"|[^\W\d][\w$]*)'
+QNAME = rf"{IDENT}(?:\s*\.\s*{IDENT}){{0,2}}"
 # Whole statements, read from their first word (so a TRUNCATE trigger or a REVOKE ... TRUNCATE is not a TRUNCATE).
 STATEMENT_RULES = [
     ("destructive", re.compile(r"^DROP\s+(TABLE|VIEW|MATERIALIZED\s+VIEW|SCHEMA|TYPE|DOMAIN|SEQUENCE|EXTENSION|OWNED)\b", re.I)),
     ("destructive", re.compile(r"^TRUNCATE\b", re.I)),
     ("destructive", re.compile(r"^DELETE\s+FROM\b", re.I)),
+    ("destructive", re.compile(r"^WITH\b.*\bDELETE\s+FROM\b", re.I | re.S)),
     ("non-additive", re.compile(r"^ALTER\s+TYPE\b.*\bRENAME\b", re.I | re.S)),
 ]
 # The clauses of an ALTER TABLE, split at its top-level commas.
@@ -44,7 +45,7 @@ CLAUSE_RULES = [
 ADD_COLUMN = re.compile(rf"^ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?!(?:CONSTRAINT|PRIMARY|UNIQUE|FOREIGN|CHECK|EXCLUDE)\b){IDENT}\s", re.I)
 ALTER_TABLE = re.compile(rf"^ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?{QNAME}\s*\*?\s*", re.I)
 PLPGSQL = re.compile(r"^(?:DECLARE\b.*?\bBEGIN|BEGIN|ELSE|LOOP|EXCEPTION|(?:IF|ELSIF|WHEN)\b.*?\bTHEN|END\s+(?:IF|LOOP))\s+", re.I | re.S)
-WAIVER = re.compile(r"destructive-ok:\s*(\S+\s+\S+\s+\S+)", re.I)
+WAIVER = re.compile(r"^--\s*destructive-ok:\s*(\S+\s+\S+\s+\S+)", re.I)
 STAMP = re.compile(r"^(\d{14})_")
 HOW = "make it additive (expand, backfill, contract in a later PR), or waive it on the line above: -- destructive-ok: <reason>"
 
@@ -73,8 +74,12 @@ def statements(sql):
                     if out and out[-1][3] == line and last_end == line: out[-1][2] = True
                     else: pending = True
             i = j; continue
-        if sql.startswith("/*", i):
-            j = sql.find("*/", i + 2); j = n if j < 0 else j + 2
+        if sql.startswith("/*", i):   # block comments nest in PostgreSQL
+            j, depth = i + 2, 1
+            while j < n and depth:
+                if sql.startswith("/*", j): depth += 1; j += 2
+                elif sql.startswith("*/", j): depth -= 1; j += 2
+                else: j += 1
             line += sql.count("\n", i, j); buf.append(" "); i = j; continue
         if not "".join(buf).strip() and not c.isspace() and start is None:
             start = line
@@ -201,6 +206,12 @@ def self_test():
         "set not null inside a DO block, after IF ... THEN": 'DO $p$\nDECLARE bad text;\nBEGIN\n  IF true THEN ALTER TABLE "c" ALTER COLUMN "f" SET NOT NULL; END IF;\nEND $p$;',
         "drop after an E-string with an escaped quote": "INSERT INTO n VALUES (E'it\\'s'); DROP TABLE \"Case\";",
         "add not null referencing a table named default": 'ALTER TABLE "A" ADD COLUMN "d" TEXT NOT NULL REFERENCES "default"("id");',
+        "a delete inside WITH": 'WITH gone AS (DELETE FROM "Answer" RETURNING id) SELECT count(*) FROM gone;',
+        "drop after a nested block comment": '/* a /* b */ c */ DROP TABLE "Case";',
+        "drop on a three-part name": 'ALTER TABLE xr.public."Case" DROP COLUMN "note";',
+        "drop on a non-ASCII table name": 'ALTER TABLE été DROP COLUMN x;',
+        "add not null on a column named Default Rate": 'ALTER TABLE "A" ADD COLUMN "Default Rate" INTEGER NOT NULL;',
+        "the word waiver not at the comment's start": '-- reviewer: not destructive-ok: must check this first\nDROP TABLE "T";',
         "waiver with a short reason": '-- destructive-ok: fine\nDROP TABLE "T";',
     }
     good = {
