@@ -31,6 +31,11 @@ const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwr
 
 const [NAME, PORT] = [process.argv[2] ?? "j33", Number(process.argv[3] ?? 4433)];
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
+const autoMergeDone = async (personId: string) => {   // FO-9b part 2b: the merge job for this new person has finished (at most 20 s)
+  for (let i = 0; i < 100; i++) { if (sql(`select count(*) from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->'payload'->>'personId' = '${personId}' and state = 'completed'`) === "1") return true; await new Promise((r) => setTimeout(r, 200)); }
+  return false;
+};
+const jobStates = (personId: string) => sql(`select coalesce(string_agg(state::text || ':' || coalesce(output::text, ''), ' '), 'none') from platform_jobs.job where name = 'fo.duplicates.auto_merge' and data->'payload'->>'personId' = '${personId}'`).slice(0, 300);
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-33", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const HEADED = process.env.HEADED === "1";
 const { ok, summary } = recorder();
@@ -130,7 +135,7 @@ try {
   const after = await listRow();
   await shot(owner, "W3-leads-list-no-flag-1440");
   ok("J-33 W3: the Leads list no longer flags the lead", !after.includes("Fix number"), after);
-  ok("J-33 W3: one phone audit line, with ids only (no number)", sql(`select count(*) || '|' || bool_and(detail::text !~ '4165550100|555') from audit_event where entity = 'fo_person' and entity_key = '${personId}' and action = 'front_office.person.phone_changed'`) === "1|true");
+  ok("J-33 W3: one phone audit line; the number is only its after value, in full (R1.8, P-687)", sql(`select count(*) || '|' || bool_and((select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text !~ '4165550100|555' and summary !~ '4165550100|555') || '|' || max(detail->>'phone_after') from audit_event where entity = 'fo_person' and entity_key = '${personId}' and action = 'front_office.person.phone_changed'`) === "1|true|+14165550100");
 
   // ------------------------------------------------------------- W4: firm B's person → 404
   const bLead = await api(tok.S, "POST", "/front-office/leads", { requestId: randomUUID(), givenNames: `Bea${run}`, familyName: "Sample", phone: "12", source: "Phone call (Sample)", confirmedNew: true });
@@ -173,6 +178,11 @@ try {
   ok("J-33 W5: the web form's \"+44 (0)20 7946 0958\" and the booking's \"0044 20 7946 0958\" are both stored +442079460958 (never +4402…)", pair === "+442079460958,+442079460958", pair);
   const [bookLead, webPerson] = [sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'wynn.book.${run}@j33.example'`), sql(`select id from fo_person where email = 'wynn.web.${run}@j33.example'`)];
   ok("J-33 W5: underneath, the booking's lead is flagged a possible match of the web-form person", !!bookLead && sql(`select coalesce(possible_match_person_id::text, '-') from fo_lead where id = '${bookLead}'`) === webPerson);
+  // FO-9b part 2b (break B1 on #3527): one number with two different emails is never merged by itself (a shared phone).
+  const bookPerson = sql(`select person_id from fo_lead where id = '${bookLead}'`), jobDone = await autoMergeDone(bookPerson);
+  ok("J-33 W5: two emails on one number are never merged by itself: the job finished, both records live, the pair To review",
+    jobDone && sql(`select count(*) from fo_person where id in ('${webPerson}', '${bookPerson}') and merged_into_id is null`) === "2"
+      && sql(`select status from fo_dup_review where low_id = least('${webPerson}'::uuid, '${bookPerson}'::uuid) and high_id = greatest('${webPerson}'::uuid, '${bookPerson}'::uuid)`) === "OPEN", { jobDone, jobs: jobStates(bookPerson) });
   await owner.goto(`${BASE}/front-office/leads/${bookLead}`);
   await owner.getByRole("heading", { level: 1, name: new RegExp(wynn) }).waitFor({ timeout: 20_000 });
   const matchLine = (await owner.locator("main").innerText());

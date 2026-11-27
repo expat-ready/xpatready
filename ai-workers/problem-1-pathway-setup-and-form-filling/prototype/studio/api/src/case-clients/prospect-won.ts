@@ -85,7 +85,8 @@ async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, deliver
       const { displayName, displayKind, foPersonId, foCompanyId, contact } = await subjectOf(tx, deps, firmId, p);
       await tx.caseClient.update({ where: { id: held.id }, data: { displayName, displayKind, foPersonId, foCompanyId, contact } });
       await deps.audit.record(tx, { firmId, actor: PROSPECT_WON_ACTOR, action: "client.subject_changed", entity: "fo_prospect", entityKey: p.prospect_id,
-        summary: `The prospect was won again as ${kind === "PERSON" ? "a person" : "a company"}; client ${code(held.clientNumber)} follows it.`, detail: { clientId: held.id, prospectId: p.prospect_id, kind } });
+        summary: `The prospect was won again as ${kind === "PERSON" ? "a person" : "a company"}; client ${code(held.clientNumber)} follows it.`, detail: { clientId: held.id, prospectId: p.prospect_id, kind },
+        before: { displayName: held.displayName, displayKind: held.displayKind, foPersonId: held.foPersonId, foCompanyId: held.foCompanyId }, after: { displayName, displayKind, foPersonId, foCompanyId } });
     }
     return { prospectId: p.prospect_id, clientId: held.id, clientNumber: code(held.clientNumber), made: false };
   }
@@ -95,7 +96,8 @@ async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, deliver
   const clientNumber = code(client.clientNumber);
   // The line sits on the prospect (the audit port takes area entities only until AUD-1 moves the case side onto it).
   await deps.audit.record(tx, { firmId, actor: PROSPECT_WON_ACTOR, action: EVENT.CLIENT_CREATED, entity: "fo_prospect", entityKey: p.prospect_id,
-    summary: `The won prospect became client ${clientNumber}; "Open a case?" is offered.`, detail: { clientId: client.id, clientNumber, prospectId: p.prospect_id, kind: client.displayKind, wonVia: p.won_via } });
+    summary: `The won prospect became client ${clientNumber}; "Open a case?" is offered.`, detail: { clientId: client.id, clientNumber, prospectId: p.prospect_id, kind: client.displayKind, wonVia: p.won_via },
+    before: null, after: { clientNumber, displayName: client.displayName, displayKind: client.displayKind, foPersonId: client.foPersonId, foCompanyId: client.foCompanyId, fileOwner: client.fileOwner } });
   await tx.moduleEvent.create({ data: { firmId, type: EVENT.CLIENT_CREATED, subjectId: client.id, payload: ClientCreatedPayload.parse({ firm_id: firmId, prospect_id: p.prospect_id, client_id: client.id, client_number: clientNumber }) } });
   return { prospectId: p.prospect_id, clientId: client.id, clientNumber, made: true };
 }
@@ -113,7 +115,10 @@ export type WonCatchUp = { results: WonResult[]; failed: { prospectId: string; f
 
 /** Catch-up over the outbox: every prospect with a `prospect.won` and no client (or a client with no case that no longer matches who was won), whose Convert still stands and whose
  *  firm is still served, so a missed or failed delivery is made good by the next run. One prospect that fails is named and the others still run. */
-export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps): Promise<WonCatchUp> {
+export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps,
+  /** CS-K1 part 2: how each prospect runs (the app's poller: as its own firm, withFirm); a suite or the tool runs it as is.
+   *  It may answer null: the prospect is not tried this run (the poller's backoff after a failure, PF-12b). */
+  each: <T>(firmId: string, fn: () => Promise<T>, prospectId: string) => Promise<T | null> = (_f, fn) => fn()): Promise<WonCatchUp> {
   const rows = await db.$queryRaw<{ firm_id: string; prospect_id: string; payload: unknown }[]>`
     select distinct on (e.firm_id, e.subject_id) e.firm_id::text as firm_id, e.subject_id as prospect_id, e.payload
       from module_event e join platform_firm f on f.id = e.firm_id
@@ -126,14 +131,20 @@ export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDep
      order by e.firm_id, e.subject_id, e.seq desc`;
   const out: WonCatchUp = { results: [], failed: [] };
   for (const r of rows) {
-    try { const made = await onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps); if (made) out.results.push(made); }
+    try { const made = await each(r.firm_id, () => onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps), r.prospect_id); if (made) out.results.push(made); }   // made null: not tried this run (PF-12b backoff)
     catch (e) { out.failed.push({ prospectId: r.prospect_id, firmId: r.firm_id, error: String(e).slice(0, 300) }); }
   }
   return out;
 }
 
 // ------------------------------------------------------------------------------------------------ "Open a case?"
-export type Offer = { clientId: string; prospectId: string; displayName: string; state: "OPEN" | "USED" | "WITHDRAWN" | "CHANGED"; combinationId: string | null; representativeActorId: string | null };
+export type Offer = { clientId: string; prospectId: string; displayName: string; state: "OPEN" | "USED" | "WITHDRAWN" | "CHANGED"; combinationId: string | null; representativeActorId: string | null;
+  /** CS-K1s: how the prospect was won (the newest prospect.won's won_via; null while withdrawn). */
+  wonVia: ProspectWonPayload["won_via"] | null };
+
+/** The principal applicant's name the offer pre-fills: the client's name within the opening's limits (2 to 120 UTF-16
+ *  units); null when it falls outside them (the opening then asks for one). One rule for the read and the opening. */
+export const principalNameOf = (displayName: string) => { const name = cut(displayName, 120, true); return name.length >= 2 ? name : null; };
 
 /** The offer of a client made from a won prospect (null: the client came from no prospect). Read where it is used, so
  *  it is always the prospect's newest state: USED once the client has a case, WITHDRAWN while the Convert stands undone,
@@ -155,14 +166,14 @@ export async function offerOf(q: Reader, client: { id: string; firmId: string | 
   // The combination the lead was interested in, only while it can open a case (released, not retired: contracts §2.6).
   const wanted = won?.success ? won.data.interested_in?.combinationId ?? null : null;
   const combinationId = wanted && (await q.configRelease.findFirst({ where: { combinationId: wanted, combination: { retiredAt: null } }, select: { id: true } })) ? wanted : null;
-  return { clientId: client.id, prospectId: client.prospectId, displayName: client.displayName, state: used ? "USED" : !won?.success ? "WITHDRAWN" : kindOf(won.data) !== client.displayKind ? "CHANGED" : "OPEN", combinationId, representativeActorId };
+  return { clientId: client.id, prospectId: client.prospectId, displayName: client.displayName, state: used ? "USED" : !won?.success ? "WITHDRAWN" : kindOf(won.data) !== client.displayKind ? "CHANGED" : "OPEN", combinationId, representativeActorId, wonVia: won?.success ? won.data.won_via : null };
 }
 
 export const OFFER_REFUSED = {
   NO_OFFER: "This client did not come from a won prospect, so there is no \"Open a case?\" offer for it. Open a case for the client instead.",
   USED: "A case was already opened from this offer. Open another case for the client instead.",
   WITHDRAWN: "The Convert to client was undone, so there is no case to open from it. Convert the prospect again first.",
-  CHANGED: "This prospect was won again as another type and its client has not been updated yet (it is when the won prospects are next taken in). Nothing was opened.",
+  CHANGED: "This prospect was won again as another type and its client has not been updated yet. It updates by itself within a few seconds; try again then. Nothing was opened.",
 } as const;
 
 /** What the opening needs from the API (runtime.ts gives its own): the session's client lookup, the case opening with
@@ -193,16 +204,17 @@ export async function openCaseFromOffer<A>(door: OpenDoor<A>, ctx: { staffId: st
   const actor = door.actorOf(staff?.actorId ?? null) ?? door.problem(409, "Not possible now", "Your sign-in is not linked to a case user yet, so a case cannot be opened from here.", { code: "NO_CASE_USER" });
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
   const { clientId: _c, idempotencyKey: _k, ...given } = b;
-  const name = cut(client.displayName, 120, true);   // the opening's own limits (2 to 120): a name outside them is asked for
+  const name = principalNameOf(client.displayName);   // the opening's own limits (2 to 120): a name outside them is asked for
   const request = { ...given, clientId: client.id, combinationId: given.combinationId ?? offer.combinationId ?? undefined,
-    principal: given.principal ?? (name.length >= 2 ? { displayName: name } : undefined), representative: given.representative ?? offer.representativeActorId ?? undefined };
+    principal: given.principal ?? (name ? { displayName: name } : undefined), representative: given.representative ?? offer.representativeActorId ?? undefined };
   return door.createCase(actor, request, async (tx, opened) => {
     const now = (await find(tx)) ?? notFound();
     // The client followed its prospect while this call waited: what was pre-filled is no longer the client's.
     refuse(now.displayKind !== client.displayKind || now.displayName !== client.displayName ? { ...offer, state: "CHANGED" } : await offerOf(tx, now, opened.id));
     const clientType = await door.clientTypeOf(tx, opened.combinationId);
     await door.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: EVENT.CASE_OPENED, entity: "fo_prospect", entityKey: offer.prospectId, caseId: opened.id,
-      summary: `The won prospect's "Open a case?" offer was taken (the case is in the detail).`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
+      summary: `A case was opened from the "Open a case?" offer.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId },
+      before: null, after: { caseId: opened.id, caseNumber: opened.caseNumber, clientId: client.id, combinationId: opened.combinationId ?? null } });
     await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.CASE_OPENED, subjectId: opened.id,
       payload: CaseOpenedPayload.parse({ firm_id: ctx.firmId, prospect_id: offer.prospectId, client_id: client.id, case_id: opened.id, case_number: opened.caseNumber, client_type: clientType }) } });
   });

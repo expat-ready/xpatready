@@ -9,7 +9,10 @@ queue_conditions the way Mergify does (the first queue, in file order, whose con
 label, "attr=x" holds when any item equals x and "-attr=x" when none does) on fixed PRs, and checks the rules every
 queue keeps (base main, the review label, green ci, refusing drafts, records last). P-664 (founder 17 Nov, "Yes,
 verdicts first (Recommended)"): a queue "verdicts", listed first, takes only qa verdict records (label "records", title
-starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. Each fixed PR lists its files;
+starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. P-827 (founder 25 Nov,
+"Yes, pipeline first", one-time): the queue "pipeline" is listed second, ahead of "product", without
+allow_checks_interruption, until P-822, P-823 and the Lead-tool fixes are on main (undo: move pipeline back after
+product when P-827 ends, here and in .mergify.yml). Each fixed PR lists its files;
 its label comes from records-only.sh is-records and must agree with the case's expected label (so the definition and
 the cases cannot drift apart), and the label name the queues use must be the one records-only.sh prints. A missing
 records-only.sh fails the check. Then it breaks the configuration on purpose and expects each
@@ -28,7 +31,7 @@ except ImportError:
 P = "ai-workers/problem-1-pathway-setup-and-form-filling"
 R = f"{P}/product"
 COND = re.compile(r"^(-)?([a-z][a-z-]*)\s*(?:(~=|=)\s*(.*))?$")
-LISTS = {"files", "label", "check-success"}
+LISTS = {"files", "label", "check-success", "check-failure"}
 LABEL = "records"   # read from records-only.sh label in main()
 ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip() or "."
 IS_RECORDS = os.path.join(ROOT, R, "tools", "records-only.sh")
@@ -82,15 +85,16 @@ def _is_records(files):
     return r.stdout.strip() == "yes"
 
 
-def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci",),
-         draft=False, base="main", head="claude/keen-maxwell-x1"):
+# E6 (P-772): pr-rules runs on every PR, so a case has it green unless it says otherwise.
+def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci", "pr-rules"),
+         draft=False, base="main", head="claude/keen-maxwell-x1", failed=()):
     return {"what": what, "record": record, "want": want,
-            "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks),
+            "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks), "check-failure": list(failed),
                    "draft": draft, "base": base, "head": head}}
 
 
 A = f"{P}/prototype/studio"
-F = ("ci", "queue-fresh")  # B194: app code also needs the status queue-fresh (queue-gate.sh)
+F = ("ci", "queue-fresh", "pr-rules")  # B194: app code also needs the status queue-fresh (queue-gate.sh); E6 (P-772): and pr-rules
 CASES = [  # what, files, a record by #1139's definition?, the queue it must join
     case("the daily records PR: STATE, DECISIONS, BACKLOG, RULES", [f"{R}/STATE.md", f"{R}/DECISIONS.md", f"{R}/BACKLOG.md", f"{R}/RULES.md"], True, "records", "lead: records 6 Nov"),
     case("qa notes with screenshots, a run's text and a built note", [f"{R}/qa/BUGS.md", f"{R}/qa/walks/x/shot.png", f"{R}/qa/runs/out.txt", f"{R}/qa/built/C1.3.md"], True, "records", "qa: after-merge"),
@@ -110,6 +114,8 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("records plus one app file, M3 title: product (no title routing)", [f"{R}/qa/built/C7.3.md", f"{A}/web/src/App.tsx"], False, "product", "forms: C7.3 — x", checks=F),
     case("an M3 title on code: product", [f"{A}/web/src/App.tsx"], False, "product", "M3 runtime: C7.5 — x", checks=F),
     case("app code alone: product", [f"{A}/api/src/demo.ts"], False, "product", "runtime: C4.11 — x", checks=F),
+    case("app code with pr-rules not green: no queue (E6, P-772)", [f"{A}/api/src/demo.ts"], False, None, "runtime: C4.11 — x",
+         checks=("ci", "queue-fresh")),
     case("a qa script (.cjs) is not a record", [f"{R}/qa/walks/x/walk.cjs"], False, "product"),
     case("a tool under product/tools/, even a .md: pipeline (P-717 (a))", [f"{R}/tools/README.md"], False, "pipeline"),
     case("this row's checker (.py under screens/)", [f"{R}/screens/B119/check-queue-rules.py"], False, "product"),
@@ -133,13 +139,14 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("code without the review label: no queue", [f"{A}/api/src/core.ts"], False, None, labels=()),
     # B170a (#1545): a change to the XFA engine also needs the xfa-engine workflow's check green (Lead 18, 11 Nov).
     case("an XFA engine change with xfa-engine green: product", ["packages/xfa-engine/src/x.ts"], False, "product",
-         checks=("ci", "xfa-engine")),
+         checks=("ci", "xfa-engine", "pr-rules")),
     case("an XFA engine change without the xfa-engine check: no queue", ["packages/xfa-engine/src/x.ts"], False, None),
     case("the xfa-engine workflow itself without its check: no queue", [".github/workflows/xfa-engine.yml"], False, None),
     # The label alone routes: a hand-added "records" on code joins records (lowest priority; its batch still runs ci,
     # and change-kind.sh calls it code, so every suite runs), never a product batch.
     case("a hand-added records label on code: records, behind every product PR", [f"{A}/api/src/core.ts"], None, "records",
          labels=("review: approved", "records")),
+    case("ENF-782a: app code whose completes-ready failed (a part of its Completes: item missing) waits", [f"{A}/api/src/x.ts"], False, None, checks=F, failed=("completes-ready",)),
 ]
 
 
@@ -158,9 +165,10 @@ def problems(cfg, have_script):
     out = []
     qs = cfg.get("queue_rules", [])
     names = [q.get("name") for q in qs]
-    if names != ["verdicts", "product", "pipeline", "records"]:
-        out.append(f"queue order is {names}: want verdicts, product, pipeline, records (the first listed has the highest "
-                   "priority; qa verdicts first (P-664), pipeline after product (P-717 (a)), records last)")
+    # P-827 (one-time): pipeline ahead of product. Undo: move pipeline back after product when P-827 ends.
+    if names != ["verdicts", "pipeline", "product", "records"]:
+        out.append(f"queue order is {names}: want verdicts, pipeline, product, records (the first listed has the highest "
+                   "priority; qa verdicts first (P-664), pipeline ahead of product while P-827 holds, records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
         for need in ("base = main", "label = review: approved", "check-success = ci"):
@@ -178,8 +186,20 @@ def problems(cfg, have_script):
                     out.append(f"queue verdicts: queue_conditions lack {need!r} (only qa verdict records go first)")
             if q.get("allow_checks_interruption"):
                 out.append("queue verdicts: allow_checks_interruption set (a verdict must not restart a running batch)")
+        if q.get("name") == "pipeline" and q.get("allow_checks_interruption"):   # P-827: ahead of product, never restarting it
+            out.append("queue pipeline: allow_checks_interruption set (a pipeline PR must not restart a running product batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
+    # P-717 (a), whatever the order (P-827 lists pipeline first, so routing alone no longer shows it): product keeps its
+    # own pipeline-path exclusion, the same pattern pipeline selects with, so no PR falls between the two queues.
+    paths = {q.get("name"): [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)
+                             and c.replace(" ", "").lstrip("-").startswith("files~=^(?!")] for q in qs}
+    prod = [c[len("files~="):] for c in paths.get("product", []) if c.startswith("files~=")]
+    pipe = [c[len("-files~="):] for c in paths.get("pipeline", []) if c.startswith("-files~=")]
+    if not prod:
+        out.append("queue product: queue_conditions lack the pipeline-path exclusion 'files ~= ^(?!(...))' (P-717 (a))")
+    elif pipe and prod != pipe:
+        out.append("queue product and pipeline: their pipeline-path patterns differ, so a PR can fall between them")
     for c in CASES:
         try:
             pr, note = labelled(c, have_script)
@@ -215,10 +235,17 @@ def mutations(cfg):
         for q in c["queue_rules"]:
             q["queue_conditions"] = [x for x in q["queue_conditions"] if not (isinstance(x, dict) and "xfa-engine" in str(x))]
         return c
-    def interrupt(c):
+    def interrupt(c, name="verdicts"):
         c = copy.deepcopy(c)
         for q in c["queue_rules"]:
-            if q["name"] == "verdicts": q["allow_checks_interruption"] = True
+            if q["name"] == name: q["allow_checks_interruption"] = True
+        return c
+    def other_paths(c):   # product's pipeline exclusion drifts from pipeline's pattern
+        c = copy.deepcopy(c)
+        for q in c["queue_rules"]:
+            if q["name"] == "product":
+                q["queue_conditions"] = [x.replace("AGENTS", "AGENTZ") if isinstance(x, str) and x.replace(" ", "").startswith("files~=^(?!") else x
+                                         for x in q["queue_conditions"]]
         return c
     def swap01(c):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
@@ -249,8 +276,10 @@ def mutations(cfg):
         ("product takes pipeline-only PRs (P-717 (a))", drop("product", lambda x: x.startswith("files~="))),
         ("pipeline takes PRs with app code (P-717 (a))", drop("pipeline", lambda x: x.startswith("-files~=^(?!"))),
         ("pipeline skips green ci", drop("pipeline", lambda x: x.startswith("check-success"))),
-        ("pipeline listed before product (P-717 (a))", swap12(cfg)),
-        ("verdicts listed after product (P-664)", swap01(cfg)),
+        ("pipeline listed after product (P-827)", swap12(cfg)),
+        ("product's pipeline-path pattern differs from pipeline's (P-717 (a))", other_paths(cfg)),
+        ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
+        ("verdicts listed after pipeline (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
     ]
 
@@ -275,7 +304,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, product, records; verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
+        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

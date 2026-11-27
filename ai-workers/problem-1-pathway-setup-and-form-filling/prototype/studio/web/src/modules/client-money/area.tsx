@@ -1,0 +1,35 @@
+// FO-7s1 part 1 (concept screens/fo-7s-money/concept-invoices.md (a)): the Money area's menu, shared by its pages. A later row adds
+// its own line here (FO-7s3a Payments, FO-7s3b Trust and To move, FO-7m part 3 Monthly check, FO-7s5 Exports, FO-7s1 part 3
+// Getting paid), each shown only with its key and trust state; an item without its key is absent, never disabled.
+import type * as React from "react";
+import { NavLink } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import type { Area } from "@/modules/platform/frame";
+import { INVOICES_HOME, LIST_KEY } from "./invoices/contract";
+import { PAYMENTS_HOME, PAYMENTS_KEY } from "./payments/contract";
+import { TRUST_HOME, TRUST_KEY } from "./trust/contract";
+import { useShortfall } from "./trust/state";
+
+const item = ({ isActive }: { isActive: boolean }) => cn("flex min-h-9 items-center rounded-lg px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-text/5");
+const ITEMS: { label: string; to: string; key: string; trust?: true }[] = [{ label: "Invoices", to: INVOICES_HOME, key: LIST_KEY }, { label: "Payments", to: PAYMENTS_HOME, key: PAYMENTS_KEY },   // FO-7s3a part 1: Payments
+  { label: "Trust", to: TRUST_HOME, key: TRUST_KEY, trust: true }];   // FO-7s3b part 1: only while trust shows (BR-1)
+
+/** FO-7s3b part 1: an item that exists only while trust shows; the shortfall read answers 404 otherwise (AG-6-59 r4-6). */
+function TrustOnly({ children }: { children: React.ReactNode }) { return useShortfall().isSuccess ? <>{children}</> : null; }
+const shownFor = (keys: readonly string[]) => ITEMS.filter((i) => keys.includes(i.key));
+const linksOf = (keys: readonly string[]) => shownFor(keys).map((i) => {
+  const link = <NavLink key={i.to} to={i.to} className={item} data-money-menu={i.label}>{i.label}</NavLink>;
+  return i.trust ? <TrustOnly key={i.to}>{link}</TrustOnly> : link;
+});
+
+export const MONEY_AREA: Area = {
+  label: "Money", home: INVOICES_HOME,
+  menu: (me) => shownFor(me.keys).length
+    ? <nav aria-label="Money" className="hidden w-52 shrink-0 border-r border-border bg-surface-raised p-3 md:block"><p className="px-3 pb-2 text-xs font-medium text-text-muted">Money</p>{linksOf(me.keys)}</nav>
+    : null,
+};
+
+/** Below 768 px the side column is hidden: the same entries as a row at the top of the page (as My account's small menu). */
+export function MoneyMenuSmall({ keys }: { keys: readonly string[] }) {
+  return shownFor(keys).length ? <nav aria-label="Money sections" className="-mt-2 mb-2 flex flex-wrap gap-1 md:hidden">{linksOf(keys)}</nav> : null;
+}

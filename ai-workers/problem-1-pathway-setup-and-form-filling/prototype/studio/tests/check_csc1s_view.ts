@@ -84,13 +84,15 @@ try {
     update program_def set parent_node_key = 'csc1s-pw' where id in ('${pr}', '${pr1}');
     insert into combination (id, workspace_id, program_def_id, combination_key, label, participants, created_by) values ('${cmb}', '${W}', '${pr}', 'csc1s', 'Sample', '[]', 'seed'), ('${cmb1}', '${W}', '${pr1}', 'csc1s-one', 'Sample earlier stage', '[]', 'seed')`);
   let n = 0;
+  // Each filing its own created_at (clock_timestamp, not the transaction's now()): the read orders by created_at, and
+  // equal times left the order to the plan (CS-W2 part filings' new indexes changed it; the code is unchanged).
   /** A case: stage 1 (earlier, ended) with `early` filings and stage 2 (CURRENT) with `filings`; each filing's person is
    *  an answer subject named "Sample Person <n>"; the first `submitted` of the current stage's filings are recorded. */
   const newCase = (o: { filings?: number; submitted?: number; early?: number; earlySubmitted?: boolean } = {}) => {
     const id = randomUUID(), s1 = randomUUID(), s2 = randomUUID(), g1 = randomUUID(), g2 = randomUUID();
     const cur = Array.from({ length: o.filings ?? 1 }, () => [randomUUID(), randomUUID()]), early = Array.from({ length: o.early ?? 0 }, () => [randomUUID(), randomUUID()]);
     const fil = (f: string[], g: string, s: string) => `insert into answer_subject (id, workspace_id, party_id, subject_kind, label) values ('${f[1]}', '${W}', '${randomUUID()}', 'PERSON', 'Sample Person ${++n}');
-      insert into filing (id, workspace_id, case_id, submission_group_id, subject_id, combination_key, mode, stage_id) values ('${f[0]}', '${W}', '${id}', '${g}', '${f[1]}', 'csc1s', 'files_own', '${s}');`;
+      insert into filing (id, workspace_id, case_id, submission_group_id, subject_id, combination_key, mode, stage_id, created_at) values ('${f[0]}', '${W}', '${id}', '${g}', '${f[1]}', 'csc1s', 'files_own', '${s}', clock_timestamp());`;
     sql(`set session_replication_role = replica;
       insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key) values ('${id}', '${W}', '${cmb}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', 'sample-firm');
       insert into case_stage (id, workspace_id, case_id, firm_key, ord, stage_key, staff_name, client_name, combination_id, state, application_subject_id, started_from) values
@@ -181,9 +183,12 @@ try {
   const other = await Promise.all([read(a.id, TB), read(randomUUID()), read("not-a-uuid")]);
   ok("CS-C1s DS1 fail (BR-7): another firm's staff, an unknown id and a malformed id: 404 with the same words, nothing of the case",
     other.every((x) => x.status === 404 && x.body.code === "NOT_FOUND" && x.body.detail === "No such case in your firm.") && !JSON.stringify(other[0].body).includes(a.filings[0]), other.map((x) => [x.status, x.body.detail]));
-  sql(`set session_replication_role = replica; update runtime_case set firm_key = 'sample-solo-missing' where id = '${c.id}'`);   // a fixture (CS-K1's client key would refuse it)
+  // A fixture (CS-K1's client key would refuse it; since CS-W1 part 2 the firm guard too, which fires ALWAYS, so it is
+  // disabled for this one statement: the state the read is tested on can no longer be made by the app). Since CS-W1 part
+  // 2b the read goes by the case's platform firm id, so the fixture leaves the key and moves the id to another firm.
+  sql(`begin; set local session_replication_role = replica; alter table runtime_case disable trigger case_firm_fixed; update runtime_case set firm_id = (select id from platform_firm where key = 'sample-solo') where id = '${c.id}'; alter table runtime_case enable always trigger case_firm_fixed; commit;`);
   r = await read(c.id);
-  ok("CS-C1s DS1 fail (BR-7): a case whose firm key names no platform firm is 404 too", r.status === 404, r.status);
+  ok("CS-C1s DS1 fail (BR-7): a case whose platform firm is another firm (its key unchanged) is 404 too", r.status === 404, r.status);
 
   // ------------------------------------------------------------------------------------------------------------- DS2
   r = await read(a.id, TO);

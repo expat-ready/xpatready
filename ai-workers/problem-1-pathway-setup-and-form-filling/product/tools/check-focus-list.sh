@@ -7,6 +7,8 @@
 #   bash product/tools/check-focus-list.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
+# ENF-803: a start brief's Duplicate check names the main sha and the exact IST time (brief-fresh.py); HEAD stands for main here
+export BRIEF_MAIN=HEAD; FRESH_DUP="read main $(git rev-parse --short=9 HEAD) at $(TZ=Asia/Kolkata date +%H:%M) IST;"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
 cat > "$T/focus-list.md" <<'L'
@@ -106,15 +108,18 @@ ok "no focus list: a builder brief is refused, with the path it looked at" "$([ 
 fc "$M Run /next runtime ENF-733." "$T/none.md"
 ok "no focus list: a tooling brief still passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # The hook, fed the JSON Claude Code sends on start_session and create_session (lane-preflight.sh --hook).
-G4=$'\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'
-hook() { out=$(jq -n --arg n "$1" --arg p "$2$G4" '{tool_name:$n, tool_input:{target:"cloud", prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" FOCUS_BACKLOG_DIR="$T" bash "$TOOLS/lane-preflight.sh" --hook 2>&1); r=$?; }
-hook start_session "Row CS-NT1. $M R1.76 notes, part 1."
+G4=$'\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0'
+# B204: each hook brief carries its Item line; a throwaway waves list puts R1.37 and R1.76 in the active wave, so the focus list is what is tested here.
+printf '| # | Map row | Status |\n|---|---|---|\n| R1.37 | x | Partial |\n| R1.76 | x | Partial |\n| R1.1 | x | Partial |\n| R1.2 | x | Partial |\n' > "$T/caps.md"
+printf 'R1.37\t1\tJ5\nR1.76\t1\tJ7\nR1.1\t1\tJ0\nR1.2\t1\tJ0\n' > "$T/waves.tsv"; export WAVES_TSV="$T/waves.tsv" WAVES_CAPS="$T/caps.md"
+hook() { out=$(jq -n --arg n "$1" --arg p "$2$G4"$'\nItem: '"$3" '{tool_name:$n, tool_input:{target:"cloud", prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" FOCUS_BACKLOG_DIR="$T" bash "$TOOLS/lane-preflight.sh" --hook 2>&1); r=$?; }
+hook start_session "Row CS-NT1. $M R1.76 notes, part 1." R1.76
 ok "hook: a start for an off-list item is denied with the reason and the list's path" "$(echo "$out" | jq -e --arg f "$T/focus-list.md" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("CS-NT1") and test("P-733") and contains($f))' >/dev/null 2>&1 && echo 1)" "$out"
-hook mcp__ccr__create_session "Row CS-NT1. $M R1.76 notes, part 1."
+hook mcp__ccr__create_session "Row CS-NT1. $M R1.76 notes, part 1." R1.76
 ok "hook: a cloud create_session for an off-list item is denied too" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 && echo 1)" "$out"
-hook start_session "Row J-37. $M R1.37 booking page."
+hook start_session "Row J-37. $M R1.37 booking page." R1.37
 ok "hook: a start for a listed item passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
-hook start_session "Row ENF-733. $M Tooling; R1.76 is mentioned."
+hook start_session "Row ENF-733. $M Tooling; R1.76 is mentioned." "none (tooling)"
 ok "hook: a tooling start passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
 # The real list (the mutation copy carries it too): readable, and the two Leads' own lane lines of 19 Nov pass.
 REAL="$TOOLS/../focus-list.md"
@@ -138,6 +143,11 @@ Build CS-D1t with J-67 inside, from CS-D1t.md, branched from main.
 Build AUD-1m part 2a, then 2b with J-8 inside, from AUD-1m-2.md, back to back in one lane.
 LINES
 ok "the real list passes Lead B's and Build Lead C's $n lane lines of 19 Nov" "$([ $n = 13 ] && [ -z "$badl" ] && echo 1)" "$badl"
-real "$M Build CS-NT1 part 1 for R1.76 notes from CS-NT1-1.md."
-ok "the real list refuses CS-NT1 (R1.76 notes, four parts left), naming product/focus-list.md" "$([ $r = 1 ] && echo "$out" | grep 'CS-NT1' | grep -q 'ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md' && echo 1)" "exit $r: $out"
+# The default list path (no FOCUS_LIST) on a fixture tree, so this case cannot go red when the real list changes
+# (ENF-798b: CS-NT1 joined the real list on 22 Nov): focus-check.py (the copy under test, mutated or not) finds
+# product/focus-list.md next to its tools folder and names that path in the refusal.
+mkdir -p "$T/p/product/tools"; cp "$TOOLS/focus-check.py" "$T/p/product/tools/"; cp "$T/focus-list.md" "$T/p/product/focus-list.md"
+{ cat "$T/BACKLOG.md"; echo '| CS-NT1 | runtime (case side: notes) | case notes, four parts |'; } > "$T/p/product/BACKLOG.md"
+out=$(printf '%s\n' "$M Build CS-NT1 part 1 for R1.76 notes from CS-NT1-1.md." | env -u FOCUS_LIST -u FOCUS_BACKLOG_DIR python3 -I "$T/p/product/tools/focus-check.py" 2>&1); r=$?
+ok "the default list (product/focus-list.md, a fixture without R1.76) refuses CS-NT1, naming product/focus-list.md" "$([ $r = 1 ] && echo "$out" | grep 'CS-NT1' | grep -q 'ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md' && echo 1)" "exit $r: $out"
 finish

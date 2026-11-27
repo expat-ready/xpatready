@@ -1,0 +1,21 @@
+# branch d8db83498 (app code = main d07a08fbc), isolated copy :4471, 2026-11-20T03:16:24Z
+PASS  R1.33 qa setup: firm A has a front office and its Owner is signed in — {"status":200,"body":{"token":"<redacted by qa: a local stand-in session token, cut off at 260 characters and unsigned; the check no longer prints it>"
+PASS  R1.33 qa A1 (Add a lead): "+44 20 7946 0100" → 201, stored +442079460100, readable true — {"status":201,"got":"+442079460100|true|+442079460100"}
+PASS  R1.33 qa A2 (Add a lead): "416.555.0177" → 201, stored +14165550177, readable true — {"status":201,"got":"+14165550177|true|+14165550177"}
+PASS  R1.33 qa A3 (Add a lead): "+999 1234567" → 201, stored +999 1234567, readable false — {"status":201,"got":"+999 1234567|false|-"}
+PASS  R1.33 qa A4 (Add a lead): "555-0101" → 201, stored 555-0101, readable false — {"status":201,"got":"555-0101|false|-"}
+PASS  R1.33 qa A5 (Add a lead): "416 555 0188 ext 22" → 201, stored 416 555 0188 ext 22, readable false — {"status":201,"got":"416 555 0188 ext 22|false|-"}
+PASS  R1.33 qa A6 (Add a lead): "(000) 555-0100" → 201, stored (000) 555-0100, readable false — {"status":201,"got":"(000) 555-0100|false|-"}
+PASS  R1.33 qa A6b (Add a lead): Arabic-Indic digits are accepted (201) and either read as +14165550199 or kept as typed, unreadable — never refused, never a wrong number — {"status":201,"ar":"+14165550199|true|+14165550199"}
+PASS  R1.33 qa A7 (duplicate): "+44 (0) 20 7946 0100" after "+44 20 7946 0100" → 409 KNOWN_PERSON naming the first person — {"s":409,"b":"{\"type\":\"https://expatready.local/problems/known-person\",\"title\":\"Not possible now\",\"status\":409,\"detail\":\"This person may already be on file. Pick them, or say it is someone new.\",\"message\":\"This person may already be on file. P
+PASS  R1.33 qa A7 (duplicate): "(416) 555-0177" after "416.555.0177" → 409 KNOWN_PERSON naming the first person — {"s":409,"b":"{\"type\":\"https://expatready.local/problems/known-person\",\"title\":\"Not possible now\",\"status\":409,\"detail\":\"This person may already be on file. Pick them, or say it is someone new.\",\"message\":\"This person may already be on file. P
+PASS  R1.33 qa A7 (no false match): an unreadable "+999 1234567" typed again matches nothing (201) — 201
+PASS  R1.33 qa W1 (web form): "+44 (0) 161 496 0000" → 201, stored +441614960000 readable (the trunk 0 dropped, never +440…) — {"s":201,"b":{"thankYouText":"Thank you. We have your enquiry and will be in touch soon."},"got":"+441614960000|true|+441614960000"}
+PASS  R1.33 qa W2 (web form): "+999 1234567" → 201 (never refused), kept as typed, unreadable — {"s":201,"b":{"thankYouText":"Thank you. We have your enquiry and will be in touch soon."},"got":"+999 1234567|false|-"}
+PASS  R1.33 qa B1 (booking door): "011 44 20 7946 0101" → booked, stored +442079460101 readable — {"b1":{"r":{"s":201,"b":"{\"status\":\"SCHEDULED\",\"mode\":\"PHONE\",\"startsAt\":\"2026-11-20T14:00:00.000Z\",\"endsAt\":\"2026-11-20T14:30:00.000Z\",\"timeZone\":\"America/Toronto\",\"label\":\"Friday, November 20, 2026 at 9:00 a.m. (America/Toronto)\",\"ty
+PASS  R1.33 qa B2 (booking door, P-747): "555-0101" with no area code → booked (never refused), kept as typed, unreadable — {"s":201,"b":"{\"status\":\"SCHEDULED\",\"mode\":\"PHONE\",\"startsAt\":\"2026-11-20T15:30:00.000Z\",\"endsAt\":\"2026-11-20T16:00:00.000Z\",\"timeZone\":\"America/Toronto\",\"label\":\"Friday, November 20, 2026 at 10:30 a.m. (America/Toronto)\",\"typeName\":\
+PASS  R1.33 qa E1 (edit route): "+999 1234567" → 422 with the field's sentence, nothing saved — {"status":422,"body":{"type":"https://expatready.local/problems/invalid","title":"Check the details","status":422,"detail":"Phone: This is not a phone number we can read. Add the country code, for example +1 416 555 0100.","message":"Phone: This is not a phone
+PASS  R1.33 qa E2 (edit route): "+44 (0) 20 7946 0959" → 200, stored +442079460959 readable (keeps its country) — {"e2":{"status":200,"body":{"personId":"dd885f3d-a1da-42b2-8141-c1961f499ec4","phone":"+442079460959","fixNumber":false}},"got":"+442079460959|true|+442079460959"}
+FAIL  R1.33 qa E3 (side note, not a Done-when clause): after Fix number gives a person another person's number, their lead is flagged a possible match — {"s":200,"flag":"-","caId":"a962b783-de6c-4e04-85da-0d3b90245eae"}
+
+17/18 passed

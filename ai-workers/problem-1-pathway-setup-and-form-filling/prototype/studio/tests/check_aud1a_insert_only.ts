@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Audit } from "../api/src/core.ts";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const PORT = Number(process.argv[2] ?? 4606), COPY = process.argv[3] ?? "xr_studio_runtime_aud1a";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -87,7 +88,7 @@ try {
     && sql(BARE, `select count(*) from audit_event where workspace_id = '${W_PLAT}' and firm_id is null`) === "1" && n(BARE, `select count(*) from audit_event where workspace_id = '${W_DEMO}' and firm_id is not null`) === 0);
   ok("AUD-1a DW5 pass: a case line whose key is an existing case gets case_id; a line naming the case only in words stays null",
     sql(BARE, `select case_id from audit_event where entity = 'case' and entity_key = '${CASE}'`) === CASE && sql(BARE, `select count(*) from audit_event where entity = 'case' and entity_key = 'case 1234abcd' and case_id is null`) === "1");
-  for (const d of after) psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]);
+  for (const d of after) { if (d.startsWith(CSW1_PART2)) sql(BARE, SAMPLE_FIRMS_SQL); psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]); }   // CS-W1 part 2 needs the case's firm
 
   // A line written by Audit.log after the migration (the writers pass no actor_type): the trigger fills it.
   const pc = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(BARE, "xr_app"), options: "-c TimeZone=UTC" }) }); clients.push(pc);
@@ -190,14 +191,23 @@ try {
   sql(COPY, line(P_WS, `staff:${UUID}`, { firm_id: `'${FIRM_REAL}'` })); sql(COPY, line(P_WS, "system:check"));
   const platBefore = n(COPY, `select count(*) from audit_event where workspace_id = '${P_WS}'`), demoWs = sql(COPY, "select id from workspace where key = 'demo'");
   const demoBefore = n(COPY, `select count(*) from audit_event where workspace_id = '${demoWs}'`);
+  // P-571 (1) protects the lines that exist: each is still there after the reset, by id. The reset itself is a bypass use
+  // (PF-12b): it adds one platform.bypass line per Sample firm it touches, and nothing else, to the platform-audit lines.
+  const platIds = sql(COPY, `select coalesce(string_agg(id::text, ','), '') from audit_event where workspace_id = '${P_WS}'`);
+  const sampleFirms = n(COPY, "select count(*) from platform_firm");
   // DW3b's ghost: a line under a workspace id that no longer exists, and one of an existing non-demo workspace.
   const ghost = randomUUID(), other = sql(COPY, `insert into workspace (id, key, label) values (gen_random_uuid(), 'aud1a-other', 'Another workspace') returning id`);
   sql(COPY, line(ghost, "user-A")); sql(COPY, line(other, "user-A"));
   ok("AUD-1a DW3b fail: the ghost line cannot be deleted without the reset setting (as the app)", refused(() => tx(COPY, `delete from audit_event where workspace_id = '${ghost}'`, false, "xr_app"), NEVER) && n(COPY, `select count(*) from audit_event where workspace_id = '${ghost}'`) === 1);
   const R = await call("POST", "/demo/reset", { confirm: "RESET" });
   const newWs = sql(COPY, "select id from workspace where key = 'demo'");
-  ok(`AUD-1a DW3 pass: the demo reset empties the demo workspace's lines (${demoBefore} before) and leaves every platform-audit line (${platBefore} before = after; P-571 (1))`,
-    R.status < 300 && demoBefore > 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${demoWs}'`) === 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${P_WS}'`) === platBefore, R.body);
+  const platKept = n(COPY, `select count(*) from audit_event where workspace_id = '${P_WS}' and id::text = any(string_to_array('${platIds}', ','))`);
+  ok(`AUD-1a DW3 pass: the demo reset empties the demo workspace's lines (${demoBefore} before) and leaves every platform-audit line that was there (${platBefore} before, each still there by id; P-571 (1))`,
+    R.status < 300 && demoBefore > 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${demoWs}'`) === 0 && platBefore > 0 && platKept === platBefore, { kept: platKept, before: platBefore, body: R.body });
+  const platAdded = sql(COPY, `select coalesce(string_agg(k || '=' || c, ',' order by k), '') from (select action || '/' || coalesce(detail->>'use', '') || '/' || coalesce(detail->>'firmId', '') as k, count(*) as c from audit_event where workspace_id = '${P_WS}' and not (id::text = any(string_to_array('${platIds}', ','))) group by 1) x`);
+  const addedLines = platAdded.split(",").filter(Boolean).map((x) => x.split("="));
+  ok("AUD-1a DW3 pass (PF-12b): the reset adds only its own platform.bypass lines to the platform-audit lines: two for each Sample firm it touches (its settings reset and its Sample seed, each in that firm's own transaction), nothing else",
+    sampleFirms > 0 && addedLines.length === sampleFirms && addedLines.every(([k, c]) => /^platform\.bypass\/platform\.demo\.reset\/[0-9a-f-]{36}$/.test(k) && c === "2"), platAdded);
   ok("AUD-1a DW3 pass: after the reset the new demo workspace has only the reset's own line", n(COPY, `select count(*) from audit_event where workspace_id = '${newWs}'`) === 1 && sql(COPY, `select action || ':' || actor_type from audit_event where workspace_id = '${newWs}'`) === "reset:FIRM_STAFF");
   // Review M1: a firm's platform line (the firm in detail.firmId only, as the adapter writes it until AUD-1b) under a
   // workspace row that is deleted first still cannot be deleted, even with the setting on.

@@ -1,6 +1,6 @@
 // PF-4dn (brief lead-b-briefs/PF-4dn.md; AG-1-10, AG-1-69): the invite carries the person's name. Against the real
 // routes of an isolated copy on the local stand-in: DW1 a named invite → accept → the staff member has that name ·
-// DW2 a 121-character name or one with a control character → 400 in plain words, nothing stored · DW3 no name → accept
+// DW2 a 121-character name or one with a control character → 422 in plain words (PF-28 part 2a), nothing stored · DW3 no name → accept
 // uses the part of the email before the @, as before (and a resend keeps the name) · DW4 the Team screen's Invite people
 // shows a labelled Name field per row (axe clean) whose value reaches the request. Seeds the Sample firms. US$0.
 //   zsh studio/tools/isolated.sh pf4dn 4573 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf4dn_invite_name.ts 4573 xr_studio_pf4dn
@@ -64,16 +64,16 @@ try {
   // ----------------------------------------------------------------------------------------------------- DW2
   const long = `pf4dn-long-${run}@example.com`, ctrl = `pf4dn-ctrl-${run}@example.com`, nl = `pf4dn-nl-${run}@example.com`;
   const tooLong = await call(tok, "POST", "/platform/staff/invitations", { email: long, roles: ["READ_ONLY"], displayName: "N".repeat(121) });
-  ok("PF-4dn DW2 fail: a 121-character name → 400 DISPLAY_NAME_TOO_LONG in plain words, and no invitation stored",
-    tooLong.status === 400 && tooLong.body.code === "DISPLAY_NAME_TOO_LONG" && tooLong.body.detail === "The name is at most 120 characters." && invitations(long) === 0, tooLong.body);
+  ok("PF-4dn DW2 fail: a 121-character name → 422 DISPLAY_NAME_TOO_LONG in plain words, and no invitation stored",
+    tooLong.status === 422 && tooLong.body.code === "DISPLAY_NAME_TOO_LONG" && tooLong.body.detail === "The name is at most 120 characters." && invitations(long) === 0, tooLong.body);
   const sep = `pf4dn-sep-${run}@example.com`;
   const sepOnly = await call(tok, "POST", "/platform/staff/invitations", { email: sep, roles: ["READ_ONLY"], displayName: "\u2028" });
-  ok("PF-4dn DW2 fail: a name of only a line separator (U+2028) → 400 DISPLAY_NAME_INVALID, never taken as no name", sepOnly.status === 400 && sepOnly.body.code === "DISPLAY_NAME_INVALID" && invitations(sep) === 0, sepOnly.body);
+  ok("PF-4dn DW2 fail: a name of only a line separator (U+2028) → 422 DISPLAY_NAME_INVALID, never taken as no name", sepOnly.status === 422 && sepOnly.body.code === "DISPLAY_NAME_INVALID" && invitations(sep) === 0, sepOnly.body);
   const bad = await Promise.all([[ctrl, "Client\u0007A"], [nl, "Client\nA"]].map(([email, displayName]) => call(tok, "POST", "/platform/staff/invitations", { email, roles: ["READ_ONLY"], displayName })));
-  ok("PF-4dn DW2 fail: a name with a control character (bell) or a line break → 400 DISPLAY_NAME_INVALID, nothing stored",
-    bad.every((b) => b.status === 400 && b.body.code === "DISPLAY_NAME_INVALID") && invitations(ctrl) === 0 && invitations(nl) === 0, bad.map((b) => b.body));
+  ok("PF-4dn DW2 fail: a name with a control character (bell) or a line break → 422 DISPLAY_NAME_INVALID, nothing stored",
+    bad.every((b) => b.status === 422 && b.body.code === "DISPLAY_NAME_INVALID") && invitations(ctrl) === 0 && invitations(nl) === 0, bad.map((b) => b.body));
   const notText = await call(tok, "POST", "/platform/staff/invitations", { email: `pf4dn-num-${run}@example.com`, roles: ["READ_ONLY"], displayName: 42 });
-  ok("PF-4dn DW2 fail: a name that is not text → 400", notText.status === 400 && notText.body.code === "DISPLAY_NAME_INVALID", notText.body);
+  ok("PF-4dn DW2 fail: a name that is not text → 422 naming displayName (PF-28 part 2a: the one input rule)", notText.status === 422 && notText.body.fields?.displayName === "This must be text.", notText.body);
   let dbRefused = false;
   try { sql(`update platform_invitation set display_name = ' padded ' where id = '${inv1.body.id}'`); } catch { dbRefused = true; }
   ok("PF-4dn DW2 fail: the database itself refuses an untrimmed name (the check holds the same rule)", dbRefused);
@@ -96,7 +96,8 @@ try {
   const p: Page = await ctx.newPage();
   const errors: string[] = []; p.on("pageerror", (e) => errors.push(String(e)));
   const bodies: unknown[] = [];
-  p.on("request", (r) => { if (r.method() === "POST" && new URL(r.url()).pathname === "/api/platform/staff/invitations") bodies.push(r.postDataJSON()); });
+  // R1.20: the screen sends the whole form as one batch (P-727); each row of it is one body here (its name in `name`).
+  p.on("request", (r) => { if (r.method() === "POST" && new URL(r.url()).pathname === "/api/platform/staff/invitations/batch") bodies.push(...((r.postDataJSON() as { rows?: unknown[] }).rows ?? [])); });
   await p.goto(`${BASE}/platform/team`); await p.locator("[data-seat-line]").waitFor({ timeout: 30_000 });
   await p.locator("[data-invite-open]").click();
   await p.getByLabel("Email, person 1").waitFor({ timeout: 15_000 });
@@ -113,16 +114,16 @@ try {
   await p.getByLabel("Email, person 2").fill(s2);   // row 2 without a name
   await p.locator("[data-send-invites]").click();
   for (let i = 0; i < 100 && invitations(s2) === 0; i++) await p.waitForTimeout(100);
-  const sent = bodies as { email: string; displayName?: string }[];
+  const sent = bodies as { email: string; name?: string }[];
   ok("PF-4dn DW4 screen: the Name typed on a row reaches the request and is stored; a row without a name sends none",
-    sent.find((b) => b.email === s1)?.displayName === "Client B Staff" && sent.find((b) => b.email === s2) !== undefined && !("displayName" in (sent.find((b) => b.email === s2) ?? {}))
+    sent.find((b) => b.email === s1)?.name === "Client B Staff" && sent.find((b) => b.email === s2) !== undefined && !("name" in (sent.find((b) => b.email === s2) ?? {}))
     && sql(`select display_name from platform_invitation where email = '${s1}'`) === "Client B Staff" && sql(`select coalesce(display_name, 'NULL') from platform_invitation where email = '${s2}'`) === "NULL", sent);
   // Review m1: a name the server refuses (an invisible character) shows on the Name field, never under Email.
   const s3 = `pf4dn-ui3-${run}@example.com`;
   await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").waitFor({ timeout: 15_000 });
   await p.getByLabel("Email, person 1").fill(s3); await p.getByLabel("Name, person 1 (optional)").fill("Client\u200bD");
   await p.locator("[data-send-invites]").click();
-  const nameErr = p.locator('[data-invite-row="1"]').getByText("The name has a line break or an invisible character. Type it again on one line.");
+  const nameErr = p.locator('[data-invite-row="1"]').getByText("Give the person's name in 1 to 100 characters, on one line.")   // R1.20: the batch's words (nameOf);
   await nameErr.waitFor({ timeout: 15_000 });   // fails loudly when the feedback never shows (WAY-OF-WORKING, Devin)
   ok("PF-4dn review m1 fail: a refused name shows on the Name field (aria-invalid there, not on Email), nothing stored",
     await nameErr.isVisible() && await p.getByLabel("Name, person 1 (optional)").getAttribute("aria-invalid") === "true" && await p.getByLabel("Email, person 1").getAttribute("aria-invalid") !== "true" && invitations(s3) === 0,

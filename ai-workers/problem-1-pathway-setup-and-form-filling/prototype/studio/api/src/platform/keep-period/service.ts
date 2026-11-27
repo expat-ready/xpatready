@@ -8,6 +8,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import { Db } from "../../core.ts";
 import {
   ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, KeepCheckRefused, NO_COUNSEL,
@@ -47,7 +48,7 @@ export async function seedSampleSettingValues(tx: Tx, firmId: string, values: Re
   return n;
 }
 
-const SaveBody = z.strictObject({ years: z.unknown(), reason: z.unknown().optional() });
+const SaveBody = z.strictObject({ years: z.unknown().optional(), reason: z.unknown().optional() });   // R1.10 A4: years is checked below with the reason, so both are named at once
 const REASON_MAX = 500;
 const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
 
@@ -56,12 +57,12 @@ const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
  *  Empty when none was given. */
 function reasonOf(raw: unknown): string {
   if (raw === undefined) return "";
-  if (typeof raw !== "string") problem(400, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON" });
+  if (typeof raw !== "string") problem(FIELD_ERROR_STATUS, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON", fields: { reason: "This must be text." } });
   const reason = raw.trim();
   // Line breaks and tabs inside a reason are kept (a reason box may have several lines: re-review n2); any other control
   // character, or broken text (a lone surrogate), cannot be stored and is refused in words (break m2).
-  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(400, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON" });
-  if ([...reason].length > REASON_MAX) problem(400, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON" });
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(FIELD_ERROR_STATUS, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON", fields: { reason: "This has a control character or broken text. Type it again." } });
+  if ([...reason].length > REASON_MAX) problem(FIELD_ERROR_STATUS, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON", fields: { reason: `This is too long: at most ${REASON_MAX} characters.` } });
   return /[\p{L}\p{N}]/u.test(reason.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, "")) ? reason : "";   // fillers that draw nothing are not letters
 }
 
@@ -125,12 +126,19 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
    *  the line too (review m4). The answer is built from the value this request saved, never re-read (break m5). */
   async save(s: StaffContext, body: unknown) {
     const b = SaveBody.safeParse(body ?? {});
-    if (!b.success) problem(400, "Not saved", "Send the number of years (and a reason when it is below 6); nothing else.", { code: "INVALID_BODY" });
+    if (!b.success) problem(FIELD_ERROR_STATUS, "Not saved", "Send the number of years (and a reason when it is below 6); nothing else.", { code: "INVALID_BODY", fields: fieldsOf(b.error) });   // PF-28 part 2b: 422, fields named
     const years = b.data.years;
-    if (typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success) problem(400, "Not saved", "Enter a whole number of years from 1 to 50.", { code: "INVALID_YEARS" });
+    // R1.10 A4: a reason that is not text is named with the years, never hidden behind them (every field that needs a change, at once).
+    const badReason = b.data.reason !== undefined && b.data.reason !== null && typeof b.data.reason !== "string";
+    const badYears = typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success;
+    if (badReason) problem(FIELD_ERROR_STATUS, "Not saved", badYears ? "Enter a whole number of years from 1 to 50, and the reason as text." : "The reason is a sentence of text.", { code: badYears ? "INVALID_YEARS" : "INVALID_REASON", fields: { ...(badYears ? { years: "A whole number of years from 1 to 50." } : {}), reason: "This must be text." } });
+    // R1.10 A2: an over-long reason is named with the years too (reasonOf's own count and words), never hidden behind them.
+    const longReason = typeof b.data.reason === "string" && [...b.data.reason.trim()].length > REASON_MAX;
+    if (longReason && badYears) problem(FIELD_ERROR_STATUS, "Not saved", `Enter a whole number of years from 1 to 50, and keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_YEARS", fields: { years: "A whole number of years from 1 to 50.", reason: `This is too long: at most ${REASON_MAX} characters.` } });
+    if (typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success) problem(FIELD_ERROR_STATUS, "Not saved", "Enter a whole number of years from 1 to 50.", { code: "INVALID_YEARS", fields: { years: "A whole number of years from 1 to 50." } });
     const below = years < COLLEGE_CLIENT_FILE_YEARS;
     const reason = reasonOf(b.data.reason);
-    if (below && !reason) problem(400, "A reason is needed", COLLEGE_WARNING, { code: "REASON_NEEDED", warning: COLLEGE_WARNING });
+    if (below && !reason) problem(FIELD_ERROR_STATUS, "A reason is needed", COLLEGE_WARNING, { code: "REASON_NEEDED", warning: COLLEGE_WARNING, fields: { reason: "This is required." } });
     const line = [below ? `Below the College's rule: ${WARNING_SHORT}` : "", reason ? `Reason given: ${reason}` : ""].filter(Boolean).join(" ");
     const saved = await writeSetting(this.db, {
       firmId: s.firmId, key: CLOSED_CLIENT_FILES.key, value: years, by: actorWord(s.staffId), workspaceId: await platformAuditWorkspaceId(this.db),

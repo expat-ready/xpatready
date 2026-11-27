@@ -11,6 +11,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fakeAlerts } from "../ports/alert.ts";
 import { AuditEntry, CaseEntry, fakeAudit } from "../ports/audit.ts";
+import { SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), API = join(STUDIO, "api", "src");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -31,17 +32,14 @@ function directWrites(tree: Record<string, string>): Record<string, number> {
   for (const [f, text] of Object.entries(tree)) { const n = text.split("auditEvent.create").length - 1; if (n && f !== ADAPTER) out[f] = n; }
   return out;
 }
-/** What parts 1, 2a and 2b leave: platform/settings.ts's one (PF-0a part 2c, Lead 94's ruling on #2289: writeSetting's
- *  untyped actors and nested detail are typed there). Part 1 removed core.ts's own; part 2a the case, document and person
- *  writes; part 2b the form, library, review and lifecycle writes (Audit.log through AuditPort, in the caller's
- *  transaction) and identity/audit.ts's two (AuditPort.record; tests/check_pf0a_audit_port.ts). */
-const LEFT: Record<string, number> = {
-  "platform/settings.ts": 1,
-};
+/** What parts 1, 2a, 2b and 2c leave: nothing. Part 1 removed core.ts's own; part 2a the case, document and person writes;
+ *  part 2b the form, library, review and lifecycle writes (Audit.log through AuditPort) and identity/audit.ts's two; part 2c
+ *  platform/settings.ts's writeSetting (AuditPort.record; tests/check_pf0a_audit_port.ts). Only the adapter writes. */
+const LEFT: Record<string, number> = {};
 const same = (a: Record<string, number>, b: Record<string, number>) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 const tree = Object.fromEntries(files(API).map((f) => [relative(API, f), readFileSync(f, "utf8")]));
 const left = directWrites(tree), total = Object.values(left).reduce((a, b) => a + b, 0);
-ok(`AUD-1m CW1 pass: the direct auditEvent.create writes left are exactly the list parts 1, 2a and 2b leave (${total} in ${Object.keys(left).length} files; core.ts's Audit.log has none)`, same(left, LEFT) && !left["core.ts"], left);
+ok(`AUD-1m CW1 pass: the direct auditEvent.create writes left are exactly what parts 1, 2a, 2b and 2c leave: none (${total} in ${Object.keys(left).length} files; core.ts's Audit.log has none)`, same(left, LEFT) && !left["core.ts"], left);
 ok("AUD-1m CW1 fail: one new direct write (or core.ts's own back) is caught", !same(directWrites({ ...tree, "new-thing.ts": "await tx.auditEvent.create({ data })" }), LEFT) && !same(directWrites({ ...tree, "core.ts": `${tree["core.ts"]}\nthis.db.auditEvent.create({})` }), LEFT));
 
 // ------------------------------------------------------------------- CW2: the two entries never pass for each other (no DB)
@@ -61,6 +59,7 @@ ok("AUD-1m CW2 fail: a case line of an area entity, a bare word (test, system, r
 // ----------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-c", SAMPLE_FIRMS_SQL]);   // a case needs its firm (CS-W1 part 2)
 process.env.DATABASE_URL = urlOf(DB);
 
 const { Audit, actorWordOf } = await import("../api/src/core.ts");

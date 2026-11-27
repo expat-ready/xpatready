@@ -9,10 +9,11 @@
 # Lead's copy (lane.sh whoami = lead), so the line is allowed there too; a Lead running it on itself only watches itself.
 # Stop hook too (B197 (4), founder A110, 16 Nov: "I requested multiple times ... lead keep forgetting"): in the Lead's copy a
 # check turn (its prompt is that one line) cannot end while the app view (app-view-check.sh --stale-only: missing or over
-# 35 min old) is stale; it asks again on every stop until the view is saved (a page that cannot be read is saved as its
+# 15 min old, P-798) is stale; it asks again on every stop until the view is saved (a page that cannot be read is saved as its
 # UNREADABLE line). Other turns, and other copies, stop freely. Test: check-app-view.sh.
 CANON="run lead-watch; read STATE Start here"
 HEARTBEAT="run lead-heartbeat; notify the founder if stale"
+GAP="run lead-watch gap"   # ENF-761 part 4: every standby's 10-min watchdog (lead-watch.sh gap; skill lead, hand-over)
 input=$(cat)
 norm() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ' | sed -E 's/^ +//; s/[ .]+$//'; }
 if [ "$(printf '%s' "$input" | jq -r '.hook_event_name // empty' 2>/dev/null)" = Stop ]; then
@@ -42,6 +43,7 @@ prompt=$(printf '%s' "$input" | jq -r '.tool_input.prompt // empty' 2>/dev/null)
 recurring=$(printf '%s' "$input" | jq -r 'if .tool_input.recurring == false then "no" else "yes" end' 2>/dev/null)
 [ "$(norm "$prompt")" = "$(norm "$CANON")" ] && exit 0
 [ "$(norm "$prompt")" = "$(norm "$HEARTBEAT")" ] && exit 0
+[ "$(norm "$prompt")" = "$(norm "$GAP")" ] && exit 0
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
 LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)

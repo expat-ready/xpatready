@@ -10,6 +10,10 @@
 // (EVENT.SUPPORT_TICKET_RAISED, ids only) are one transaction. After the commit, one email to our support inbox (Sample
 // address) with the firm's key, the ticket id and the page only; a failed send leaves the ticket saved (`emailed: false`).
 // Our reply (replyAsSupport) has no route here: PF-17's console calls it under /api/system after PF-4s.
+// PF-18s part 2 (challenge M4, M5): the list and one ticket also answer `subject` (the first line of the first message, cut to
+// 80 characters: AG-16 §3.15 "the first line as the subject") and `raisedByName`; one ticket's staff messages carry `authorName`.
+// Names come from platform_staff in the ticket's own firm in the same read (AG01-28: colleague names on records need no key),
+// so the Help pages never call GET /staff.
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { PlatformSupportMessage, PlatformSupportTicket, Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -50,7 +54,7 @@ export type SupportDeps = { db: PrismaClient; files: FilesPort; audit: AuditPort
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, detail, code: code.toUpperCase().replace(/-/g, "_"), ...extra }, status as HttpStatus);
 };
-const notFound = (): never => problem(404, "not-found", "Not found", "No such support ticket.");
+export const notFound = (): never => problem(404, "not-found", "Not found", "No such support ticket.");
 const fieldErrors = (fields: Record<string, string>): never => problem(422, "support-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
 const closedRefused = (): never => problem(409, "support-closed", "This ticket is closed", "A closed ticket takes no new message: raise a new ticket instead.");
 
@@ -62,7 +66,8 @@ const CONTROL = new RegExp("[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f
 export const hasText = (s: string) => /[\p{L}\p{Nl}\p{P}\p{S}0-9]/u.test(s.replace(BLANK, "")) && !CONTROL.test(s);
 /** A string's length in characters (code points), as the database's char_length counts it (break m4). */
 const chars = (s: string) => [...s].length;
-const Body = z.string({ error: "write what you need help with" }).refine((s) => chars(s) <= BODY_MAX, `at most ${BODY_MAX} characters`).refine(hasText, "write what you need help with, without control characters");
+/** Break m1 (PF-18s part 2): a multipart field arrives with CRLF line breaks; counted and stored as one character each. */
+const Body = z.string({ error: "write what you need help with" }).transform((s) => s.replace(/\r\n?/g, "\n")).refine((s) => chars(s) <= BODY_MAX, `at most ${BODY_MAX} characters`).refine(hasText, "write what you need help with, without control characters");
 /** The app path the ticket was raised from: its query string and fragment are cut off (they can hold a token). */
 /** The app path the ticket was raised from: its query string and fragment are cut off (they can hold a token). An app
  *  path only (break m3): letters, digits and - . _ ~ / %, not starting with // (another site), no backslash, no @ (a
@@ -75,7 +80,7 @@ const Raise = z.object({ body: Body, page: Page }).strict();
 const Message = z.object({ body: Body }).strict();
 
 const UUID_SHAPE = z.string().uuid();
-const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
+export const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
 
 function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const r = schema.safeParse(input ?? {});
@@ -105,13 +110,24 @@ export function attachmentProblem(f: Upload): string | null {
 }
 
 // ------------------------------------------------------------------------------------------------------------- views
-export type MessageView = { id: string; authorKind: PlatformSupportMessage["authorKind"]; authorId: string; body: string; files: number[]; createdAt: Date };
-export type TicketView = Omit<PlatformSupportTicket, "firmId"> & { messages?: MessageView[] };
+export type MessageView = { id: string; authorKind: PlatformSupportMessage["authorKind"]; authorId: string; authorName?: string | null; body: string; files: number[]; createdAt: Date };
+export type TicketView = Omit<PlatformSupportTicket, "firmId"> & { messages?: MessageView[]; subject?: string; raisedByName?: string | null };
+/** A ticket's subject (PF-18s part 2, challenge M5): the first line with words of its first message, cut to 80 characters. */
+export const SUBJECT_MAX = 80;
+/** Break m6: direction overrides and isolates are dropped from the subject (they could reverse a list's words), and the cut
+ *  never splits a character a person sees as one (a flag, a family emoji). */
+const BIDI = /[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g;
+export const subjectOf = (body: string) => {
+  const line = (body.split(/\r\n|\r|\n/).map((l) => l.trim()).find(hasText) ?? body.trim()).replace(BIDI, "");
+  const gs = [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(line)].map((g) => g.segment);
+  return gs.length > SUBJECT_MAX ? `${gs.slice(0, SUBJECT_MAX - 1).join("").trimEnd()}…` : line;
+};
 const fileNumber = (key: string) => Number(key.split("/").pop());
-const messageView = (m: PlatformSupportMessage): MessageView => ({ id: m.id, authorKind: m.authorKind, authorId: m.authorId, body: m.body, files: m.fileKeys.map(fileNumber), createdAt: m.createdAt });
-const view = (t: PlatformSupportTicket, messages?: PlatformSupportMessage[]): TicketView => {
+const messageView = (m: PlatformSupportMessage, names?: Map<string, string>): MessageView => ({ id: m.id, authorKind: m.authorKind, authorId: m.authorId,
+  ...(names ? { authorName: m.authorKind === "FIRM_STAFF" ? names.get(m.authorId) ?? null : null } : {}), body: m.body, files: m.fileKeys.map(fileNumber), createdAt: m.createdAt });
+const view = (t: PlatformSupportTicket, messages?: PlatformSupportMessage[], names?: Map<string, string>): TicketView => {
   const { firmId: _f, ...rest } = t;
-  return { ...rest, ...(messages ? { messages: messages.map(messageView) } : {}) };
+  return { ...rest, ...(messages ? { messages: messages.map((m) => messageView(m, names)) } : {}) };
 };
 export const fileKeyOf = (ticketId: string, n: number) => `support/${ticketId.toLowerCase()}/${n}`;
 
@@ -152,7 +168,8 @@ export class SupportService {
       const ticket = await tx.platformSupportTicket.create({ data: { id: ticketId, firmId, raisedBy: staffId, page: v.page } });
       const m = await tx.platformSupportMessage.create({ data: { firmId, ticketId, authorKind: "FIRM_STAFF", authorId: staffId, body: v.body, fileKeys: keys } });
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "support.ticket.raised", entity: "platform_support_ticket", entityKey: ticketId,
-        summary: `Support ticket raised with ${keys.length} attachment(s)`, detail: { ticketId, messageId: m.id, fields: ["body", "page", ...(keys.length ? ["files"] : [])], files: keys.length } });
+        summary: `Support ticket raised with ${keys.length} attachment(s)`, detail: { ticketId, messageId: m.id, fields: ["body", "page", ...(keys.length ? ["files"] : [])], files: keys.length },
+        before: null, after: { status: ticket.status, files: keys.length } });   // the ticket's words never reach an audit line (PF-18b, AG-16-63)
       const e = SupportTicketRaised.parse({ type: EVENT.SUPPORT_TICKET_RAISED, firmId, ticketId, raisedBy: staffId, files: keys.length, createdAt: ticket.createdAt.toISOString() });
       await tx.moduleEvent.create({ data: { firmId, type: e.type, subjectId: ticketId, payload: e } });
       return { ticket, m };
@@ -169,15 +186,19 @@ export class SupportService {
   /** The person's own tickets, or the firm's for an Owner or Admin; newest first. */
   async list(ctx: StaffContext): Promise<{ items: TicketView[]; allFirm: boolean }> {
     const firmId = firmScope(ctx.firmId).firmId, all = this.allFirm(ctx);
-    const rows = await this.d.db.platformSupportTicket.findMany({ where: firmScope(firmId, all ? {} : { raisedBy: ctx.staffId.toLowerCase() }), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PAGE });
-    return { items: rows.map((t) => view(t)), allFirm: all };
+    const rows = await this.d.db.platformSupportTicket.findMany({ where: firmScope(firmId, all ? {} : { raisedBy: ctx.staffId.toLowerCase() }), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PAGE,
+      include: { raiser: { select: { displayName: true } }, messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 1, select: { body: true } } } });
+    return { items: rows.map(({ raiser, messages, ...t }) => ({ ...view(t), subject: subjectOf(messages[0]?.body ?? ""), raisedByName: raiser.displayName })), allFirm: all };
   }
 
   /** One ticket with its messages in order, for a person who may see it; otherwise the same 404 as another firm's. */
   async get(ctx: StaffContext, id: string): Promise<TicketView> {
     const t = await this.visible(ctx, id);
     const messages = await this.d.db.platformSupportMessage.findMany({ where: firmScope(t.firmId, { ticketId: t.id }), orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
-    return view(t, messages);
+    const ids = [...new Set([t.raisedBy, ...messages.filter((m) => m.authorKind === "FIRM_STAFF").map((m) => m.authorId)])].filter(isUuid);
+    const staff = await this.d.db.platformStaff.findMany({ where: firmScope(t.firmId, { id: { in: ids } }), select: { id: true, displayName: true } });
+    const names = new Map(staff.map((s) => [s.id.toLowerCase(), s.displayName]));
+    return { ...view(t, messages, names), subject: subjectOf(messages[0]?.body ?? ""), raisedByName: names.get(t.raisedBy) ?? null };
   }
 
   /** The firm's next message (the raiser, or an Owner or Admin): "Waiting on support". */
@@ -191,22 +212,27 @@ export class SupportService {
       const m = await tx.platformSupportMessage.create({ data: { firmId: t.firmId, ticketId: t.id, authorKind: "FIRM_STAFF", authorId: ctx.staffId.toLowerCase(), body: v.body } });
       const u = await tx.platformSupportTicket.update({ where: { firmId_id: { firmId: t.firmId, id: t.id } }, data: { status: "WAITING_ON_SUPPORT" } });
       await this.d.audit.record(tx, { firmId: t.firmId, actor: this.actor(ctx), action: "support.ticket.message_added", entity: "platform_support_ticket", entityKey: t.id,
-        summary: "Message added to a support ticket; waiting on support", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] } });
+        summary: "Message added to a support ticket; waiting on support", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] },
+        before: { status: t.status }, after: { status: u.status } });
       return view(u, [m]);
     });
   }
 
   /** Our team's reply (PF-17's console calls it, under /api/system after PF-4s): "Waiting on firm". Inside the caller's
-   *  transaction; the caller runs on the system plane (no firm scope: our team answers every firm). */
-  async replyAsSupport(tx: Tx, input: { ticketId: string; body: string }): Promise<TicketView> {
+   *  transaction; the caller runs on the system plane (no firm scope: our team answers every firm). `actor` is the audit
+   *  line's word: `system:support` by default, or, in a request our own staff make, that person's own `ourstaff:<id>`
+   *  (AUD-3a refuses any other word there; PF-17 part 2). The message itself stays authored by 'support'. */
+  async replyAsSupport(tx: Tx, input: { ticketId: string; body: string }, actor = "system:support"): Promise<TicketView> {
+    if (actor !== "system:support" && !/^ourstaff:[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(actor)) throw new Error("replyAsSupport: the actor is system:support or ourstaff:<id>");
     const v = parse(z.object({ ticketId: z.string().refine(isUuid, "a ticket id"), body: Body }).strict(), input);
     await this.bodyHasText(tx, v.body);
     const t = await this.lock(tx, v.ticketId.toLowerCase());
     if (t.status === "CLOSED") closedRefused();
     const m = await tx.platformSupportMessage.create({ data: { firmId: t.firmId, ticketId: t.id, authorKind: "SUPPORT", authorId: "support", body: v.body } });
     const u = await tx.platformSupportTicket.update({ where: { firmId_id: { firmId: t.firmId, id: t.id } }, data: { status: "WAITING_ON_FIRM" } });
-    await this.d.audit.record(tx, { firmId: t.firmId, actor: "system:support", action: "support.ticket.replied", entity: "platform_support_ticket", entityKey: t.id,
-      summary: "Support replied to a ticket; waiting on the firm", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] } });
+    await this.d.audit.record(tx, { firmId: t.firmId, actor, action: "support.ticket.replied", entity: "platform_support_ticket", entityKey: t.id,
+      summary: "Support replied to a ticket; waiting on the firm", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] },
+      before: { status: t.status }, after: { status: u.status } });
     return view(u, [m]);
   }
 

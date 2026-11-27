@@ -1,0 +1,26 @@
+{
+  "journey": "j_48",
+  "file": "studio/tests/journeys/j_48.ts",
+  "sha": "95434759069d74ce6cf284117bc8c20be171cdcd",
+  "exit": 0,
+  "pass": 41,
+  "fail": 0,
+  "held": 0,
+  "seconds": 50,
+  "failed": [],
+  "video": [
+    "page@0f0f7981b8b14b6f417129665fba78a0.webm",
+    "page@376ad43ca6d1f793e1bbafef25addb9c.webm",
+    "page@3e60c555678ae2e30dcaca8b9aae5fd5.webm",
+    "page@7cd8f119c9cb94dc79bc7dc0b121d5c8.webm",
+    "page@b63db8a5501ad262223ed18c799a44cc.webm",
+    "page@c92d22d10c461555291c5f0500ac2116.webm",
+    "page@f5476bd660a7c35e33158337601c91ed.webm"
+  ],
+  "traces": [
+    "trace-1.zip",
+    "trace-2.zip"
+  ],
+  "steps": 74,
+  "journeyShots": 4
+}

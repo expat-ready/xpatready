@@ -57,3 +57,41 @@ Setup: scratch databases `xr_studio_csk1_brk_{d,e}` (migrations, old-shape fixtu
 | R7a | The same suite on a copy that already holds clients named with `%` or `_` (my R1 data) | Passes | The new 7a/7b case fails (`%` → 1, `_` → 1). It assumes no client of the firm contains those characters. This is a fixture assumption, not a product fault (R5 shows the search is right) | Minor (test) |
 
 Breaker: Pass 9bab80a24
+
+## Part 2 break pass (17b41633f)
+Breaker, 19 Nov, branch `claude/awesome-allen-4pfgcj` at 17b41633f (`git diff origin/main...17b41633f`). Isolated copy `brk` on :4837 (`PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500`), `configured` sample, PF-4 local sign-in; in-process runs of `linkFirmClients` as the job runs it (withFirm). Live AI off, US$0. Copy stopped and dropped; no code changed, nothing committed. API only: no screen, so keyboard, 1024 px, zoom, reload/back and uploads do not apply. Paths are under `prototype/studio/`.
+
+| # | Reproduction | Expected | Actual | Grade |
+|---|---|---|---|---|
+| F1 | `POST /api/runtime/cases` with `x-actor: user-O`, Visitor visa, `principal.displayName` = the Persian name `علی‌رضا محمدی` (ZWNJ U+200C). The same with `Ana`+U+00AD+`Maria`, an emoji ZWJ family, `Ana `+U+2060+`Lee`, `a`+U+3164+`b`, `!!`, `---` | 201, as in part 1 (R1 above: ZWNJ, soft hyphen and ZWJ opened 201) | **500** "Something went wrong", nothing opened. The log shows `FoPersonInvalidInput` from `linkClient` (api/src/clients.ts:45). The opening's rule (`INVISIBLE`, contracts/runtime.ts:22) accepts what the port's rule refuses (`CONTROL`/`HAS_WORD`, ports/fo-person.ts:24-26). The port error is no HttpException, so it is a 500, not a 400. A COMPANY client hits the same rule (`hasWord`). Real non-English names (Persian, Urdu, Kurdish use ZWNJ) can no longer open a case | Major |
+| F2 | (a) In SQL, write a case straight to the table (fixture or restore path; `session_replication_role = replica`, as DW10 does) after a firm's link job has run once, then restart the copy. (b) Give a pending firm-B client a ZWNJ name (as F1), then restart | The job links it, as the migration says ("The job links them and clears it") | (a) It is never linked. The key `cases.client_link:<firm id>` queues once ever (client-link.ts:14; pg-boss keeps used keys for 10 years), and `linkQueued` is set after the first run even when no firm had work (live.ts:50-53). So a client that becomes pending later (fixture or restore, CS-W1's firm fill, a key that gains its platform firm) waits forever, through every restart (2 restarts tried). (b) The job logs "1 client(s) not linked", finishes as `completed`, and is never retried (client-link.ts:28). Opening a new case with `clientId` of such a client does not link it either. Validation is global (`case_client_validate_link_check`), so one stuck client in any firm blocks it for every firm: the row's own suite failed DW10 on this copy for that reason (59/62) | Major |
+| F3 | As `xr_app` with `app.firm_id` = firm A, after the check was validated (`convalidated = t`): `update case_client set fo_person_id = null, fo_link_pending = true where …`, and `insert … fo_link_pending = true` with no link | Refused: the brief's check is "every PERSON client has fo_person_id" | Both are accepted. `fo_link_pending` is a plain column that xr_app may insert and update (`has_column_privilege` t/t). The VALID check (migration.sql:20-22) lets any row opt out forever, so after validation it does not guarantee a link. (Clearing a link without the flag, or changing the kind, is refused: held) | Major |
+| F4 | `POST /api/runtime/cases` with only `x-actor: user-S` (no session, no token), principal "Sample Plain" | A request with no session writes no walled table (firm-scope.ts PF-12 note: "a configuration or case request with no platform firm: no firm, so a walled table … takes no write"; case-stages.ts:72) | 201. It runs in `withFirm(<the solo firm>)` (runtime.ts:320-323) and writes an `fo_person` and a front-office audit line into that firm. The firm comes from a header anyone can set, so an unsigned caller can add people to either firm's front office. This needs the Lead's ruling on firm scope (the brief: never a firm from the request). If the simulated person stays the case side's identity until real sign-in, grade it Minor | Major |
+| F5 | Any direct opening (x-actor) or the Sample seed (sample-case.ts:64) | A typed actor that is true: `seed:<row>` for the seed, a listed simulated person for x-actor | `fo_person.created_by` and the front-office audit actor are `staff:user-O`. runtime.ts:342 adds `staff:` to a simulated id, so the line claims a staff id that is no `platform_staff` id, and the seed is not `seed:` | Minor |
+| F6 | `update platform_firm set status='DELETED'` (solo firm), then open as `x-actor: user-S` | No new front-office party for a firm that is not served (FO-8 refuses DELETED and ABANDONED) | 201, and a new `fo_person` in the DELETED firm. Code reading only (not run): a DELETED firm with no front office yet gets `FoPersonNotFound`, no HttpException, so a 500 (fo-person-port.ts:58-62) | Minor |
+| F7 | `PROSPECT_WON_POLL_MS=3000000000` (or `Infinity`, `1e12`) | A long interval, or refused | `pollMs` (live.ts:22) passes it on, and Node sets an interval above 2^31-1 ms to 1 ms (TimeoutOverflowWarning; 177 ticks in 200 ms in a probe). Single-flight still holds, but the catch-up runs back to back | Minor |
+| F8 | SIGTERM to the API while a catch-up runs | The poll stops on shutdown (ruling 2) | `main.ts` never calls `enableShutdownHooks`, so `onApplicationShutdown` (live.ts:39) runs only on `app.close()` (suites). On a signal the process exits mid-run. Nothing is half-written (each prospect is its own transaction) | Minor |
+
+**What held.**
+* Concurrency:
+  * 6 `open-case` calls at once on one offer: one 201, five 409; one case and one `case.opened`.
+  * 15 direct openings at once (10 in firm A, 5 in firm B): all 201, each with its own fo_person of its own firm, none pending.
+  * 3 job runs at once with 8 openings over 41 pending clients: 41 linked by one run, 0 by the other two, 0 failed; no orphan or shared fo_person, nothing left unlinked.
+  * FO-8 kind change (Convert as a person, Undo, change type to company, Convert) under 12 `open-case` calls: 11 were 409. The client ended COMPANY with only an fo_company, not pending.
+* Firm boundaries:
+  * A firm B bearer token with `x-actor: user-O` on `POST /cases`: 403, nothing written.
+  * Firm B calling `open-case` on firm A's client: 404.
+  * Relinking firm B's staff member to `user-O` is refused by `platform_staff`'s unique `actor_id`, so the cross-firm case of runtime.ts:322 cannot arise. No path takes a firm id from a body.
+* Company clients: `linkClient` routes by kind, so a COMPANY client never reaches `ensureForClient` (DW12 and the kind change both confirm it).
+* Keys with no platform firm: an opening on a key with no platform firm gives 201, a pending client with `firm_id` null, and no party.
+* The xr_app check:
+  * Clearing a link without the flag is refused, and so is a change of kind.
+  * The validate function, called by xr_app while a client is missing, returns f and changes nothing.
+* The poller:
+  * Single-flight: FO-8's prospect lock held 9 s at a 500 ms interval left one waiter and gave one client.
+  * The catch-up query takes 54 ms on 305 000 outbox rows.
+* The job on restart: it links the pending clients of a firm whose key is still unused, then validates.
+* Rollback: `rollback.sql`, run in a transaction on the migrated database, ran clean. Its functions equal part 1's.
+* The row's suite: `check_csk1_client.ts` is 62/62 on a fresh copy at 17b41633f.
+
+Count: 8 findings: 0 Blocker, 4 Major (F1-F4), 4 Minor (F5-F8). Breaker: Not passed 17b41633f.

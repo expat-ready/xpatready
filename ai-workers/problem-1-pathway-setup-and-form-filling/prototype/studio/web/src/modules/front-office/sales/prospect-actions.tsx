@@ -4,21 +4,24 @@
 // names the version the screen read; when someone moved the prospect first, nothing changes and the rows are read again.
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
-import { Assignees, Prospect } from "./contract";
-import { useStaff } from "./sales-frame";
+import { Prospect } from "./contract";
+import { assigneesQuery, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 export type StageRef = { id: string; label: string; kind: string };
 /** Who owns what, in words. Names come from `leads/assignees` (people who may assign get every active colleague);
  *  anyone else sees their own name and "A colleague". A one-user firm shows no owner anywhere (BR-10, X-4). */
 export function useOwners() {
   const me = useStaff();
-  const a = useQuery({ queryKey: ["fo", "assignees"], queryFn: async () => Assignees.parse(await staffApi("/front-office/leads/assignees")) }).data;
+  const q = useQuery(assigneesQuery), a = q.data;
   const name = (id: string | null) => id === null ? "Nobody" : a?.assignees.find((x) => x.staffId === id)?.displayName ?? (id === me.staffId ? me.displayName : "A colleague");
   // Until the answer is in (or when it fails) no owner is shown: a one-user firm never sees an owner flash by (break m8).
-  return { oneUser: a?.oneUser ?? true, choices: a?.assignees ?? [], name };
+  // `settled`: the answer is in, or failed (R1.32: Leads waits for it, so its chips never change under the person).
+  // A failed answer is not a one-user firm (break 9): the owner lines and buttons stay, the picker says it has nobody.
+  return { oneUser: a?.oneUser ?? !q.isError, choices: a?.assignees ?? [], name, settled: !q.isPending };
 }
 /** One request at a time (review M1): a second click before the first answer is dropped, also before React has drawn
  *  the button as busy. `take()` is true for the click that may send; `free()` when the answer is in. */
@@ -65,7 +68,7 @@ export function MoveMenu({ prospect, from, stages, version, move }: { prospect: 
   const to = stages.filter((s) => s.kind === "ACTIVE" && s.id !== from);
   if (!to.length) return null;
   return (
-    <DropdownMenu.Root>
+    <MenuRoot>
       <DropdownMenu.Trigger asChild><Button size="sm" variant="outline" busy={move.isPending && move.variables?.id === prospect.id} aria-label={`Move to…: ${prospect.name}, ${prospect.number}`} data-move={prospect.number}>Move to…</Button></DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-56 rounded-lg border border-border bg-surface-raised p-1 shadow-lg">
@@ -73,6 +76,6 @@ export function MoveMenu({ prospect, from, stages, version, move }: { prospect: 
           <DropdownMenu.Label className="max-w-64 px-2 py-1.5 text-xs text-text-muted">Won is set when the retainer is signed, or by Convert to client.</DropdownMenu.Label>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    </MenuRoot>
   );
 }

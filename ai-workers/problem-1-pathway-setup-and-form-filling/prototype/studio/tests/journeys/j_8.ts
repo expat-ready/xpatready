@@ -13,6 +13,11 @@
 //       shows firm B's case lines. NR: a stand-in writer without the wall (a direct create) lets the line through.
 //   DW5 transactions: an action that fails after its audit line rolls the line back. NR: a stand-in that writes the line
 //       outside the transaction keeps it.
+//   DW6 (R1.8, QA-594) before and after: firm A's Owner adds and renames an office (PF) and changes a person's phone (FO)
+//       through the running app's routes; each line holds who, when and the values before and after in full (P-687), read
+//       by AUD-4's reader as "field: old → new". NR: an ids-only line (as before R1.8) shows no change.
+//   DW7 (R1.8, QA-595) case firm: the case lines carry their case's firm; firm B's request writing about firm A's case is
+//       refused.
 //   W1-W4 the walk (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run): the case officer opens a Sample
 //       case, records an answer and moves a stage, and Activity shows both lines with who and when (W1); supplies a
 //       document and Activity shows it (W2). Firm staff have no feed screen of their own (Activity is the configuration
@@ -22,7 +27,7 @@
 //       first step (W4: R1.77's decision/close screen is not built, QA-502; R1.88, the firm audit view, is not built).
 //       axe-core on each screen walked; 1024 and 1440 px with no sideways scroll.
 // Sample rows only (the configured checkpoint); US$0, no model call.
-//   zsh studio/tools/isolated.sh j8 4438 start --ttl 30 && trap 'zsh studio/tools/isolated.sh j8 4438 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_8.ts j8 4438
+//   zsh studio/tools/isolated.sh j8 4438 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j8 4438 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_8.ts j8 4438
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -118,7 +123,7 @@ const libLines = form ? lines(`entity = 'form' and entity_key = ${lit(form)} and
 
 // ------------------------------------------------------------------------------------------------- DW1: one writer
 const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((x) => (x.isDirectory() ? files(join(d, x.name)) : x.name.endsWith(".ts") ? [join(d, x.name)] : []));
-const ADAPTER = "platform/audit/audit-event.ts", PLATFORM_LEFT = ["platform/settings.ts"]; // PF-0a part 2c (writeSetting)
+const ADAPTER = "platform/audit/audit-event.ts", PLATFORM_LEFT: string[] = []; // AUD-1m part 2c: only the adapter writes
 const directWriters = (tree: Record<string, string>) => Object.entries(tree).filter(([f, t]) => f !== ADAPTER && t.includes("auditEvent.create")).map(([f]) => f).sort();
 const tree = Object.fromEntries(files(API).map((f) => [relative(API, f), readFileSync(f, "utf8")]));
 const oneWriter = (t: Record<string, string>) => JSON.stringify(directWriters(t)) === JSON.stringify(PLATFORM_LEFT);
@@ -127,7 +132,7 @@ const oneWriter = (t: Record<string, string>) => JSON.stringify(directWriters(t)
 ok("J-8 DW1 pass: the case action (an answer), the document action (a supply) and the library action (a form role proposed) each wrote exactly one line; the approval its two (the decision and the role applied)",
   ans.status < 300 && nAnswer === 1 && answerLines.length === 1 && up === 201 && nDoc === 1 && nPropose === 1 && nApprove === 2 && libLines.length === 2,
   { ans: ans.status, nAnswer, up, nDoc, propose: proposed?.status, nPropose, approve: approved?.status, nApprove, lib: libLines.length });
-ok("J-8 DW1 pass: no case-side file writes audit_event directly: every case and configuration line goes through the adapter (only platform/settings.ts is left, PF-0a part 2c)", oneWriter(tree), directWriters(tree));
+ok("J-8 DW1 pass: no case-side file writes audit_event directly: every case and configuration line goes through the adapter (only the adapter writes)", oneWriter(tree), directWriters(tree));
 ok("J-8 DW1 NR: a stand-in direct write in a case file is caught by the same judge", !oneWriter({ ...tree, "case-close.ts": `${tree["case-close.ts"]}\nawait tx.auditEvent.create({ data })` }));
 
 // ------------------------------------------------------------------------------- DW2: typed actor and case id
@@ -183,6 +188,43 @@ ok("J-8 DW5 pass: an action that fails after its audit line rolls the line back 
 const key5b = `j8-outside-${run}`;
 await db.$transaction(async () => { await new Audit(db as never).log(served, OFFICER, "answered", "case fact", key5b, `J-8 on case ${CASE.slice(0, 8)}`); throw new Error("the action fails after its line"); }).catch(() => undefined);
 ok("J-8 DW5 NR: the stand-in writing the line outside the action's transaction keeps it (the judge 'rolled back' fails on it)", Number(sql(`select count(*) from audit_event where entity_key = '${key5b}'`)) === 1);
+
+// ------------------------------------------------------------------- DW6 (R1.8, QA-594): PF and FO writes, before and after
+// Firm A's Owner signs in on the copy (local identity) and makes one platform write (adds an office, then renames it) and
+// one front-office write (a person's phone), through the running app's own routes. Each line holds who, when and the
+// values before and after in full, personal values included (P-687), and AUD-4's reader shows them as "field: old → new".
+const tokenOf = async (firmKey: string, actorId: string) => ((await (await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, actorId, secondStep: true }) })).json()) as { token?: string }).token ?? "";
+const pf = async (tok: string, method: string, path: string, body?: unknown) => { const r = await fetch(`${BASE}/api${path}`, { method, headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }); return { status: r.status, body: await r.json().catch(() => null) as any }; };
+const owner = await tokenOf("sample-firm", REP), ownerId = sql(`select id from platform_staff where firm_id = ${lit(firmA)} and actor_id = ${lit(REP)}`);
+const officeName = `Sample office J8 ${run}`, renamed = `Sample office J8 ${run} (renamed)`;
+const added = await pf(owner, "POST", "/platform/offices", { name: officeName });
+const officeId: string = added.body?.office?.id ?? "";
+const changed = officeId ? await pf(owner, "PATCH", `/platform/offices/${officeId}`, { name: renamed, version: added.body?.office?.version }) : null;
+const officeLines = lines(`entity = 'platform_office' and entity_key = ${lit(officeId)}`);
+const addLine = officeLines.find((l) => l.action === "platform.office.add"), changeLine = officeLines.find((l) => l.action === "platform.office.change");
+const { changesOf } = await import("../../api/src/platform/audit/firm-read/render.ts");
+ok("J-8 DW6 pass (PF): the Owner adds an office and renames it; the add's line holds the name after (no before), the change's line the name before and after, each with who (the Owner) and when, and AUD-4's reader shows \"name: old → new\"",
+  added.status < 300 && changed?.status === 200 && addLine?.detail?.name_after === officeName && !("name_before" in (addLine?.detail ?? {}))
+  && changeLine?.detail?.name_before === officeName && changeLine?.detail?.name_after === renamed && changeLine?.actor === `staff:${ownerId}` && !!changeLine?.at
+  && changesOf(changeLine?.detail).some((c) => c.words === `name: ${officeName} → ${renamed}`), { added: added.status, changed: changed?.status, add: addLine?.detail, change: changeLine?.detail });
+const PERSON = psqlAs("xr_studio", `insert into fo_person (id, firm_id, created_by, updated_at, phone) values (gen_random_uuid(), ${lit(firmA)}, 'seed:j8', now(), '+14165550100') returning id`).split("\n")[0];
+const phoned = await pf(owner, "PATCH", `/front-office/people/${PERSON}`, { phone: "+1 416 555 0199" });
+const phoneLine = lines(`entity = 'fo_person' and entity_key = ${lit(PERSON)} and action = 'front_office.person.phone_changed'`)[0];
+ok("J-8 DW6 pass (FO): the Owner changes a person's phone; the line holds the number before and after in full (P-687), who and when",
+  phoned.status === 200 && phoneLine?.detail?.phone_before === "+14165550100" && phoneLine?.detail?.phone_after === "+14165550199" && phoneLine?.actor === `staff:${ownerId}` && !!phoneLine?.at, { phoned: phoned.status, body: phoned.status === 200 ? undefined : phoned.body, line: phoneLine?.detail });
+// NR: a writer that leaves before and after out (the line as it was before this row) fails the same judge.
+const bare = { ...phoneLine, detail: { foPersonId: PERSON, staffId: ownerId, firmId: firmA } } as Line;
+ok("J-8 DW6 NR: the stand-in line with ids only (the phone edit's line before R1.8) shows no change, so the judge fails on it", changesOf(bare.detail).length === 0 && bare.detail?.phone_before === undefined);
+
+// ------------------------------------------------------------------ DW7 (R1.8, QA-595): a case line carries its firm
+const firmOf = (l: Line | undefined) => (l ? sql(`select coalesce(firm_id::text, '-') from audit_event where id = ${lit(l.id)}`) : "");
+const lineB = lines(`case_id = ${lit(CASE_B)} and action = 'answered'`)[0];
+ok("J-8 DW7 pass: the officer's answer on firm A's case and firm B's answer on its own case carry their case's firm (QA-595), with no firm named by the case routes",
+  firmOf(answerLines[0]) === firmA && firmOf(stageLines[0]) === firmA && firmOf(docLines[0]) === firmA && firmOf(lineB) === firmB, { a: firmOf(answerLines[0]), stage: firmOf(stageLines[0]), doc: firmOf(docLines[0]), b: firmOf(lineB) });
+const key7 = `j8-case-wall-${run}`;
+let caseRefused = false;
+try { await inFirm(firmB, () => db.$transaction((tx) => auditEvent.record(tx, { workspaceId: served, actor: "system:j8", action: "answered", entity: "case fact", entityKey: key7, summary: "J-8: firm B writes about firm A's case", caseId: CASE }))); } catch (e) { caseRefused = e instanceof AuditRefused; }
+ok("J-8 DW7 fail: in firm B's request, a case line about firm A's case is refused and nothing is written (the wall on the case side)", caseRefused && Number(sql(`select count(*) from audit_event where entity_key = '${key7}'`)) === 0, caseRefused);
 await db.$disconnect();
 
 // ----------------------------------------------------------------------------------------------------- the walk

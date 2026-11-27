@@ -1,15 +1,17 @@
 # Known failures (B202, founder A119 16 Nov, P-639): one line per failure we have already met; lead-watch.sh step 12 checks every line every time.
 # Columns (tab-separated): id · test · threshold · ACT text · the incident that taught it. A new failure is one new line; tests are the
-# functions in tools/known-failures.py (size:<file> bytes · records-pr-lines · proving · feeding · reuse:<regex of the ACT lines it
+# functions in tools/known-failures.py (size:<file> bytes · records-pr-lines · records-pr-age (hours) · proving · feeding · reuse:<regex of the ACT lines it
 # reuses>, whose threshold is the regex of a line proving that source ran: reused lines are counted, never printed again).
 id	test	threshold	act	incident
 size-rules	size:RULES.md	24576	RULES.md is near its 25 KB wall: move long text word for word to product/rules/<topic>.md before the next records PR	16 Nov: records batches #1930 and #1939 failed on the size walls
 size-state	size:STATE.md	11776	STATE.md is near its 12 KB wall: move the earlier page to product/history/ before the next records PR	16 Nov: records batches #1930 and #1939 failed on the size walls
 records-pr	records-pr-lines	700	a records PR is near the 800-line wall: split it before it is labelled	16 Nov: records batches #1930 and #1939 failed on the size walls
-questions	reuse:^ACT   (SLE Q |#[0-9]+ has a new question|#[0-9]+ has a lane report|.*not acked)	^(sle |ACT   SLE )	answer each question and Lead read now (30 min target, sle-watch Q)	16 Nov: six questions and Lead reads waited up to 2.7 h
+records-pr-age	records-pr-age	24	a records PR has been open over 24 h: merge it or close it, so no ruling lives only in an unmerged PR (P-526c)	full-power #145 (20 Nov): records PRs sat open for days; OS-17
+questions	reuse:^ACT   (SLE Q |#[0-9]+ has a new question|#[0-9]+ has a lane report|.*not acked)	^(sle |ACT   SLE )	answer each question and Lead read now (10 min target, sle-watch Q, P-798)	16 Nov: six questions and Lead reads waited up to 2.7 h
 approved-red	reuse:^ACT   (#[0-9]+ red after approval|#[0-9]+ dequeued)	^queue [0-9]+ queued	approved then red or dequeued: send it back to its lane now	15-16 Nov: approved PRs sat red
-approved-unqueued	reuse:^ACT   SLE A 	^(sle |ACT   SLE )	approved and not queued over 30 min: name the cause and clear it (sle-watch target A)	15 Nov: #1811 approved and green, not queued for hours
+approved-unqueued	reuse:^ACT   SLE A 	^(sle |ACT   SLE )	approved and not queued over 20 min (P-798): name the cause and clear it (sle-watch target A)	15 Nov: #1811 approved and green, not queued for hours
 records-off-main	reuse:^ACT   records (not on main|on main: DECISIONS unreadable)	^(ACT   )?records on main|^ACT   records not on main	records on the Lead branch are not on main: land the records PR now (step 7 measures it by content)	A113 (16 Nov): records sat off main for hours; A76 (15 Nov) for 5 days
 proving-pipe	proving	5	the proving pipe is short: Built capabilities wait for qa while fewer than 2 qa lanes pushed in 90 min: start or wake qa	A119 (16 Nov): "always a good pipeline for proving"
 feeding-pipe	feeding	2	the feeding pipe is short: fewer than 2 ready rows per running builder, or a builder idle with no next row: the feeding Lead shapes or hands a row now	A119 (16 Nov): "feeding agent"
-lane-silent	reuse:^ACT   (SLE L |stuck: [0-9]+ lanes idle|local lane .* idle)	^(sle |ACT   SLE |board  )	a lane silent 90 min with work left: wake it or close it	A117 (16 Nov): idle lanes the board showed waited for the founder
+lane-silent	reuse:^ACT   (SLE L |stuck: [0-9]+ lanes idle|local lane .* idle)	^(sle |ACT   SLE |board  )	a lane silent 30 min with work left (P-798): wake it or close it	A117 (16 Nov): idle lanes the board showed waited for the founder
+same-cause	reuse:^ACT   same cause: [0-9]+ failure	^same cause 	a second failed batch has the same failure (A351 B1): read it once, find the pull request in every run, fix or dequeue before the next batch	24 Nov: one check of csdl3 failed seven merge batches, 01:00 to 02:36 IST

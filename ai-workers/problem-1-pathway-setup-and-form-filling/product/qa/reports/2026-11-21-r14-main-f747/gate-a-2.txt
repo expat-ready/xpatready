@@ -1,0 +1,20 @@
+PASS  setup: a staff member of firm A (Owner) and of firm B sign in — {"firmA":"843421a5-912b-45d5-8bae-a2e99e9a53b0","firmB":"5e06ebd5-176c-402a-ab95-28219d155277"}
+PASS  setup: each firm adds a lead through the API — {"b":201,"a":201}
+PASS  R1.4 1: firm B's lead is absent from firm A's list (firm A's own lead is in it) — {"status":200,"n":1}
+PASS  R1.4 1: firm B's lead by id, as firm A, is the plain 404 — 404
+PASS  R1.4 1: a write to firm B's lead, as firm A (take), is 404 and changes nothing (owner and updated_at as before) — {"status":404,"same":true}
+PASS  R1.4 2 (fail case): as xr_app with no app.firm_id, a walled table (fo_lead) reads no row — {"noFirm":"0","all":2}
+PASS  R1.4 2: with firm A set, xr_app reads exactly firm A's leads — {"withA":"1","ofA":1,"all":2}
+PASS  R1.4 2 (fail case): as xr_app with no firm, platform_staff reads no row (the owner sees them all) — {"noFirmStaff":"0","allStaff":4}
+PASS  R1.4 3: an X-Firm-Id / X-Firm-Key header or a ?firmId= naming firm B never reaches firm B's lead (404) — {"header":404,"query":404}
+PASS  R1.4 3: a body firmId naming firm B is refused or ignored, never lands in firm B — {"status":201,"firm":"A"}
+PASS  R1.4 3: a lead added with an X-Firm-Id header naming firm B lands in the signed-in person's firm A — 201
+PASS  R1.4 4: xr_app owns no table — "0"
+PASS  R1.4 4: the running server's pooled connections include the app's role (xr_app) — "xr_app"
+PASS  R1.4 5: R1.5's first step (/me after sign-in) answers firm A for firm A's person and firm B for firm B's — {"a":true,"b":true}
+PASS  R1.4 7: every walled table (86) forces row-level security (the 7 catalogues aside: PF-15's plan_limit and limit_change, no firm_id, as PF-12's pack's LATER_CATALOGUES) — ""
+PASS  R1.4 7: every walled table but the catalogues and our own registers has a policy firm_id (platform_firm: id) = platform_session_firm() for read and write (the function reads app.firm_id) — []
+PASS  R1.4 6: the server log is readable and the run's sign-ins and staff routes use the bypass 0 times (the doors left it, PF-12b2) — {"logBefore":2,"logAfter":2,"auditBefore":2,"auditAfter":2}
+NOTE  R1.4 6: bypass uses during this run: 0 platform_bypass lines in the server log (isolated-qa_r14/api.log); 0 audit_event lines naming a bypass
+
+17/17 passed

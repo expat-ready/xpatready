@@ -1,5 +1,6 @@
 // Product Studio application service: programs and combinations, the shared library (versioned edits), the
 // combination's own configuration, previews through the common renderer, validation, review and release.
+import { assessmentOnlyRelease } from "../../engine/eligibility/gates.ts";
 import { itemState, libraryFilter, lockItem, openItemChanges, originWords, refuseRetired, retiredFieldKeys } from "./library-items.ts";
 import { current } from "../../engine/where-used.ts";
 import { FILLS_LOCK } from "./who-fills.ts";
@@ -40,6 +41,7 @@ import { isIdentityName } from "../../engine/identity-documents.ts";
 import { firmMayRead } from "./case-feed.ts";
 import { placementRefusal } from "../../engine/field-scope.ts"; // C3.16: a field asked once for the household or employer stays single and unconditioned
 import { fillTrialsOf, releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
+import { firmIdByKey } from "./firms.ts"; // CS-W1 part 2b: the activity feed finds a firm's cases by its platform id
 /** G2 (C5.5, BR-8; shared with G1 BR-8): a refusal carries every blocking problem in `errors[]`, each in words; `detail`
  *  (and `message`, read by older callers) keeps the sentence the screens and checks already show. */
 /** G2 BR-9: the keys a release rests on, frozen in its summary (only when the gate judged it). */
@@ -115,10 +117,10 @@ function retiredPeople(c: { label: string; retiredAt: Date | null }) {
 // UX-A part 1 (review M1): "set up", in the words of contracts/counts.ts: a form attached but not set up is still on the
 // combination ("2 forms · 0 set up"), so this never says "no forms" beside a count that says 2.
 export const EMPTY_WORDS = "Nothing to release yet: no form is set up on this combination and it has no documents. Set up the forms it files (Find forms, add one from the Form library, or finish one attached) before sending it for review.";
-export const emptyProblem = (s: Pick<Snapshot, "forms" | "document_requirements">) =>
-  s.forms.length || (s.document_requirements ?? []).length ? [] : [{ level: "error" as const, where: "Release", item: "", message: EMPTY_WORDS }];
+export const emptyProblem = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }) =>
+  s.forms.length || (s.document_requirements ?? []).length || assessmentOnlyRelease(s) ? [] : [{ level: "error" as const, where: "Release", item: "", message: EMPTY_WORDS }];
 /** What a release needs on it before anything else is judged: F8 (something), then G5 (P-248: a form line and a document line). */
-export const contentProblems = (s: Pick<Snapshot, "forms" | "document_requirements">) => [...emptyProblem(s), ...releaseLineProblems(s)];
+export const contentProblems = (s: Pick<Snapshot, "forms" | "document_requirements"> & { eligibility?: unknown }) => [...emptyProblem(s), ...releaseLineProblems(s)];
 export { FORM_LINE_WORDS, formLineProblem, isFormLine }; // G5: the rule itself is engine/programs.ts (pure, for the C5.1 pack)
 
 @Injectable()
@@ -465,7 +467,8 @@ export class Studio {
     // C11.12 BR-7: a new release needs a filing mode on every role that may be an applicant (pinned releases are kept;
     // engine/filing-modes.ts FILING_NOT_SET_BLOCKS).
     const roles = await this.personRoles(workspaceId);
-    const filing = filingProblems((s.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], roles);
+    // AS-2a (P-650 (2)): nobody files on an assessment-only release, so no filing mode is asked of its people.
+    const filing = assessmentOnlyRelease(s) ? [] : filingProblems((s.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], roles);
     // G1 BR-7 (challenge M1): every published number needs a source entry; the draft only, never a released snapshot.
     // Only a draft that will be submitted (it differs from its release, or there is none): a Live row with no draft
     // changes lists none, as on the catalogue (tech lead on #568; EXPERIENCE §2.5, one status everywhere).
@@ -780,7 +783,7 @@ export class Studio {
     if (!up && at === keys.length - 1) fail(`"${title}" is already the last section.`, HttpStatus.CONFLICT);
     const to = up ? at - 1 : at + 1;
     [keys[at], keys[to]] = [keys[to], keys[at]];
-    await this.db.$transaction(keys.map((k, i) => this.db.sqrSectionSelection.update({ where: { combinationId_sectionKey: { combinationId, sectionKey: k } }, data: { sectionOrder: i } })));
+    await this.db.$transaction(async (tx) => { for (const [i, k] of keys.entries()) await tx.sqrSectionSelection.update({ where: { combinationId_sectionKey: { combinationId, sectionKey: k } }, data: { sectionOrder: i } }); }, { maxWait: 10_000, timeout: 5_000 });   // M2: interactive, never an array batch; M1 (Lead 25): its limits stated
     const nth = ordinal(to + 1);
     await this.audit.log(c.workspaceId, actor.id, "updated", "section selection", sectionKey, `${actor.name} moved the section "${title}" ${body.direction} in the questionnaire of "${c.label}": now ${nth} of ${keys.length}`, undefined, c.id);
     return { ok: true, position: to + 1, of: keys.length, order: keys.map((k) => ({ key: k, title: order.find((x) => x.key === k)!.title })) };
@@ -1255,11 +1258,13 @@ export class Studio {
    *  checklist lines, eligibility checks) are left out, and a line of an entity on neither list is read by no firm's
    *  staff (case-feed.ts). Configuration people read every line, as before. */
   async activity(limit = 200, firmKey: string | null = null) {
+    // CS-W1 part 2b: the firm's cases are found by its platform id (none for a key with no platform firm: no case).
+    const firmId = firmKey === null ? null : (await firmIdByKey(this.db, firmKey)) ?? "00000000-0000-0000-0000-000000000000";
     const workspaceId = await this.ws.id();
-    const rows = await this.db.auditEvent.findMany({ where: { workspaceId }, orderBy: { at: "desc" }, take: firmKey ? limit * 5 : limit });
+    const rows = await this.db.auditEvent.findMany({ where: { workspaceId }, orderBy: { at: "desc" }, take: firmId ? limit * 5 : limit });
     let kept = rows;
-    if (firmKey) {
-      const own = new Set((await this.db.case.findMany({ where: { workspaceId, firmKey }, select: { id: true } })).map((c) => c.id.slice(0, 8)));
+    if (firmId) {
+      const own = new Set((await this.db.case.findMany({ where: { workspaceId, firmId }, select: { id: true } })).map((c) => c.id.slice(0, 8)));
       kept = rows.filter((e) => firmMayRead(e, own)).slice(0, limit);   // case-feed.ts: any line naming a case is a case line
     }
     // C8.2 (breaker M1 on #553): government identifiers never travel in the feed; the audit row keeps them (AG-7-95).

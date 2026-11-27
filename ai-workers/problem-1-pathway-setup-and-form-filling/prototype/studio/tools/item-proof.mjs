@@ -6,9 +6,10 @@
 // (P-339's green pack on main's head on GitHub's runners, with the run id); qa reads it and walks the journey (gate A).
 //   detect  [--body-file f]   the items on "Completes:" lines of a PR body (stdin by default) as JSON {items, bad}; exit 1
 //           when a "Completes:" line cannot be read (pr-rules.yml: the convention is checked before the merge).
-//   plan    <R1.n> [--caps f]  what proves the item, from its row in qa/CAPABILITIES.md: the acceptance packs of the C ids
+//   plan    <R1.n> [--caps f] [--studio d]  what proves the item, from its row in qa/CAPABILITIES.md: the acceptance packs of the C ids
 //           in its "Case side" and "Done when" cells (works-set.mjs --run, holds in qa/REGRESSION-HELD.md kept), the
-//           studio/tests suites its "Done when" names (run-suites.sh --only), and its journey tests/journeys/j_<n>.ts.
+//           studio/tests suites its "Done when" names (run-suites.sh --only), and its journey tests/journeys/j_<n>.ts
+//           (or the J-row SHARED_JOURNEY names, e.g. R1.40 -> j_38.ts).
 //   verdict --item R1.n --plan f --results f --sha s --pr n --run-id i --run-url u [--artifact-url u] [--repo o/r]
 //           one verdict JSON (results: one JSON line a run, {kind, name, exit}); PASS only when the journey and every
 //           planned run passed; a missing journey, a missing pack or a run with no result line is FAIL (P-405).
@@ -18,6 +19,11 @@
 //   scan    <dir>   exit 1 when a key or secret value appears in what would be uploaded (text files, and the trace zips'
 //           contents through unzip); the video and screenshots are pictures of Sample data, covered by the trace's
 //           DOM snapshots of the same pages. Names the file and the kind found, never the value.
+//   gate    <verdict.json>   the prove job's last step (A274): exit 1 when the verdict is not PASS, when no pack, suite
+//           or journey ran (no exit recorded), or when the file is missing or torn; prints why, for the job summary.
+//   claim   --title t [--strict on]  (body on stdin) a runtime/screens PR whose title names an R1 row ("R1.4", "(R1 row
+//           42)") and whose body has no "Completes:" line prints MISSING: "Completes: R1.n" as a warning; exit 0, exit 1
+//           only with --strict on (pr-rules.yml; the Lead turns it on, A274).
 // No dependency (pr-rules runs detect before any npm install); US$0, no model call.
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -27,6 +33,10 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const S = resolve(HERE, ".."), P = resolve(S, "../../product"), CAPS = join(P, "qa/CAPABILITIES.md");
 const ITEM = /^R1\.([1-9]\d{0,2})$/;
+/** An item proven by another row's journey (one J-row walks two map rows), never a copy of the file: R1.40 calendar
+ *  invite files is walked by J-38 with R1.38 (tech lead, 20 Nov, QA-570; qa/reports/2026-11-20-r140-qa11.md). */
+export const SHARED_JOURNEY = { "R1.40": 38 };
+export const journeyOf = (item) => `tests/journeys/j_${Object.hasOwn(SHARED_JOURNEY, item) ? SHARED_JOURNEY[item] : String(item).slice(3)}.ts`;
 
 /** The R1 items a PR body completes. A "Completes:" line (optionally a list item, a quote or bold) holds R1 ids only,
  *  separated by commas, spaces or "and"; anything else on it makes the line unreadable (bad), never a silent guess.
@@ -46,6 +56,27 @@ export function detect(body) {
   return { items: [...items].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3))), bad };
 }
 
+/** Why a verdict proves nothing (empty: it proves its item). A run "ran" when it has an exit code. */
+export function gate(v) {
+  if (!v || typeof v.overall !== "string" || !Array.isArray(v.suites)) return { ok: false, lines: ["no verdict: the verdict file is missing or cannot be read (see the verdict step)"] };
+  const planned = v.suites.filter((s) => ["pack", "suite", "journey"].includes(s.kind)), ran = planned.filter((s) => typeof s.exit === "number");
+  const lines = [];
+  if (v.overall !== "PASS") lines.push(`verdict ${v.overall}: ${(v.why ?? []).join("; ") || "no reason given"}`);
+  if (!ran.length) lines.push(`nothing ran: 0 of ${planned.length} planned run(s) (pack, suite, journey) has an exit code`);
+  return { ok: !lines.length, lines: lines.length ? lines : [`verdict PASS: ${ran.length} of ${planned.length} planned run(s) ran and passed`] };
+}
+
+/** The R1 rows a runtime or screens PR's title names, with no "Completes:" line in its body (A274). */
+export function claim(title, body) {
+  const t = String(title ?? "");
+  if (!/\b(runtime|screens):/i.test(t)) return [];
+  const d = detect(body);
+  if (d.items.length || d.bad.length) return [];
+  const ids = new Set([...t.matchAll(/\bR1\.([1-9]\d{0,2})\b/g)].map((m) => `R1.${m[1]}`));
+  for (const m of t.matchAll(/\(R1 row ([1-9]\d{0,2})\)/gi)) ids.add(`R1.${m[1]}`);
+  return [...ids].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+}
+
 /** A table line's cells as works-set.mjs reads them: a pipe inside a `code span` is not a column; marks dropped. */
 const cells = (line) => line.trim().replace(/`[^`]*`/g, (c) => c.replace(/\|/g, "¦")).split(/(?<!\\)\|/).map((c) => c.replace(/~~[^~]*~~/g, " ").replace(/[*`]|\b__|__\b/g, "").trim());
 
@@ -59,7 +90,7 @@ export function plan(item, md, studio = S) {
     if (c.includes("Case side") && c.some((x) => /^Done when/.test(x))) { head = c; continue; }
     if (head && c[1] === item) { row = c; break; }
   }
-  const n = item.slice(3), journey = `tests/journeys/j_${n}.ts`;
+  const journey = journeyOf(item);
   const out = { item, found: !!row, name: "", status: "", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey, journeyExists: existsSync(join(studio, journey)) };
   if (!row) return out;
   const at = (re) => row[head.findIndex((x) => re.test(x))] ?? "";
@@ -180,11 +211,11 @@ function main(argv) {
     for (const b of d.bad) console.error(`Completes: line not read (write "Completes: R1.77" or "Completes: R1.77, R1.78", nothing else on the line): ${b}`);
     return d.bad.length ? 1 : 0;
   }
-  if (cmd === "plan") { console.log(JSON.stringify(plan(pos[0], readFileSync(opt.caps ?? CAPS, "utf8")), null, 2)); return 0; }
+  if (cmd === "plan") { console.log(JSON.stringify(plan(pos[0], readFileSync(opt.caps ?? CAPS, "utf8"), opt.studio ? resolve(opt.studio) : S), null, 2)); return 0; }
   if (cmd === "verdict") {
     const results = existsSync(opt.results) ? readFileSync(opt.results, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
     // No plan (the set-up failed before it): still a verdict, FAIL, so the report always has one (review M1).
-    let pl; try { pl = JSON.parse(readFileSync(opt.plan, "utf8")); } catch { pl = { found: false, why: "the prove job ended before its plan (set-up failed; see the run)", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey: `tests/journeys/j_${String(opt.item).slice(3)}.ts`, journeyExists: false }; }
+    let pl; try { pl = JSON.parse(readFileSync(opt.plan, "utf8")); } catch { pl = { found: false, why: "the prove job ended before its plan (set-up failed; see the run)", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey: journeyOf(String(opt.item)), journeyExists: false }; }
     console.log(JSON.stringify(verdict({ item: opt.item, plan: pl, results, sha: opt.sha, pr: opt.pr, runId: opt["run-id"], runUrl: opt["run-url"], artifactUrl: opt["artifact-url"] || null, repo: opt.repo ?? "" }), null, 2));
     return 0;
   }
@@ -197,6 +228,18 @@ function main(argv) {
     if (!hits.length) console.log(`PASS  secret check: no key or secret value in ${pos[0]}`);
     return hits.length ? 1 : 0;
   }
-  console.error("usage: item-proof.mjs detect|plan|verdict|comment|page|scan (see the header)"); return 2;
+  if (cmd === "gate") {
+    let v = null; try { v = JSON.parse(readFileSync(pos[0], "utf8")); } catch { v = null; }
+    const g = gate(v);
+    console.log(`#### gate: ${g.ok ? "PASS, the job is green" : "FAIL, the job fails: it proved nothing"}`);
+    for (const l of g.lines) console.log(`* ${l}`);
+    return g.ok ? 0 : 1;
+  }
+  if (cmd === "claim") {
+    const miss = claim(opt.title, readFileSync(0, "utf8"));
+    for (const i of miss) console.log(`::warning title=Completes line::MISSING: "Completes: ${i}" (the title names ${i}; if this PR completes it, add the line so item-proof proves it at the merge)`);
+    return miss.length && opt.strict === "on" ? 1 : 0;
+  }
+  console.error("usage: item-proof.mjs detect|plan|verdict|comment|page|scan|gate|claim (see the header)"); return 2;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(main(process.argv.slice(2)));

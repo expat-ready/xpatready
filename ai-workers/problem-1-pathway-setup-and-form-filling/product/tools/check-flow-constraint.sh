@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# ENF-738 (P-738; B206 part 4, P-751): lead-watch.sh's constraint section. flow-constraint.py on made-up facts: the
+# measures print, the one constraint is the first over its bar in flow order, and anything unread is said, never passed.
+# S1-S12 (ENF-738, 24 Nov): labelled -> batch start -> merged by Mergify queue, the live wait, each constraint named with
+# its number, on Mergify's real batch shapes.
+# US$0, no network.   bash product/tools/check-flow-constraint.sh
+set -u
+. "$(dirname "$0")/guard-test-lib.sh"
+T=$(mktemp -d "${TMPDIR:-/tmp}/flowc.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
+C="$TOOLS/flow-constraint.py"; NOW=2026-11-20T06:00:00Z
+# facts: 4 batches in 6 h (walls 30, 40, 50, 70 min); batch run 3 failed, its batch PR #900 holds #11 (merged since) and #12 (open)
+facts() {  # facts <file> [jq edit]
+  jq -n '{now: "2026-11-20T06:00:00Z",
+    batches: [{id: 1, conclusion: "success", started: "2026-11-20T01:00:00Z", updated: "2026-11-20T01:30:00Z", pr: 901},
+              {id: 2, conclusion: "success", started: "2026-11-20T02:00:00Z", updated: "2026-11-20T02:40:00Z", pr: 902},
+              {id: 3, conclusion: "failure", started: "2026-11-20T03:00:00Z", updated: "2026-11-20T03:50:00Z", pr: 900},
+              {id: 4, conclusion: "success", started: "2026-11-20T04:00:00Z", updated: "2026-11-20T05:10:00Z", pr: 903}],
+    newest_jobs: {run: 4, jobs: [{name: "fast", min: 3}, {name: "shard (7)", min: 41.4}, {name: "types", min: null}]},
+    open_labelled: [],
+    pulls: {"900": {title: "merge queue: checking #11 + #12 together on main", body: "batch **b0** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T03:00:00Z"},
+            "11": {title: "a", state: "closed", merged_at: "2026-11-20T04:30:00Z"}, "12": {title: "b", state: "open", merged_at: null}},
+    merged: [{number: 11, approved_at: "2026-11-20T03:00:00Z", merged_at: "2026-11-20T04:30:00Z"},
+             {number: 13, approved_at: "2026-11-20T04:40:00Z", merged_at: "2026-11-20T05:10:00Z"},
+             {number: 14, approved_at: null, merged_at: "2026-11-19T10:00:00Z"}]}' | jq "${2:-.}" > "$1"; }
+echo '{"fresh": 1, "oldest_fresh_min": 4, "stale": [{"id": 43098053168}, {"id": 43098053155}]}' > "$T/rw.json"
+echo '{"freshness": {"generated_at": "2026-11-20T05:55:00Z"}, "first": {"today": {"proven": 3, "goal": 10, "short": 7, "waiting": 5}}}' > "$T/board.json"
+run() { out=$(python3 -I "$C" --facts "$1" --runs-waiting "${RW:-$T/rw.json}" --board "${BD:-$T/board.json}" --now "$NOW" --save "$T/m.json" 2>&1); r=$?; act=$(grep '^ACT' <<< "$out"); }
+facts "$T/f.json"; run "$T/f.json"
+ok "section heading with the IST time" "$(grep -qx 'constraint (P-738, ENF-738) measured 20 Nov 11:30 IST' <<< "$out" && echo 1)" "$out"
+ok "batch: count, median wall, the newest batch's longest part" "$(grep -qx '  batch     4 batch(es) started in the last 6 h and ended, median wall 45 min; newest.s longest part shard (7) 41 min (run 4)' <<< "$out" && echo 1)" "$out"
+ok "machines: runs-waiting.py's measure (part 1), stale runs apart" "$(grep -qx '  machines  1 run(s) waiting (created under 6 h), oldest 4 min; 2 stale, not counted' <<< "$out" && echo 1)" "$out"
+ok "failed: each failed batch with its members, the still-open one named culprit" "$(grep -qx '  failed    1 of 4 batch(es) failed in 6 h: run 3: #11, #12 (culprit: still open)' <<< "$out" && echo 1)" "$out"
+ok "merge: approved to merged median over PRs merged in 24 h (no label time: left out)" "$(grep -qx '  merge     approved to merged median 60 min (n=2, merged in 24 h)' <<< "$out" && echo 1)" "$out"
+ok "rate: merges per hour over 3 h" "$(grep -qx '  rate      0.7 merges per hour (last 3 h, 2 merges)' <<< "$out" && echo 1)" "$out"
+ok "proven: the board's Today card with its age" "$(grep -qx '  proven    Proven today 3 of 10 (7 short), 5 Built waiting for qa (board 5 min old)' <<< "$out" && echo 1)" "$out"
+ok "exactly one ACT line, the constraint" "$([ "$(grep -c '^ACT' <<< "$out")" = 1 ] && echo 1)" "$out"
+ok "1 of 4 failed (25%, bar 10%): the constraint is failed batches, culprit #12, the P-731 way back" "$(grep -q '^ACT   constraint: failed batches — 1 of 4 failed in 6 h (bar 10%), culprits #12: send each culprit back' <<< "$act" && grep -q 'Batch failures covered:' <<< "$act" && echo 1)" "$act"
+ok "--save writes the measures" "$(jq -e '.failed.n == 1 and .batch.median_min == 45 and .machines.fresh == 1' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
+echo '{"fresh": 6, "oldest_fresh_min": 22, "stale": []}' > "$T/rw2.json"; RW="$T/rw2.json" run "$T/f.json"
+ok "machines over the bar (oldest 22 min, bar 15) come first in flow order" "$(grep -q '^ACT   constraint: machines — 6 run(s) waiting, oldest 22 min' <<< "$act" && echo 1)" "$act"
+facts "$T/f2.json" '.batches[2].conclusion = "success"'; run "$T/f2.json"
+ok "no failed batch, median wall 45 min: not over 45, so approved to merged (60, bar 60) is not over either: proof is named" "$(grep -q '^ACT   constraint: proof — Proven today 3 of 10' <<< "$act" && echo 1)" "$act"
+facts "$T/f3.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T02:30:00Z"'; run "$T/f3.json"
+ok "batch time over the bar: the longest part is the action" "$(grep -q '^ACT   constraint: batch time — median wall 60 min (bar 45): split or speed up the longest part, shard (7) (41 min)' <<< "$act" && echo 1)" "$act"
+facts "$T/f4.json" '.batches[2].conclusion = "success" | .merged[1].approved_at = "2026-11-20T02:00:00Z"'; run "$T/f4.json"
+ok "approved to merged over the bar (median 140 min)" "$(grep -q '^ACT   constraint: approved to merged — median 140 min (bar 60)' <<< "$act" && echo 1)" "$act"
+facts "$T/f5.json" '.batches = [] | .newest_jobs = null | .merged = [.merged[2]]'; run "$T/f5.json"
+ok "no batch and no merge in 3 h: supply is the constraint" "$(grep -q '^ACT   constraint: supply — no merge and no batch in 3 h' <<< "$act" && echo 1)" "$act"
+facts "$T/f6.json" '.batches = {error: "HTTP 502"}'; run "$T/f6.json"
+ok "batches unreadable: said on both lines, and the constraint is not measured, never \"none\"" "$(grep -q '^  batch     not measured (HTTP 502)' <<< "$out" && grep -q '^  failed    not measured (HTTP 502)' <<< "$out" && grep -q '^ACT   constraint: not measured — failed, batch unreadable' <<< "$act" && echo 1)" "$out"
+facts "$T/f7.json" '.pulls = {error: "rate limit"}'; run "$T/f7.json"
+ok "PRs unreadable: the failed batch says its members are unreadable" "$(grep -q 'run 3: members unreadable' <<< "$out" && echo 1)" "$out"
+RW="$T/none.json" BD="$T/none.json" run "$T/f2.json"
+ok "no runs-waiting.json and no board: both lines say not measured; the constraint says so too" "$(grep -q '^  machines  not measured (runs-waiting.json not found' <<< "$out" && grep -q '^  proven    not measured' <<< "$out" && grep -q '^ACT   constraint: not measured — machines' <<< "$act" && echo 1)" "$out"
+echo 'not json' > "$T/bad.json"; run "$T/bad.json"
+ok "facts that cannot be read: one line and still one ACT, exit 0" "$([ $r = 0 ] && grep -q 'could not be measured' <<< "$out" && [ "$(grep -c '^ACT' <<< "$out")" = 1 ] && echo 1)" "exit $r: $out"
+facts "$T/f8.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z"'; BD="$T/b2.json"; echo '{"first": {"today": {"proven": 10, "goal": 10, "short": 0, "waiting": 0}}}' > "$T/b2.json"; run "$T/f8.json"; BD=""
+ok "nothing over its bar: \"none over its bar\", still one ACT" "$(grep -q '^ACT   constraint: none over its bar' <<< "$act" && echo 1)" "$act"
+# part 4 review M1: an unread or missing part never ends as "none over its bar"
+facts "$T/f9.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z"'; BD="$T/none.json" run "$T/f9.json"
+ok "board unreadable, all else fine and under its bar: \"not measured — proven\", never none" "$(grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$act"
+echo '{"freshness": {"generated_at": "2026-11-20T04:00:00Z"}, "first": {"today": {"proven": 10, "goal": 10, "short": 0, "waiting": 0}}}' > "$T/b3.json"; BD="$T/b3.json" run "$T/f9.json"
+ok "board 120 min old: stale, not this check's measure" "$(grep -q '^  proven    not measured (the board is 120 min old' <<< "$out" && grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$out"
+echo '{"freshness": {"generated_at": "2026-11-20T05:40:00Z"}, "first": {"today": {"proven": 3, "goal": 10, "short": 7, "waiting": 5}}}' > "$T/b20.json"; BD="$T/b20.json" run "$T/f9.json"
+ok "board 20 min old: over the 10-min limit (P-803, FRESH_MAX_MIN), not measured, never \"Proven today\"" "$(grep -q '^  proven    not measured (the board is 20 min old, over 10' <<< "$out" && ! grep -q 'Proven today' <<< "$out" && grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$out"
+out=$(FRESH_MAX_MIN=30 python3 -I "$C" --facts "$T/f9.json" --runs-waiting "$T/rw.json" --board "$T/b20.json" --now "$NOW" 2>&1)
+ok "FRESH_MAX_MIN=30 (lead-watch exports it): the same board 20 min old is read" "$(grep -q '^  proven    Proven today 3 of 10' <<< "$out" && echo 1)" "$out"
+out=$(FRESH_MAX_MIN=abc python3 -I "$C" --facts "$T/f9.json" --runs-waiting "$T/rw.json" --board "$T/b20.json" --now "$NOW" 2>&1)
+ok "FRESH_MAX_MIN not a number: 10 is used, no traceback, the board 20 min old is not measured" "$(grep -q 'over 10 (P-803)' <<< "$out" && ! grep -q Traceback <<< "$out" && echo 1)" "$out"
+ok "lead-watch.sh passes step 11's \$BOARD to step 15 (a refused board reads as not measured)" "$(grep -q 'flow-constraint.py" --runs-waiting "\$STATE_DIR/runs-waiting.json" --board "\$BOARD"' "$TOOLS/lead-watch.sh" && echo 1)" "step 15 reads the board itself"
+facts "$T/f10.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z" | .merged[0].approved_at = null | .merged[1].approved_at = null'; BD="$T/b2.json" run "$T/f10.json"
+ok "merges with no approval time found: approved to merged is not measured, never under its bar" "$(grep -q '^  merge     not measured (merges with no approval time' <<< "$out" && grep -q '^ACT   constraint: not measured — merge' <<< "$act" && echo 1)" "$out"
+ok "--save keeps the same verdict as the lines (saved after pick)" "$(jq -e '.merge.error' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
+facts "$T/f14.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z" | .merged = [{number: 15, approved_at: null, merged_at: "2026-11-20T01:00:00Z"}]'; BD="$T/b2.json" run "$T/f14.json"
+ok "a merge 5 h ago with no approval time, none in 3 h: still not measured (the 24 h count)" "$(grep -q '^  merge     not measured' <<< "$out" && echo 1)" "$out"
+echo '{"fresh": 3, "oldest_fresh_min": null, "stale": []}' > "$T/rw3.json"; RW="$T/rw3.json" BD="$T/b2.json" run "$T/f9.json"
+ok "runs waiting with no age: machines not measured" "$(grep -q '^ACT   constraint: not measured — machines' <<< "$act" && echo 1)" "$act"
+touch -t 202611190000 "$T/rw.json"; BD="$T/b2.json" run "$T/f9.json"; touch "$T/rw.json"
+ok "runs-waiting.json left from an earlier check (over 45 min old): machines not measured" "$(grep -q '^  machines  not measured (runs-waiting.json is ' <<< "$out" && echo 1)" "$out"
+# part 4 review M2: a member re-queued in a later batch (Mergify splits a failed batch) is not a culprit
+facts "$T/f11.json" '.pulls["11"] = {title: "a", state: "open", merged_at: null} | .pulls["905"] = {title: "merge queue: checking #11 on main", body: "", state: "open", login: "mergify[bot]", ref: "mergify/merge-queue/x"}'; run "$T/f11.json"
+ok "two open members, #11 re-queued in batch PR #905: only #12 is the culprit" "$(grep -q 'run 3: #11 (re-queued), #12 (culprit: still open)' <<< "$out" && grep -q 'culprits #12:' <<< "$act" && echo 1)" "$out"
+facts "$T/f12.json" '.batches[2].pr = null | .batches[2].head = "mergify/merge-queue/f3" | .pulls["900"].ref = "mergify/merge-queue/f3"'; run "$T/f12.json"
+ok "a batch run with no pull_requests (Mergify deleted its branch): its batch PR is found by branch" "$(grep -q 'run 3: #11, #12 (culprit: still open)' <<< "$out" && echo 1)" "$out"
+facts "$T/f13.json" '.batches[0].started = "2026-11-19T23:30:00Z" | .batches[0].updated = "2026-11-20T00:10:00Z" | .batches[1:] = [] | .merged = [.merged[2]] | .newest_jobs = null'; BD="$T/b2.json" run "$T/f13.json"
+ok "a batch 4-6 h ago, nothing since and no merge in 3 h: supply (the same 3 h window)" "$(grep -q '^ACT   constraint: supply' <<< "$act" && echo 1)" "$act"
+# part 4 review M3: gather() on GitHub's real shapes, through a stand-in gh.sh (REST runs, jobs, pulls; GraphQL merged PRs)
+mkdir -p "$T/gh"; cat > "$T/gh/gh.sh" <<'GH'
+#!/usr/bin/env bash
+case "$*" in
+  *"actions/workflows/ci.yml/runs"*) [ -n "${GH_FAIL_RUNS:-}" ] && { echo '{"message":"Bad gateway"}'; exit 1; }
+    echo '{"total_count":3,"workflow_runs":[
+      {"id":71,"status":"completed","conclusion":"failure","head_branch":"mergify/merge-queue/aa","run_started_at":"2026-11-20T04:00:00Z","updated_at":"2026-11-20T04:50:00Z","pull_requests":[]},
+      {"id":72,"status":"in_progress","conclusion":null,"head_branch":"mergify/merge-queue/bb","run_started_at":"2026-11-20T05:00:00Z","updated_at":"2026-11-20T05:20:00Z","pull_requests":[{"number":951}]},
+      {"id":73,"status":"completed","conclusion":"success","head_branch":"claude/lane-x","run_started_at":"2026-11-20T03:00:00Z","updated_at":"2026-11-20T03:10:00Z","pull_requests":[{"number":21}]}]}';;
+  *"actions/runs/71/jobs"*) echo '{"jobs":[{"name":"shard (2)","started_at":"2026-11-20T04:01:00Z","completed_at":"2026-11-20T04:44:00Z"},{"name":"fast","started_at":"2026-11-20T04:01:00Z","completed_at":"2026-11-20T04:05:00Z"}]}';;
+  *"pulls?state=all"*) echo '[{"number":952,"title":"merge queue: merged #20: x","body":"batch **b** of the `pipeline` queue\n```yaml\n---\nall_scopes: false\npull_requests:\n  - number: 20\n    scopes:\n      - cases\n      - platform\nscopes:\n  - cases\n  - platform\n...\n```","state":"closed","merged_at":null,"created_at":"2026-11-20T05:00:00Z","user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/cc"}},
+      {"number":950,"title":"merge queue: checking #21 + #22 together on main","body":"","state":"closed","merged_at":null,"user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/aa"}},
+      {"number":951,"title":"merge queue: checking #21 on main","body":"","state":"open","merged_at":null,"user":{"login":"mergify[bot]"},"head":{"ref":"mergify/merge-queue/bb"}},
+      {"number":21,"title":"x","state":"open","merged_at":null,"user":{"login":"lane"},"head":{"ref":"claude/lane-x"}},
+      {"number":22,"title":"y","state":"open","merged_at":null,"user":{"login":"lane"},"head":{"ref":"claude/lane-y"}}]';;
+  "repo view"*) echo '{"owner":{"login":"o"},"name":"r"}';;
+  "api graphql"*) [ -n "${GH_OPEN_BAD:-}" ] && { echo '{"data":{"repository":{"pullRequests":{"nodes":[{"number":20,"mergedAt":"2026-11-20T05:30:00Z","timelineItems":{"nodes":[{"createdAt":"2026-11-20T04:30:00Z","label":{"name":"review: approved"}}]}}]},"open":{"nodes":"bad"}}}}'; exit 0; }
+    echo '{"data":{"repository":{"pullRequests":{"nodes":[
+      {"number":20,"mergedAt":"2026-11-20T05:30:00Z","timelineItems":{"nodes":[{"createdAt":"2026-11-20T03:00:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T04:30:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T05:00:00Z","label":{"name":"queued"}},{}]}}]},
+      "open":{"nodes":[{"number":21,"timelineItems":{"nodes":[{"createdAt":"2026-11-20T04:00:00Z","label":{"name":"review: approved"}}]}},{"number":22,"timelineItems":{"nodes":[{"createdAt":"2026-11-20T05:45:00Z","label":{"name":"review: approved"}},{"createdAt":"2026-11-20T05:10:00Z","label":{"name":"queued"}}]}}]}}}}';;
+  *) echo '{"message":"unexpected"}'; exit 1;;
+esac
+GH
+out=$(FLOW_GH="$T/gh/gh.sh" python3 -I "$C" --runs-waiting "$T/rw.json" --board "$T/board.json" --now "$NOW" --save "$T/g.json" 2>&1)
+ok "gather: only completed runs on mergify/merge-queue/ branches are batches; wall from run_started_at to updated_at" "$(grep -q '^  batch     1 batch(es) started in the last 6 h and ended, median wall 50 min; newest.s longest part shard (2) 43 min (run 71)' <<< "$out" && echo 1)" "$out"
+ok "gather: a run with empty pull_requests finds its batch PR by branch; #21 re-queued in the running batch #951, #22 the culprit" "$(grep -q 'run 71: #21 (re-queued), #22 (culprit: still open)' <<< "$out" && echo 1)" "$out"
+ok "gather: GraphQL nesting; the last review: approved label before the merge (not the earlier one, not another label)" "$(grep -q '^  merge     approved to merged median 60 min (n=1' <<< "$out" && echo 1)" "$out"
+ok "S9 gather: the batch body's queue on Mergify's real metadata (file scopes no key), and GraphQL's open labelled PRs (#21 in the open batch #951, #22 waiting 15 min)" "$(grep -qx '            pipeline: n=1, labelled -> batch start 30, batch start -> merged 30; slowest #20 waited 30, #20 in batch 30' <<< "$out" && grep -qx '  waiting   1 labelled PR(s) in no batch: #22 15 min; 1 in a batch: #21' <<< "$out" && echo 1)" "$out"
+out=$(GH_OPEN_BAD=1 FLOW_GH="$T/gh/gh.sh" python3 -I "$C" --runs-waiting "$T/rw.json" --board "$T/board.json" --now "$NOW" 2>&1)
+ok "S12 gather: an unreadable open-PR answer is its own error; the merged PRs read in the same answer stay measured (review m5)" "$(grep -q '^  waiting   not measured' <<< "$out" && grep -q '^  merge     approved to merged median 60 min (n=1' <<< "$out" && echo 1)" "$out"
+out=$(GH_FAIL_RUNS=1 FLOW_GH="$T/gh/gh.sh" python3 -I "$C" --runs-waiting "$T/rw.json" --board "$T/board.json" --now "$NOW" 2>&1)
+ok "gather: a failed read is an error entry (not measured), never an empty list" "$(grep -q '^  batch     not measured (gh api' <<< "$out" && grep -q '^  failed    not measured' <<< "$out" && grep -q '^ACT   constraint: not measured' <<< "$out" && echo 1)" "$out"
+# S1-S12 (ENF-738): stages by Mergify queue, on Mergify's real shapes (the body's metadata block; "stacked on" in a title).
+# product: #31 (waits 10, in 50), #32 (60, 60; a batch opened before its label is not its start), #34 (30, 30; file scopes
+# as Mergify writes them, a block list: not a key), #35 like #3467 (40, 110: a failed batch, then a second; the first in
+# another queue, so its scope is the merging batch's queue); pipeline #33;
+# verdicts #36, whose batch is stacked on #35 (not a member of it); #37 merged 7 h ago (outside the 6 h). Batch walls and
+# failures under their bars, the board at its goal.
+OK9='.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z"'
+META='\n\n```yaml\n---\nall_scopes: false\npull_requests:\n  - number: '
+STG='| .merged = [{number: 31, approved_at: "2026-11-20T01:00:00Z", merged_at: "2026-11-20T02:00:00Z"}, {number: 32, approved_at: "2026-11-20T01:00:00Z", merged_at: "2026-11-20T03:00:00Z"},
+               {number: 33, approved_at: "2026-11-20T03:00:00Z", merged_at: "2026-11-20T04:00:00Z"}, {number: 34, approved_at: "2026-11-20T04:00:00Z", merged_at: "2026-11-20T05:00:00Z"},
+               {number: 35, approved_at: "2026-11-20T01:00:00Z", merged_at: "2026-11-20T03:30:00Z"}, {number: 36, approved_at: "2026-11-20T02:50:00Z", merged_at: "2026-11-20T03:20:00Z"},
+               {number: 37, approved_at: "2026-11-19T20:00:00Z", merged_at: "2026-11-19T23:00:00Z"}]
+  | .pulls = {"931": {title: "merge queue: merged #31", body: ("batch **a** of the `product` queue'"$META"'31\n    scopes: []\n```"), state: "closed", login: "mergify[bot]", created_at: "2026-11-20T01:10:00Z"},
+              "932": {title: "merge queue: merged #32", body: "batch **b** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T02:00:00Z"},
+              "930": {title: "merge queue: checking #32 on main", body: "batch **z** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T00:50:00Z"},
+              "933": {title: "merge queue: merged #33", body: "batch **c** of the `pipeline` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T03:05:00Z"},
+              "934": {title: "merge queue: merged #34", body: ("batch **d** of the `product` queue'"$META"'34\n    scopes:\n      - front-office\n      - platform\nscopes:\n  - front-office\n  - platform\n...\n```"), state: "closed", login: "mergify[bot]", created_at: "2026-11-20T04:30:00Z"},
+              "935": {title: "merge queue: checking #35 on main (aaa)", body: "batch **e** of the `pipeline` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T01:40:00Z"},
+              "938": {title: "merge queue: merged #35", body: "batch **f** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-20T02:30:00Z"},
+              "936": {title: "merge queue: checking #36 on main (bbb), stacked on #35", body: ("batch **g** of the `verdicts` queue'"$META"'36\n    scopes: []\n```"), state: "closed", login: "mergify[bot]", created_at: "2026-11-20T03:00:00Z"},
+              "937": {title: "merge queue: merged #37", body: "batch **h** of the `product` queue", state: "closed", login: "mergify[bot]", created_at: "2026-11-19T21:00:00Z"}}'
+facts "$T/s1.json" "$OK9 $STG"; BD="$T/b2.json" run "$T/s1.json"
+ok "S1 stages by queue: medians and slowest PRs; a batch opened before the label is not the start; file scopes (Mergify's block list) are no key; #35's start is its first batch, its count 2; a batch stacked on #35 holds only #36; #37 (7 h ago) is out" "$(grep -qx '  stages    labelled -> batch start -> merged, by scope, PRs merged in 6 h (medians, min)' <<< "$out" \
+  && grep -qx '            pipeline: n=1, labelled -> batch start 5, batch start -> merged 55; slowest #33 waited 5, #33 in batch 55' <<< "$out" \
+  && grep -qx '            product: n=4, labelled -> batch start 35, batch start -> merged 55; slowest #32 waited 60, #35 in batch 110' <<< "$out" \
+  && grep -qx '            verdicts: n=1, labelled -> batch start 10, batch start -> merged 20; slowest #36 waited 10, #36 in batch 20' <<< "$out" \
+  && [ "$(grep -c '^            [a-z]' <<< "$out")" = 3 ] && echo 1)" "$out"
+ok "S2 product's labelled -> batch start median 35 min over n=4 (bar 20) is the one constraint, named with its scope, measure and PR number" "$(grep -q '^ACT   constraint: labelled -> batch start — product median 35 min over n=4, slowest #32 60 min (bar 20): find what holds it' <<< "$act" && [ "$(grep -c '^ACT' <<< "$out")" = 1 ] && echo 1)" "$act"
+ok "S2b --save keeps the stages" "$(jq -e '.stages.scopes.product.n == 4 and .stages.scopes.product.wait == 35 and .waiting.waiting == []' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
+facts "$T/s3.json" "$OK9 $STG"' | .open_labelled = [{number: 40, approved_at: "2026-11-20T05:00:00Z"}, {number: 41, approved_at: "2026-11-20T05:30:00Z"}] | .pulls["941"] = {title: "merge queue: checking #41 on main", body: "", state: "open", login: "mergify[bot]", created_at: "2026-11-20T05:40:00Z"}'; BD="$T/b2.json" run "$T/s3.json"
+ok "S3 the live wait: #40 labelled 60 min in no batch, #41 in an open batch; 60 beats product's median 35, so #40 is named" "$(grep -qx '  waiting   1 labelled PR(s) in no batch: #40 60 min; 1 in a batch: #41' <<< "$out" && grep -q '^ACT   constraint: labelled -> batch start — #40 labelled 60 min ago, in no batch (bar 20)' <<< "$act" && echo 1)" "$out"
+facts "$T/s4.json" "$OK9 $STG"' | .merged[1].approved_at = "2026-11-20T01:55:00Z" | .merged[4].approved_at = "2026-11-20T01:35:00Z"'; BD="$T/b2.json" run "$T/s4.json"
+ok "S4 product waits median 8 (bar 20), in batch median 55 (bar 45): batch start -> merged, naming #35's 110 min in its 2 batches" "$(grep -q '^ACT   constraint: batch start -> merged — product median 55 min over n=4 (bar 45), slowest #35 110 min in 2 batch(es)' <<< "$act" && echo 1)" "$out"
+facts "$T/s5.json" "$OK9 $STG"' | .merged[1].approved_at = "2026-11-20T01:55:00Z" | .merged[1].merged_at = "2026-11-20T02:40:00Z" | .merged[4].approved_at = "2026-11-20T01:35:00Z" | .merged[4].merged_at = "2026-11-20T02:50:00Z" | .open_labelled = [{number: 42, approved_at: "2026-11-20T05:50:00Z"}]'; BD="$T/b2.json" run "$T/s5.json"
+ok "S5 every stage at or under its bar (product waits 8, in batch 45, bar 45; one-PR queues not judged; #42 waits 10 min): none over its bar" "$(grep -q '^ACT   constraint: none over its bar' <<< "$act" && echo 1)" "$out"
+facts "$T/s6.json" "$OK9"' | .pulls["900"].created_at = null'; BD="$T/b2.json" run "$T/s6.json"
+ok "S6 merges whose batch PR is not among the PRs read: stages not measured, never under the bar" "$(grep -qx '  stages    not measured (merges with no batch PR among the PRs read: #11, #13)' <<< "$out" && grep -q '^ACT   constraint: not measured — stages' <<< "$act" && echo 1)" "$out"
+facts "$T/s7.json" "$OK9"' | .open_labelled = {error: "HTTP 502"}'; BD="$T/b2.json" run "$T/s7.json"
+ok "S7 open labelled PRs unreadable: the waiting line says so and the constraint is not measured" "$(grep -q '^  waiting   not measured (HTTP 502)' <<< "$out" && grep -q '^ACT   constraint: not measured — waiting' <<< "$act" && echo 1)" "$out"
+facts "$T/s8.json" "$OK9 $STG"' | .batches[2].conclusion = "failure"'; BD="$T/b2.json" run "$T/s8.json"
+ok "S8 flow order: a failed batch share over its bar is named before the stages" "$(grep -q '^ACT   constraint: failed batches' <<< "$act" && echo 1)" "$act"
+facts "$T/s10.json" "$OK9 $STG"' | .open_labelled = [{number: 43, approved_at: null}, {number: 44, approved_at: "not a time"}]'; BD="$T/b2.json" run "$T/s10.json"
+ok "S10 open labelled PRs with no readable label time: named apart, no traceback, still one ACT, exit 0 (review m4)" "$([ $r = 0 ] && grep -qx '  waiting   0 labelled PR(s) in no batch; 0 in a batch; label time not read: #43, #44' <<< "$out" && [ "$(grep -c '^ACT' <<< "$out")" = 1 ] && ! grep -q Traceback <<< "$out" && echo 1)" "exit $r: $out"
+facts "$T/s11.json" '.pulls = {"950": {title: "merge queue: checking #3516 on main (3049b8d), stacked on #3467 and #3500", body: "", state: "closed", login: "mergify[bot]"}}'
+ok "S11 members(): a title's \"stacked on\" PRs are not members (culprits too); the body's metadata wins over the title" "$(python3 -I -c '
+import importlib.util,sys; s=importlib.util.spec_from_file_location("fc", sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+a=m.members({"title": "merge queue: checking #3516 on main (3049b8d), stacked on #3467 and #3500", "body": ""})
+b=m.members({"title": "merge queue: checking #3531 on main, stacked on #3489", "body": "x\npull_requests:\n  - number: 3531\n    scopes:\n      - platform\n"})
+c=m.members({"title": "merge queue: checking #11 + #12 together on main", "body": ""})
+print(1 if (a, b, c) == ([3516], [3531], [11, 12]) else (a, b, c))' "$C")" "members"
+L="$TOOLS/lead-watch.sh"
+ok "lead-watch.sh prints the section each check and counts its ACT" "$(grep -q 'flow-constraint.py" --runs-waiting "\$STATE_DIR/runs-waiting.json"' "$L" && grep -q 'echo "\$cs"; act=\$((act + \$(grep -c .^ACT. <<<"\$cs")))' "$L" && echo 1)" "no wiring in $L"
+ok "no cancel anywhere (P-371)" "$(! grep -qE '/cancel|force-cancel|run cancel' "$C" && echo 1)" "a cancel found"
+finish

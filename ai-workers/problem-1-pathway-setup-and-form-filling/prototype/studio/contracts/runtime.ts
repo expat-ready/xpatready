@@ -50,6 +50,26 @@ export const ClientListQuery = z.object({
   page: z.string({ message: "A page is a whole number from 1." }).regex(/^\d{1,5}$/, "A page is a whole number from 1.").optional(),
 });
 
+/** CS-K1s (R1.72, QA-593): GET /api/runtime/clients/:id/offer (clients.ts offer), the "Open a case?" card's read, from
+ *  FO-8's one offer rule (case-clients/prospect-won.ts offerOf). Ids and names only: never the prospect's answers (its
+ *  e-mail, phone or residence). Strict both ways, so a field added by mistake fails the read's own parse. `detail` is
+ *  the opening's own refusal words (prospect-won.ts OFFER_REFUSED), shown as they are. */
+export const OFFER_GONE = ["NO_OFFER", "USED", "WITHDRAWN", "CHANGED"] as const;
+export const ClientOfferView = z.union([
+  z.strictObject({ offer: z.strictObject({
+    /** The program the prospect was interested in, while a case can open on it; null: the prospect named none. */
+    combination: z.strictObject({ id: z.string(), label: z.string() }).nullable(),
+    /** The principal applicant the opening pre-fills (the client's name); null: the name is outside the opening's limits. */
+    principalName: z.string().nullable(),
+    /** The representative of record the signed retainer names; null: none named (the opening uses the firm's own). */
+    representative: z.strictObject({ staffId: z.string(), name: z.string() }).nullable(),
+    wonVia: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]),
+    prospectNumber: z.string().nullable(),
+  }) }),
+  z.strictObject({ offer: z.null(), reason: z.enum(OFFER_GONE), detail: z.string() }),
+]);
+export type ClientOfferView = z.infer<typeof ClientOfferView>;
+
 export const NewCase = z.object({
   combinationId: z.string({ message: "Choose a released combination." }).uuid("Choose a released combination."),
   /** The firm's own reference, optional since A24-1 (CS-7): every case gets a case number at opening. Given, it keeps
@@ -575,6 +595,20 @@ export const CaseDecisionsView = z.object({
   can: z.object({ decide: z.array(z.string()), withdraw: z.boolean(), close: z.boolean(), reopen: z.boolean() }),
 });
 export type CaseDecisionsView = z.infer<typeof CaseDecisionsView>;
+/** CS-NT1 part 4 (the case page's Notes and timeline panel): the shapes of the notes, history, timeline and people reads
+ *  (api/src/case-notes). A staff member is { staffId, name } (name null when no staff record names them). */
+const NoteWho = z.object({ staffId: z.string(), name: z.string().nullable() });
+export const CaseNote = z.object({ id: z.string(), versionId: z.string(), version: z.number(), text: z.string(), visibility: z.enum(["INTERNAL", "CLIENT_VISIBLE"]), pinned: z.boolean(),
+  author: NoteWho, lastChangedBy: NoteWho, writtenAt: z.string(), updatedAt: z.string(), edited: z.boolean(), canEditText: z.boolean() });
+export type CaseNote = z.infer<typeof CaseNote>;
+export const CaseNotesView = z.object({ notes: z.array(CaseNote), maxLength: z.number() });
+export const CaseNoteHistory = z.object({ id: z.string(), versions: z.array(z.object({ versionId: z.string(), version: z.number(), text: z.string(), visibility: z.string(), pinned: z.boolean(), by: NoteWho, at: z.string() })) });
+export type CaseNoteHistory = z.infer<typeof CaseNoteHistory>;
+export const CaseTimelinePage = z.object({ lines: z.array(z.object({ at: z.string(), kind: z.enum(["NOTE", "DOCUMENT", "DECISION", "ACTIVITY"]), type: z.string(), actor: z.string(), actorName: z.string().nullable(),
+  summary: z.string(), refId: z.string(), source: z.enum(["audit", "note"]), visibility: z.string().optional(), pinned: z.boolean().optional() })), more: z.boolean(), nextCursor: z.string().nullable(), pageSize: z.number() });
+export type CaseTimelinePage = z.infer<typeof CaseTimelinePage>;
+export const CaseNotePeople = z.object({ people: z.array(z.object({ staffId: z.string(), name: z.string(), onCase: z.boolean() })) });
+export type CaseNotePeople = z.infer<typeof CaseNotePeople>;
 export const AddableQuery = z.strictObject({ q: AddableSearch, subject: AddableSubject }, onlyFilters("q, subject"));
 export const AddableDetailQuery = z.strictObject({ subject: AddableSubject }, onlyFilters("subject"));
 export const CopyFileQuery = z.strictObject({ original: CopyFileOriginal }, onlyFilters("original"));

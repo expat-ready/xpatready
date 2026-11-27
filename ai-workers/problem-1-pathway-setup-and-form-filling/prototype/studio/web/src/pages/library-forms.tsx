@@ -8,6 +8,7 @@ import { normaliseCode } from "../../../contracts/form-library";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MenuRoot } from "@/components/ui/menu-root";   // PF-31: open only while its workspace tab is shown
 import { FileUp, ListChecks, MoreHorizontal, Search } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { api, queryClient, useAction, useActorId, useApi, useToast } from "@/lib/api";
@@ -335,7 +336,7 @@ function RowActions({ row, canAuthor, onWhereUsed }: { row: Row; canAuthor: bool
   const item = "flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-surface";
   return (
     <>
-      <DropdownMenu.Root>
+      <MenuRoot>
         <DropdownMenu.Trigger asChild><Button ref={trigger} size="sm" variant="ghost" aria-label={`Actions for ${row.code}`}><MoreHorizontal /></Button></DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-[300px] rounded-lg border border-border bg-surface-raised p-1 text-sm shadow-lg">
@@ -346,7 +347,7 @@ function RowActions({ row, canAuthor, onWhereUsed }: { row: Row; canAuthor: bool
             <DropdownMenu.Item className={item} onSelect={onWhereUsed}>See where it is used ({row.used_by.length})</DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      </MenuRoot>
       {reread && row.attachment_id ? <AiLaunchDialog scope={{ kind: "source", ids: [row.attachment_id], label: row.code }} onClose={() => { setReread(false); refocus(); }} initialMode="REPLAY" /> : null}
     </>
   );

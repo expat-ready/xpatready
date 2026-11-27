@@ -2,7 +2,8 @@
 // stage, value and owner; "Move to…" (never Won); Mark lost (a right panel: a reason from the firm's prospect list is
 // required); Convert to client (a yes/no with AG-02's warning while no retainer is signed) and Undo convert (offered
 // only for a Convert with no signed retainer, with a reason; the server also refuses once the client is no longer
-// empty). Each button follows its permission key and the stage. Log a call, notes and the timeline are part 2b.
+// empty). Each button follows its permission key and the stage. Log a call, notes and the timeline: part 2b
+// (prospect-activity.tsx).
 import * as React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,12 +13,21 @@ import { centsOf, CURRENCIES, CURRENCY_REFUSED } from "../../../../../contracts/
 import { Board, can, KEY, LostReasons, money, Prospect, ValueCurrencies } from "./contract";
 import { Loading } from "./loading";
 import { MoveMenu, STALE_NOTE, useLock, useMove, useOwners, useReturnFocus } from "./prospect-actions";
+import { PersonEmail } from "./person-email";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
+import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
+import { ConflictCheckPanel, ConvertConflictNote, useConflictList } from "../compliance/conflict/conflict-panel";
+import { FIXED_BY_A_CHECK } from "../compliance/conflict/contract";
+import { RetainerCard } from "../retainers/retainer-card";
+import { SignatureRequestsSection } from "../sign/signature-requests";
+import { ProspectActivity } from "./prospect-activity";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo" | "value";
+/** Focuses a section once the dialog has gone (the dialog gives focus back to its trigger as it closes; FO-13s m5). */
+const focusWhenClosed = (id: string) => { const t0 = Date.now(); const tick = () => { if (document.querySelector('[role="dialog"]') && Date.now() - t0 < 2000) { requestAnimationFrame(tick); return; } setTimeout(() => document.getElementById(id)?.focus(), 80); }; requestAnimationFrame(tick); };
 /** A currency as its code and its name ("CAD, Canadian Dollar"); the code alone when the browser has no name for it. */
 const NAMES = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames(["en-CA"], { type: "currency" }) : null;
 const currencyLabel = (c: string) => { const n = NAMES?.of(c); return n && n !== c ? `${c}, ${n}` : c; };
@@ -26,9 +36,11 @@ function ProspectBody({ id }: { id: string }) {
   const me = useStaff(), owners = useOwners(), move = useMove(), toast = useToast(), qc = useQueryClient();
   const key = ["fo", "prospects", "one", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Prospect.parse(await staffApi(`/front-office/prospects/${encodeURIComponent(id)}`)) });
+  const verdict = useConflictList(id).data?.clearance, conflictRefused = verdict?.ok === false;   // FO-13s: "Work can start" never shows under a conflict refusal (challenge m5)
+  const noteCode = verdict && !verdict.ok ? verdict.code : null;
   const board = useQuery({ queryKey: ["fo", "prospects", "board"], queryFn: async () => Board.parse(await staffApi("/front-office/pipelines/INDIVIDUAL/board")) });
   const [open, setOpen] = React.useState<Act | null>(null);
-  const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string } | null>(null);
+  const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const reasons = useQuery({ enabled: open === "lost", queryKey: ["fo", "lost-reasons"], queryFn: async () => LostReasons.parse(await staffApi("/front-office/prospects/lost-reasons")) });
   const lock = useLock(), focus = useReturnFocus();
   const [currency, setCurrency] = React.useState("");
@@ -51,13 +63,14 @@ function ProspectBody({ id }: { id: string }) {
     },
     onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
     onError: (e, a) => {
+      if (e instanceof StaffApiError && (e.problem.code ?? "").startsWith("CONFLICT_")) void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks", id], exact: true });   // FO-13s: the gate's verdict read again
       const stale = e instanceof StaffApiError && e.problem.code === "STALE";
       // Someone acted first (stale, or it is already lost or won): the panel closes, since its action no longer applies.
       if (e instanceof StaffApiError && ["STALE", "TERMINAL", "ALREADY_WON", "NOT_WON"].includes(e.problem.code ?? "")) { start(null); toast.push({ tone: "danger", text: stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }); return; }
       const field = e instanceof StaffApiError ? (["reasonId", "reason", "value", "currency"].find((f) => e.field(f)) ?? null) : null;
       // A refusal about a field stays on the field, with what was typed kept (BIC-13); any other is said at the top of
       // the panel; the prospect is read again either way.
-      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message });
+      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message, code: e instanceof StaffApiError ? e.problem.code : undefined });
     },
     onSettled: () => { lock.free(); return qc.invalidateQueries({ queryKey: ["fo", "prospects"] }); },
   });
@@ -97,7 +110,8 @@ function ProspectBody({ id }: { id: string }) {
     if (!lock.take()) return;
     setError(null); act.mutate(a);
   };
-  const general = error && !error.field ? <Notice tone="danger" title={error.text} className="mb-3" /> : null;
+  const saidByNote = !!error?.code && FIXED_BY_A_CHECK.has(error.code) && error.code === noteCode;   // FO-13s: said once, by the note with its link; kept when the note cannot show it (break R1)
+  const general = error && !error.field && !saidByNote ? <Notice tone="danger" title={error.text} className="mb-3" /> : null;
   const row = (label: string, value: React.ReactNode) => <div className="grid grid-cols-[8rem_1fr] gap-2 py-1.5 text-sm"><dt className="text-text-muted">{label}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{value}</dd></div>;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
@@ -120,6 +134,7 @@ function ProspectBody({ id }: { id: string }) {
             {p.stage.kind === "WON" ? row("Won by", p.wonVia === "CONVERTED" ? "Convert to client" : "A signed retainer") : null}
             {p.lostReason ? row("Why lost", <span data-lost-reason>{p.lostReason.label}{p.lostNote ? ` · ${p.lostNote}` : ""}</span>) : null}
           </dl>
+          {p.person ? <PersonEmail prospectId={p.id} person={p.person} mayEdit={can(me, KEY.edit)} /> : null}   {/* QA-779 part (a) */}
         </section>
         <aside aria-label="Actions" className="flex flex-col items-stretch gap-2 rounded-xl border border-border bg-surface-raised p-4">
           {mayMove ? <MoveMenu prospect={{ id: p.id, number: p.number, name }} from={p.stage.id} stages={board.data?.stages ?? []} version={p.version} move={move} /> : null}
@@ -129,6 +144,11 @@ function ProspectBody({ id }: { id: string }) {
           {!mayMove && !mayConvert && !mayLose && !mayUndo ? <p data-no-actions className="text-xs text-text-muted">{p.stage.kind === "LOST" ? "A lost prospect does not move. To work with this person again, engage the lead again." : p.stage.kind === "WON" ? (p.wonVia === "CONVERTED" && !p.retainerSigned ? "Undoing a Convert needs a role that may convert prospects." : "This prospect is a client. A signed retainer cannot be undone here.") : "You can read this prospect. Changing it needs a role that works prospects: ask your firm's Owner or Admin."}</p> : null}
         </aside>
       </div>
+      <ProspectActivity prospectId={p.id} name={name} me={me} />   {/* FO-4 part 2b (R1.76) */}
+      <RetainerCard prospectId={p.id} name={name} working={working} />   {/* FO-5s part 1 (S2) */}
+      <SignatureRequestsSection prospectId={p.id} name={name} lost={p.stage.kind === "LOST"} />   {/* FO-6ds */}
+      <ConflictCheckPanel prospectId={p.id} corporate={p.type === "CORPORATE"} />
+      {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name === "(no name)" ? "" : p.person.name} /> : null}
       <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("lost")}>Mark lost</Button></>}>
         <form onSubmit={submit("lost")} className="flex flex-col gap-4">
@@ -158,7 +178,8 @@ function ProspectBody({ id }: { id: string }) {
       <Dialog open={open === "convert"} onOpenChange={(o) => start(o ? "convert" : null)} title={`Convert ${name} to a client?`} description={`${p.number} moves to Won. Only this prospect changes.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as prospect</Button><Button busy={act.isPending} onClick={submit("convert")}>Yes, convert to client</Button></>}>
         {general}
-        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : <Notice tone="warn" title={NOT_SIGNED} />}
+        <ConvertConflictNote prospectId={p.id} onGo={() => { start(null); focusWhenClosed("fo-conflict"); }} />
+        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : conflictRefused || error?.code?.startsWith("CONFLICT_") ? null : <Notice tone="warn" title={NOT_SIGNED} />}   {/* also when the list never loaded (break m) */}
       </Dialog>
       <Dialog open={open === "undo"} onOpenChange={(o) => start(o ? "undo" : null)} title={`Undo the Convert of ${name}?`} description={`${p.number} goes back to the stage it was in. Possible only while the client has no case, invoice or signed retainer.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as client</Button><Button busy={act.isPending} onClick={submit("undo")}>Yes, undo convert</Button></>}>

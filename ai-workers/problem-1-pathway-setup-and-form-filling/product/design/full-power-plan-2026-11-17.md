@@ -263,6 +263,24 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 223 | Property and race tests where the money is: fast-check (pinned in #76), a model-based money property test in class C1, race tests for 2-3 flows (added in review 2) | TV:125 "a model-based money property test in class C1; race tests for 2-3 flows"; OP:367 | L | Open (after #76) | 1-2 PRs | D |
 | 224 | qa walks recorded in CI (added by Lead 80, 18 Nov, founder ask on best-in-class qa speed): gate A journeys replayed as Playwright runs on GitHub's machines with video, trace and screenshots as artifacts, one job per capability, so 4+ qa lanes review recordings in parallel instead of each walking an isolated copy on the Mac (cap 4 copies) | founder 18 Nov 19:2x IST: "for QA, are we completely best in class resource available now? ... is it the best in class possible for our required speed?" | TL; qa | **Doing 18 Nov (P-700): wave 1 Pipeline lane, builder started** | 1-2 PRs | C (moved from D by P-700) |
 
+### 1d. Items added 20 Nov by Lead 100 (engineering map, P-750, P-755; founder: "Make a list of enforceable activity so that we don't miss it")
+
+| # | Item (added 20 Nov) | Source | Owner | Status | Est. | Bucket |
+|---|---|---|---|---|---|---|
+| 225 | Patch the 9 high dependency security alerts GitHub flags on main (29 open: 9 high, 17 moderate, 3 low) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | 1 lane, 1-2 PRs | D: now, before any firm's data |
+| 226 | Staging on AWS in Canada (ca-central-1), created from files (infrastructure as code), sized by P-755 | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | TL; L | Open | 2-3 days | D: at Proven 30 (P-750) |
+| 227 | Production on AWS in Canada from the same files as staging (managed PostgreSQL, managed containers; P-755) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | TL; L; team | Open | with 226 | D: at Proven 30 (P-750) |
+| 228 | Automatic deploy: a merge to main deploys to staging; production on a click | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | 1 PR | D: with 226 |
+| 229 | Error and uptime monitoring on staging and production (tool through STANDARDS §1) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | 1 PR | D: with 226 |
+| 230 | Nightly database backups and one restore actually tried | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | 1 PR + a drill | D: with 227 |
+| 231 | Release candidate: cut RC1 from main, version tags, release notes; v1.0 after the qa walk | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | TL | Open | half a day | D: week before 29 Nov |
+| 232 | Full qa walk of RC1 on staging before v1.0 | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | qa | Open | 1 day | D: after 231 |
+| 233 | Privacy and data-residency review before the first firm's real data (Unconfirmed: no counsel) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | F; TL | Open | - | D: before first firm |
+| 234 | Feature flags per firm (SA-12) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | - | D: after first firms |
+| 235 | On-call and incident process | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | F; TL | Open | - | D: after first firms live |
+| 236 | Product analytics | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | - | D: after first firms |
+| 237 | Guard review: each of the 28 guards with the incident it prevents, its catches and its false blocks; keep, tune or merge only with evidence, never drop blindly (founder 20 Nov) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | TL | Doing 20 Nov: review done (`design/guard-review-2026-11-20.md`: 31 guards, KEEP 12, TUNE 6, MERGE 4, ASK 9, none dropped); tunes wait for the founder | read-only review | D: now |
+
 ---
 
 ## 2. Classification (each item in exactly one bucket)
@@ -535,9 +553,9 @@ Count for D: 88 items (64-91, 108 and, added in review 1, 156-172, 174-176, 178-
 | A before the transfer | 32 (3-5, 7-23 with the transfer; 110-119, 135, 148) |
 | B queue-off window | 15 (24-35, 121-123) |
 | C first 24-48 h | 63 |
-| D later | 88 (review 2: +11, #213-#223) |
+| D later | 88 (review 2: +11, #213-#223); +13 on 20 Nov (#225-#237, Lead 100) |
 | E superseded / duplicate / done / drop | 25 |
-| **Total** | **223** (109 + 103 added in review 1 + 11 added in review 2; 4 moved in review 1: #1, #2, #6 A → E, #108 E → D; none moved in review 2) |
+| **Total** | **237** (#224 added by Lead 80 18 Nov; #225-#237 added by Lead 100 20 Nov; 109 + 103 added in review 1 + 11 added in review 2; 4 moved in review 1: #1, #2, #6 A → E, #108 E → D; none moved in review 2) |
 
 Status as of 18 Nov 18:3x IST (Lead 80's reconciliation): Done 36 · Doing 13 · Open 154 · Superseded 16 · unchanged-unknown 4
 

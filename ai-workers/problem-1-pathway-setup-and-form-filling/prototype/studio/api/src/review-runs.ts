@@ -32,12 +32,14 @@ import { inventoryOf } from "./fill-case.ts";
 import { aiFingerprint, boxWords, choiceWords, findingsFromRounds, reviewSheet, reviewShapeOk, reviewSource, sheetText, stillQuoted, type ReviewAnswer, type ReviewFieldMap, type ReviewSheet, type ReviewedFinding } from "../../engine/runtime/form-review.ts";
 import { actorOf, Audit, CaseRead, Db, fail, PROTOTYPE, SOLUTION, VAR_ROOT, type Actor } from "./core.ts";
 import { MODEL, pairOf, roundJob, RUNS, StepRunner, type AiStep, type RoundContext, type RoundOut } from "./rounds.ts";
-import { Runtime, type Reached } from "./runtime.ts";
+import { mayReach, Runtime, type Reached } from "./runtime.ts";
 import { aiLive, Sources } from "./sources.ts";
 
 type H = string | undefined;
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** R1.10 A5 (W5): who may act first (reach's own duty checks, 403), then a malformed case id is the one not-found, before the body. */
+const caseShape = (actor: Actor, id: string) => { mayReach(actor, "officer"); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) fail("No such case.", HttpStatus.NOT_FOUND); };
 const problem = (status: number, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${title.toLowerCase().replace(/[^a-z]+/g, "-")}`, title, status, detail, ...extra }, status);
 };
@@ -93,6 +95,7 @@ const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
 
 export type { PlannedForm, ReviewRunPlan, RunForm, ReviewRunResult } from "./review-run-shapes.ts";
 import type { PlannedForm, ReviewRunPlan, RunForm, ReviewRunResult } from "./review-run-shapes.ts";
+import { logPort } from "./platform/observability/log.ts";
 
 const STEPS = [
   { n: 1, label: "Read what each form field would print (rules, US$0)", uses_ai: false },
@@ -177,6 +180,7 @@ export class ReviewRuns {
   private runFile(file: string) { return madeUpRuns() ? `made-up-review-runs/${file.replace(/^.*\//, "")}` : file; }
 
   async plan(actor: Actor, caseId: string, body: unknown): Promise<ReviewRunPlan> {
+    caseShape(actor, caseId);
     const b = parse(ReviewRunPlanBody, body);
     const c = await this.r.reach(actor, caseId, "officer");
     const { person, prepared } = await this.prepare(c, b.subject, b.forms);
@@ -207,6 +211,7 @@ export class ReviewRuns {
   }
 
   async run(actor: Actor, caseIdIn: string, body: unknown): Promise<ReviewRunResult> {
+    caseShape(actor, caseIdIn);
     const b = parse(ReviewRunBody, body);
     // Review n2: ids are compared in one spelling, so an upper-case id never gets a slot of its own.
     const caseId = caseIdIn.toLowerCase();
@@ -243,7 +248,7 @@ export class ReviewRuns {
         if (cancelled) { f.note = "Not run: the run was stopped."; continue; }
         const safe = async (isCheck: boolean): Promise<RoundOut<ReviewAnswer>> => {
           try { return await this.runner.round<ReviewAnswer>(FORM_REVIEW, isCheck, { ...p.ctx, mode: "live", wanted, batchId: runId }); }
-          catch (e) { console.warn(`form review ${runId.slice(0, 8)}:`, String(e).slice(0, 400)); return { ok: false, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; }
+          catch (e) { logPort.error("form_review_round_failed", e, { runId }); return { ok: false, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; }
         };
         let d: RoundOut<ReviewAnswer>, k: RoundOut<ReviewAnswer> | null;
         if (b.mode === "replay") ({ d, k } = await this.savedRounds(p.ctx));

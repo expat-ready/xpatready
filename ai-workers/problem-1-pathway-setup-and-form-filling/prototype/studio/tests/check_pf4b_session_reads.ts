@@ -40,6 +40,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -160,7 +161,7 @@ try {
   const cb = await call(base, "POST", "/api/platform/session/callback", { body: { code } }), cb2 = await call(base, "POST", "/api/platform/session/callback", { body: { code } });
   const newMe = await call(base, "GET", "/api/platform/me/account", { token: cb.body.token });
   ok("PF-4b pass: the hand-off's code → a session for the new person (callback), never cached", cb.status === 200 && newMe.status === 200 && newMe.body.staffId === won!.body.staffId && cb.headers.get("cache-control") === "no-store", [cb.body, newMe.body]);
-  ok("PF-4b fail: the same code twice, or none → 401 SIGN_IN_CODE_REFUSED", cb2.status === 401 && cb2.body.code === "SIGN_IN_CODE_REFUSED" && (await call(base, "POST", "/api/platform/session/callback", { body: {} })).status === 401, cb2.body);
+  ok("PF-4b fail: the same code twice, or none → 401 SIGN_IN_CODE_REFUSED (a sign-in door answers its own status; PF-28 part 2a keeps it)", cb2.status === 401 && cb2.body.code === "SIGN_IN_CODE_REFUSED" && (await call(base, "POST", "/api/platform/session/callback", { body: {} })).status === 401, cb2.body);
 
   // ------------------------------------------------------------------------------------- sign out, everywhere
   const oId = (await db.platformStaff.findFirstOrThrow({ where: { email: "new.person@example.com" } })).id;
@@ -223,8 +224,8 @@ try {
   const stranger = await handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "ENCRYPTED", userAttributes: { email: "nobody@example.com" } } }, { decrypt: async () => "1", mail, firmOf: async () => null });
   ok("PF-4b pass: the custom email sender decrypts the code and sends our words through MailPort (transactional, to the person)", forgot.sent && mail.sent.length === sentC + 1 && /493021/.test(mail.sent.at(-1)!.text) && mail.sent.at(-1)!.class === "TRANSACTIONAL" && mail.sent.at(-1)!.to === "new.person@example.com");
   ok("PF-4b fail: a person who is not our staff, or an unknown trigger, gets nothing", !stranger.sent && !(await handleCustomEmail({ triggerSource: "CustomEmailSender_Other", request: {} }, { decrypt: async () => "", mail, firmOf: async () => FIRM_A })).sent && mail.sent.length === sentC + 1);
-  const cog = new CognitoIdentityAdmin({ userPoolId: "ca-central-1_X", clientId: "c", mfaRequired: true });
-  ok("PF-4b fail: the cognito admin adapter refuses (503 SIGN_IN_NOT_SET_UP) and says why, never a silent success", await cog.createUser().then(() => false, (e: any) => e.getStatus() === 503 && /technology gate/.test(e.getResponse().detail)));
+  const cog = new CognitoIdentityAdmin({ userPoolId: null, clientId: null, mfaRequired: true });   // PF-4bc built the configured side (check_pf4bc_cognito_admin.ts)
+  ok("PF-4b fail: the cognito admin adapter with no pool refuses (503 SIGN_IN_NOT_SET_UP) and says why, never a silent success", await cog.createUser("x@example.com").then(() => false, (e: any) => e.getStatus() === 503 && /no Cognito pool/.test(e.getResponse().detail)));
   await runContract(mailPortContract, "LocalMail", () => new LocalMail(() => clock.now()), ok);
   await runContract(mailPortContract, "fakeMail", () => fakeMail(), ok);
 

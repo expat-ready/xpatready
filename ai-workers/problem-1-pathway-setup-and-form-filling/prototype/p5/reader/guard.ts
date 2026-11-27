@@ -5,6 +5,7 @@ import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "no
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { PolicyRefusal } from "../../p2/guard.ts";
 import { DOCS_DIR, DOCS_MANIFEST, FORBIDDEN, KEY_FILE, LEDGER_DIR, PROTOTYPE, READ_ENTRY, READER, READER_RUNS, SCREEN_SOURCES } from "./policy.ts";
+import { ROOT } from "../../p2/policy.ts";
 
 export { PolicyRefusal };
 const refuse = (m: string): never => { throw new PolicyRefusal(m); };
@@ -97,7 +98,7 @@ export function readerNodeArgs(): string[] {
   const nm = realpathSync(join(PROTOTYPE, "node_modules"));
   const reads = [join(READER, "launch.ts"), join(READER, "read.ts"), join(READER, "policy.ts"), join(READER, "guard.ts"), join(READER, "request.ts"), join(READER, "pathcode.ts"), join(READER, "isolation.ts"),
     DOCS_DIR, join(READER, "prompts"), join(READER, "jobs"), join(READER, "doc-types.json"), join(READER, "stubs"), join(READER, "screening"), join(READER, "stub-pass"),
-    join(PROTOTYPE, "p2"), join(PROTOTYPE, "package.json"), join(PROTOTYPE, "node_modules"), nm, dirname(KEY_FILE), LEDGER_DIR];
+    join(PROTOTYPE, "p2"), join(ROOT, "AGENTS.md") /* p2/policy.ts finds the root by it (clean-up stage 2a) */, join(PROTOTYPE, "package.json"), join(PROTOTYPE, "node_modules"), nm, dirname(KEY_FILE), LEDGER_DIR];
   return ["--permission", ...reads.map((r) => `--allow-fs-read=${r}`), `--allow-fs-write=${LEDGER_DIR}`];
 }
 

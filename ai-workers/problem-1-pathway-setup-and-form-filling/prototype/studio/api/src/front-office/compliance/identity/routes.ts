@@ -5,13 +5,23 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
+import { z } from "zod";
+import { idParam, list, parseInput, strict } from "../../../platform/http/input.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../../platform/identity/keys.ts";
 import { PlatformClock } from "../../../platform/identity/port.ts";
 import { FileLinks, LocalFiles } from "../../files.ts";
-import { COPY_MAX_BYTES, IdentityChecks } from "./service.ts";
+import { COPY_MAX_BYTES, FULL_NUMBER_REFUSED, IdentityChecks } from "./service.ts";
 
 type R = { platform?: StaffContext };
 type F = { buffer: Buffer; size: number } | undefined;
+const s = (max: number) => z.string().max(max).nullish();
+/** PF-28 part 3b (R1.10): the check's fields through a strict schema (an unknown field 422, named), after the person id
+ *  (404 when not a uuid). Multipart sends text; `details` once or repeated. A full `documentNumber`, whatever its value, is
+ *  refused here in the service's own sentence ("Send only the last 4 characters …"), named even when requestId is missing
+ *  too (PF-28 A3); the service keeps every other rule. */
+const RECORD = strict({ requestId: z.string().max(100),   // always needed, so {} is refused before the person is looked up
+  method: s(100), methodDetail: s(2000), documentType: s(100), issuingCountry: s(100), documentExpiry: s(100),
+  documentNumberLast4: s(100), details: z.union([z.string().max(100), list(z.string().max(100), 20)], { error: "Each corroborated detail is one of NAME, HOME_ADDRESS, PHONE, EMAIL, BUSINESS_DETAILS." }).nullish(), documentNumber: z.unknown().refine((v) => v === undefined, { error: FULL_NUMBER_REFUSED }).optional() });
 
 @Controller("api/front-office")
 export class IdentityChecksController {
@@ -23,7 +33,7 @@ export class IdentityChecksController {
   @Post("people/:personId/identity-checks") @UseInterceptors(FileInterceptor("copy", { limits: { fileSize: 2 * COPY_MAX_BYTES, files: 1, fields: 20, fieldSize: 2048, parts: 21 } }))
   @PermissionKeys("agent/identity-check:record")
   record(@Req() r: R, @Param("personId") personId: string, @Body() b: Record<string, unknown>, @UploadedFile() f: F) {
-    return this.svc.record(staffOf(r), personId, b ?? {}, f ? { bytes: new Uint8Array(f.buffer), size: f.size } : undefined);
+    return this.svc.record(staffOf(r), idParam(personId, "person"), parseInput(RECORD, b ?? {}), f ? { bytes: new Uint8Array(f.buffer), size: f.size } : undefined);
   }
 
   @Get("people/:personId/identity-checks") @PermissionKeys("agent/prospect:show")

@@ -8,12 +8,13 @@
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import type { AuditPort } from "../../../../../ports/audit.ts";
+import type { AuditPort, AuditValues } from "../../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../../ports/clock.ts";
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { readSetting, TIME_ZONE } from "../../../platform/settings.ts";
 import { copyFirmHoursTo } from "../../booking-seed.ts";
+import { FIELD_ERROR_STATUS, parseInput, plainIssue } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 export type AvailabilityPorts = { audit: AuditPort<Tx>; clock: ClockPort };
@@ -23,7 +24,7 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
   new HttpException({ type: `https://expatready.local/problems/${slug}`, title, status, detail, ...extra }, status);
 const invalid = (fields: Record<string, string>) => {
   const [first] = Object.entries(fields);
-  return problem(400, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
+  return problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
 };
 const nameTaken = (name: string) => problem(409, "conflict", "Please check the highlighted details", HOURS_WORDS.nameTaken(name), { code: "NAME_TAKEN", fields: { name: HOURS_WORDS.nameTaken(name) }, issues: [`name: ${HOURS_WORDS.nameTaken(name)}`] });
 export const HOURS_WORDS = {
@@ -63,7 +64,8 @@ const TimeOffCreate = z.strictObject({ startsAt: When, endsAt: When });
 const HostSet = z.strictObject({ setId: z.uuid(HOURS_WORDS.notTheirSet).transform((v) => v.toLowerCase()).nullable() });
 
 function parse<T extends z.ZodType>(schema: T, body: unknown, what: string): z.output<T> {
-  const r = schema.safeParse(body ?? {});
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
+  const r = schema.safeParse(body ?? {}, { error: plainIssue });   // PF-28 A2: zod's own words never reach a field
   if (r.success) return r.data;
   const fields: Record<string, string> = {};
   for (const i of r.error.issues) {
@@ -72,6 +74,10 @@ function parse<T extends z.ZodType>(schema: T, body: unknown, what: string): z.o
   }
   throw invalid(fields);
 }
+
+/** PF-28 part 4: a malformed person id is the one not-found before the body is read; a well-formed one is looked up after
+ *  it (so a body that breaks the rules is 422 whoever it names, and a 404 never stands for a field error). */
+const shape = (staffId: string) => (staffId === "me" || z.uuid().safeParse(staffId).success ? staffId : notInFirm("staff member"));
 
 type W = { weekday: number; startMinute: number; endMinute: number };
 /** "End must be after start." on the window's end; "These hours overlap." on the later of two windows of one day. */
@@ -114,8 +120,9 @@ export class AvailabilityService {
   }
 
   async createSet(ctx: StaffContext, staffId: string, body: unknown) {
-    const target = await this.target(ctx, staffId);
+    shape(staffId);
     const b = parse(SetCreate, body, "a set of hours");
+    const target = await this.target(ctx, staffId);
     const windows = windowsOf(b.windows ?? []);
     return this.named(b.name, () => this.db.$transaction(async (tx) => {
       await this.ensureDefault(tx, ctx.firmId, target);
@@ -124,14 +131,16 @@ export class AvailabilityService {
       if (b.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false, version: { increment: 1 } } });
       const set = await tx.foAvailabilitySet.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, name: b.name, timeZone, isDefault: b.isDefault ?? false } });
       if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: set.firmId, staffId: target, setId: set.id, timeZone, ...w })) });
-      await this.audit(tx, ctx, target, "availability.set_created", "Availability changed: a set of hours was added.", { setId: set.id, name_after: auditName(set.name), timeZone_after: timeZone, isDefault_after: set.isDefault, windows_after: auditWindows(windows) });
+      await this.audit(tx, ctx, target, "availability.set_created", "Availability changed: a set of hours was added.", { setId: set.id }, { before: null, after: { name: auditName(set.name), timeZone, isDefault: set.isDefault, windows: auditWindows(windows) } });
       return setView(await this.readSet(tx, ctx.firmId, target, set.id));
     }));
   }
 
   async updateSet(ctx: StaffContext, staffId: string, setId: string, body: unknown) {
-    const target = await this.target(ctx, staffId);
+    shape(staffId);
+    if (!z.uuid().safeParse(setId).success) return notInFirm("set of hours");
     const b = parse(SetPatch, body, "a set of hours");
+    const target = await this.target(ctx, staffId);
     const windows = b.windows ? windowsOf(b.windows) : undefined;
     return this.named(b.name, () => this.db.$transaction(async (tx) => {
       await this.lockPerson(tx, ctx.firmId, target);
@@ -147,9 +156,9 @@ export class AvailabilityService {
         if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: before.firmId, staffId: target, setId: before.id, timeZone, ...w })) });
       } else if (timeZone !== before.timeZone) await tx.foAvailability.updateMany({ where: firmScope(ctx.firmId, { setId: before.id }), data: { timeZone } });
       const after = await this.readSet(tx, ctx.firmId, target, before.id);
-      await this.audit(tx, ctx, target, "availability.changed", "Availability changed.", {
-        setId: after.id, name_before: auditName(before.name), name_after: auditName(after.name), timeZone_before: before.timeZone, timeZone_after: after.timeZone,
-        isDefault_before: before.isDefault, isDefault_after: after.isDefault, windows_before: auditWindows(before.windows), windows_after: auditWindows(after.windows) });
+      await this.audit(tx, ctx, target, "availability.changed", "Availability changed.", { setId: after.id }, {
+        before: { name: auditName(before.name), timeZone: before.timeZone, isDefault: before.isDefault, windows: auditWindows(before.windows) },
+        after: { name: auditName(after.name), timeZone: after.timeZone, isDefault: after.isDefault, windows: auditWindows(after.windows) } });
       return setView(after);
     }));
   }
@@ -162,15 +171,16 @@ export class AvailabilityService {
       if (before.isDefault) throw problem(409, "conflict", "This set cannot be deleted", HOURS_WORDS.deleteDefault, { code: "DEFAULT_SET" });
       const fallbacks = await tx.foTypeHostSet.count({ where: firmScope(ctx.firmId, { setId: before.id }) });
       await tx.foAvailabilitySet.delete({ where: { id: before.id } });   // its windows and the types' choices go with it (CASCADE)
-      await this.audit(tx, ctx, target, "availability.set_deleted", "Availability changed: a set of hours was deleted.", { setId: before.id, name_before: auditName(before.name), windows_before: auditWindows(before.windows), typesBackOnDefault: fallbacks });
+      await this.audit(tx, ctx, target, "availability.set_deleted", "Availability changed: a set of hours was deleted.", { setId: before.id, typesBackOnDefault: fallbacks },
+        { before: { name: auditName(before.name), timeZone: before.timeZone, isDefault: before.isDefault, windows: auditWindows(before.windows) }, after: null });
       return { id: before.id, deleted: true, typesBackOnDefault: fallbacks };
     });
   }
 
   // -------------------------------------------------------------------------------------------------- host set
   async chooseHostSet(ctx: StaffContext, typeId: string, staffId: string, body: unknown) {
-    const { setId } = parse(HostSet, body, "a host's set");
     if (!z.uuid().safeParse(typeId).success || !z.uuid().safeParse(staffId).success) return notInFirm("booking type");
+    const { setId } = parse(HostSet, body, "a host's set");
     const [tid, sid] = [typeId.toLowerCase(), staffId.toLowerCase()];
     return this.db.$transaction(async (tx) => {
       const type = await tx.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: tid, deletedAt: null }), select: { id: true, hostStaffIds: true } });
@@ -182,7 +192,7 @@ export class AvailabilityService {
       if (setId) await tx.foTypeHostSet.upsert({ where: { firmId_typeId_staffId: { firmId: firmScope(ctx.firmId).firmId, typeId: tid, staffId: sid } }, create: { firmId: firmScope(ctx.firmId).firmId, typeId: tid, staffId: sid, setId }, update: { setId } });
       else await tx.foTypeHostSet.deleteMany({ where: firmScope(ctx.firmId, { typeId: tid, staffId: sid }) });
       if ((before?.setId ?? null) !== setId)
-        await this.audit(tx, ctx, sid, "availability.type_set_changed", "Availability changed: a booking type's hours for a host.", { typeId: tid, setId_before: before?.setId ?? null, setId_after: setId });
+        await this.audit(tx, ctx, sid, "availability.type_set_changed", "Availability changed: a booking type's hours for a host.", { typeId: tid }, { before: { setId: before?.setId ?? null }, after: { setId } });
       return { typeId: tid, staffId: sid, setId, usesDefault: setId === null };
     });
   }
@@ -195,13 +205,14 @@ export class AvailabilityService {
   }
 
   async addTimeOff(ctx: StaffContext, staffId: string, body: unknown) {
-    const target = await this.target(ctx, staffId);
+    shape(staffId);
     const b = parse(TimeOffCreate, body, "time off");
+    const target = await this.target(ctx, staffId);
     if (!(b.endsAt > b.startsAt)) throw invalid({ endsAt: HOURS_WORDS.endAfterStart });
     if (b.endsAt.getTime() - b.startsAt.getTime() > 366 * DAY) throw invalid({ endsAt: HOURS_WORDS.timeOffLength });
     return this.db.$transaction(async (tx) => {
       const row = await tx.foTimeOff.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, startsAt: b.startsAt, endsAt: b.endsAt, createdBy: `staff:${ctx.staffId}` } });
-      await this.audit(tx, ctx, target, "time_off.added", "Availability changed: time off added.", { timeOffId: row.id, startsAt_after: row.startsAt.toISOString(), endsAt_after: row.endsAt.toISOString() });
+      await this.audit(tx, ctx, target, "time_off.added", "Availability changed: time off added.", { timeOffId: row.id }, { before: null, after: { startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() } });
       return offView(row);
     });
   }
@@ -213,7 +224,7 @@ export class AvailabilityService {
       const row = await tx.foTimeOff.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase(), staffId: target }) });
       if (!row) return notInFirm("time off");
       await tx.foTimeOff.delete({ where: { id: row.id } });
-      await this.audit(tx, ctx, target, "time_off.removed", "Availability changed: time off removed.", { timeOffId: row.id, startsAt_before: row.startsAt.toISOString(), endsAt_before: row.endsAt.toISOString() });
+      await this.audit(tx, ctx, target, "time_off.removed", "Availability changed: time off removed.", { timeOffId: row.id }, { before: { startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() }, after: null });
       return { id: row.id, deleted: true };
     });
   }
@@ -266,7 +277,8 @@ export class AvailabilityService {
     return s ?? notInFirm("set of hours");
   }
 
-  private audit(tx: Tx, ctx: StaffContext, staffId: string, action: string, summary: string, detail: Record<string, string | number | boolean | null | string[]>) {
-    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_availability", entityKey: staffId, summary, detail: { targetStaffId: staffId, ...detail } });
+  /** R1.8 (QA-594): every line passes the row's values before and after (null for the side that does not exist). */
+  private audit(tx: Tx, ctx: StaffContext, staffId: string, action: string, summary: string, detail: Record<string, string | number | boolean | null | string[]>, v: { before: AuditValues | null; after: AuditValues | null }) {
+    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_availability", entityKey: staffId, summary, detail: { targetStaffId: staffId, ...detail }, before: v.before, after: v.after });
   }
 }

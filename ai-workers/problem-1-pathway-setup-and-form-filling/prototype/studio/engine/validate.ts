@@ -1,6 +1,7 @@
 // Draft validation and release differences. Problems are stated in plain words with where they are; errors block
 // submission, warnings are shown and recorded. Conditions are checked against the portable copy of the team's
 // closed predicate contract (contracts/predicate.v0.schema.json) and against the library's field types.
+import { assessmentOnlyRelease, isAssessmentOnly, ASSESSMENT_ONLY_WORDS, type SnapshotEligibility } from "./eligibility/gates.ts";
 import { lineSet, setWords, type SnapSet } from "./document-sets.ts";
 import { Ajv } from "ajv";
 import { readFileSync } from "node:fs";
@@ -142,6 +143,8 @@ export function addedFilingProblems(s: Snapshot, types: Map<string, string>, der
   return out;
 }
 
+/** The eligibility without its assessment-only flag (a combination that files keeps every check). */
+const notAssessmentOnly = (e: SnapshotEligibility | undefined) => (e?.assessment_only ? (({ assessment_only: _a, ...rest }) => rest)(e) : e);
 export function validate(s: Snapshot, library: { key: string; valueType: string }[], derivedRows: { id: string; calculation: string }[], accepts?: Accepts): Problem[] {
   const out: Problem[] = [];
   const types = new Map(library.map((f) => [f.key, f.valueType]));
@@ -238,7 +241,10 @@ export function validate(s: Snapshot, library: { key: string; valueType: string 
   // Only the derived definitions this combination reads (Lead check item 3): the library holds every definition, and
   // one nobody here uses is not this combination's warning.
   const reads = derivedRead(s);
-  out.push(...gateProblems(s.eligibility, placed, reads, types, derived, (f) => `"${(s.derived_fields as { id: string; plain?: string | null }[]).find((d) => d.id === f)?.plain?.trim().replace(/\.$/, "") || factWords(s, f)}"`, s.placements)); // C6.9 BR-5
+  // AS-2a, break B1 on 6f71259ea: "assessment only" means no form and no document line; on a combination that files it
+  // is refused here, so it never switches this combination's checks off.
+  if (isAssessmentOnly(s.eligibility) && (s.forms.length || (s.document_requirements ?? []).length)) out.push({ level: "error", where: "Eligibility", item: "assessment-only", message: `${ASSESSMENT_ONLY_WORDS} is for a combination with no form and no document line: remove its forms and document lines, or turn assessment only off.` });
+  out.push(...gateProblems(assessmentOnlyRelease(s) ? s.eligibility : notAssessmentOnly(s.eligibility), placed, reads, types, derived, (f) => `"${(s.derived_fields as { id: string; plain?: string | null }[]).find((d) => d.id === f)?.plain?.trim().replace(/\.$/, "") || factWords(s, f)}"`, s.placements)); // C6.9 BR-5
   for (const d of derivedRows) if (reads.has(d.id) && !CALCULATIONS[d.calculation]) out.push({ level: "warning", where: "Derived fields", item: d.id, message: `Calculation ${d.calculation} has no tested helper: recorded, never evaluated.` });
   out.push(...channelProblems(s, accepts));
   out.push(...askedChoiceProblems(s, (m) => (m.inventory_file ? inventoryFields(m.inventory_file) ?? [] : []))); // B81: a code on an answer the form prints twice
@@ -423,7 +429,7 @@ export function diff(prev: Snapshot | null, next: Snapshot): Change[] {
   for (const [k, id, label, behaviour] of [["document_types", (x: any) => x.key, "Document type", true], ["derived_fields", (x: any) => x.id, "Derived definition", true]] as const) {
     const a = new Map(((prev?.[k] as any[]) ?? []).map((x) => [id(x), x])), b = new Map(((next[k] as any[]) ?? []).map((x) => [id(x), x]));
     for (const [key, x] of b) if (!a.has(key)) out.push({ kind: label, key, change: "added", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
-      else if (canonical(a.get(key)) !== canonical(x)) out.push({ kind: label, key, change: "changed", needs_sme: behaviour, label: `${x.name ?? x.plain ?? key}: ${label === "Document type" ? `supplies ${(x.supplies_facts ?? []).map(factName).join(", ") || "no facts"}${x.sets?.length ? `; substitute sets: ${(x.sets as SnapSet[]).map((s) => `${s.name} (${setWords({ mode: s.mode, members: s.members })})`).join("; ")}` : ""}${x.default_provider_roles?.length ? `; provided by (when shared): ${(x.default_provider_roles as string[]).map(providerWords).join(", then ")}` : (a.get(key) as { default_provider_roles?: string[] } | undefined)?.default_provider_roles?.length ? "; provided by (when shared): not set (the person the item is for)" : ""}` : `inputs ${(x.inputs ?? []).join(", ") || "none"}`}` });
+      else if (canonical(a.get(key)) !== canonical(x)) out.push({ kind: label, key, change: "changed", needs_sme: behaviour, label: `${x.name ?? x.plain ?? key}: ${label === "Document type" ? `supplies ${(x.supplies_facts ?? []).map(factName).join(", ") || "no facts"}${x.sets?.length ? `; substitute sets: ${(x.sets as SnapSet[]).map((s) => `${s.name} (${setWords({ mode: s.mode, members: s.members })})`).join("; ")}` : ""}${x.default_provider_roles?.length ? `; provided by (when shared): ${(x.default_provider_roles as string[]).map(providerWords).join(", then ")}` : (a.get(key) as { default_provider_roles?: string[] } | undefined)?.default_provider_roles?.length ? "; provided by (when shared): not set (the person the item is for)" : ""}${defaultsLine(x, a.get(key))}` : `inputs ${(x.inputs ?? []).join(", ") || "none"}`}` });
     for (const [key, x] of a) if (!b.has(key)) out.push({ kind: label, key, change: "removed", needs_sme: behaviour, label: x.name ?? x.plain ?? key });
   }
   // W1-15 slice 1 (challenge M5): each choice over the rules' source and each Pre-qualification tick is named on Review,
@@ -470,4 +476,12 @@ export function isDemoSnapshot(raw: unknown): boolean {
 export function sampleContentProblems(s: Snapshot): (Problem & { gate: "sample-content" })[] {
   return s.checks.filter((x) => x.illustrative).map((c) => ({ level: "error" as const, where: "Checks", item: c.id, label: `Check "${String(c.message ?? c.id).trim()}"`, gate: "sample-content" as const,
     message: "Sample (saved without an official source quote). Sample content releases only in the demo workspace, as a Demo release. A real release needs its official source." }));
+}
+
+/** CS-D7c: a release that sets, changes or clears a type's defaults names them in words on the line the expert signs. */
+const RULE_W: Record<string, string> = { NOT_REQUIRED: "not required", REQUIRED_IF_NOT_EN_FR: "required when not in English or French", REQUIRED: "required" };
+function defaultsLine(x: { defaults?: { translation_rule: string | null; notarisation_rule: string | null; has_expiry: boolean | null; max_age_days: number | null; source_file: string | null } }, before: unknown): string {
+  const d = x.defaults;
+  if (!d) return (before as { defaults?: unknown } | undefined)?.defaults ? "; defaults: not set (behaves as before)" : "";
+  return `; defaults: translation ${d.translation_rule ? RULE_W[d.translation_rule] : "not set"}, notarisation ${d.notarisation_rule ? RULE_W[d.notarisation_rule] : "not set"}, ${d.has_expiry === null ? "expiry not set" : d.has_expiry ? "has an expiry date" : "no expiry date"}, ${d.max_age_days === null ? "no age limit set" : `no older than ${d.max_age_days} days`} (source: ${d.source_file ?? "none"}${(d as { source_quote?: string | null }).source_quote ? `: "${(d as { source_quote?: string | null }).source_quote}"` : ""})`;
 }

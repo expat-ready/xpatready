@@ -1,0 +1,35 @@
+PASS  R1.30 setup: the Sample firm and its front office are seeded — []
+PASS  R1.30 DW1 pass: prospects ?source=Referral returns only the prospects whose lead came from Referral — [200,["36dc25e4-7421-4b1a-9286-066752ca2129","793c3681-54e7-4d47-8944-9aed6534162b"]]
+PASS  R1.30 DW1 pass: two sources return both, a comma source is one value; no source (or an empty one) → every prospect, as before — [["eda20687-588d-492e-bafe-68f99bdaa97b","36dc25e4-7421-4b1a-9286-066752ca2129","793c3681-54e7-4d47-8944-9aed6534162b"],4,4]
+PASS  R1.30 DW1 pass: source combines with the other filters (stage) — ["d1454f63-bee1-440c-a960-f8e704cdfe38"]
+PASS  R1.30 DW1 fail: an unknown source is refused 400 UNKNOWN_SOURCE naming it and the choices (never ignored, QA-533) — [400,{"type":"https://expatready.local/problems/unknown-source","title":"Check the filter","status":400,"detail":"Unknown source: FAX. Choose from: Event, Toronto mwoxj53d, Phone call mwoxj53d, Referral mwoxj53d.","message":"Unknown source: FAX. Choose from: E
+PASS  R1.30 DW2 pass: the board ?source=Referral draws only Referral cards; without it every card — [["793c3681-54e7-4d47-8944-9aed6534162b","36dc25e4-7421-4b1a-9286-066752ca2129"],4]
+PASS  R1.30 DW2 pass: the board's counts and totals follow the source (Referral: CAD 1,000 and USD 500 only; the Phone call CAD 7,000 is not added) — [[{"currency":"CAD","valueCents":100000,"count":1},{"currency":"USD","valueCents":50000,"count":1}],[{"currency":"CAD","valueCents":800000,"count":2},{"currency":"USD","valueCents":50000,"count":1}]]
+PASS  R1.30 DW2 fail: the board refuses an unknown source 400 UNKNOWN_SOURCE — 400
+PASS  R1.30 DW3 pass: the source narrows inside the visibility: the Case Officer gets only their own Referral prospect, on the List and the board — [["36dc25e4-7421-4b1a-9286-066752ca2129"],["36dc25e4-7421-4b1a-9286-066752ca2129"]]
+PASS  R1.30 DW3 fail: a source only on leads the Case Officer cannot see is unknown to them (400), never named in a list — 400
+PASS  R1.30 DW4 pass: List → Source → Referral shows only the Referral prospects, a chip names it, the address keeps it, focus back on Source — [["P-00002","P-00001"],"http://localhost:4477/front-office/pipeline?view=list&source=Referral+mwoxj53d"]
+PASS  R1.30 DW4 pass: a reload keeps the List's Source filter
+PASS  R1.30 DW4 pass: axe finds no WCAG A/AA violation on the List with Source chosen — []
+PASS  R1.30 DW4 pass: the Board/List switch keeps the source; the board draws only the Referral cards, with the chip — [["P-00001","P-00002"],"http://localhost:4477/front-office/pipeline?source=Referral+mwoxj53d"]
+PASS  R1.30 DW4 pass: axe finds no WCAG A/AA violation on the board with Source chosen — []
+PASS  R1.30 DW4 pass: 400px board with Source chosen: no sideways page scroll
+PASS  R1.30 DW4 pass: 1024px board with Source chosen: no sideways page scroll
+PASS  R1.30 DW4 pass: All sources on the board draws every card again and clears the address
+PASS  R1.30 DW4 fail: an unknown ?source= in the address is dropped: no chip, every prospect listed, no alert
+PASS  R1.30 DW4 fail: when the sources cannot be loaded, the board keeps the asked source, fetches and shows no unfiltered board, and offers Try again — {"unfiltered":0}
+PASS  R1.30 DW4 pass (break m2): with no source asked the board draws before a slow sources lookup answers — 0.245
+PASS  R1.30 DW5 pass (QA-572): a from after to is said at the from field (aria-invalid, described), plain words in place of the list, no alert, nothing sent — {"sentBad":0}
+PASS  R1.30 DW5 fail (break M1): a source chosen while the range is wrong shows no rows that ignore it, only the words
+PASS  R1.30 DW5 pass (QA-572): a from on or before to clears the message and the list follows the range and the source — ["P-00002","P-00001"]
+PASS  R1.30 DW5 fail (break m1): from=abc in the address is dropped: the list shows, no alert, no "from after to"
+PASS  R1.30 DW5 fail (break m1): from=2026-02-30 in the address is dropped: the list shows, no alert, no "from after to"
+PASS  R1.30 DW5 fail (break m1): from=2026-1-5 in the address is dropped: the list shows, no alert, no "from after to"
+PASS  R1.30 DW5 fail (break m1): from=3026-11-20 in the address is dropped: the list shows, no alert, no "from after to"
+PASS  R1.30 DW5 fail (QA-572): a from after to typed into the address shows plain words to change the dates (no raw 'from:'), nothing sent — {"sentBad":0}
+PASS  R1.30 DW5 pass (review round 3): Engaged from typed key by key keeps what was typed and the address carries from=2026-11-19 — ["2026-11-19","http://localhost:4477/front-office/pipeline?view=list&from=2026-11-19"]
+PASS  R1.30 DW5 pass (review round 3): Arrived from typed key by key keeps what was typed and the address carries from=2026-11-19 — ["2026-11-19","http://localhost:4477/front-office/leads?view=all&from=2026-11-19"]
+PASS  R1.30: no page error in the browser — []
+
+32/32 passed
+exit 0

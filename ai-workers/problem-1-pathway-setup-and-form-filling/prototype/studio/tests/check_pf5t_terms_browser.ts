@@ -152,9 +152,14 @@ ok("PF-5t DW7 (review m2): after I accept, the focus moves to the returned page'
 // ------------------------------- review M1: a 428 from a call inside the page (no move) brings the terms page at once
 // The first page of acceptances is given a next page (route rewrite), so "Show more" calls the server without a move.
 await p.route((u) => u.pathname === "/api/platform/terms/acceptances" && !u.searchParams.has("cursor"), async (rt) => {
-  const res = await rt.fetch(), json = await res.json() as { nextCursor: string | null; acceptances: { id: string }[] };
+  const res = await rt.fetch(), json = await res.json() as { nextCursor: string | null; acceptances?: { id: string }[] };
+  // PF-31 (Lead 13): with Terms kept open in its tab, the list is also read while terms are pending (428): only a list is rewritten.
+  if (!res.ok || !json.acceptances?.length) { await rt.fulfill({ response: res }); return; }
   await rt.fulfill({ response: res, json: { ...json, nextCursor: json.acceptances[json.acceptances.length - 1].id } });
 });
+// PF-31 (Lead 13): Terms is still open in its workspace tab, so accepting above already read its list again, before this
+// rewrite was in place; past the app's 2 s staleTime, bringing the tab forward reads it again (as the page's remount did).
+await p.waitForTimeout(2_100);
 await p.locator('nav[aria-label="My account"] [data-account-section="/platform/terms"]').click(); await p.locator("[data-terms-more]").waitFor({ timeout: 20_000 });
 const pn3 = publish("PRIVACY_NOTICE");
 const at = p.url(); await p.locator("[data-terms-more]").click(); await termsPage(p);

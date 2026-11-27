@@ -142,11 +142,14 @@ await sw.evaluate(() => { (window as unknown as { __rSeen: boolean }).__rSeen = 
 const posts = () => seen.filter((s) => s.page === sw && s.method === "POST" && s.path === "/api/platform/session/callback");
 await sw.goto(`${BASE}${link}`);
 await sw.evaluate((rEmail) => { const w = window as unknown as { __rSeen: boolean }; w.__rSeen = false; new MutationObserver(() => { if (document.body.innerText.includes(rEmail)) w.__rSeen = true; }).observe(document.body, { childList: true, subtree: true, characterData: true }); }, R.email);
-await profileShown(sw, newEmail);
-ok("PF-6a DW4 pass: the callback signs in once and opens My account as the new person", posts().length === 1 && posts()[0].status === 200 && new URL(sw.url()).pathname === "/account", posts().map((s) => s.status));
+// PF-18h: the callback lands on Home (the staff's first page); My account then shows the new person.
+const homeShown = async (p: Page) => { await p.waitForURL(`${BASE}/home`, { timeout: 20_000 }); await p.locator("[data-needs-you]").waitFor({ timeout: 20_000 }); };
+await homeShown(sw);
+ok("PF-6a DW4 pass: the callback signs in once and opens Home (PF-18h) as the new person", posts().length === 1 && posts()[0].status === 200 && new URL(sw.url()).pathname === "/home", posts().map((s) => s.status));
+await clickProfile(sw); await profileShown(sw, newEmail);
 ok("PF-6a DW4 pass: the address bar no longer holds the code (nor does the history entry)", !sw.url().includes("code=") && (await sw.evaluate(() => window.location.hash)) === "", sw.url());
 ok("PF-6a DW3 pass: after the change of person no answer of the last person shows (R's email never on the new person's My account)", !(await sw.evaluate(() => (window as unknown as { __rSeen: boolean }).__rSeen)) && !(await sw.locator("main").innerText()).includes(R.email) && (await sw.locator("[data-staff-name]").innerText()) !== R.name);
-await sw.goto(`${BASE}/sign-in/callback`); await profileShown(sw, newEmail); await sw.reload(); await profileShown(sw, newEmail);
+await sw.goto(`${BASE}/sign-in/callback`); await homeShown(sw); await sw.reload(); await homeShown(sw); await clickProfile(sw); await profileShown(sw, newEmail);
 ok("PF-6a DW4 pass: opening and reloading the callback page again makes no second post", posts().length === 1, posts().length);
 // Fail: the same code again shows the server's refusal words with the sign-in card, and a reload posts nothing more.
 const again = await newPage(); const againPosts = () => seen.filter((s) => s.page === again && s.method === "POST" && s.path === "/api/platform/session/callback");
@@ -155,17 +158,17 @@ ok("PF-6a DW4 fail: the same code again shows the server's refusal words and the
 await again.reload(); await again.locator("[data-callback-refused]").waitFor({ timeout: 15_000 });
 ok("PF-6a DW4 fail: a reload of the refused callback page makes no second post and keeps no code in the address", againPosts().length === 1 && !again.url().includes("code="), againPosts().length);
 // Break M1: signing in from the card the refused link offers opens My account (the page leaves its refused state).
-await signInByCard(again, O.email); await profileShown(again, O.email);
-ok("PF-6a DW4 (break M1): after a refused link, signing in from its card opens My account", new URL(again.url()).pathname === "/account");
+await signInByCard(again, O.email); await homeShown(again);
+ok("PF-6a DW4 (break M1): after a refused link, signing in from its card opens Home (PF-18h)", new URL(again.url()).pathname === "/home");
 // Break M2: a second link opened in the same tab while the callback page shows (only the "#" part changes) is taken too.
 const hop = await newPage(); const hopPosts = () => seen.filter((s) => s.page === hop && s.method === "POST" && s.path === "/api/platform/session/callback");
 await hop.goto(`${BASE}/sign-in/callback`); await hop.locator("[data-callback-refused]").waitFor({ timeout: 15_000 });
-await hop.evaluate((h) => { window.location.hash = h; }, link2.split("#")[1]); await profileShown(hop, `pf6a-b-${run}@example.com`);
+await hop.evaluate((h) => { window.location.hash = h; }, link2.split("#")[1]); await homeShown(hop); await clickProfile(hop); await profileShown(hop, `pf6a-b-${run}@example.com`);
 ok("PF-6a DW4 (break M2): a code arriving by a hash change on the open callback page is posted once and leaves the address", hopPosts().length === 1 && !hop.url().includes("code="), hopPosts().length);
 // Break M3: storage that refuses writes but still reads an older session: the newer sign-in (and a sign-out) wins.
 const full = await newPage(1440, await apiSignIn(T.email));
 await full.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException("full", "QuotaExceededError"); }; Storage.prototype.removeItem = () => { throw new DOMException("full", "QuotaExceededError"); }; });
-await full.goto(`${BASE}${link3}`); await profileShown(full, `pf6a-c-${run}@example.com`);
+await full.goto(`${BASE}${link3}`); await homeShown(full); await clickProfile(full); await profileShown(full, `pf6a-c-${run}@example.com`);
 ok("PF-6a DW3 (break M3): with storage writes refused, the new person's account shows, never the older stored person", !(await full.locator("main").innerText()).includes(T.email));
 const meCalls = () => seen.filter((s) => s.page === full && s.path === "/api/platform/me").length, m0 = meCalls();
 await full.locator("header").getByRole("button", { name: "Sign out" }).click(); await full.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 }); await full.waitForTimeout(1500);

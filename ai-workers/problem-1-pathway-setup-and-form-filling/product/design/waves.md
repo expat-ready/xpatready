@@ -48,7 +48,7 @@ In-flight work outside Waves 1-2 finishes its current PR and stops: R1.76 (#2320
 <!-- waves.py gen: start (generated from design/waves.tsv and qa/CAPABILITIES.md; edit waves.tsv, then run tools/waves.py gen) -->
 ## Waves as code (B204)
 
-Now: 45 Partial, 37 Not built, 19 Works; active wave 1; lane starts open for waves 0, 1, 2; R1.38 by note.
+Now: 64 Works, 29 Not built, 17 Partial; active wave 3; lane starts open for waves 0, 1, 2, 3, 4.
 
 ### Wave 0: Proven before the waves (fixes only) (12)
 
@@ -63,13 +63,13 @@ Now: 45 Partial, 37 Not built, 19 Works; active wave 1; lane starts open for wav
 
 | Journey | Items |
 |---|---|
-| J0 | R1.4 (Partial), R1.8 (Partial) |
+| J0 | R1.4 (Works), R1.8 (Works) |
 | J1 | R1.80 (Works) |
-| J2 | R1.100 (Partial) |
-| J3 | R1.47 (Partial) |
-| J4 | R1.26 (Partial), R1.28 (Works), R1.30 (Partial), R1.33 (Partial) |
-| J5 | R1.37 (Works), R1.40 (Partial), R1.41 (Works) |
-| J7 | R1.72 (Partial), R1.74 (Partial), R1.77 (Works) |
+| J2 | R1.100 (Works) |
+| J3 | R1.47 (Works) |
+| J4 | R1.26 (Works), R1.28 (Works), R1.30 (Works), R1.33 (Works) |
+| J5 | R1.37 (Works), R1.40 (Works), R1.41 (Works) |
+| J7 | R1.72 (Works), R1.74 (Works), R1.77 (Works) |
 | J8 | R1.67 (Works) |
 | J10 | R1.109 (Works) |
 
@@ -77,42 +77,42 @@ Now: 45 Partial, 37 Not built, 19 Works; active wave 1; lane starts open for wav
 
 | Journey | Items |
 |---|---|
-| J0 | R1.10 (Partial), R1.16 (Partial) |
-| J2 | R1.19 (Partial) |
-| J3 | R1.48 (Partial), R1.49 (Partial) |
-| J4 | R1.27 (Partial), R1.31 (Partial), R1.32 (Partial), R1.108 (Partial), R1.110 (Partial) |
-| J5 | R1.42 (Partial) |
-| J9 | R1.59 (Partial) |
+| J0 | R1.10 (Partial), R1.16 (Works) |
+| J2 | R1.19 (Works) |
+| J3 | R1.48 (Works), R1.49 (Works) |
+| J4 | R1.27 (Works), R1.31 (Works), R1.32 (Works), R1.108 (Works), R1.110 (Works) |
+| J5 | R1.42 (Works) |
+| J9 | R1.59 (Works) |
 
 ### Wave 3: Rest of Partial (23)
 
 | Journey | Items |
 |---|---|
-| J0 | R1.3 (Partial), R1.5 (Partial), R1.13 (Partial), R1.14 (Partial), R1.15 (Partial) |
-| J2 | R1.20 (Partial), R1.24 (Partial), R1.90 (Partial), R1.92 (Partial), R1.93 (Partial) |
-| J4 | R1.29 (Partial), R1.98 (Partial), R1.106 (Partial) |
-| J5 | R1.38 (Partial) * |
-| J6 | R1.53 (Partial), R1.54 (Partial), R1.55 (Partial), R1.61 (Partial) |
-| J7 | R1.102 (Partial) |
+| J0 | R1.3 (Partial), R1.5 (Partial) *, R1.13 (Works) *, R1.14 (Works) *, R1.15 (Partial) * |
+| J2 | R1.20 (Works), R1.24 (Works), R1.90 (Works), R1.92 (Works), R1.93 (Works) |
+| J4 | R1.29 (Works), R1.98 (Partial), R1.106 (Partial) |
+| J5 | R1.38 (Works) * |
+| J6 | R1.53 (Works), R1.54 (Partial), R1.55 (Partial), R1.61 (Partial) |
+| J7 | R1.102 (Works) |
 | J9 | R1.56 (Partial), R1.58 (Partial) |
 | J10 | R1.85 (Partial), R1.105 (Partial) |
 
-### Wave 4: Not built (37)
+### Wave 4: Not built (46)
 
 | Journey | Items |
 |---|---|
-| J0 | R1.1 (Not built) |
-| J2 | R1.21 (Not built), R1.22 (Not built), R1.23 (Not built), R1.89 (Not built), R1.91 (Not built) |
-| J3 | R1.45 (Not built), R1.46 (Not built), R1.50 (Not built), R1.52 (Not built) |
+| J0 | R1.1 (Partial), R1.113 (Not built), R1.114 (Not built), R1.115 (Not built), R1.116 (Not built), R1.117 (Not built), R1.118 (Not built), R1.119 (Not built), R1.120 (Not built), R1.121 (Not built) |
+| J2 | R1.21 (Works), R1.22 (Not built), R1.23 (Works), R1.89 (Works), R1.91 (Not built) |
+| J3 | R1.45 (Partial), R1.46 (Works), R1.50 (Works), R1.52 (Not built) |
 | J4 | R1.35 (Not built), R1.36 (Not built), R1.95 (Not built), R1.107 (Not built) |
-| J5 | R1.39 (Not built), R1.43 (Not built), R1.112 (Not built) |
-| J6 | R1.104 (Not built) |
-| J7 | R1.62 (Not built), R1.75 (Not built), R1.76 (Not built), R1.79 (Not built) |
-| J8 | R1.64 (Not built), R1.65 (Not built), R1.66 (Not built), R1.68 (Not built), R1.69 (Not built), R1.70 (Not built) |
+| J5 | R1.39 (Works), R1.43 (Not built), R1.112 (Not built) |
+| J6 | R1.104 (Works) |
+| J7 | R1.62 (Not built), R1.75 (Not built), R1.76 (Partial), R1.79 (Not built) |
+| J8 | R1.64 (Not built), R1.65 (Works), R1.66 (Not built), R1.68 (Works), R1.69 (Works), R1.70 (Works) |
 | J9 | R1.57 (Not built), R1.60 (Not built), R1.96 (Not built), R1.111 (Not built) |
-| J10 | R1.34 (Not built), R1.86 (Not built), R1.87 (Not built), R1.88 (Not built), R1.97 (Not built) |
+| J10 | R1.34 (Not built), R1.86 (Works), R1.87 (Partial), R1.88 (Works), R1.97 (Not built) |
 
-\* R1.38: allow: P-745 (3), finishes its four nearly done PRs; the Lead removes this note when they have merged
+\* R1.5: allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov); R1.13: allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov); R1.14: allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov); R1.15: allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov); R1.38: allow: P-745 (3), finishes its four nearly done PRs; the Lead removes this note when they have merged
 
 <!-- waves.py gen: end -->
 

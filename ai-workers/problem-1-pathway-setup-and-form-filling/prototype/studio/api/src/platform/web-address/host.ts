@@ -12,26 +12,35 @@
 // A's address never serves firm B's page. Wildcard DNS and the certificate are PF-8's.
 import { readHost } from "./rules.ts";
 import type { WebAddresses } from "./service.ts";
-import { asBypass, inRequest, setRequestFirm } from "../firm-scope.ts";
+import { inRequest, setRequestFirm } from "../firm-scope.ts";
 
 type Req = { method: string; path: string; originalUrl?: string; url: string; rawHeaders?: string[]; protocol?: string; headers: Record<string, string | string[] | undefined>; publicFirm?: { firmId: string } };
 type Res = { status(code: number): Res; setHeader(k: string, v: string): unknown; end(body?: string): unknown };
 type Next = (err?: unknown) => void;
 
-const PUBLIC_PATHS: RegExp[] = [/^\/api\/public\/site$/];
+/** QA-756: a path may also name a check, run as the address's firm, that says whether this firm has the thing the path
+ *  names (a listed type, a built file); false gives the one plain not-found, so an unknown page on a firm's address
+ *  answers exactly as an unknown address does (AG-4-17 rule 3; PF-25 review M1). */
+export type PublicPathCheck = (firmId: string, path: string) => boolean | Promise<boolean>;
+const PUBLIC_PATHS: { re: RegExp; check?: PublicPathCheck }[] = [{ re: /^\/api\/public\/site$/ }];
 /** Adds a path a firm's address serves (a whole-path pattern, anchored both ends). Called once at start-up by the
  *  module that owns the route (FO-3w's booking pages, FO-2's form, the portal). */
-export function registerPublicPath(pattern: RegExp): void {
+export function registerPublicPath(pattern: RegExp, check?: PublicPathCheck): void {
   if (!pattern.source.startsWith("^") || !pattern.source.endsWith("$")) throw new Error(`PF-25: a public path must be anchored at both ends (${pattern})`);
-  if (!PUBLIC_PATHS.some((p) => p.source === pattern.source)) PUBLIC_PATHS.push(pattern);
+  const had = PUBLIC_PATHS.find((p) => p.re.source === pattern.source);
+  if (!had) PUBLIC_PATHS.push({ re: pattern, check });
+  else if (check) had.check = check;
 }
-export const isPublicPath = (path: string) => PUBLIC_PATHS.some((re) => re.test(path));
+const publicPathOf = (path: string) => PUBLIC_PATHS.find((p) => p.re.test(path));
+export const isPublicPath = (path: string) => !!publicPathOf(path);
 
 const NOT_FOUND_TEXT = "This page is not available.";
 /** The one not-found of the public side (AG-4-17 r3): an unknown address, an unknown or inactive slug, a firm that is not
  *  serving all give these exact bytes and 404. A path under /api/ gets the JSON form, any other the page. */
 export const PUBLIC_NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Not available</title></head><body style="font-family:system-ui,sans-serif;margin:4rem auto;max-width:32rem;padding:0 1rem;color:#1f2937"><h1 style="font-size:1.5rem">${NOT_FOUND_TEXT}</h1><p>Check the address, or contact the firm that sent it to you.</p></body></html>`;
-export const PUBLIC_NOT_FOUND_JSON = JSON.stringify({ type: "https://expatready.local/problems/not-found", title: "Not found", status: 404, detail: NOT_FOUND_TEXT });
+// QA-756: `message` as the app's problem filter writes it (main.ts), so a door's not-found on a firm's address and this one
+// are the same bytes (AG-4-17 rule 3).
+export const PUBLIC_NOT_FOUND_JSON = JSON.stringify({ type: "https://expatready.local/problems/not-found", title: "Not found", status: 404, detail: NOT_FOUND_TEXT, message: NOT_FOUND_TEXT });
 
 export function sendPublicNotFound(req: Pick<Req, "path">, res: Res): void {
   const api = req.path.startsWith("/api/");
@@ -58,22 +67,24 @@ function pathAndQuery(req: Req): { pathname: string; tail: string } {
 }
 
 /** The middleware. A failed lookup is a 500 through `next(err)`, never a page of the wrong firm. */
-export function webAddressHost(addresses: Pick<WebAddresses, "resolveHost">) {
+export function webAddressHost(addresses: Pick<WebAddresses, "resolveHost"> & Partial<Pick<WebAddresses, "hostSuffixes">>) {
   return (req: Req, res: Res, next: Next) => {
     req.publicFirm = undefined;
     // Two Host headers, either naming a firm's address: refused, never routed by the first (break N6).
     const hosts = (req.rawHeaders ?? []).filter((_, i, a) => i % 2 === 1 && a[i - 1].toLowerCase() === "host");
-    if (hosts.length > 1 && hosts.some((h) => readHost(h).kind !== "main")) return sendPublicNotFound(req, res);
-    inRequest(req, () => asBypass("platform.web-address.host", () => addresses.resolveHost(first(req.headers.host)))).then((r) => {   // PF-12: before any firm is known
+    if (hosts.length > 1 && hosts.some((h) => readHost(h, addresses.hostSuffixes).kind !== "main")) return sendPublicNotFound(req, res);
+    inRequest(req, () => addresses.resolveHost(first(req.headers.host))).then((r) => {   // PF-12b part 2: a narrow lookup finds the firm, no bypass
       if (r.kind === "main") return next();
       if (r.kind === "firm") {
         // An absolute-form request line (never sent by a browser) is refused on a firm's address: the app routes its raw
         // target, which this check could not see as the same path (break N1).
         const { pathname } = pathAndQuery(req);
-        if (!(req.originalUrl ?? req.url).startsWith("/") || ODD_PATH.test(pathname) || !isPublicPath(pathname)) return sendPublicNotFound(req, res);
+        const entry = publicPathOf(pathname);
+        if (!(req.originalUrl ?? req.url).startsWith("/") || ODD_PATH.test(pathname) || !entry) return sendPublicNotFound(req, res);
         req.publicFirm = { firmId: r.firmId };
         setRequestFirm(req, r.firmId);   // PF-12: a firm's public page runs as that firm (review B1)
-        return next();
+        if (!entry.check) return next();
+        return Promise.resolve(inRequest(req, () => entry.check!(r.firmId, pathname))).then((has) => (has ? next() : sendPublicNotFound(req, res)));
       }
       if (r.kind === "redirect") {
         // Behind ExpatReady's load balancer the public suffix is always https; a person's own machine keeps its scheme.

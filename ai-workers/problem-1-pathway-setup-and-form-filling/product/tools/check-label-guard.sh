@@ -133,6 +133,8 @@ LABELED="review: approved" guard "" "$c2" "$label" "$(cm "Reviewer: Approve $c2"
 ok "CI-PRE: the label just put on is a relabel (the failed-batch rule is asked)" "$(grep -qx "proof PR=1052 HEADS= $c2 RELABEL=1" "$T/fx/proof.log" && echo 1)" "$(cat "$T/fx/proof.log")"
 LABELED="queued" guard "" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "CI-PRE: Mergify's queued is not a relabel (a batch's other PRs keep their label)" "$(grep -qx "proof PR=1052 HEADS= $c2 RELABEL=0" "$T/fx/proof.log" && echo 1)" "$(cat "$T/fx/proof.log")"
+echo "1 pr-suites is not green on ${c2:0:9}: failure on ${c2:0:9} (https://github.test/r) (P-822)" > "$T/fx/proof"; LABELED="review: approved" guard "" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
+ok "P-822: a person's label with pr-suites red comes off, and the comment says pr-suites, not the full run" "$(grep -q '^DELETE label' <<< "$log" && grep -q '^POST comment \*\*Label guard (P-822):\*\* `review: approved` removed from the head .*: pr-suites is not green on' <<< "$log" && grep -q 'the check `pr-suites`) green on the head' "$T/fx/body" && ! grep -q '/run full' "$T/fx/body" && echo 1)" "$out / $log / $(cat "$T/fx/body")"
 echo "2 queue-gate: GH_TOKEN is not set" > "$T/fx/proof"; guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "CI-PRE: a proof that could not finish stops the guard (exit 2; the workflow then takes the label off)" "$([ $r = 2 ] && [ -z "$log" ] && echo 1)" "exit $r, $out / $log"
 rm -f "$T/fx/proof" "$T/fx/proof.log"; guard "$c1" "$c2" "$label" "[]"
@@ -162,8 +164,8 @@ ok "ENF-746a: records-only.sh that cannot run voids the Approve (fails closed)" 
 R=$R0; rm -f "$T/fx/proof.log"
 W="$(cd "$TOOLS/../../../.." && pwd)/.github/workflows/label-guard.yml"
 ge=$(python3 -I -c 'import sys,yaml; e=[s for s in yaml.safe_load(open(sys.argv[1]))["jobs"]["guard"]["steps"] if s.get("name") == "label guard"][0]["env"]
-print("ok" if "".join(str(e.get("LABELED")).split()) == "${{github.event.action=='"'"'labeled'"'"'&&github.event.label.name||'"'"''"'"'}}" and "vars.FULL_RUN_FROM" in str(e.get("FULL_FROM")) and "vars.REVIEWERS" in str(e.get("REVIEWERS")) else e)' "$W" 2>&1)
-ok "CI-PRE: label-guard.yml tells the guard which label was just added (LABELED) and passes FULL_FROM and REVIEWERS (whose early Approve FULL_FROM counts)" "$([ "$ge" = ok ] && echo 1)" "$ge"
+print("ok" if "".join(str(e.get("LABELED")).split()) == "${{github.event.action=='"'"'labeled'"'"'&&github.event.label.name||'"'"''"'"'}}" and "FULL_FROM" not in e and "vars.REVIEWERS" in str(e.get("REVIEWERS")) else e)' "$W" 2>&1)
+ok "CI-PRE: label-guard.yml tells the guard which label was just added (LABELED) and passes REVIEWERS, and no FULL_FROM any more (B206 part 2)" "$([ "$ge" = ok ] && echo 1)" "$ge"
 grep -q 'pull_request_target' "$W" && grep -q 'synchronize' "$W" && grep -q 'tools/label-guard.sh' "$W"
 ok "the workflow runs main's label-guard.sh on every push (pull_request_target, synchronize)" "$([ $? = 0 ] && echo 1)" "$W"
 # F4 in the workflow: which events run the guard, and what AFTER it gets, read the way GitHub reads them. The job's if:

@@ -22,6 +22,8 @@ export const CASE_ENTITIES: ReadonlySet<string> = new Set([
   "filing form" /* C7.8 a library form added to one filing, or removed: form-additions.ts */,
   "review round" /* C8.3 representative review, review-rounds.ts: each line names its case */,
   "case client" /* CS-K1 the case side's client record, clients.ts */,
+  "case note" /* CS-NT1 notes on a case, case-notes/service.ts: each line names its case */,
+  "case search" /* CS-S1 a search over the firm's case people: who, which fields, the counts; search/party-search.ts */,
 ]);
 /** The audit entities written by configuration work. "section" is a case entity too (a case's sections), so it is never
  *  read here without a case: the configuration "section" lines stay with the configuration people. */
@@ -45,6 +47,7 @@ export const CONFIG_ENTITIES: ReadonlySet<string> = new Set([
 export const PLATFORM_ENTITIES: ReadonlySet<string> = new Set([
   "platform_firm_setting" /* PF-3 a firm's setting changed, platform/settings.ts */,
   "platform_staff", "platform_invitation" /* PF-4 staff, roles, licence records, sessions, invitations, platform/identity/audit.ts (Lead 43 OK on #1744) */,
+  "plat_system_access" /* AUD-3 our staff's firm-less cross_tenant.access line, platform/audit/access/lines.ts */,
 ]);
 /** A configuration entity: listed, or a library change's ("library field", "library document_type", "library section" …;
  *  review-proposals.ts, screen02.ts). */

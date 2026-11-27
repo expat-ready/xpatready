@@ -15,6 +15,7 @@ import { EVENT, ProspectWonPayload } from "../ports/events.ts";
 import { LocalFiles } from "../api/src/front-office/files.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { Retainers } from "../api/src/front-office/retainers/service.ts";
+import { clearingConflicts } from "./lib/conflict-clear.ts";
 import type { Tx } from "../api/src/front-office/sales/common.ts";
 import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
@@ -75,6 +76,7 @@ try {
   const leads = new Leads(db, salesPorts()), pros = new Prospects(db, salesPorts()), corp = new Corporate(db, salesPorts());
   const store = new LocalFiles(join(WORK, "files")), clock = { now: () => Date.now() };
   const svc = new Retainers(db, store, clock);
+  clearingConflicts(db, { prospects: Prospects.prototype, retainers: Retainers.prototype });   // FO-13c: the conflict check first
 
   // A prospect (Individual, Engaged) with a DRAFT retainer on it (FO-5's tables, as FO-2p3's check makes one).
   const TPL = randomUUID(), hex = (k: number) => k.toString(16).padStart(64, "0");
@@ -170,12 +172,13 @@ try {
   ok("FO-2w W5 pass: Signed offline calls winProspect, and in the front office (the emitters; the case side's consumer is FO-8's) prospect.won is named only in the helper's file and Signed offline's audit line",
     callAt > src.indexOf("async signedOffline(") && src.indexOf("async signedOffline(") > 0
       && execFileSync("grep", ["-rlE", "--include=*.ts", "EVENT\\.PROSPECT_WON|\"prospect\\.won\"", join(STUDIO, "api", "src", "front-office")], { encoding: "utf8" }).trim().split("\n").map((f) => f.slice(STUDIO.length + 1)).sort().join(",")
-        === ["api/src/front-office/retainers/service.ts", "api/src/front-office/sales/prospects.ts"].join(","));
+        === ["api/src/front-office/retainers/on-signing-completed.ts", "api/src/front-office/retainers/service.ts", "api/src/front-office/sales/prospects.ts"].join(","));   // FO-6 part 3: the e-signature win's audit line
   // The mutant: the same service with the helper call taken out (prospectWon stays false), run on a fresh prospect.
   const end = src.indexOf("!== null;", callAt) + "!== null;".length;
   writeFileSync(MUTANT, src.slice(0, callAt) + "prospectWon = false;" + src.slice(end));
   try {
     const { Retainers: Mutant } = await import(MUTANT) as { Retainers: typeof Retainers };
+    clearingConflicts(db, { retainers: Mutant.prototype });   // FO-13c: the conflict check first
     const p6 = await prospect("Fay"), r6 = retainer(p6);
     await signOffline(new Mutant(db, store, clock), r6);
     ok("FO-2w W5 fail: with the helper call removed from Signed offline, W1's check fails (no prospect.won, prospect not won)", won(p6.id) === 0 && stageOf(p6.id) === "ACTIVE:-", { won: won(p6.id), stage: stageOf(p6.id) });

@@ -209,7 +209,7 @@ export class CasePrepare {
       q.filingItem.findMany({ where: { caseId: c.id, filing: { stageId: c.stage.id } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     ] as const;
     const sync = async (tx: Tx | Db, write: boolean) => {
-      const [g0, filings0, items0] = write ? await Promise.all(read(tx)) : await this.db.$transaction([...read(this.db)], { isolationLevel: "RepeatableRead", maxWait: 10_000 }); // C7.6: as the write path (C6.12 B1, 120 reads at once)
+      const [g0, filings0, items0] = write ? await Promise.all(read(tx)) : await this.db.$transaction((snap) => Promise.all(read(snap)), { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 5_000 }); // C7.6: as the write path (C6.12 B1, 120 reads at once); M2: interactive, one snapshot on one connection
       let groups = g0;
       // BK-17 (BK-15 breaker M3): a filing recorded as submitted is kept as recorded: never made inactive, its mode, people
       // and items never changed by a later answer. A person on it stays on it: the derivation makes no other filing for
@@ -678,10 +678,11 @@ export class CasePrepare {
       const ask = l.missing.filter((m) => !m.answered).map((m) => m.question);
       return filing ? [{ subject: p.subject, person: p.label, filing, document_type: l.document.key, label: l.label, required: false, never_waivable: true, waiting: ask.length ? ask.join(", ") : "the questions its condition reads" }] : [];
     }));
+    const flagWarn = await flagWarningsOf(this.db, people.map((p) => p.subjectId), (s as { document_types?: { key: string; name: string }[] }).document_types ?? []); // CS-D7 (4)
     const readiness = await readinessOfCase(this.db, { workspaceId: c.workspaceId, caseId: c.id, filings: filings.map((f) => f.id), forms: formItems, reviewAfterMove, releaseUpdate,
       byHand: (form, subject) => handOf.get(`${form}|${subject}`) ?? [],
       copy: copyOf,
-      documents: docItems.map((d) => ({ subject: d.subject, person: d.person, filing: d.filing, item: d.id, document_type: d.document_type, label: d.label, required: docLine(d.subject, d.document_type)?.required ?? true, never_waivable: docLine(d.subject, d.document_type)?.never_waivable ?? false, ...(docLine(d.subject, d.document_type)?.never_if?.length ? { waiting: docLine(d.subject, d.document_type)!.never_if!.join(", ") } : {}) }) as ReadinessInputs["documents"][number]).concat(waitingNever), // M3-S4
+      documents: docItems.map((d) => ({ subject: d.subject, person: d.person, filing: d.filing, item: d.id, document_type: d.document_type, label: d.label, ...(flagWarn.get(`${d.subject}|${d.document_type}`)?.length ? { flag_warnings: flagWarn.get(`${d.subject}|${d.document_type}`) } : {}), required: docLine(d.subject, d.document_type)?.required ?? true, never_waivable: docLine(d.subject, d.document_type)?.never_waivable ?? false, ...(docLine(d.subject, d.document_type)?.never_if?.length ? { waiting: docLine(d.subject, d.document_type)!.never_if!.join(", ") } : {}) }) as ReadinessInputs["documents"][number]).concat(waitingNever), // M3-S4
       factsOf: (form, subject) => formReady(form, subject),
       // C7.9 (P-242): the must-verify facts this form writes from an unchecked client-given value.
       unverifiedOf: (form, subject) => unverifiedOf(s, answers, formCoverage(s, people, answers, rows, form, subject)?.facts ?? [], reading), owesFact: (fact, subject) => (subject !== REPRESENTATIVE && isClientField(s, fact) ? "client" : "staff"), // B107: the representative's facts are the firm record's
@@ -999,6 +1000,7 @@ export async function storedVersion(tx: Tx | Db, caseId: string) {
 const withRevision = (v: string, revision: number) => (revision > 1 ? `${v}~r${revision}` : v);
 export { busyWords } from "./busy.ts";
 import { busyWords } from "./busy.ts";
+import { flagWarningsOf } from "./case-document-flags.ts"; // CS-D7 (4)
 /** The version of a set of current filings and items (the same rule for the view and for a write's check). */
 function versionOf(filings: { id: string; submissionGroupId: string }[], items: { id: string; channel?: string | null; version: number }[]) {
   const groups = [...new Set(filings.map((f) => f.submissionGroupId))].map((id) => ({ id, filings: filings.filter((f) => f.submissionGroupId === id).map((f) => f.id) }));
@@ -1010,7 +1012,8 @@ function versionOf(filings: { id: string; submissionGroupId: string }[], items: 
 export class CasePrepareController {
   constructor(@Inject(CasePrepare) private readonly p: CasePrepare) {}
   // #325 break B4: HEAD would run the GET handler and store rows; it is refused (405), never answered from a write.
-  @Head("cases/:id/prepare") head() { fail("HEAD is not offered on /prepare: use GET.", HttpStatus.METHOD_NOT_ALLOWED); }
+  // R1.10 A5 (W5): a malformed id is the one not-found first; any other id is told HEAD is not offered.
+  @Head("cases/:id/prepare") head(@Param("id") id: string) { if (!UUID.test(id)) fail("No such case.", HttpStatus.NOT_FOUND); fail("HEAD is not offered on /prepare: use GET.", HttpStatus.METHOD_NOT_ALLOWED); }
   @Get("cases/:id/prepare") view(@Headers("x-actor") a: H, @Param("id") id: string) { return this.p.view(actorOf(a), id); }
   @Post("groups/:gid/split") @HttpCode(HttpStatus.OK) split(@Headers("x-actor") a: H, @Param("gid") gid: string, @Body() b: unknown) { return this.p.split(actorOf(a), gid, b); }
   @Post("items/:id/pdf-copy") @HttpCode(HttpStatus.ACCEPTED) pdfCopy(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.p.pdfCopy(actorOf(a), id, b); }

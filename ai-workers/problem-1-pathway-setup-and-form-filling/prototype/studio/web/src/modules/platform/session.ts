@@ -42,6 +42,23 @@ export function endSession(because: string | null) { ended = because; setStaffTo
 export function clearSessionEnd() { if (ended !== null) { ended = null; changed(); } }
 /** The token, or null when signed out or expired. */
 export const staffToken = () => read()?.token ?? null;
+/** PF-31 break B1 (round 3: the person, not the session): who this tab's shared drafts and workspace tabs belong to: a
+ *  one-way hash of the token's issuer and subject (the staff member), never the token itself, or null when signed out. The
+ *  same person signing in again after an expiry or "signed in elsewhere" gets their drafts and tabs back; anyone else never. */
+export function staffScope(): string | null {
+  const t = staffToken();
+  if (!t) return null;
+  let who = t;   // not a JWT: the token itself (a new session is then a new owner)
+  try { const p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { iss?: unknown; sub?: unknown }; if (typeof p.sub === "string" && p.sub) who = `${String(p.iss ?? "")}|${p.sub}`; } catch { /* not a JWT */ }
+  let a = 0x811c9dc5, b = 0x01000193;
+  for (let i = 0; i < who.length; i++) { const c = who.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193); b = Math.imul(b ^ c, 0x5bd1e995) ^ (b >>> 15); }
+  return (a >>> 0).toString(36) + (b >>> 0).toString(36);
+}
+/** Why the last session ended, outside React (null: signed out on purpose, or never signed in). PF-31: a session that ended
+ *  by itself (expiry, signed in elsewhere) keeps the person's drafts and tabs for them; Sign out drops them. */
+export const sessionEndReason = () => ended;
+/** Runs on every change of the session (sign-in, sign-out, end); `staffScope()` says who it is now. */
+export function onStaffChange(l: () => void): () => void { listeners.add(l); return () => { listeners.delete(l); }; }
 function useChanges() {
   const [, force] = React.useState(0);
   React.useEffect(() => { const l = () => force((n) => n + 1); listeners.add(l); return () => { listeners.delete(l); }; }, []);
@@ -66,12 +83,13 @@ export class StaffApiError extends Error {
 }
 /** One call to a staff route with the bearer token. A 401 ends the session here (the sign-in card shows again).
  *  `headers` (PF-21i): extra request headers, passed through as given (e.g. a create's Idempotency-Key). */
-export async function staffApi<T>(path: string, init: { method?: string; json?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
+export async function staffApi<T>(path: string, init: { method?: string; json?: unknown; /** PF-18s part 2: a multipart body (the browser sets its type). */ form?: FormData; /** PF-10s: a CSV file sent as itself (Content-Type text/csv). */ csv?: Blob; headers?: Record<string, string> } = {}): Promise<T> {
   const token = staffToken();
   const headers: Record<string, string> = { ...init.headers, accept: "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
   if (init.json !== undefined) headers["content-type"] = "application/json";
-  const res = await fetch(`/api${path}`, { method: init.method ?? "GET", headers, body: init.json === undefined ? undefined : JSON.stringify(init.json) });
+  if (init.csv !== undefined) headers["content-type"] = "text/csv";
+  const res = await fetch(`/api${path}`, { method: init.method ?? "GET", headers, body: init.form ?? init.csv ?? (init.json === undefined ? undefined : JSON.stringify(init.json)) });
   const text = await res.text();
   const data: unknown = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   if (!res.ok) {

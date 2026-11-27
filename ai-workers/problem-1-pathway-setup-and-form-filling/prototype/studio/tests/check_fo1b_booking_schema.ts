@@ -95,9 +95,11 @@ try {
   const type = (id: string, firm: string, slug: string, hosts: string[], extra = "") =>
     `insert into fo_consultation_type (id, firm_id, slug, name, modes, host_staff_ids, minutes, updated_at${extra ? ", " + extra.split("=")[0] : ""}) values ('${id}', '${firm}', '${slug}', 'Free consultation', '{VIDEO,PHONE}', '{${hosts.join(",")}}', 30, now()${extra ? ", " + extra.split("=")[1] : ""}) returning id`;
   const TA = u(100), TB = u(101);
-  ok("FO-1b pass: a type takes AG-4-66's Sample timings when none are given (gap 0 / 10 min, notice 4 h, window 60 days, self-service 4 h, interval = length)",
+  // FO-3a1e (AG-4-66 rule 2): a type's timings given none are empty = the firm's value (the defaults: gap 0 / 10 min, notice
+  // 4 h, window 60 days, self-service 4 h; settings/timings.ts resolveTimings, tests/check_fo3a_hours_timings.ts DW19).
+  ok("FO-1b pass (FO-3a1e): a type given no timings leaves them empty, so it uses the firm's (interval = length)",
     sql(DEMO, type(TA, firmA, "free-consultation", [staffR, staffT])) === TA
-    && sql(DEMO, `select gap_before_minutes || '/' || gap_after_minutes || '/' || min_notice_minutes || '/' || window_days || '/' || self_service_limit_minutes || '/' || coalesce(slot_interval_minutes::text, '-') || '/' || purpose from fo_consultation_type where id='${TA}'`) === "0/10/240/60/240/-/FREE_CONSULT");
+    && sql(DEMO, `select concat_ws('/', coalesce(gap_before_minutes::text, '-'), coalesce(gap_after_minutes::text, '-'), coalesce(min_notice_minutes::text, '-'), coalesce(window_days::text, '-'), coalesce(self_service_limit_minutes::text, '-'), coalesce(slot_interval_minutes::text, '-'), purpose) from fo_consultation_type where id='${TA}'`) === "-/-/-/-/-/-/FREE_CONSULT");
   ok("FO-1b pass: the same slug in another firm is accepted (slugs are unique in the firm)", sql(DEMO, type(TB, firmB, "free-consultation", [staffS])) === TB);
   ok("FO-1b fail: a second type with the same slug in the same firm is refused", refused(DEMO, type(u(102), firmA, "free-consultation", [staffR]), /fo_consultation_type_firm_id_slug_key/));
   ok("FO-1b fail: a slug that is not lower-case words joined by - (AG-4-9 rule 2) is refused", refused(DEMO, type(u(102), firmA, "Free Consultation", [staffR]), /fo_consultation_type_slug_check/));
@@ -328,9 +330,14 @@ try {
   sql(DEMO, book(u(236), booker, `${D2} 22:00Z`, `${D2} 22:30Z`));
   ok("FO-1b fail (foreign key, break B-2): deleting a staff member who has a booking (and nothing else) is refused by fo_booking_firm_id_staff_id_fkey (RESTRICT: SQLSTATE 23001); the booking keeps its host",
     refusedCode(DEMO, `delete from platform_staff where id = '${booker}'`, "23001", /violates RESTRICT setting of foreign key constraint "fo_booking_firm_id_staff_id_fkey"/) && sql(DEMO, `select staff_id from fo_booking where id = '${u(236)}'`) === booker);
-  ok("FO-1b fail (foreign key): a staff member with hours cannot be deleted or change id (RESTRICT: 23001)",
-    refusedCode(DEMO, `delete from platform_staff where id = '${newStaff}'`, "23001", /violates RESTRICT setting of foreign key constraint "fo_availability_firm_id_staff_id_fkey"/)
-    && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id = '${newStaff}'`, "23001", /violates RESTRICT setting of foreign key constraint "fo_availability_firm_id_staff_id_fkey"/));
+  // A staff member's hours are held by two RESTRICT keys (fo_availability, and fo_availability_set, whose row the windows'
+  // trigger makes): PostgreSQL reports whichever key's check trigger fires first, in trigger-name order, which follows the
+  // cluster's OIDs (Lead 4's ruling on #2527, P-294). Either key proves the refusal; both are RESTRICT.
+  const HOURS_KEY = /violates RESTRICT setting of foreign key constraint "fo_availability(_set)?_firm_id_staff_id_fkey"/;
+  ok("FO-1b fail (foreign key): a staff member with hours cannot be deleted or change id (RESTRICT: 23001, by either of their two hours keys)",
+    refusedCode(DEMO, `delete from platform_staff where id = '${newStaff}'`, "23001", HOURS_KEY)
+    && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id = '${newStaff}'`, "23001", HOURS_KEY)
+    && sql(DEMO, `select count(*) from platform_staff where id = '${newStaff}'`) === "1");
   const firmE = sql(DEMO, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'firm-e', 'E', 'CA', 'e@firm-e.example.com', now()) returning id`);
   ok("FO-1b pass: a firm with no front-office row can still be deleted (as before FO-1b)", sql(DEMO, `delete from platform_firm where id = '${firmE}' returning 1`) === "1");
   const firmF = sql(DEMO, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'firm-f', 'F', 'CA', 'f@firm-f.example.com', now()) returning id`);

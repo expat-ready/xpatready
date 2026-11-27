@@ -15,11 +15,16 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
-import { firmScope } from "../firm-scope.ts";
-import { addressBaseFromName, candidate, checkAddressChoice, readHost, type AddressRefusal } from "./rules.ts";
+import { firmScope, withFirm } from "../firm-scope.ts";
+import { addressBaseFromName, candidate, checkAddressChoice, DEFAULT_HOST_SUFFIXES, readHost, type AddressRefusal } from "./rules.ts";
 
 type Tx = Prisma.TransactionClient;
-export type WebAddressDeps = { db: PrismaClient; audit: AuditPort<Tx>; clock: ClockPort };
+export type WebAddressDeps = {
+  db: PrismaClient; audit: AuditPort<Tx>; clock: ClockPort;
+  /** PF-8b F2b: the host suffixes firm addresses live under (unset: expatready.com and localhost); the app passes
+   *  PLATFORM_ADDRESS_SUFFIX's from PF-24's loader (routes.ts). */
+  hostSuffixes?: readonly string[];
+};
 
 /** ExpatReady staff's key for changing a firm's address after sign-up (SA-2-27; SA-06 system/* keys, PF-4s). A firm's
  *  own staff hold agent/* keys only (SA-6-4), so they never have it. */
@@ -46,15 +51,21 @@ const problem = (status: number, code: string, title: string, detail: string, ex
 
 /** Spaces of any kind at either end (also no-break and zero-width), and characters a reason may not hold (controls and
  *  direction changes: break m9); the migration's platform_web_address_reason_ok is the same rule. */
-const EDGE_SPACE = /^[\s\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]+|[\s\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]+$/g;
+const EDGE_CHAR = /[\s\u00a0\u1680\u180e\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/;
+/** The reason without its edge spaces, in one pass from each end (CodeQL #148, js/polynomial-redos: the old `^[…]+|[…]+$`
+ *  with /g backtracked over a long inner run of tabs). Every character of the class is one UTF-16 unit. */
+const trimEdges = (s: string) => { let a = 0, b = s.length; while (a < b && EDGE_CHAR.test(s[a])) a++; while (b > a && EDGE_CHAR.test(s[b - 1])) b--; return s.slice(a, b); };
+/** Longer than any kept reason can be (500 code points, each at most 2 units, and a few edge spaces): refused unread. */
+const REASON_INPUT_MAX = 4000;
 // eslint-disable-next-line no-control-regex
 const BAD_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u180e\u200e\u200f\u202a-\u202e\u2061-\u2064\u2066-\u206f]/;
 
 /** The reason as kept, or the message for the field. */
 export function readReason(input: unknown): { ok: true; reason: string } | { ok: false; message: string } {
   if (typeof input !== "string") return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
+  if (input.length > REASON_INPUT_MAX) return { ok: false, message: "Keep the reason to 500 characters." };
   if (BAD_CHARS.test(input)) return { ok: false, message: "Remove the control or direction characters." };
-  const reason = input.replace(EDGE_SPACE, "");
+  const reason = trimEdges(input);
   // Characters as the database counts them (code points), not UTF-16 units: an emoji is one (Devin review on #1763).
   const length = [...reason].length;
   if (length < 3) return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
@@ -70,7 +81,9 @@ const isTakenRefusal = (e: unknown) => {
 };
 
 export class WebAddresses {
-  constructor(private readonly deps: WebAddressDeps) {}
+  /** The host suffixes this server reads a firm from (PF-8b F2b). */
+  readonly hostSuffixes: readonly string[];
+  constructor(private readonly deps: WebAddressDeps) { this.hostSuffixes = deps.hostSuffixes ?? DEFAULT_HOST_SUFFIXES; }
 
   /** Of `addresses`, those another firm has now or held less than 90 days ago on the clock (`forFirmId`'s own count as
    *  free). Two lookups whatever the number. */
@@ -126,13 +139,14 @@ export class WebAddresses {
     try {
       await tx.platformFirmWebAddress.create({ data: { firmId: id, address, setBy: actor } });
     } catch (e) { if (isTakenRefusal(e)) await this.taken409(address, id); throw e; }
-    await this.deps.audit.record(tx, { firmId: id, actor, action: "firm.web_address.set", entity: "platform_firm", entityKey: id, summary: `Web address set to ${address} at sign-up.`, detail: { address } });
+    await this.deps.audit.record(tx, { firmId: id, actor, action: "firm.web_address.set", entity: "platform_firm", entityKey: id, summary: `Web address set to ${address} at sign-up.`, detail: { address }, before: null, after: { address } });
   }
 
   /** ExpatReady staff change (or first set) a firm's address (SA-2-27): their key, a reason, one transaction with the
    *  history record (the reason; for a change also the 90-day redirect), the address and one audit line (a failed audit
    *  line rolls all of it back). */
-  async change(ctx: StaffContext, firmId: string, input: { address?: unknown; reason?: unknown }) {
+  /** `actor`: the audit actor word, the caller's own (PF-25w's route passes our staff's `ourstaff:<id>`, AUD-3a). */
+  async change(ctx: Pick<StaffContext, "staffId" | "keys">, firmId: string, input: { address?: unknown; reason?: unknown }, actor = `staff:${ctx.staffId}`) {
     if (!ctx.keys.includes(ADDRESS_CHANGE_KEY))
       problem(403, "forbidden", "Only ExpatReady staff change this", "After sign-up, a firm's web address is changed only by ExpatReady staff. Ask ExpatReady support.", { code: "MISSING_PERMISSION" });
     const id = firmScope(firmId).firmId;
@@ -143,7 +157,6 @@ export class WebAddresses {
     if (!reason.ok) fields.reason = reason.message;
     if (!choice.ok || !reason.ok) return problem(422, "web-address-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
     const address = choice.address;
-    const actor = `staff:${ctx.staffId}`;
     try {
       return await this.deps.db.$transaction(async (tx) => {
         // The firm's row is the change's lock (no key update: it blocks no insert naming the firm, review m5); the
@@ -161,6 +174,7 @@ export class WebAddresses {
           firmId: id, actor, action: "firm.web_address.changed", entity: "platform_firm", entityKey: id,
           summary: old ? `Web address changed from ${old} to ${address}; ${old} redirects to it until ${until!.slice(0, 10)}.` : `Web address set to ${address} by ExpatReady staff.`,
           detail: { historyId: history.id, oldAddress: old, newAddress: address, until },
+          before: old ? { address: old } : null, after: { address, ...(old ? { redirectUntil: until } : {}) },
         });
         return { firmId: id, address, oldAddress: old, redirectUntil: until, historyId: history.id };
       });
@@ -174,13 +188,23 @@ export class WebAddresses {
    *  address the firm gave up less than 90 days ago (on the clock) → a redirect to its current one; anything else under
    *  a firm suffix → unknown; ExpatReady's own hosts → main. */
   async resolveHost(hostHeader: unknown): Promise<HostAnswer> {
-    const host = readHost(hostHeader);
+    const host = readHost(hostHeader, this.hostSuffixes);
     if (host.kind === "main") return host;
     if (host.kind === "none") return { kind: "unknown" };
+    // PF-12b part 2: the firm this address serves (or held until lately) through the narrow definer lookup, firm id only;
+    // the rest is read as that firm, so the door never runs on the bypass.
+    const now = this.deps.clock.now(), address = host.address;
+    const firmId = (await this.deps.db.$queryRaw<{ f: string | null }[]>`select platform_web_address_firm(${address}, ${now}::timestamptz) as f`)[0]?.f;
+    if (!firmId) return { kind: "unknown" };
+    return withFirm(firmId, () => this.resolveAs(address, now, host.suffix, host.port));
+  }
+
+  private async resolveAs(address: string, now: Date, suffix: string, port: string): Promise<HostAnswer> {
+    const host = { address, suffix, port };
     const own = await this.deps.db.platformFirmWebAddress.findUnique({ where: { address: host.address }, select: { firmId: true, firm: { select: { status: true } } } });
     if (own) return SERVING_STATUSES.includes(own.firm.status) ? { kind: "firm", firmId: own.firmId, address: host.address } : { kind: "unknown" };
     const held = await this.deps.db.platformFirmAddressHistory.findFirst({
-      where: { oldAddress: host.address, until: { gt: this.deps.clock.now() } }, orderBy: { changedAt: "desc" },
+      where: { oldAddress: host.address, until: { gt: now } }, orderBy: { changedAt: "desc" },
       select: { firm: { select: { webAddress: { select: { address: true } }, status: true } } },
     });
     const to = held?.firm.webAddress?.address;

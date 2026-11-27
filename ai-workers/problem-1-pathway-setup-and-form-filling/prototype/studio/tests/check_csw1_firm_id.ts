@@ -13,6 +13,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { call, sql as copySql } from "../acceptance/lib/m3.ts";
 import { recorder } from "./runtime/api.ts";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
@@ -54,7 +55,9 @@ try {
   const before = new Set(procs());
   file(join(MIG, NEW, "migration.sql"));
   const added = procs().filter((p) => !before.has(p));
-  for (const d of all.filter((x) => x > NEW)) file(join(MIG, d, "migration.sql"));
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks run on the migrations before it;
+  // part 2 has its own suite check_csw1_part2.ts.
+  for (const d of all.filter((x) => x > NEW && x < CSW1_PART2)) file(join(MIG, d, "migration.sql"));
 
   // ---------------------------------------------------------------- DW1: the backfill
   const firmOf = (t: string) => sql(`select string_agg(firm_key || '=' || coalesce(firm_id::text, 'null'), ',' order by firm_key) from ${t}`);
@@ -63,9 +66,11 @@ try {
     firmOf("runtime_case") === want && firmOf("case_stage") === want && firmOf("firm_case_counter") === want, [firmOf("runtime_case"), firmOf("case_stage"), firmOf("firm_case_counter")]);
   ok("CS-W1 DW1 fail: the case, stage and counter of a key with no platform firm stay null (never another firm's id)",
     sql(`select count(*) from (select firm_id from runtime_case where firm_key = 'ghost-firm' union all select firm_id from case_stage where firm_key = 'ghost-firm' union all select firm_id from firm_case_counter where firm_key = 'ghost-firm') x where firm_id is not null`) === "0");
+  // CS-W2 (later migrations) adds runtime_case's (id, firm_id) unique for its composite keys and case_firm_fill triggers on
+  // its own tables; these two checks keep to CS-W1's three tables and its (firm_id, …) indexes.
   ok("CS-W1 DW1: the column is nullable in part 1, and each table has its (firm_id, …) index",
     sql(`select count(*) from information_schema.columns where column_name = 'firm_id' and is_nullable = 'YES' and table_name in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "3"
-    && sql(`select string_agg(indexname, ',' order by indexname) from pg_indexes where indexname like '%firm_id%' and tablename in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "case_stage_firm_id_case_id_idx,firm_case_counter_firm_id_year_idx,runtime_case_firm_id_created_at_idx");
+    && sql(`select string_agg(indexname, ',' order by indexname) from pg_indexes where indexname like '%firm_id%idx' and tablename in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "case_stage_firm_id_case_id_idx,firm_case_counter_firm_id_year_idx,runtime_case_firm_id_created_at_idx");
 
   // ---------------------------------------------------------------- DW2: the fill triggers (each insert rolled back)
   const caseRow = (id: string, key: string, firm?: string) => `insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number${firm ? ", firm_id" : ""})
@@ -106,7 +111,7 @@ try {
   ok("CS-W1 DW7 fail: no trigger function of the migration runs as definer (contract §8 condition 3)",
     /public\.case_firm_fill:false:/.test(defs) && /public\.case_firm_from_key:false:/.test(defs) && /public\.case_firm_backfill:false:/.test(defs)
     && sql(`select count(*) from pg_trigger t join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%' and p.prosecdef`) === "0"
-    && sql(`select string_agg(c.relname || '.' || t.tgname, ',' order by c.relname, t.tgname) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%'`) === "case_stage.case_firm_fill,firm_case_counter.case_firm_from_key,runtime_case.case_firm_from_key", defs);
+    && sql(`select string_agg(c.relname || '.' || t.tgname, ',' order by c.relname, t.tgname) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%' and c.relname in ('runtime_case', 'case_stage', 'firm_case_counter')`) === "case_stage.case_firm_fill,firm_case_counter.case_firm_from_key,runtime_case.case_firm_from_key", defs);
   ok("CS-W1 DW7: the migration's own text says how to roll back", /Rollback \(in this order\)/.test(readFileSync(join(MIG, NEW, "migration.sql"), "utf8")));
 
   // ---------------------------------------------------------------- DW9: the lookup under PF-12's forced wall
@@ -132,8 +137,10 @@ try {
     sql(`select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.relkind in ('r', 'p', 'v') and n.nspname not in ('pg_catalog', 'information_schema')
       and (has_table_privilege('${R}', c.oid, 'INSERT') or has_table_privilege('${R}', c.oid, 'UPDATE') or has_table_privilege('${R}', c.oid, 'DELETE') or has_table_privilege('${R}', c.oid, 'TRUNCATE') or has_table_privilege('${R}', c.oid, 'REFERENCES') or has_table_privilege('${R}', c.oid, 'SELECT'))`) === "0"
     && sql(`select count(*) from information_schema.role_table_grants where grantee = '${R}'`) === "0");
-  ok("CS-W1 DW10 pass: its only column SELECT is platform_firm (id, key)",
-    sql(`select string_agg(table_name || '.' || column_name || ':' || privilege_type, ',' order by column_name) from information_schema.column_privileges where grantee = '${R}'`) === "platform_firm.id:SELECT,platform_firm.key:SELECT");
+  // CS-W3 part 1 (migration 20261121100000_csw3_case_door, applied above as a later migration) adds the columns its own
+  // lookups read; its check_csw3_firm_scope.ts DW8 asserts the role's whole list. This line keeps CS-W1's own grant exact.
+  ok("CS-W1 DW10 pass: its only column SELECT on platform_firm is (id, key)",
+    sql(`select string_agg(table_name || '.' || column_name || ':' || privilege_type, ',' order by column_name) from information_schema.column_privileges where grantee = '${R}' and table_name = 'platform_firm'`) === "platform_firm.id:SELECT,platform_firm.key:SELECT");
   ok("CS-W1 DW10 fail: CREATE on case_lookup only, never on public",
     sql(`select has_schema_privilege('${R}', 'public', 'CREATE')::text || has_schema_privilege('${R}', 'case_lookup', 'CREATE')::text`) === "falsetrue");
   ok("CS-W1 DW10 pass (breaker R2-m1): its USAGE on public is its own grant, not only PUBLIC's default (a re-made public schema keeps the lookup working)",
@@ -182,11 +189,16 @@ const demoWs = copySql(`select id from workspace where key = 'demo'`);
 ok("CS-W1 DW5 pass: the demo reset deletes the demo workspace's cases of both firms, and both Sample firms are still there",
   reset.status < 300 && copySql(`select count(*) from runtime_case where workspace_id = '${demoWs}'`) === "0" && firmsOn() === "sample-firm,sample-solo", [reset.status, reset.body?.detail]);
 ok("CS-W1 DW5 fail: the reset never deletes a case of another workspace", copySql(`select firm_key from runtime_case where id = '${OTHER_CASE}'`) === "sample-firm");
+// The copy has every migration: since CS-W1 part 2 the fill fires also under the replica role, so this case had its firm
+// from its insert (a case can no longer be left without one); the check still holds after the reset.
 ok("CS-W1 DW5 pass (breaker M1): a case left without its firm (made before the seed) gets it when the demo seeds (reset)",
   copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
-copySql(`update runtime_case set firm_id = null where id = '${OTHER_CASE}'`);
+// CS-W1 part 2 refuses emptying a case's firm (case_firm_fixed, NOT NULL), so the case can no longer be put back without
+// its firm for the start-up fill to fill: the check is now that the emptying is refused (copySql gives null on an error),
+// and that the start-up fill still runs and leaves the case's firm as it is.
+const emptied = copySql(`update runtime_case set firm_id = null where id = '${OTHER_CASE}' returning id`);
 await (await import("../api/src/firms.ts")).fillCaseFirmIdsOnStart(`postgresql://xr_studio@127.0.0.1:54329/${process.argv[3] ?? "xr_studio_accept"}`);
-ok("CS-W1 DW5 pass (breaker M1): the start-up fill (main.ts, after the start-up seed) fills it too",
-  copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
+ok("CS-W1 DW5 pass (breaker M1): a case's firm cannot be emptied (CS-W1 part 2), and after the start-up fill (main.ts) it is still its key's firm",
+  emptied === null && copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
 copySql(`set session_replication_role = replica; delete from runtime_case where id = '${OTHER_CASE}'; delete from combination where id = '${u(79)}'; delete from workspace where id = '${OTHER}'`);
 process.exit(summary() ? 1 : 0);

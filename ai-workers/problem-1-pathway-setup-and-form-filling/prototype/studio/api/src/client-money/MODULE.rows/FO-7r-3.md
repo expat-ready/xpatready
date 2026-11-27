@@ -1,0 +1,2 @@
+Entry points: FO-7r part 3 (R1.111; AG-6-31): POST /api/front-office/money/exports {id?, from, to, kinds} (202, one JobPort job `client_money.export` keyed `money_export:<firm>:<id>`), GET …/exports/:id (QUEUED | READY | FAILED | EXPIRED) and GET …/exports/:id/<kind>.csv, all agent/billing:export (`reports/exports.ts` `MoneyExports`, `reports/export-routes.ts`); files under FilesPort `money-exports/<id>/`, audit line money_export.created; reads only, no money_* write.
+Tests: `tests/check_fo7r3_exports.ts`.

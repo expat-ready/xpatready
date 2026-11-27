@@ -16,6 +16,8 @@ import { EVENT, IdentityCheckedPayload } from "../../../../../ports/events.ts";
 import { FileKeyTaken, sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import { auditEvent } from "../../../platform/audit/audit-event.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
+import { readSetting, TIME_ZONE } from "../../../platform/settings.ts";
+import { FIELD_ERROR_STATUS } from "../../../platform/http/input.ts";
 import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { sees, visibilityOf } from "../../sales/common.ts";
 
@@ -52,10 +54,15 @@ const looksLikeNumber = (raw: string) => {
 const INVISIBLE = /[\s\u00a0\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\u0300-\u036f]/gu;
 const oneLine = (t: string) => !/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/.test(t) && t.replace(INVISIBLE, "").length > 0;
 
-const bad = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
+/** A field error: 422, the field named (PF-28 part 3b moves it from 400; Lead B rev 17.21). */
+const bad = (field: string, detail: string): never => problem(FIELD_ERROR_STATUS, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 const notFound = (what = "person"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 const oneOf = <T extends string>(v: unknown, list: readonly T[], field: string, what: string): T =>
   typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : bad(field, `${what} is one of ${list.join(", ")}.`);
+/** The firm's today as YYYY-MM-DD, in the firm's own zone, on the injected clock. */
+const dayIn = (zone: string, atMs: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(atMs));
+/** FO-13i part 2 (QA-510): the firm's own rule (P-735, P-579), not a Code duty. Unconfirmed: no counsel. */
+export const EXPIRED_DOCUMENT = "This document has expired. Check a current one.";
 const text = (v: unknown) => (v === undefined || v === null || (typeof v === "string" && !v.trim()) ? null : v);
 
 /** The copy's kind by its first bytes (never by its name or the browser's type). */
@@ -67,9 +74,11 @@ function kindOf(b: Uint8Array): { ext: string; contentType: string } | null {
   return null;
 }
 
-/** The body checked: each refusal is 400 naming its field; an unknown field (a full `documentNumber`) is refused, never ignored. */
+/** A full document number is never taken (only its last 4): the refusal's words, also at the parse (routes.ts, PF-28 A3). */
+export const FULL_NUMBER_REFUSED = "Send only the last 4 characters of the document number (documentNumberLast4).";
+/** The body checked: each refusal is 422 naming its field (PF-28 part 3b; was 400); an unknown field (a full `documentNumber`) is refused, never ignored. */
 function parse(body: Record<string, unknown>) {
-  for (const k of Object.keys(body)) if (!FIELDS.has(k)) bad(k, k === "documentNumber" ? "Send only the last 4 characters of the document number (documentNumberLast4)." : `${k} is not a field of an identity check.`);
+  for (const k of Object.keys(body)) if (!FIELDS.has(k)) bad(k, k === "documentNumber" ? FULL_NUMBER_REFUSED : `${k} is not a field of an identity check.`);
   const method = oneOf(body.method, METHODS, "method", "The method");
   const md = text(body.methodDetail);
   // Characters as the database counts them (code points, break B-8), not UTF-16 units.
@@ -151,6 +160,10 @@ export class IdentityChecks {
       return same ? (await this.list(ctx, p.id)).checks.find((x) => x.id === id)! : problem(409, "Already used", "This request was already used with other details. Start a new Save.", { code: "REQUEST_REUSED" });
     };
     if (await this.db.foIdentityCheck.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })) return replay();
+    // FO-13i part 2 (QA-510, P-735): an expiry before the firm's today is refused (422), nothing stored; today still records.
+    // After the replay lookup (a saved check replayed after the firm's midnight returns that check), before the copy is put.
+    if (c.documentExpiry && c.documentExpiry.toISOString().slice(0, 10) < dayIn(await readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), this.clock.now()))
+      problem(422, "Check the details", EXPIRED_DOCUMENT, { code: "INVALID", fields: { documentExpiry: EXPIRED_DOCUMENT } });
     let stored: { key: string; sha256: string } | null = null;
     if (copy) {
       if (copy.size > COPY_MAX_BYTES || copy.bytes.length > COPY_MAX_BYTES) problem(413, "Too large", "The copy is at most 10 MB.", { code: "TOO_LARGE", fields: { copy: "At most 10 MB." } });
@@ -166,7 +179,9 @@ export class IdentityChecks {
           documentExpiry: c.documentExpiry, documentNumberLast4: c.documentNumberLast4, detailsCorroborated: c.details, checkedBy: ctx.staffId, copyFileKey: stored?.key ?? null, copySha256: stored?.sha256 ?? null } });
         await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "identity.checked", entity: "fo_identity_check", entityKey: id,
           summary: `Identity check recorded (${c.method.toLowerCase().replace(/_/g, " ")}; ${c.details.length} detail${c.details.length === 1 ? "" : "s"} corroborated${stored ? "; a copy kept" : ""})`,
-          detail: { checkId: id, personId: p.id, method: c.method, details: c.details, copyKept: !!stored } });
+          detail: { checkId: id, personId: p.id, method: c.method, details: c.details, copyKept: !!stored },
+          before: null, after: { personId: p.id, method: c.method, methodDetail: c.methodDetail ?? null, documentType: c.documentType, issuingCountry: c.issuingCountry ?? null,
+            documentExpiry: c.documentExpiry ? c.documentExpiry.toISOString().slice(0, 10) : null, detailsCorroborated: c.details, copyKept: !!stored } });
         await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.IDENTITY_CHECKED, subjectId: id, payload } });   // last (contracts §0.5)
       });
     } catch (e) {

@@ -1,6 +1,8 @@
 // CS-K1 part 1 (map row 72; brief design/build-lead-c-briefs/CS-K1.md; contract v0.1 §5, P-588 (2), AG-7-75 §7): the
 // client record (case_client) and a client on every case. Named cases CS-K1 DW1-DW8 and DW8a, each a pass and a fail,
-// and the case.closed / case.reopened events carrying the case's client (Build Lead C's ruling (1)).
+// and the case.closed / case.reopened events carrying the case's client (Build Lead C's ruling (1)). Part 2 (brief
+// CS-K1-2.md, Build Lead C (4)'s answers of 20 Nov): DW9-DW13, every client linked to its front-office party through
+// FoPersonPort (the opening, the one-time job case-clients/client-link.ts) and the NOT VALID link check.
 //   1. a scratch database: every migration before 20261118230000_csk1_case_client, then cases in the old shape (many cases
 //      of one firm, a CORPORATE and a family case, a principal with no profile, a case with no principal, a key with no
 //      platform firm); then the migration and every later one: DW1, DW4 (backfill), DW6, DW8, DW8a, the fill triggers,
@@ -20,6 +22,7 @@ import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { recorder } from "./runtime/api.ts";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 
 const { ok, summary } = recorder();
 const PORT = Number(process.argv[2] ?? 4641), COPY = process.argv[3] ?? "xr_studio_csk1_client";
@@ -82,7 +85,9 @@ try {
   const had = new Set(procs());
   psql(DB, ["-f", join(MIG, NEW, "migration.sql")]);
   const added = procs().filter((p) => !had.has(p));
-  for (const d of after) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks (the ghost-firm case filled later)
+  // run on the migrations before it (part 2 has its own suite check_csw1_part2.ts); the rest follow once that case has its firm.
+  for (const d of after.filter((x) => x < CSW1_PART2)) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
   const text = readFileSync(join(MIG, NEW, "migration.sql"), "utf8");
 
   // DW1: every existing case has a client
@@ -114,7 +119,7 @@ try {
 
   // DW6: the database's rules on a client row (each insert rolled back)
   const client = (o: { key?: string; person?: string; company?: string; prospect?: string; name?: string; n: number }) => `insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, fo_person_id, fo_company_id, prospect_id, created_by)
-    values (gen_random_uuid(), '${W}', '${o.key ?? "sample-firm"}', ${o.n}, ${o.name ?? "'Sample Client X'"}, 'PERSON', ${o.person ? `'${o.person}'` : "null"}, ${o.company ? `'${o.company}'` : "null"}, ${o.prospect ? `'${o.prospect}'` : "null"}, 'user-O')`;
+    values (gen_random_uuid(), '${W}', '${o.key ?? "sample-firm"}', ${o.n}, ${o.name ?? "'Sample Client X'"}, '${o.company && !o.person ? "COMPANY" : "PERSON"}', ${o.person ? `'${o.person}'` : o.company ? "null" : "gen_random_uuid()"}, ${o.company ? `'${o.company}'` : "null"}, ${o.prospect ? `'${o.prospect}'` : "null"}, 'user-O')`;
   const rolled = (q: string) => err(`begin; ${q}; rollback;`);
   ok("CS-K1 DW6 pass: one front-office id (a person, or a company) is kept", rolled(client({ n: 9001, person: u(501) })) === "" && rolled(client({ n: 9002, company: u(502) })) === "");
   ok("CS-K1 DW6 fail: both front-office ids set → refused by the database", /case_client_one_front_office_check/.test(rolled(client({ n: 9003, person: u(501), company: u(502) }))));
@@ -129,16 +134,8 @@ try {
 
   // DW8: names, the diff
   ok("CS-K1 DW8 pass: every function the migration adds is named case_client_*", added.length === 5 && added.every((p) => p.startsWith("case_client_")) && !/CREATE (OR REPLACE )?FUNCTION (?!case_client_)/.test(text), added);
-  ok("CS-K1 DW8 fail: no function of the migration runs as definer, and its text says how to roll back",
-    sql(`select count(*) from pg_proc where proname like 'case_client%' and prosecdef`) === "0" && /Rollback \(in this order\)/.test(text));
-  {
-    mkdirSync(join(STUDIO, "var"), { recursive: true });
-    const cfg = join(STUDIO, "var", `csk1-${process.pid}.config.ts`);
-    writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(DB))} } });\n`);
-    const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
-    rmSync(cfg, { force: true });
-    ok("CS-K1 DW8 pass: migrate diff from the migrated database to the schema is empty", r.status === 0, `${r.stdout}${r.stderr}`.slice(-600));
-  }
+  ok("CS-K1 DW8 fail: no function of the migration runs as definer (part 2's one, case_client_validate_link_check, must: VALIDATE needs the owner), and its text says how to roll back",
+    sql(`select string_agg(proname, ',') from pg_proc where proname like 'case_client%' and prosecdef`) === "case_client_validate_link_check" && /Rollback \(in this order\)/.test(text));
   ok("CS-K1 DW8 fail: the migration does not apply twice", (() => { try { psql(DB, ["-f", join(MIG, NEW, "migration.sql")]); return false; } catch (e) { return /already exists/.test(String((e as { stderr?: string }).stderr)); } })());
 
   // DW8a: the client's firm is its case's firm
@@ -149,7 +146,7 @@ try {
   ok("CS-K1 DW8a fail: a case pointed at another firm's client is refused by the foreign key",
     /runtime_case_client_id_(workspace_id_firm_key|firm_id)_fkey/.test(rolled(`update runtime_case set client_id = '${soloClient}' where id = '${u(101)}'`)));
   ok("CS-K1 DW8a fail: a forced mismatch, the client's firm_id set to the other firm, is refused by the foreign key",
-    /runtime_case_client_id_firm_id_fkey/.test(rolled(`update case_client set firm_id = '${F2}' where id = '${firmClient}'`)));
+    /runtime_case_client_id_firm_id_fkey/.test(rolled(`update case_client set firm_id = '${F2}', fo_person_id = gen_random_uuid() where id = '${firmClient}'`)));
   ok("CS-K1 DW8a fail: a client row whose firm_id is not its key's platform firm is refused (case_client_firm_from_key, by CS-W1's lookup)",
     /case_client_firm_from_key: the firm id given is not the platform firm of key "sample-firm"/.test(rolled(client({ n: 9009 }).replace("prospect_id, created_by)", "prospect_id, created_by, firm_id)").replace("'user-O')", `'user-O', '${F2}')`))));
   // The key with no platform firm: CS-W1's backfill later fills the case; its client follows (case_client_follow_firm).
@@ -159,6 +156,16 @@ try {
   const filled = sql(`select case_firm_backfill()`);
   ok("CS-K1 DW8a pass: a case whose firm id is filled later (CS-W1's backfill, after the Sample seed) takes its client with it to the same firm",
     g0 === "null|null" && ghost() === `${u(8)}|${u(8)}` && Number(filled) >= 1, [g0, ghost(), filled]);
+  // Every case now has its firm: the rest of the migrations (CS-W1 part 2 onward), then the diff on the fully migrated database.
+  for (const d of after.filter((x) => x >= CSW1_PART2)) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
+  {
+    mkdirSync(join(STUDIO, "var"), { recursive: true });
+    const cfg = join(STUDIO, "var", `csk1-${process.pid}.config.ts`);
+    writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(DB))} } });\n`);
+    const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
+    rmSync(cfg, { force: true });
+    ok("CS-K1 DW8 pass: migrate diff from the migrated database to the schema is empty", r.status === 0, `${r.stdout}${r.stderr}`.slice(-600));
+  }
 
   // The fill trigger: a case written straight to the table gets a client of its own firm (also with the replica role)
   const direct = (id: string, key: string, extra = "") => `insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number${extra ? ", client_id" : ""}) values ('${id}', '${W}', '${CORP}', 'user-P', 'user-O', '${key}', 'C-2028-0${id.slice(-4)}'${extra}); select k.display_name || '|' || k.display_kind || '|' || k.firm_key || '|' || coalesce(k.firm_id::text, 'null') from case_client k join runtime_case c on c.client_id = k.id where c.id = '${id}'`;
@@ -168,6 +175,21 @@ try {
     sql(`begin; set local session_replication_role = replica; ${direct(u(602), "sample-firm")}; rollback;`).startsWith("Client of C-2028-00602|COMPANY|sample-firm|"));
   ok("CS-K1 pass: a case written with a client of its firm keeps it", sql(`begin; ${direct(u(603), "sample-firm", `, '${firmClient}'`)}; rollback;`).startsWith("Sample Client One|"));
   ok("CS-K1 fail: a case written with another firm's client is refused", /runtime_case_client_id_(workspace_id_firm_key|firm_id)_fkey/.test(rolled(direct(u(604), "sample-firm", `, '${soloClient}'`))));
+
+  // CS-K1 part 2 DW13: the link check, NOT VALID (ruling 3): it refuses every new or changed row; old ones wait for the job.
+  const bare = (kind: string, ids: string, key = "sample-firm") => `insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, fo_person_id, fo_company_id, created_by) values (gen_random_uuid(), '${W}', '${key}', 9100, 'Sample Bare', '${kind}', ${ids}, 'user-O')`;
+  ok("CS-K1 DW13 fail: once in place, the check refuses a PERSON client of a platform firm with no fo_person_id (none, or a company's only), and a COMPANY client with no fo_company_id",
+    [bare("PERSON", "null, null"), bare("PERSON", `null, '${u(502)}'`), bare("COMPANY", `'${u(501)}', null`)].every((q) => /case_client_front_office_link_check/.test(rolled(q))));
+  ok("CS-K1 DW13 fail (review M1, breaker F3): a direct write cannot mark a client as waiting: an unlinked client inserted with fo_link_pending, and a linked one unlinked while setting it, are refused (only the database's two triggers set it)",
+    /case_client_pending_guard/.test(rolled(bare("PERSON", "null, null").replace("display_kind, fo_person_id", "display_kind, fo_link_pending, fo_person_id").replace("'PERSON', null, null", "'PERSON', true, null, null")))
+    && /case_client_pending_guard/.test(rolled(`${bare("PERSON", `'${u(501)}', null`)}; update case_client set fo_person_id = null, fo_link_pending = true where client_number = 9100 and firm_key = 'sample-firm'`))
+    && /case_client_front_office_link_check/.test(rolled(`${bare("PERSON", `'${u(501)}', null`)}; update case_client set fo_person_id = null where client_number = 9100 and firm_key = 'sample-firm'`)));
+  ok("CS-K1 DW13 pass: a client linked by its kind is kept, and so is one of a key with no platform firm yet (no front office to link to)",
+    rolled(bare("PERSON", `'${u(501)}', null`)) === "" && rolled(bare("COMPANY", `null, '${u(502)}'`)) === "" && rolled(bare("PERSON", "null, null", "no-firm-yet")) === "");
+  ok("CS-K1 DW13 pass: a case written straight to the table gets a pending client, and the client CS-W1's backfill moved into a firm is pending (the job links both); the check stays not validated while one waits",
+    sql(`begin; ${direct(u(605), "sample-firm")}; select fo_link_pending from case_client k join runtime_case c on c.client_id = k.id where c.id = '${u(605)}'; rollback;`).endsWith("t")
+    && sql(`select k.fo_link_pending from case_client k join runtime_case c on c.client_id = k.id where c.id = '${u(104)}'`) === "t"
+    && sql(`select case_client_validate_link_check()`) === "f" && sql(`select convalidated from pg_constraint where conname = 'case_client_front_office_link_check'`) === "f");
 
   // The events (Build Lead C's ruling (1)): case.closed and case.reopened carry the case's client, through CaseClose.
   {
@@ -226,12 +248,17 @@ const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/id
 const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
 const feature = (await import("../api/src/features/clients.ts")).default;
+const { FO_PERSON_PORT } = await import("../ports/fo-person.ts");
+const { foPersonPort } = await import("../api/src/front-office/people/fo-person-port.ts");
+const { linkClient } = await import("../api/src/clients.ts");
+const { linkFirmClients } = await import("../api/src/case-clients/client-link.ts");
+const { actorOf } = await import("../api/src/core.ts");
 type EntitlementPort = import("../ports/entitlement.ts").EntitlementPort;
 
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("csk1-check-signing-key-0123456789abcdef", () => clock.now());
 // Programs' only use in Runtime is the startable check (S4): the copy's own server opens a case on Visitor visa below.
-const providers = [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: APP_GUARD, useClass: ConfigReadGuard },
+const providers = [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: FO_PERSON_PORT, useValue: foPersonPort }, { provide: APP_GUARD, useClass: ConfigReadGuard },
   { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }, ...feature.providers];
 @Module({ controllers: [RuntimeController, PlatformIdentityController, ...feature.controllers] as never[], providers: providers as never[] }) class TestApp {}
 const nest = await NestFactory.create(TestApp, { logger: false, abortOnError: false });
@@ -336,6 +363,50 @@ try {
   ok("CS-K1 DW7 fail: an opening refused by the plan limit (409 PLAN_LIMIT_REACHED) leaves no client, no case and no client number", refused.every((r) => r.status === 409 && r.body?.code === "PLAN_LIMIT_REACHED") && counts() === c2, [refused.map((r) => r.status), c2, counts()]);
   const next = await open();
   ok("CS-K1 DW7 pass: the next opening allowed takes the next client number, with no gap", next.status === 201 && num(next) === Math.max(...[...nums, num(corp)]) + 2, [next.body?.client_record?.number, nums, num(corp)]);
+
+  // ------------------------------------------------------------------------------------------------ part 2: the links
+  const link = (id: string) => copySql(`select k.display_kind || '|' || coalesce(p.firm_id::text, '-') || '|' || coalesce(c.firm_id::text, '-') || '|' || k.firm_id || '|' || k.fo_link_pending || '|' || coalesce((p.xmin = k.xmin)::text, '-') from case_client k left join fo_person p on p.id = k.fo_person_id left join fo_company c on c.id = k.fo_company_id where k.id = '${id}'`);
+  const FB = copySql(`select id from platform_firm where key = 'sample-solo'`)!;
+  const parties = () => copySql(`select (select count(*) from fo_person) || '|' || (select count(*) from fo_company)`);
+  // DW9: a new person client gets its fo_person in the opening's transaction; a forced rollback leaves neither row
+  ok("CS-K1 DW9 pass: a directly opened case's new PERSON client names an fo_person of its own firm, written in the opening's transaction (same xmin), not pending",
+    link(aId) === `PERSON|${FA}|-|${FA}|false|true`, link(aId));
+  const p0 = parties(), k0 = counts();
+  const forced = await runtime.createCase(actorOf("user-O"), { combinationId: VV, clientActor: "user-P", principal: { displayName: "Sample Rolled Back" }, ...(rep ? { representative: rep, caseOfficers: ["user-O"] } : {}) },
+    async () => { throw new Error("forced"); }).then(() => "opened", (e) => String(e));
+  ok("CS-K1 DW9 fail: a failure forced at the end of the opening's transaction leaves no client and no fo_person (and the plan-limit refusal above none either)",
+    /forced/.test(forced) && parties() === p0 && counts() === k0, [forced, p0, parties()]);
+  // DW12: a COMPANY client gets an fo_company and no fo_person
+  const corpId = corp.body?.client_record?.id as string;
+  ok("CS-K1 DW12 pass: the CORPORATE opening's COMPANY client names an fo_company of its own firm and no fo_person", link(corpId).startsWith(`COMPANY|-|${FA}|${FA}|false|`), link(corpId));
+  ok("CS-K1 DW12 fail: no COMPANY client of the copy names an fo_person, and no PERSON client an fo_company; the database refuses turning the COMPANY client's link into a person's (review m6)",
+    copySql(`select count(*) from case_client where (display_kind = 'COMPANY' and fo_person_id is not null) or (display_kind = 'PERSON' and fo_company_id is not null)`) === "0"
+    && /case_client_front_office_link_check/.test(err(`update case_client set fo_company_id = null, fo_person_id = gen_random_uuid() where id = '${corpId}'`, COPY)));
+  // Breaker F1: a name the front office's text rule refuses (a Persian name's U+200C, a soft hyphen, "!!") still opens, linked
+  const oddNames = await Promise.all(["\u0639\u0644\u06cc\u200c\u0631\u0636\u0627 Sample", "Sam\u00adple Hyphen", "!!", "Ab\u2065cd Sample", "\u0bbe\u0bbe\u0bbe"].map((nm) => open("user-O", {}, nm)));
+  ok("CS-K1 DW9 pass (breaker F1): names with a joiner, a soft hyphen, no letter at all (\"!!\"), an unassigned mark or combining marks only (review m8) open (201) and are linked; the front office's copy drops the marks, and \"!!\" is named by its client code",
+    oddNames.every((r) => r.status === 201) && oddNames.every((r) => link(r.body?.client_record?.id).startsWith(`PERSON|${FA}|`))
+    && copySql(`select p.given_names from fo_person p join case_client k on k.fo_person_id = p.id where k.id = '${oddNames[2].body?.client_record?.id}'`) === `Client ${oddNames[2].body?.client_record?.number}`
+    && copySql(`select p.given_names from fo_person p join case_client k on k.fo_person_id = p.id where k.id = '${oddNames[0].body?.client_record?.id}'`) === "\u0639\u0644\u06cc\u0631\u0636\u0627 Sample", oddNames.map((r) => [r.status, r.body?.detail]));
+  // DW11: firm A's client never gets firm B's party
+  const bCase = await call(BASE, "POST", "/api/runtime/cases", { actor: "user-S", body: { combinationId: VV, clientActor: "user-P", principal: { displayName: "Sample Solo Client" } } });
+  ok("CS-K1 DW11 pass: firm B's opening links its client to an fo_person of firm B", bCase.status === 201 && link(bCase.body?.client_record?.id).startsWith(`PERSON|${FB}|-|${FB}|`), [bCase.status, bCase.body?.detail, link(bCase.body?.client_record?.id ?? "")]);
+  const pB = copySql(`select count(*) from fo_person where firm_id = '${FB}'`);
+  const crossed = await db.$transaction(async (tx) => { const c = await tx.caseClient.findUniqueOrThrow({ where: { id: aId } }); await linkClient(tx, foPersonPort, { ...c, foPersonId: null, firmId: FB }, "system:csk1-check"); }).then(() => "linked", (e) => String(e));
+  ok("CS-K1 DW11 fail: a link asked with firm B's id for firm A's client writes nothing (refused; firm B's new party rolls back), and no client of the copy names another firm's party",
+    /linked meanwhile/.test(crossed) && copySql(`select count(*) from fo_person where firm_id = '${FB}'`) === pB && link(aId).startsWith(`PERSON|${FA}|`)
+    && copySql(`select count(*) from case_client k left join fo_person p on p.id = k.fo_person_id left join fo_company c on c.id = k.fo_company_id where p.firm_id <> k.firm_id or c.firm_id <> k.firm_id`) === "0", crossed);
+  // DW10: the one-time job links every existing client; a re-run changes nothing; then the check is validated
+  copySql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number) select gen_random_uuid(), workspace_id, combination_id, 'user-P', 'seed:csk1', 'sample-firm', 'C-2099-' || lpad((${(process.pid % 30000) * 3} + g)::text, 5, '0') from runtime_case, generate_series(1, 3) g where id = '${first.body?.id}'`);
+  const waiting = () => copySql(`select count(*) from case_client where firm_id is not null and (fo_link_pending or (fo_person_id is null and fo_company_id is null))`);
+  const w0 = Number(waiting()), v0 = copySql(`select case_client_validate_link_check()`);
+  const firms = copySql(`select string_agg(distinct firm_id::text, ',') from case_client where firm_id is not null and fo_person_id is null and fo_company_id is null`).split(",").filter(Boolean);
+  const runs = []; for (const f of firms) runs.push(await linkFirmClients(db as never, foPersonPort, f));
+  ok("CS-K1 DW10 pass: after the job (one run per firm) no client of a platform firm is missing its link or pending, and the last run validates the check",
+    w0 >= 3 && v0 === "f" && waiting() === "0" && runs.every((r) => !r.failed.length) && runs.at(-1)?.validated === true
+    && copySql(`select convalidated from pg_constraint where conname = 'case_client_front_office_link_check'`) === "t", [w0, v0, waiting(), runs]);
+  const p1 = parties(), rerun = await linkFirmClients(db as never, foPersonPort, FA);
+  ok("CS-K1 DW10 fail: a second run links nothing and makes no party (and the validation it repeats changes nothing)", rerun.linked === 0 && !rerun.failed.length && parties() === p1 && rerun.validated, rerun);
 } finally {
   await app?.close().catch(() => undefined);
 }

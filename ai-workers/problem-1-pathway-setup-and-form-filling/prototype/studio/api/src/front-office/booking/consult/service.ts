@@ -24,6 +24,11 @@ import type { AuditPort } from "../../../../../ports/audit.ts";
 import type { ConsultRecordRead, PartyRef } from "../../../../../ports/consult-record.ts";
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
+import { agreementWarning, type AgreementWarning } from "../consultation-agreement/gate.ts";
+/** The record's copy of the agreement warning: its code and words only. The record is open to agent/booking:edit, which
+ *  the agreement's own read may refuse (FO-3vr), so the agreement's id and causes stay out (FO-3c-warn review m3). */
+const brief = (w: AgreementWarning | null) => (w ? { code: w.code, words: w.words } : null);
 
 type Tx = Prisma.TransactionClient;
 export type ConsultPorts = { audit: AuditPort<Tx> };
@@ -103,26 +108,35 @@ const facts = (r: RecordRow | null, prefix: "before" | "after") => ({
   [`${prefix}QuotedFeeCurrency`]: r?.quotedFeeCurrency ?? null, [`${prefix}RecommendedCount`]: r ? r.recommended.length : null,
 });
 
+/** R1.8 (QA-594): the record's values for the audit line's before and after. The notes stay out (free text of any
+ *  length; notesChanged says whether they changed). */
+const values = (r: RecordRow) => ({ timeSpentMinutes: r.timeSpentMinutes, quotedFeeMinor: r.quotedFeeMinor, quotedFeeCurrency: r.quotedFeeCurrency, recommended: [...r.recommended] });
+
 export class ConsultRecordService {
   constructor(private readonly db: PrismaClient, private readonly ports: ConsultPorts) {}
 
   async get(ctx: StaffContext, bookingId: string) {
     const b = await this.booking(this.db, ctx, bookingId);
     const r = await this.db.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
-    if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b) });
-    return this.view(ctx, b, r);
+    // FO-3c-warn break F4: before the first save, the no-record answer carries the warning too.
+    if (!r) throw problem(404, "not-found", "Not found", WORDS.noRecord, { code: "NO_RECORD", bookedMinutes: bookedMinutes(b), agreementWarning: brief(await agreementWarning(this.db, ctx.firmId, b.id)) });
+    return { ...this.view(ctx, b, r), agreementWarning: brief(await agreementWarning(this.db, ctx.firmId, b.id)) };
   }
 
   async put(ctx: StaffContext, bookingId: string, body: unknown) {
+    // PF-28 part 4 (review M1): a malformed booking id is the one not-found before the body is read.
+    if (!UUID.test(String(bookingId))) return notInFirm("booking");
+    parseInput(z.unknown(), body);   // review m1: a "__proto__" key is refused as the one rule refuses it
     // A body that is not a JSON object (none, text/plain, an array) is refused, never read as an empty record (break m6).
-    if (body === null || typeof body !== "object" || Array.isArray(body)) throw problem(400, "consult-refused", NOT_SAVED, "Send the record as a JSON object.");
+    if (body === null || typeof body !== "object" || Array.isArray(body)) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, "Send the record as a JSON object.", { code: "INVALID", fields: { body: "This must be an object." } });
     const parsed = ConsultBody.safeParse(body);
-    if (!parsed.success) throw problem(400, "consult-refused", NOT_SAVED, WORDS.check, { issues: parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`) });
+    // PF-28 part 4: a field error is 422 with each field named (an unknown field among them); `issues` as the screen reads them.
+    if (!parsed.success) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, WORDS.check, { code: "INVALID", fields: fieldsOf(parsed.error), issues: parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`) });
     const v = parsed.data;
     const fee = v.quotedFeeMinor ?? null;
-    if (fee !== null && !v.quotedFeeCurrency) throw problem(400, "consult-refused", NOT_SAVED, WORDS.currency, { issues: [`quotedFeeCurrency: ${WORDS.currency}`] });
+    if (fee !== null && !v.quotedFeeCurrency) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, WORDS.currency, { code: "INVALID", fields: { quotedFeeCurrency: WORDS.currency }, issues: [`quotedFeeCurrency: ${WORDS.currency}`] });
     await this.booking(this.db, ctx, bookingId);   // who may, before the lock (a 404 or 403 takes no lock)
-    const { b, saved } = await this.db.$transaction(async (tx) => {
+    const { b, saved, warning } = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM fo_booking WHERE firm_id = ${firmScope(ctx.firmId).firmId}::uuid AND id = ${bookingId}::uuid FOR UPDATE`;
       const b = await this.booking(tx, ctx, bookingId);
       if (b.status === "CANCELLED") throw problem(409, "not-active", "Cancelled", WORDS.cancelled, { code: "CANCELLED" });
@@ -141,10 +155,13 @@ export class ConsultRecordService {
         firmId: ctx.firmId, actor: actor(ctx), action: before ? "booking.consult_record.changed" : "booking.consult_record.created", entity: "fo_consult_record", entityKey: saved.id,
         summary: before ? "Consult record changed." : "Consult record saved.",
         detail: { recordId: saved.id, bookingId: b.id, ...facts(before, "before"), ...facts(saved, "after"), notesChanged: (before?.notes ?? null) !== saved.notes },
+        before: before ? values(before) : null, after: values(saved),
       });
-      return { b, saved };
+      // FO-3c part 2 (AG-4-15 rule 4, the founder's ruling of 24 Nov): saved whatever the agreement's state; an unsigned
+      // one is the record's warning, never a refusal; read in the transaction, so a failed read saves nothing (break F3).
+      return { b, saved, warning: brief(await agreementWarning(tx, ctx.firmId, b.id)) };
     }, TX);
-    return this.view(ctx, b, saved);
+    return { ...this.view(ctx, b, saved), agreementWarning: warning };
   }
 
   /** The adapter's read (ports/consult-record.ts): the firm's record by its id, or null. */

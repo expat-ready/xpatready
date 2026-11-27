@@ -101,7 +101,22 @@ await visitor.getByRole("button", { name: "Send my enquiry" }).click(); await vi
 ok("FO-4 BR-3 reload: a stale page is redrawn, the answers kept, the consent tick cleared, nothing stored", (await visitor.getByLabel("First name").inputValue()) === `Stale${run}` && !(await visitor.getByRole("checkbox").isChecked()) && !leadIdOf(`Stale${run}`));
 await visitor.getByRole("button", { name: "Send my enquiry" }).click(); await visitor.locator('[data-form-state="thanks"]').waitFor({ timeout: 15_000 });
 ok("FO-4 BR-3 reload: sent again, it is thanked and stored with no consent row", !!leadIdOf(`Stale${run}`) && sql(`select count(*) from msg_consent where subject_id = (select person_id from fo_lead where id = '${leadIdOf(`Stale${run}`)}')`) === "0");
-// DW2: the same person again (known now): the same words, and a second lead flagged as a possible match (BR-2).
+
+// PF-28 part 3b (R1.10): the public door reads its post through the one input rule. The sweep's copy has no live form, so
+// its probes cannot reach this door; here, on a live form: an unknown field, a wrong type and a missing submission id are
+// each 422 naming the field (an unknown field named as sent), and nothing is stored.
+{
+  const post = (body: string) => fetch(`${BASE}/api/public/forms/${token}/submissions`, { method: "POST", headers: { "content-type": "application/json", origin: BASE }, body }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) as { fields?: Record<string, string> } | null }));
+  const leadsBefore = sql(`select count(*) from fo_lead where firm_id = '${A}'`), sid = () => crypto.randomUUID();
+  const base = { givenNames: `Rule${run}`, email: `rule.${run}@example.org`, submissionId: sid(), loadStamp: "1.x" };
+  const unknown = await post(JSON.stringify({ ...base, pf28Unknown: "x" })), wrong = await post(JSON.stringify({ ...base, submissionId: sid(), givenNames: 5 })), missing = await post(JSON.stringify({ givenNames: `Rule${run}` }));
+  ok("PF-28 part 3b pass: the public form refuses an unknown field 422 naming it", unknown.status === 422 && !!unknown.body?.fields?.pf28Unknown, unknown);
+  ok("PF-28 part 3b fail: a wrong type (givenNames: 5) and a post with no submission id are 422 naming the field; nothing is stored", wrong.status === 422 && !!wrong.body?.fields?.givenNames && missing.status === 422 && !!missing.body?.fields?.submissionId && sql(`select count(*) from fo_lead where firm_id = '${A}'`) === leadsBefore, { wrong, missing });
+}
+// DW2: the same person again (known now): the same words, and a second lead flagged as a possible match (BR-2). FO-9b
+// part 2b merges a safe repeat by itself, so Lena is given money first (a Sample tax setting): her repeat is never merged
+// by itself and waits, flagged, for a person (P-574 (2)).
+sql(`set session_replication_role = replica; insert into money_party_tax_treatment (firm_id, person_id, treatment, updated_by) values ('${A}', (select person_id from fo_lead where id = '${lenaId}'), 'EXEMPT', 'seed:fo4') returning 1`);
 const again = await sendForm(visitor, { given: `${lena}b`, family: "Park", email: `lena.${run}@example.org` });
 ok("FO-4 DW2 pass: a known person's enquiry gets the same thank-you, word for word", again.replace(`${lena}b`, lena) === first || again === first, { first, again });
 // DW2 fail side: a form that is off says only that.

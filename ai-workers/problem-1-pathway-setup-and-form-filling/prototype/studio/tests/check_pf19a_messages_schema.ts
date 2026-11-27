@@ -99,7 +99,12 @@ try {
   for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-19a pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were", sql(DEMO, demoRows) === was, was);
   ok("PF-19a pass: migrate diff after it on the demo-data copy names no msg_ table or type", msgDiff(DEMO).length === 0, msgDiff(DEMO));
-  ok("PF-19a: no msg_ row exists until the messages code writes one (the migration writes no data)", sql(DEMO, MSG_TABLES.map((t) => `(select count(*) from ${t})`).join(" + ").replace(/^/, "select ")) === "0");
+  // A later migration may seed a platform-owned email template (firm_id null) by name: PF-21c's "Security incident notice".
+  const SEEDED_PLATFORM_TEMPLATES = ["platform.security_incident_notice"];
+  const seededOnly = (t: string) => t === "msg_template" ? `(select count(*) from msg_template where not (firm_id is null and key = any('{${SEEDED_PLATFORM_TEMPLATES.join(",")}}')))`
+    : t === "msg_template_version" ? `(select count(*) from msg_template_version v where not exists (select 1 from msg_template t where t.id = v.template_id and t.firm_id is null and t.key = any('{${SEEDED_PLATFORM_TEMPLATES.join(",")}}')))`
+    : `(select count(*) from ${t})`;
+  ok("PF-19a: no msg_ row exists until the messages code writes one (the migration writes no data; later migrations only the named platform templates)", sql(DEMO, MSG_TABLES.map(seededOnly).join(" + ").replace(/^/, "select ")) === "0");
 
   // -------------------------------------------------------------------------------------------- shape: indexes, times
   ok("PF-19a pass: firm_id is first in every msg_ index (primary keys aside) but the platform's own template indexes", indexesNotFirmFirst(DEMO, MSG_TABLES) === "", indexesNotFirmFirst(DEMO, MSG_TABLES));
@@ -311,9 +316,9 @@ try {
   const allClasses = await Promise.all((["TRANSACTIONAL", "SERVICE", "MARKETING"] as const).map((c) => mail(P1, c, "LENA.PARK@example.com")));
   ok("PF-19a fail: a suppressed address → false for every class, transactional included (SUPPRESSED, HARD_BOUNCE)",
     allClasses.every((d) => !d.allowed && d.reason === "SUPPRESSED" && d.suppression === "HARD_BOUNCE"), allClasses);
-  ok("PF-19a pass: the address is kept once in lower case (a second suppression changes nothing) and the audit line carries no address",
+  ok("PF-19a pass: the address is kept once in lower case (a second suppression changes nothing); the audit line holds it only as its after value (R1.8, P-687)",
     s1.created && !s2.created && sql(DEMO, `select address || ':' || reason from msg_suppression where firm_id = '${firmA}'`) === "lena.park@example.com:HARD_BOUNCE"
-    && sql(DEMO, `select count(*) from audit_event where action = 'message.address.suppressed' and detail::text not like '%@%' and summary not like '%@%'`) === "1");
+    && sql(DEMO, `select count(*) from audit_event where action = 'message.address.suppressed' and (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text not like '%@%' and summary not like '%@%' and detail->>'address_after' = 'lena.park@example.com'`) === "1");
   ok("PF-19a pass: the same person at another address is still reachable for transactional mail; firm B's copy of the address is not suppressed",
     (await mail(P1, "TRANSACTIONAL", "lena@work.example.com")).allowed
     && (await store.allows(db as never, { firmId: firmB, channel: "EMAIL", address: "lena.park@example.com", class: "TRANSACTIONAL" })).allowed);

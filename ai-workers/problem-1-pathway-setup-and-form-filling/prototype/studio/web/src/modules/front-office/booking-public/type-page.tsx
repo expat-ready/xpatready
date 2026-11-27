@@ -3,7 +3,6 @@
 // confirmation. The same page inside an iframe (BR-11). Hosts are never named; nothing here carries an id.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
-import { useParams } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Button, buttonVariants, Field, Input } from "@/components/ui/controls";
@@ -11,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Booked, MODE_WORDS, publicCall, Slots, TRY_LATER, type Mode, type Problem, type Slot } from "./contract";
 import { Gate, PublicFrame } from "./frame";
+import { useBookingSite } from "./site-context";
 import { allZones, browserZone, clocksChange, dayKey, dayWords, hhmm, monthGrid, monthName, monthOf, monthStart, monthWords, nextMonth, realZone, whenWords, type Month } from "./time";
 
 const ZONE_TIP = "Times change to the zone you pick. Your booked time stays the same.";
@@ -26,7 +26,7 @@ const FIELD_WORDS: Record<string, string> = {
 const phoneOk = (p: string) => p.trim().length > 0;
 
 export function BookingTypePage() {
-  const { firmKey = "", slug = "" } = useParams();
+  const { firmKey, slug, base } = useBookingSite();   // QA-756: from the path, or from a firm's own address
   const qc = useQueryClient();
   const [zone, setZone] = React.useState<string | null>(browserZone);
   const [month, setMonth] = React.useState<Month>(() => monthOf(Date.now(), browserZone() ?? "UTC"));
@@ -53,7 +53,7 @@ export function BookingTypePage() {
       const d = q.data ?? last.current!;
       return (
         <PublicFrame firm={d.firm.name} title={`${d.type.name} · ${d.firm.name}`}>
-          {booked ? <Confirmation firmKey={firmKey} {...booked} />
+          {booked ? <Confirmation base={base} {...booked} />
             : chosen ? <Details d={d} zone={shown} slot={chosen} stampedAt={q.dataUpdatedAt} firmKey={firmKey} slug={slug}
                 onBack={() => setChosen(null)} onPick={setChosen} onBooked={(answer, email, phone) => setBooked({ answer, email, phone })}
                 onStale={() => qc.invalidateQueries({ queryKey: ["public-slots", firmKey, slug] })} />
@@ -192,7 +192,7 @@ function Details({ d, zone, slot, stampedAt, firmKey, slug, onBack, onPick, onBo
       if (p.status === 429) setRefused({ text: TRY_LATER });
       else if (p.slug === "slot-taken") { setRefused({ text: "This time was just booked.", next: p.slots.slice(0, 4) }); onStale(); }
       else if (p.slug === "consent-wording-changed") { set("consent", false); setRefused({ text: p.detail ?? "The firm's agreement text has changed. Please reload the page and tick the box again." }); onStale(); }
-      else if (p.status === 400 && Object.keys(fields).length) setErrors(fields);
+      else if (p.status === 422 && Object.keys(fields).length) setErrors(fields);   // field errors are 422 (PF-28 part 4)
       else setRefused({ text: p.detail ?? "We could not take this booking. Please try again." });
       focusSummary();
     } finally { sending.current = false; setBusy(false); }
@@ -245,10 +245,10 @@ function addressOf(a: Record<string, string> | null): string | null {
   return [a.unit ? `Unit ${a.unit}` : "", street, a.city, a.provinceState, a.postalCode].filter(Boolean).join(", ") || null;
 }
 
-function Confirmation({ firmKey, answer: b, email, phone }: { firmKey: string; answer: Booked; email: string; phone: string }) {
+function Confirmation({ base, answer: b, email, phone }: { base: string; answer: Booked; email: string; phone: string }) {
   const h = React.useRef<HTMLHeadingElement>(null);
   React.useEffect(() => { h.current?.focus(); }, []);
-  const manage = `/book/${encodeURIComponent(firmKey)}/manage#${b.manageToken}`, minutes = Math.round((Date.parse(b.endsAt) - Date.parse(b.startsAt)) / 60_000);
+  const manage = `${base}/manage#${b.manageToken}`, minutes = Math.round((Date.parse(b.endsAt) - Date.parse(b.startsAt)) / 60_000);
   const join = b.mode === "VIDEO" ? (b.joinLink ? <>Your join link: <a className="text-text-link underline [overflow-wrap:anywhere]" href={b.joinLink} rel="noopener noreferrer" target="_blank">{b.joinLink}</a></> : "Your join link will follow.")
     : b.mode === "PHONE" ? `The firm will call you on ${phone}.` : `At ${addressOf(b.firm.address) ?? "the firm's office"}.`;
   return (

@@ -4,6 +4,7 @@ Every expected number below is worked by hand from the fixture snapshot tools/fi
 2026-11-20 12:00 IST = 06:30 UTC); the working is written next to each assertion.
 Run: python3 -m unittest product/tools/test_cockpit_data.py   (or: python3 product/tools/test_cockpit_data.py)"""
 import importlib.util, json, os, re, shutil, subprocess, sys, tempfile, unittest
+from unittest import mock
 from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1732,6 +1733,23 @@ class WhatsNew(unittest.TestCase):
             self.assertIn('"whats_new.box"', f.read())
 
 
+class ReviewRounds(unittest.TestCase):
+    """ENF-782b (P-782 (3)): the review-rounds slot is filled from flow-measure.py's cached answer, never guessed."""
+    def test_slot_reads_flow_measure(self):
+        out = tempfile.mkdtemp(); os.makedirs(os.path.join(out, "cache"))
+        with open(os.path.join(out, "cache", "flow-measure.json"), "w") as f:
+            json.dump({"_as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                       "review_rounds": {"n": 31, "median": 1, "mean": 2.03, "over_2": 9, "over_2_share": 29.0}}, f)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                            "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = jread(os.path.join(out, "data.json"))
+        q = d["quality"]["review_rounds"]
+        self.assertEqual((q["v"], q["n"], q["over_2_share"]), (1, 31, 29.0))
+        self.assertIn("review_rounds.median", q["src"])
+        self.assertEqual(d["explain"]["quality.review_rounds"]["n"], 31)
+
+
 BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -2326,6 +2344,12 @@ class Enforced(unittest.TestCase):
         g = self.GH(runs=[self.run_(new)], arts=[{"name": "pipeline-heartbeat", "expired": True, "archive_download_url": "u"}])
         self.assertEqual(cd.heartbeat_read(g)["artifact_error"], "the run has no pipeline-heartbeat artifact")   # expired counts as none
         self.assertEqual(cd.heartbeat_read(self.GH(runs=[self.run_("not a time")]))["run"]["id"], 9)          # odd time: no crash, no download
+        # OS-83: an event run's artifact (pipeline-heartbeat-event) is read by the board too; another name is not
+        for name, want in (("pipeline-heartbeat-event", True), ("something-else", False)):
+            g = self.GH(runs=[self.run_(new)], arts=[{"name": name, "expired": False, "archive_download_url": "u"}])
+            with mock.patch.object(cd.subprocess, "run", return_value=mock.Mock(returncode=1, stderr=b"x")):
+                out = cd.heartbeat_read(g)
+            self.assertEqual(out["artifact_error"].startswith("artifact download failed"), want, (name, out))
 
 
 class PrListCache(unittest.TestCase):

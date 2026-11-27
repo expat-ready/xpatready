@@ -4,8 +4,23 @@
 # Merge-flow tooling (P-214): no gate reads this workflow's result; Mergify's required check is still ci's job "ci".
 #   * Start (qa or the Lead): Actions › walks › Run workflow, journeys "j_6 j_9" (ids or numbers, space-separated, up to
 #     20; empty = every studio/tests/journeys/j_*.ts), ref = the branch to walk (main for gate A on main), or
-#     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or
-#     tests/journeys/ runs every journey on its head by itself, once it is ready (never a draft or a mergify/* batch).
+#     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or anything
+#     a journey can import (studio/, contracts/, p2/, p5/) runs by itself on its head once it is ready (never a draft
+#     or a mergify/* batch), and walks only
+#     the journeys whose file or imports it changes plus those its "Completes: R1.n" line names (tools/walk-plan.mjs;
+#     A274, QA-702); at most 20 on a PR: past 20 only the journeys whose own file changed or that a Completes line names
+#     walk, the rest are skipped by name in a warning, never a failure (Lead 17 on #2860); none → the walk job is
+#     skipped and the plan summary says why. A dispatch over 20 is refused. A Completes line added by editing the
+#     body is read at the next push (no "edited": an edit would walk the same journeys again).
+#     tests/check_walk_plan.ts checks the rule and this file's shape.
+#   * On merge (ENF-733, P-733, P-728 (3)): each push to main that is a PR's merge commit walks, on that commit, the
+#     journey of each R1 item the PR's title names or its "Completes:" line names (walk-plan.mjs --event push; none, or
+#     a PR that changes nothing under studio/, contracts/, p2/, p5/: skipped with a reason). No fixtures. The plan (every
+#     push, so a missing plan is a fault) and each walk.json are kept as small artifacts; walk-report.yml (main's code,
+#     the only write token) then posts one comment on the merged PR: the run id, each journey's PASS or FAIL and its step
+#     counts. qa reads it there. On a push a FAIL step never fails the walk job (ENF-733 review M1): journeys of items
+#     still in parts fail by design, and a red check on main's head reads as "fix main first" (cockpit-data.py); the
+#     verdict travels in walk.json to the comment instead.
 #   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
@@ -28,22 +43,33 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - .github/workflows/walks.yml
-      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys/**
-      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_journey_recording.ts
+      # Every folder a journey imports from (studio's api/src, ports, acceptance, tests/runtime; prototype's contracts, p2,
+      # p5; check_walk_plan.ts W8 keeps this list complete): the plan job is cheap, walk-plan.mjs keeps only the
+      # journeys the PR touches, and an empty plan skips the walk job (A274).
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/contracts/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p2/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p5/**
+  push:
+    branches: [main]   # ENF-733: every merge; the plan walks only the merged PR's named journeys
 permissions: { contents: read }
 concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
   group: walks-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 jobs:
   plan:
     # Never on a draft or a merge-queue batch (Lead 81 on #2133, review m9): no gate reads walks, each PR's head is
     # walked when it is ready, and batches re-run ci only. walk needs plan, so it is skipped too.
-    if: ${{ github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (!github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: { contents: read, pull-requests: read }   # the PR's file list (walk-plan.mjs); on a push, the merged PR
     outputs:
       matrix: ${{ steps.p.outputs.matrix }}
       sha: ${{ steps.p.outputs.sha }}
+      pr: ${{ steps.p.outputs.pr }}
     steps:
       # A dispatch walks the ref it was started on (plain checkout); only a pull_request run, which holds no write
       # token and no cache, checks out the PR's head (CodeQL cache poisoning, #2133).
@@ -53,29 +79,60 @@ jobs:
         uses: actions/checkout@v4
         with: { ref: "${{ github.event.pull_request.head.sha }}" }
       - id: p
-        name: which journeys (the input, checked; else every j_*.ts), plus the failing fixture
+        name: which journeys (walk-plan.mjs; a PR walks only what it touches), plus the failing fixtures
         env:
+          EVENT: ${{ github.event_name }}
           WANT: ${{ github.event.inputs.journeys }}
+          BODY: ${{ github.event.pull_request.body }}
+          PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
           J: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys
+          T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
         run: |
-          export LC_ALL=C; set -f   # no glob expansion of the input (review of #2133: "*" must not list files)
-          [ "${#WANT}" -le 200 ] || { echo "journeys: at most 200 characters"; exit 1; }
-          if [ -z "${WANT// /}" ]; then ids=$(ls "$J" | sed -n 's/^\(j_[0-9][0-9]*\)\.ts$/\1/p' | sort -V)
-          else ids=""; for w in $WANT; do
-            [[ "$w" =~ ^(j_)?([1-9][0-9]{0,2})$ ]] || { echo "journeys: '$w' is not j_<n> or <n>"; exit 1; }
-            id="j_${BASH_REMATCH[2]}"; [ -f "$J/$id.ts" ] || { echo "journeys: no $J/$id.ts"; exit 1; }
-            ids="$ids $id"; done
-            ids=$(printf '%s\n' $ids | sort -uV)
+          set -o pipefail; export LC_ALL=C
+          node "$T/walk-plan.mjs" selftest
+          : > "$RUNNER_TEMP/changed.txt"; printf '%s\n' "$BODY" > "$RUNNER_TEMP/body.md"; : > "$RUNNER_TEMP/title.txt"; PRN=""
+          if [ "$EVENT" = push ]; then
+            # ENF-733: the merged PR whose merge commit this push is (as item-proof.yml's detect: the API can lag a fresh
+            # merge, so three tries, then the commit's own "Merge pull request #N", checked against GitHub). None (a direct
+            # push): an empty plan. Title and body reach the plan only through files.
+            for t in 1 2 3; do
+              PRN=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq "[.[] | select(.merged_at != null and .merge_commit_sha == \"$SHA\" and .base.ref == \"main\")][0].number // empty" || true)
+              if [ -n "$PRN" ]; then break; fi
+              if [ "$t" -lt 3 ]; then sleep $((t * 10)); fi
+            done
+            n=$(git log -1 --format=%s "$SHA" | sed -n 's/^Merge pull request #\([0-9]\{1,7\}\) from .*/\1/p')
+            if [ -z "$PRN" ] && [ -n "$n" ]; then
+              PRN=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$n" --jq "select(.merged_at != null and .merge_commit_sha == \"$SHA\") | .number" || true)
+            fi
+            if [ -n "$PRN" ]; then
+              gh api "repos/$GITHUB_REPOSITORY/pulls/$PRN" > "$RUNNER_TEMP/pr.json"
+              node -e 'const p=require(process.argv[1]),fs=require("fs"); fs.writeFileSync(process.argv[2],p.title??""); fs.writeFileSync(process.argv[3],p.body??"")' "$RUNNER_TEMP/pr.json" "$RUNNER_TEMP/title.txt" "$RUNNER_TEMP/body.md"
+              gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PRN/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+            fi
           fi
-          [ "$(printf '%s\n' $ids | grep -c .)" -le 20 ] || { echo "journeys: at most 20"; exit 1; }
-          m=$(for id in $ids; do printf '{"name":"%s","file":"%s","expect":"pass"},' "$id" "$id"; done)
-          for f in j_0_fails j_0_throws; do m="${m}{\"name\":\"$f\",\"file\":\"$J/fixtures/$f.ts\",\"expect\":\"fail\"},"; done
-          m="[${m%,}]"
-          echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "walks at $SHA: $m" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$EVENT" = pull_request ]; then
+            # Both sides of a rename; a failed or partial list fails the step, never a smaller plan.
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+            # GitHub lists at most 3000 files of a PR, silently: a list that long may be cut, so say so.
+            n=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' | wc -l)
+            [ "$n" -lt 3000 ] || echo "::warning title=walks::this PR lists $n files, GitHub's limit: journeys reading a file past it may be missed"
+          fi
+          node "$T/walk-plan.mjs" --event "$EVENT" --journeys "$J" --want "$WANT" --changed "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" \
+            --title-file "$RUNNER_TEMP/title.txt" --pr "$PRN" --sha "$SHA" > "$RUNNER_TEMP/plan.json"
+          m=$(node -p 'JSON.stringify(require(process.argv[1]).matrix)' "$RUNNER_TEMP/plan.json")
+          reason=$(node -p 'require(process.argv[1]).reason' "$RUNNER_TEMP/plan.json"); warn=$(node -p 'require(process.argv[1]).warn' "$RUNNER_TEMP/plan.json")
+          [ -z "$warn" ] || echo "::warning title=walks::$warn"
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "pr=$PRN" >> "$GITHUB_OUTPUT"
+          { echo "walks at $SHA: $reason"; echo; echo "matrix: $m"; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: keep the plan for walk-report.yml (every push, so a missing plan is a fault, never "nothing to walk")
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with: { name: walk-plan, path: "${{ runner.temp }}/plan.json", retention-days: 30 }
   walk:
     needs: plan
+    if: ${{ needs.plan.outputs.matrix != '[]' }}   # zero journeys: skipped, the plan summary says why (A274)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -104,7 +161,7 @@ jobs:
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - id: w
         name: walk ${{ matrix.j.name }} on its own copy, recorded (walk.mjs; live AI off, US$0)
-        continue-on-error: ${{ matrix.j.expect == 'fail' }}
+        continue-on-error: ${{ matrix.j.expect == 'fail' || github.event_name == 'push' }}
         env: { FILE: "${{ matrix.j.file }}", WALK_SHA: "${{ needs.plan.outputs.sha }}" }
         run: |
           node "$S/tests/journeys/walk.mjs" "$FILE" "$RUNNER_TEMP/walk"
@@ -127,6 +184,15 @@ jobs:
         run: |
           f="$RUNNER_TEMP/walk/walk.json"; [ -f "$f" ] || { echo "no walk.json" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
           node -e 'const v=require(process.argv[1]); console.log(`### ${v.journey} at ${v.sha.slice(0,9)}: exit ${v.exit}, ${v.pass} PASS, ${v.fail} FAIL, ${v.held} HELD\n${v.video.length} video, ${v.traces.length} trace, ${v.steps} step screenshots, ${v.journeyShots} journey screenshots (artifact walk-${process.env.NAME}-${v.sha})\n${v.failed.map((l)=>"* "+l).join("\n")}`)' "$f" >> "$GITHUB_STEP_SUMMARY"
+      - name: keep walk.json for walk-report.yml's comment (push to main only; none when the walk ended before it)
+        if: always() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-result-${{ matrix.j.name }}
+          path: ${{ runner.temp }}/walk/walk.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 30
       - name: self-test — the failing fixture failed its walk step and its recording (video, trace, steps) was uploaded
         if: always() && matrix.j.expect == 'fail'
         env: { OUTCOME: "${{ steps.w.outcome }}", ART: "${{ steps.up.outputs.artifact-id }}", NAME: "${{ matrix.j.name }}" }

@@ -33,9 +33,10 @@
 # Type check (P-291, the outsider audit of 29 Oct): job "types", tsc --noEmit for api and web (tools/typecheck.mjs; fails
 #   only on an error not in typecheck-known.txt), on its own machine beside the parts for records and code, so it adds
 #   machine minutes (about 2 a run) but no wall time: the parts take 20+ minutes, the type check about 1.5.
-#   SHARDS=<1..24>       the number of parallel parts (default 18 since 19 Nov, repository variable SHARDS set to 18; before: default 8: pipeline row 2, 10 Nov, measured in its PR; was 4,
-#                        and the repository variable SHARDS is 6 since 9 Nov, which overrides this default until it
-#                        is deleted or set to 8; I1 measured before changing it: see its PR);
+#   SHARDS=<1..24>       the number of parallel parts (default 24 since CI-SPEED-2, 21 Nov; the repository variable SHARDS, 18
+#                        since 19 Nov, overrides it until it is set to 24 or deleted; default 18 from 19 Nov; before: default 8: pipeline row 2, 10 Nov, measured in its PR; was 4,
+#                        and the repository variable SHARDS was 6 from 9 Nov, overriding that default until it
+#                        was deleted or set to 8; I1 measured before changing it: see its PR);
 #   PR_SUITES=direct     idle since P-651 (2) (a builder's PR runs no suite; it was select-suites.mjs --direct); it
 #                        still enters the memory verdict's context, so changing it re-tests a head; the queue runs every suite;
 #   (BATCH_RUNNER / PR_RUNNER = mac, the founder's Mac, are gone: D1, P-416, 8 Nov; off since 4 Nov. git has them.)
@@ -48,8 +49,8 @@
 #   (1) Saving work costs no check: a push to a DRAFT PR runs only the job "guard" (push guard: excluded paths, PDFs,
 #       secrets, personal names; under a minute). The full check runs when the PR is marked ready for review.
 #       Mergify's batch PRs (mergify/*, opened as drafts) always get it (#875).
-#   (2) A ready head's check is never cancelled: a newer push waits for it (workflow concurrency below; only a
-#       waiting run is replaced, before it starts, at no machine cost). Parts never stop each other (fail-fast off), so a
+#   (2) A newer push supersedes the PR's older check (SPD-2 item 5, P-802, 22 Nov: was "a newer push waits for it");
+#       a merge-queue batch and a full run by hand are never cancelled, and nobody cancels a run by hand. Parts never stop each other (fail-fast off), so a
 #       red part is re-run alone: "Re-run failed jobs" on the run's page, or gh run rerun <run-id> --failed.
 #   (3) Results are remembered (tools/ci-memory.mjs): a head already green on this base with the same title and body
 #       (ready again, a reopen) reports that verdict; a red head is always tested again. (Suites remembered green per
@@ -79,10 +80,12 @@ on:
     # second run whose "ci" check goes back to in progress just as Mergify queues the PR (review, 6 Nov).
     types: [opened, synchronize, reopened, ready_for_review]
 concurrency:
-  # One group per PR and mode: a draft's guard runs replace each other; a full check is never cancelled (P-371 (2)).
-  # Re-run failed jobs only on a PR's newest run: an older run re-entering the group replaces a newer one still waiting.
+  # One group per PR and mode. SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its
+  # older run in either mode (it judged an older head); a merge-queue batch (head mergify/...) and a full run by hand
+  # (workflow_dispatch, group ci-full-<head>) are never cancelled. P-371 (2)'s "never cancel" is about cancelling by hand.
+  # Re-run failed jobs only on a PR's newest run: an older run re-entering the group cancels a newer one, even running.
   group: "ci-${{ github.event.pull_request.number || format('full-{0}', inputs.head) }}-${{ (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) && 'full' || 'draft' }}"
-  cancel-in-progress: "${{ !(!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}"
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 jobs:
   guard:
     # P-371 (1): a draft PR's push runs only this; a draft's "ci" is skipped, and Mergify's queues also refuse drafts.
@@ -160,7 +163,7 @@ jobs:
           kind=$(bash "$P/tools/change-kind.sh" "$RANGE") || { echo "change-kind.sh failed"; exit 1; }
           # A batch only when Mergify opened it (gate B break M2): a builder's branch named mergify/* stays a pull request.
           queue=false; [[ "$HEAD_REF" == mergify/* && "$PR_AUTHOR" == "mergify[bot]" ]] && queue=true
-          n="${SHARDS_VAR:-18}"; [[ "$n" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || n=18   # 19 Nov (Lead 94, A214): 8 parts ran 43-60 min, no machine wait; 18 parts reach the floor set by the longest suite (check_b78, ~20 min)
+          n="${SHARDS_VAR:-24}"; [[ "$n" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || n=24   # 21 Nov (CI-SPEED-2, A253): 18 parts ran 28-32 min (10 batches, 0-4 s machine wait): the floor is the work (~22600 s of suites + ~250 s set-up a part), not one suite (check_b78 is quarantined in batches; the longest that runs, check_bk5, ~617 s); 24 parts with suite-times.tsv refreshed: ~21 min
           # P-651 (2): the parts run only on a batch of code; the fast checks are job "fast" (records and code).
           shards="[]"
           suites=$queue; if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then suites=true; fi   # CI-PRE: a full run runs what a batch runs
@@ -270,6 +273,15 @@ jobs:
         run: |
           chmod +x "$P/tools/push-guard.sh"
           "$P/tools/push-guard.sh" "$RANGE"
+      - name: Mergify scopes match the module cards and the files (check-mergify-scopes.sh; every PR and batch, seconds)
+        # P-756 (2) (founder 20 Nov): guards.yml ran it only when tools paths changed, so the PR adding a module folder
+        # passed and main went red after it (#2207, #2317). Reads files only. Notes PRs: job "ci". Test: the script itself.
+        run: bash "$P/tools/check-mergify-scopes.sh"
+      - name: migration slots (SPD-2, P-802; migration-slots.py check; every PR and batch, seconds)
+        # One migration slot per area (.mergify.yml mig-<area>): a migration folder the change adds names its area
+        # (<stamp>_<area>__<name>), the area covers what it changes, and its stamp is after main's newest (a batch: of
+        # its own area); a refusal prints the exact git mv. Reads git and files only. Test: product/tools/test-spd-2.sh.
+        run: python3 -I "$P/tools/migration-slots.py" check $([ "$QUEUE" = true ] && echo --batch) "$RANGE"
       - name: every route a pack's set-up calls has a screen (tools/route-has-screen.mjs, under a second)
         # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has
         # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in
@@ -284,6 +296,23 @@ jobs:
         run: bash "$P/tools/cloud-setup.sh"
       - name: test databases are cleaned up (check-test-dbs.sh; needs the database cloud-setup.sh started)
         run: bash "$P/tools/check-test-dbs.sh"
+      - name: static sweeps on the PR merged onto main, before the label (static-sweeps.mjs; ENF-782a part 2, P-782 (2))
+        # Measured 20-21 Nov (merge-queue-causes.py): check_aud_values.ts, a sweep of every audit write that starts nothing,
+        # broke 4 merge batches by a member's own code (#1959's was the 10:55 IST wave) and 7 more by cascade, because a
+        # builder's PR runs no suite (P-651 (2)). Every studio suite that starts nothing and reads the source tree (the rule
+        # in static-sweeps.mjs, about 16 suites, ~20 s) runs here on the test merge; one failing on main too (HEAD^1) is a
+        # warning. In a batch it repeats what the parts run (~20 s; check-queue-run-scope.sh: every code step runs there too).
+        # Test: static-sweeps.mjs --self-test (in the tools' checks below).
+        if: env.KIND == 'code'
+        run: node "$P/tools/static-sweeps.mjs" --base "$(git rev-parse HEAD^1)"
+      - name: own-migration guard, report-only (Lead 5 on #2915 and #3035; P-717 (b); own-migration-guard.py)
+        # A migration-reading suite never compares a catalogue snapshot taken before its own migration with a read after
+        # the later ones: with one migration slot per area (SPD-2), another area's migration would land in that read on
+        # main (adcf9c105, 2cd4d9cd1, 7109eb3ae). Seconds, no database. Report-only for its first 24 h or 10 PR runs:
+        # a later PR drops continue-on-error. Test: check-own-migration-guard.sh (guard 38).
+        if: env.KIND == 'code'
+        continue-on-error: true
+        run: python3 -I "$P/tools/own-migration-guard.py"
       - name: records rules, pull requests only (check-docs.sh, decision-impact.sh; ENF-746c, skipped in a merge-queue batch)
         # ENF-746c (P-746, founder 20 Nov): these judge the records (STATE, RULES, DECISIONS: the P-734 lock note, the rule
         # register, decision impact, skill sizes, links), not the code. Each PR passes them before it is queued; in a batch
@@ -296,10 +325,13 @@ jobs:
         run: |
           # One command per line: bash -e passes over a failed command before the last && of a list (P-376 (3), ci-and-lists.mjs).
           bash "$P/tools/check-queue-run-scope.sh"   # ENF-746c: records rules skipped in a batch, every code step still runs
+          bash "$P/tools/check-skeleton-scope.sh"   # QA-449: the container proof runs on merge batches, PRs on its paths and dispatch
           node "$P/tools/graph.mjs" --check
           python3 ai-workers/problem-1-pathway-setup-and-form-filling/official-sources/fetch_official_sources.py
           node "$S/tools/count-any.mjs" --against "${RANGE%%..*}"
           bash "$P/tools/check-select-suites.sh"
+          bash "$P/tools/check-select-graph.sh"   # E3: the coverage graph narrows a covered app file, never anything it cannot speak for
+          bash "$P/tools/test-spd-2.sh"   # SPD-2 (P-802): per-area migration slots, the re-stamp check, suites by module
           bash "$P/tools/check-merge-guard.sh"
           bash "$P/tools/check-lane-bind.sh"
           bash "$P/tools/check-new-machine.sh"   # B168: the any-Mac setup script's own logic
@@ -307,6 +339,7 @@ jobs:
           node "$P/tools/ci-and-lists.mjs" --self-test
           node "$P/tools/suite-exit.mjs" --self-test   # B160: a suite whose last step is a bare summary() can never fail
           node "$P/tools/suite-exit.mjs"
+          node "$P/tools/static-sweeps.mjs" --self-test   # ENF-782a part 2: the sweep rule and the base comparison
           bash "$P/tools/check-flaky.sh"
           bash "$P/tools/check-write-token.sh"
           bash "$P/tools/pr-base.sh" --self-test
@@ -500,7 +533,8 @@ jobs:
       - name: type check, api and web (typecheck.mjs; only errors not in typecheck-known.txt fail)
         # 19 Nov (P-214): tsc for api died at node's default ~4 GB heap in merge batches #2245 and #2246 (six PRs each,
         # "JavaScript heap out of memory", 0 files checked), failing `ci` for every member. tsc inherits this env.
-        env: { NODE_OPTIONS: "--max-old-space-size=8192" }
+        # 24 Nov: 8192 was too little for main with #3235 (10.5 GB used); 12288 passes on the 16 GB runner, 4.9 GB left.
+        env: { NODE_OPTIONS: "--max-old-space-size=12288" }
         run: node "$P/tools/typecheck.mjs" | tee -a "$GITHUB_STEP_SUMMARY"; exit ${PIPESTATUS[0]}
   regression-plan:
     # P-320 (b): a merge-queue batch re-runs every Works capability's acceptance pack (qa/CAPABILITIES.md at the base).
@@ -601,6 +635,9 @@ jobs:
           else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
           echo "tested: $range"
           bash "$P/tools/push-guard.sh" "$range"
+      - name: Mergify scopes match the module cards and the files (check-mergify-scopes.sh; P-756 (2), as job "fast")
+        if: env.MODE != 'same' && (env.KIND == 'notes')
+        run: bash "$P/tools/check-mergify-scopes.sh"
       # ENF-746c: the two notes checks judge records, so a merge-queue batch skips them (each PR passed them); the push guard stays.
       - name: notes check 1 of 2, rules files (check-docs.sh; pull requests only, ENF-746c)
         if: env.MODE != 'same' && (env.KIND == 'notes') && needs.kind.outputs.queue != 'true' && github.event_name != 'merge_group'

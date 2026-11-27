@@ -12,8 +12,12 @@
 // by a composite foreign key; a withdrawal is also its own insert-only row. Every firm row here is covered by PF-12's
 // walls (msg_firm, msg_consent_wording, msg_consent, msg_consent_withdrawal, msg_suppression, msg_template,
 // msg_template_version, msg_outbox, msg_event, msg_send_counter). The CASL reading behind
-// "marketing needs express consent on that channel" is Unconfirmed: no counsel. Room is left for PF-18n's
-// msg_notification (later notifications).
+// "marketing needs express consent on that channel" is Unconfirmed: no counsel. PF-18n's msg_notification (the in-app
+// notifications) keys on platform_firm and platform_staff directly and is written only by api/src/platform/notifications/.
+// PF-19m (R1.52, map row 52; AG-10-3, -4, -9, -12, -62, -69, SA-11-37): connected mailboxes and the email they bring
+// (msg_mailbox, msg_email, msg_unmatched, msg_address_link), written only by api/src/platform/messages/mailbox/. A token is
+// never a column: msg_mailbox.credential is SecretBoxPort's sealed value. Subjects, bodies and addresses are personal data:
+// never in a log line or an audit detail (SA-11-37). Rules Prisma cannot say are in 20261125060000_platform-messages__pf19m_mailboxes.
 
 /// Who a consent or a message is about: a front-office person, a case party, or a staff member. The id is that side's
 /// own row id (no foreign key across modules: each side owns its people).
@@ -139,6 +143,10 @@ model MsgFirm {
   outbox           MsgOutbox[]
   events           MsgEvent[]
   sendCounters     MsgSendCounter[]
+  mailboxes        MsgMailbox[]
+  emails           MsgEmail[]
+  unmatched        MsgUnmatched[]
+  addressLinks     MsgAddressLink[]
 
   @@map("msg_firm")
 }
@@ -231,6 +239,7 @@ model MsgConsentWithdrawal {
   firm MsgFirm @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, subjectKind, subjectId, channel, purpose, withdrawnAt])
+  @@index([firmId, withdrawnBy])
   @@map("msg_consent_withdrawal")
 }
 
@@ -329,6 +338,7 @@ model MsgOutbox {
   @@unique([firmId, idempotencyKey])
   @@index([firmId, state, createdAt])
   @@index([firmId, providerId])
+  @@index([firmId, channel, address])
   @@map("msg_outbox")
 }
 
@@ -362,4 +372,176 @@ model MsgSendCounter {
 
   @@id([firmId, day])
   @@map("msg_send_counter")
+}
+
+/// PF-18n part 1 (AG-7-39 r2 and r10; AG16-60 "duplicate beats a miss"; brief lead-b-briefs/PF-18n1.md): one in-app
+/// notification per person, item and kind. Ids only, no free text; the link is built when the row is read, never stored.
+/// Written only by api/src/platform/notifications/ (PrismaNotificationPort): a repeat for the same person, item and kind
+/// sets read_at back to empty and created_at to now, never a second row. kind and item_kind are PF-18np's names
+/// (ports/notifications.ts), group one of its eight; the person is staff of the row's own firm (composite key). Insert and
+/// update of read_at and created_at only: no delete (the 90-day removal is part 2's). Rules Prisma cannot say are in the
+/// migration 20261121020000_pf18n_notifications; PF-12's wall covers it.
+model MsgNotification {
+  id        String    @id @default(uuid()) @db.Uuid
+  firmId    String    @map("firm_id") @db.Uuid
+  staffId   String    @map("staff_id") @db.Uuid
+  kind      String
+  group     String
+  itemKind  String    @map("item_kind")
+  itemId    String    @map("item_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  readAt    DateTime? @map("read_at") @db.Timestamptz
+
+  firm  PlatformFirm  @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  staff PlatformStaff @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, staffId, itemKind, itemId, kind])
+  @@index([firmId, staffId, createdAt])
+  @@map("msg_notification")
+}
+
+/// PF-19m: who runs a connected mailbox (P-621: only GOOGLE is built in Release 1; the others are later adapters).
+enum MsgMailboxProvider {
+  GOOGLE
+  MICROSOFT
+  IMAP
+}
+
+/// PF-19m: a mailbox's state. CONNECTED only after a real probe (AG-16 "verify before trust"); FAILED after a refresh the
+/// provider refused; DISCONNECTED is final (its credential gone, its unfiled email purged; AG-10-4).
+enum MsgMailboxStatus {
+  PENDING
+  CONNECTED
+  FAILED
+  DISCONNECTED
+}
+
+/// PF-19m: which way an email went.
+enum MsgEmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+/// PF-19m: who filed an email to its record: a matching rule (thread, address) or a staff member (from Unmatched).
+enum MsgFiledBy {
+  RULE
+  STAFF
+}
+
+/// PF-19m: an Unmatched entry's state (AG-10-12): open until a person links it to a record or dismisses it.
+enum MsgUnmatchedState {
+  OPEN
+  LINKED
+  DISMISSED
+}
+
+/// PF-19m: a connected mailbox (AG-10-4, -62, -68). owner_staff_id empty: a firm mailbox (info@), run by Owner or Admin;
+/// set: one person's own. One main address per firm, a firm mailbox (partial unique index). credential is the
+/// SecretBoxPort sealed value (`sb1.v<n>.…`), never a token; a CONNECTED row has one (check), a DISCONNECTED row none.
+model MsgMailbox {
+  id            String             @id @default(uuid()) @db.Uuid
+  firmId        String             @map("firm_id") @db.Uuid
+  ownerStaffId  String?            @map("owner_staff_id") @db.Uuid
+  provider      MsgMailboxProvider
+  address       String
+  isMain        Boolean            @default(false) @map("is_main")
+  status        MsgMailboxStatus   @default(PENDING)
+  credential    String?
+  syncCursor    String?            @map("sync_cursor")
+  lastCheckedAt DateTime?          @map("last_checked_at") @db.Timestamptz
+  /// A code such as `invalid_grant`, never the provider's words.
+  lastErrorCode String?            @map("last_error_code")
+  connectedBy   String             @map("connected_by")
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  firm   MsgFirm        @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+  owner  PlatformStaff? @relation(fields: [firmId, ownerStaffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  emails MsgEmail[]
+
+  @@unique([firmId, id])
+  @@index([firmId, ownerStaffId])
+  @@index([firmId, status])
+  @@map("msg_mailbox")
+}
+
+/// PF-19m: one email a mailbox brought in or sent (AG-10-3, -9). The message itself never changes after insert; only its
+/// filing does (trigger). The body and attachments are FilesPort keys. filed_kind + filed_id name the one record it is
+/// filed to (AG-10-69: one record, never people), both empty while unfiled. Only an unfiled email may be deleted (the
+/// disconnect purge, AG-10-4).
+model MsgEmail {
+  id                 String            @id @default(uuid()) @db.Uuid
+  firmId             String            @map("firm_id") @db.Uuid
+  mailboxId          String            @map("mailbox_id") @db.Uuid
+  direction          MsgEmailDirection
+  providerMessageId  String            @map("provider_message_id")
+  rfcMessageId       String?           @map("rfc_message_id")
+  inReplyTo          String?           @map("in_reply_to")
+  references         String[]          @default([])
+  threadKey          String            @map("thread_key")
+  fromAddress        String            @map("from_address")
+  toAddresses        String[]          @default([]) @map("to_addresses")
+  ccAddresses        String[]          @default([]) @map("cc_addresses")
+  subject            String?
+  sentAt             DateTime          @map("sent_at") @db.Timestamptz
+  bodyFileKey        String?           @map("body_file_key")
+  attachmentFileKeys String[]          @default([]) @map("attachment_file_keys")
+  /// The address it came through when that is not the mailbox's own (a group address, "via info@").
+  viaAddress         String?           @map("via_address")
+  filedKind          String?           @map("filed_kind")
+  filedId            String?           @map("filed_id") @db.Uuid
+  filedBy            MsgFiledBy?       @map("filed_by")
+  filedRule          String?           @map("filed_rule")
+  filedAt            DateTime?         @map("filed_at") @db.Timestamptz
+  /// Set only by the trigger: once filed, an email is never purged, even un-filed (break round 2 n1).
+  wasFiled           Boolean           @default(false) @map("was_filed")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  firm      MsgFirm       @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+  mailbox   MsgMailbox    @relation(fields: [firmId, mailboxId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  unmatched MsgUnmatched?
+
+  @@unique([firmId, id])
+  @@unique([firmId, mailboxId, providerMessageId])
+  @@index([firmId, rfcMessageId])
+  @@index([firmId, threadKey])
+  @@index([firmId, filedKind, filedId, sentAt])
+  @@map("msg_email")
+}
+
+/// PF-19m: an email no rule could file (AG-10-12: never dropped, never attached to a guess), with ranked suggestions
+/// (`[{ "kind": "fo-prospect", "id": "<uuid>" }, …]`). Goes with its email when the purge removes it.
+model MsgUnmatched {
+  id          String            @id @default(uuid()) @db.Uuid
+  firmId      String            @map("firm_id") @db.Uuid
+  emailId     String            @map("email_id") @db.Uuid
+  suggestions Json              @default("[]")
+  state       MsgUnmatchedState @default(OPEN)
+  resolvedBy  String?           @map("resolved_by")
+  resolvedAt  DateTime?         @map("resolved_at") @db.Timestamptz
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  firm  MsgFirm  @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+  email MsgEmail @relation(fields: [firmId, emailId], references: [firmId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([firmId, emailId])
+  @@index([firmId, state, createdAt])
+  @@map("msg_unmatched")
+}
+
+/// PF-19m: an address a staff member linked to a record from Unmatched (AG-10-12 "Add this address to [record]?"), so the
+/// next email from it files itself. Addresses in lower case (check); the email domain is never used.
+model MsgAddressLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  firmId     String   @map("firm_id") @db.Uuid
+  address    String
+  recordKind String   @map("record_kind")
+  recordId   String   @map("record_id") @db.Uuid
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  firm MsgFirm @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, address, recordKind, recordId])
+  @@map("msg_address_link")
 }

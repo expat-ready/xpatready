@@ -439,10 +439,10 @@ try {
 
   // ------------------------------------------------------------------------- function names (rows rev 15.2, #1742)
   // This area's database functions carry its prefix (fo_sales_) or say their table; another fo_ name is FO-1b's. Other front-office
-  // areas' functions carry their own prefix (rows rev 15.2: fo_booking_, fo_compliance_, fo_signing_, fo_retainer_) and are theirs to check.
+  // areas' functions carry their own prefix (rows rev 15.2: fo_booking_, fo_compliance_, fo_signing_, fo_retainer_; FO-9b's fo_dup_; FO-3v's fo_video_) and are theirs to check.
   const FO1B_FUNCTIONS = ["fo_availability_zone", "fo_booking_token_write", "fo_booking_void_tokens", "fo_booking_write", "fo_consultation_type_hosts", "fo_distinct_modes", "fo_distinct_uuids", "fo_firm_fixed", "fo_zone_ok"];
   const FO1A_TABLE_NAMED = ["fo_company_contact_still_linked", "fo_lead_number", "fo_lead_stays_engaged", "fo_prospect_contact_linked", "fo_prospect_lead_engaged", "fo_prospect_number", "fo_prospect_rules", "fo_reason_fixed", "fo_stage_fixed", "fo_stage_move_matches"];
-  const strayNames = (d: string) => sql(d, `select coalesce(string_agg(proname, ',' order by proname), '') from pg_proc where pronamespace = 'public'::regnamespace and proname like 'fo\\_%' and proname not like 'fo\\_sales\\_%' and proname !~ '^fo_(booking|compliance|signing|retainer)_'
+  const strayNames = (d: string) => sql(d, `select coalesce(string_agg(proname, ',' order by proname), '') from pg_proc where pronamespace = 'public'::regnamespace and proname like 'fo\\_%' and proname not like 'fo\\_sales\\_%' and proname !~ '^fo_(booking|compliance|signing|retainer|dup|video)_'
     and proname <> all(array[${[...FO1B_FUNCTIONS, ...FO1A_TABLE_NAMED].map((n) => `'${n}'`).join(",")}])`);
   ok("FO-1a pass: every fo_ function is this area's (fo_sales_ or named for its table) or FO-1b's; no old generic name is left", strayNames(DEMO) === "", strayNames(DEMO));
   sql(DEMO, `create function fo_next_number() returns int language sql as 'select 1'`);

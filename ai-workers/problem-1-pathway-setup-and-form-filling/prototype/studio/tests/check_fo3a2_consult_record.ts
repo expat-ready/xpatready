@@ -89,7 +89,8 @@ try {
   const B1 = await person(B.id, "b-owner", "OWNER");
   await copyFirmHoursTo(db, A.id, [P.OWNER.id, P.BILLING_FINANCE.id]);
   const type = (slug: string, host: string, purpose = "FREE_CONSULT", minutes = 30) =>
-    db.foConsultationType.create({ data: { firmId: A.id, slug, name: `Sample consultation ${slug}`, purpose: purpose as never, modes: ["VIDEO"], hostStaffIds: [host], minutes } });
+    // Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+    db.foConsultationType.create({ data: { requireAgreement: false, firmId: A.id, slug, name: `Sample consultation ${slug}`, purpose: purpose as never, modes: ["VIDEO"], hostStaffIds: [host], minutes } });
   const [TO, TB, TC] = [await type("owner", P.OWNER.id, "FREE_CONSULT", 45), await type("billing", P.BILLING_FINANCE.id), await type("case", P.OWNER.id, "CASE_REVIEW")];
   const lead = arrival.addPerson(A.id, { givenNames: "Lee", familyName: "Sample", email: "lee@client.example" });
   const pros = arrival.addPerson(A.id, { givenNames: "Pat", familyName: "Sample", email: "pat@client.example" });
@@ -148,9 +149,9 @@ try {
   const silly = [await go("PUT", rec(bLead.id), P.OWNER, { quotedFeeMinor: -1, quotedFeeCurrency: "CAD" }), await go("PUT", rec(bLead.id), P.OWNER, { quotedFeeMinor: 1e12, quotedFeeCurrency: "CAD" }),
     await go("PUT", rec(bLead.id), P.OWNER, { timeSpentMinutes: 0 }), await go("PUT", rec(bLead.id), P.OWNER, { recommended: Array.from({ length: 21 }, (_, i) => `Item ${i}`) }), await go("PUT", rec(bLead.id), P.OWNER, { extra: true })];
   const kept = await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bLead.id } });
-  ok(`FO-3a2 DW2 fail: a fee with no currency → 400 "${WORDS.currency}" on quotedFeeCurrency; EUR, -1, 1e12, 0 minutes, 21 items, an unknown field → 400; the saved record is unchanged`,
-    noCur.status === 400 && noCur.body.detail === WORDS.currency && noCur.body.issues?.[0]?.startsWith("quotedFeeCurrency:") && eur.status === 400 && eur.body.issues?.includes("quotedFeeCurrency: Choose CAD or USD.")
-      && silly.every((x) => x.status === 400) && kept.quotedFeeMinor === 15000 && kept.quotedFeeCurrency === "CAD" && kept.timeSpentMinutes === 35, { noCur, eur, silly: silly.map((x) => x.status), kept });
+  ok(`FO-3a2 DW2 fail: a fee with no currency → 422 "${WORDS.currency}" on quotedFeeCurrency; EUR, -1, 1e12, 0 minutes, 21 items, an unknown field → 422; the saved record is unchanged`,
+    noCur.status === 422 && noCur.body.detail === WORDS.currency && noCur.body.issues?.[0]?.startsWith("quotedFeeCurrency:") && eur.status === 422 && eur.body.issues?.includes("quotedFeeCurrency: Choose CAD or USD.")
+      && silly.every((x) => x.status === 422) && kept.quotedFeeMinor === 15000 && kept.quotedFeeCurrency === "CAD" && kept.timeSpentMinutes === 35, { noCur, eur, silly: silly.map((x) => x.status), kept });
   const curOnly = await go("PUT", rec(bPros.id), P.OWNER, { quotedFeeCurrency: "USD" });
   ok("FO-3a2 DW2: a pre-filled currency with no amount is dropped, never stored alone (rule 6's pre-fill)", curOnly.status === 200 && curOnly.body.quotedFee === null && (await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bPros.id } })).quotedFeeCurrency === null, curOnly);
   const dbRefusals: string[] = [];
@@ -242,8 +243,8 @@ try {
     plain: await (async () => { const r = await fetch(`${base}/api/front-office/bookings/${bText.id}/consult-record`, { method: "PUT", headers: { authorization: `Bearer ${P.OWNER.token}`, "content-type": "text/plain" }, body: "hello" }); return { status: r.status }; })(),
     array: await go("PUT", rec(bText.id), P.OWNER, [] as unknown as object) };
   const textKept = await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bText.id } });
-  ok("FO-3a2 text fail: a NUL in notes or an item → 400; 10,001 characters → 400; an item of only a zero-width space → 400; a text/plain body → 415; an array → 400; the record is unchanged",
-    textBad.nul.status === 400 && textBad.nulItem.status === 400 && textBad.tooLong.status === 400 && textBad.invisible.status === 400 && textBad.plain.status === 415 && textBad.array.status === 400
+  ok("FO-3a2 text fail: a NUL in notes or an item → 422; 10,001 characters → 422; an item of only a zero-width space → 422; a text/plain body → 415; an array → 422; the record is unchanged",
+    textBad.nul.status === 422 && textBad.nulItem.status === 422 && textBad.tooLong.status === 422 && textBad.invisible.status === 422 && textBad.plain.status === 415 && textBad.array.status === 422
       && textKept.version === 1 && textKept.recommended.length === 5, Object.fromEntries(Object.entries(textBad).map(([k, v]) => [k, v.status])));
   const blank = await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: "   " });
   const { ConsultRecordRead } = await import("../ports/consult-record.ts");

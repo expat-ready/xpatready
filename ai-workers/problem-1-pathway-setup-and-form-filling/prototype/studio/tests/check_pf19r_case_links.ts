@@ -6,6 +6,7 @@
 // The check releases the Visitor visa itself (setup_visitor_visa.ts) when its copy has none.
 //   zsh studio/tools/isolated.sh runtime_pf19r 4430 start && tsx studio/tests/check_pf19r_case_links.ts 4430 xr_studio_runtime_pf19r
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -129,9 +130,13 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   // ------------------------------------------------------------------ DW10 a case whose firm has no platform firm
   const k4 = await newCase("dw10"), E = `partner.e.${run}@example.com`;
   // CS-K1: a case's client is of the case's firm key (the foreign key to case_client), so the made-up key gets its own client row first.
-  sql(`with c as (insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, created_by)
+  // CS-W1 part 2 (20261126160000): a case's firm is required and never changes (case_firm_fixed, ALWAYS), so the app can no
+  // longer make this state; the fixture builds it as the table owner (replica mode, the guard disabled for this one
+  // statement, firm_id kept: it is NOT NULL), so the API's own refusal below is still what is tested (review M1).
+  const ownerSetup = (q: string) => sql(`begin; set local session_replication_role = replica; alter table runtime_case disable trigger case_firm_fixed; ${q}; alter table runtime_case enable always trigger case_firm_fixed; commit;`);
+  ownerSetup(`with c as (insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, created_by)
          select gen_random_uuid(), workspace_id, 'no-platform-firm-${run}', case_client_next_number(workspace_id, 'no-platform-firm-${run}'), 'Sample client (DW10)', 'PERSON', 'seed:pf19r' from runtime_case where id = '${k4.id}' returning id)
-       update runtime_case set firm_id = null, firm_key = 'no-platform-firm-${run}', client_id = (select id from c) where id = '${k4.id}'`);
+       update runtime_case set firm_key = 'no-platform-firm-${run}', client_id = (select id from c) where id = '${k4.id}'`);
   const noFirm = await call("POST", `/runtime/cases/${k4.id}/people/${k4.S}/link`, { address: E }, "user-P");
   ok("DW10 fail: a case firm key with no platform firm → refused in words (409 FIRM_CANNOT_SEND), nothing written: no link, no outbox row, no demo copy",
     noFirm.status === 409 && noFirm.body?.code === "FIRM_CANNOT_SEND" && /cannot send email yet/.test(noFirm.body?.detail ?? "") && sql(`select count(*) from person_link where subject_id = '${k4.S}'`) === "0" && outboxTo(E).length === 0 && (await inbox(E)).length === 0, noFirm.body);
@@ -139,8 +144,9 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   // Break B3: a case whose firm_id names another firm than its key's (sample-solo on a sample-firm case) sends nothing.
   const firmB = sql(`select id from platform_firm where key = 'sample-solo'`), k6 = await newCase("dw10b"), H = `partner.h.${run}@example.com`;
   // CS-K1: the case and its client carry the same firm id (the foreign key on client_id, firm_id, RESTRICT both ways), so the
-  // fixture crosses both: the case's firm id to null (the key is then not checked), the client's, then the case's.
-  sql(`update runtime_case set firm_id = null where id = '${k6.id}'; update case_client set firm_id = '${firmB}' where id = (select client_id from runtime_case where id = '${k6.id}'); update runtime_case set firm_id = '${firmB}' where id = '${k6.id}'`);
+  // fixture crosses both. CS-W1 part 2: the app can no longer cross a case's firm (case_firm_fixed), so the fixture does it
+  // as the owner (as DW10's), keeping the API's own refusal under test (review M1).
+  ownerSetup(`update case_client set firm_id = '${firmB}' where id = (select client_id from runtime_case where id = '${k6.id}'); update runtime_case set firm_id = '${firmB}' where id = '${k6.id}'`);
   const crossed = await call("POST", `/runtime/cases/${k6.id}/people/${k6.S}/link`, { address: H }, "user-P");
   ok("DW10 fail (break B3): a case whose firm_id names another firm than its firm key's is refused; nothing is sent as the other firm",
     crossed.status === 409 && crossed.body?.code === "FIRM_CANNOT_SEND" && outboxTo(H).length === 0 && sql(`select count(*) from msg_outbox where firm_id = '${firmB}' and address = '${H}'`) === "0", crossed.body);
@@ -178,9 +184,13 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   try {
     for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(scratch), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
     const { seedSampleOnStart } = await import("../api/src/platform/identity/sample-seed.ts");
-    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" });
+    // PF-24w: the seed reads PF-24's loader, so a production configuration is a complete one (every value made by this run,
+    // as check_pf4_identity.ts's PROD); an incomplete one would be refused for its missing settings, not by P-710's rule.
+    const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
+    const PROD = { PLATFORM_ENVIRONMENT: "production", DATABASE_URL: urlOf(scratch), PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${hex(9)}`, PLATFORM_COGNITO_CLIENT_ID: hex(26), PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", hex(32)].join("_"), PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", hex(32)].join("_"), PLATFORM_SES_REGION: "ca-central-1", PLATFORM_BOLDSIGN_API_KEY: hex(40), PLATFORM_ZOOM_CLIENT_ID: hex(22), PLATFORM_ZOOM_CLIENT_SECRET: hex(32), PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: hex(22), PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" };
+    await seedSampleOnStart({ ...PROD, PLATFORM_SAMPLE_SEED: "on" });
     ok("P-710 fail: a production configuration, even with PLATFORM_SAMPLE_SEED=on, leaves no Sample firm", sql(`select count(*) from platform_firm`, scratch) === "0");
-    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on" });   // the seed takes its database from this env (never the demo)
+    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "local" });   // the seed takes its database from this env (never the demo)
     ok("P-710 pass: the same seed outside production makes the Sample firms (the test copy's setting)", sql(`select count(*) from platform_firm where key in ('sample-firm', 'sample-solo')`, scratch) === "2");
   } finally { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", scratch]); } catch { /* left */ } }
 

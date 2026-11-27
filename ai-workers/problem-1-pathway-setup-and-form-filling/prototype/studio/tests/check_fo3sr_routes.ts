@@ -42,6 +42,7 @@ execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = URL;
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_POOL_MFA_REQUIRED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { Db } = await import("../api/src/core.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
@@ -83,7 +84,8 @@ try {
   for (const r of ROLES) P[r] = await person(A.id, r.toLowerCase(), r);
   const B1 = await person(B.id, "b-owner", "OWNER");
   await copyFirmHoursTo(db, A.id, [P.OWNER.id, P.BILLING_FINANCE.id]);
-  const type = (slug: string, host: string) => db.foConsultationType.create({ data: { firmId: A.id, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: [host], minutes: 30 } });
+  // Types that need no consultation agreement: this check is about attendance, not the agreement (QA-772: gate.ts holds a type that needs one and has none).
+  const type = (slug: string, host: string) => db.foConsultationType.create({ data: { requireAgreement: false, firmId: A.id, slug, name: `Free consultation ${slug}`, modes: ["VIDEO", "PHONE"], hostStaffIds: [host], minutes: 30 } });
   const [TO, TB] = [await type("owner", P.OWNER.id), await type("billing", P.BILLING_FINANCE.id)];
   const pid = arrival.addPerson(A.id, { givenNames: "Lee", familyName: "Sample", email: "lee@client.example" });
   const body = (typeId: string, when: string) => ({ typeId, personId: pid, mode: "VIDEO", startsAt: iso(when), timeZone: TZ });
@@ -183,7 +185,7 @@ try {
   const onCancelledLate = await go("POST", `/${c.OWNER}/attendance`, P.OWNER, { outcome: "COMPLETED" });
   ok("FO-3sr DW5 fail: on a cancelled booking → 409 (its not-active answer once it has started)", onCancelled.status === 409 && onCancelledLate.status === 409 && /not-active/.test(JSON.stringify(onCancelledLate.body)) && await statusOf(c.OWNER) === "CANCELLED", [onCancelled, onCancelledLate]);
   const badOutcome = await go("POST", `/${oMon.id}/attendance`, P.OWNER, { outcome: "MAYBE" });
-  ok("FO-3sr DW5 fail: an outcome that is not COMPLETED or NO_SHOW → 400", badOutcome.status === 400 && await statusOf(oMon.id) === "SCHEDULED", badOutcome);
+  ok("FO-3sr DW5 fail: an outcome that is not COMPLETED or NO_SHOW → 422", badOutcome.status === 422 && await statusOf(oMon.id) === "SCHEDULED", badOutcome);
 
   // ---------------------------------------------------------------------------------------------- W1: the journey
   const w1 = await make(TO.id, "2026-10-28 14:00", P.CASE_OFFICER), w2 = await make(TO.id, "2026-10-29 14:00", P.CASE_OFFICER);

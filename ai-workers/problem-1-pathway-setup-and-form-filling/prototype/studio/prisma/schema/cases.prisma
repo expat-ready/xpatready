@@ -31,7 +31,7 @@ model Case {
   /// CS-W1 (contract §8 step 1, P-575, P-588 (4)): the platform firm (platform_firm.id) of firm_key, filled by the database
   /// (trigger case_firm_from_key; the default reads the session's firm). Nullable until CS-W1 part 2; no Prisma relation
   /// (platform.prisma is Lead B's file): the trigger refuses an id that is not the key's platform firm.
-  firmId         String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
+  firmId         String   @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   /// CS-C1a (AG-7-34, AG-7-50, AG-7-13): status moves OPEN → CLOSED → OPEN only (a check in the migration). A closed case
   /// has its closing fields and an open one none: a reopen clears them, and its audit line keeps the old values.
   closedAt       DateTime? @map("closed_at") @db.Timestamptz
@@ -78,6 +78,7 @@ model Case {
   reviewRoundForms  ReviewRoundForm[]   // C8.3
   reviewChecks      ReviewCheck[]       // C8.3
   decisions         CaseDecision[]      // CS-C1a
+  milestones        CaseMilestone[]     // CS-DL3 part 1
   closedFromStage   CaseStage?          @relation("CaseClosedFromStage", fields: [closedFromStageId], references: [id], onDelete: NoAction)
   /// CS-K1: firm-matched by the key (always) and by the platform firm id (once both are filled: CS-W1 part 1 leaves it null).
   client            CaseClient          @relation("CaseClient", fields: [clientId, workspaceId, firmKey], references: [id, workspaceId, firmKey], onDelete: Restrict, onUpdate: Restrict)
@@ -85,9 +86,18 @@ model Case {
 
   /// C6.11 break M2, M3: a reference and an idempotency key are unique within a firm, so one firm neither collides with
   /// nor learns of another firm's cases.
-  @@unique([workspaceId, firmKey, idempotencyKey])
-  @@unique([workspaceId, firmKey, reference])
-  @@unique([workspaceId, firmKey, caseNumber])
+  /// CS-W2 (contract §8 step 2a): the case side's children point at (id, firm_id) so a child cannot name another firm's case.
+  submissionGroupsFirm    SubmissionGroup[]    @relation("SubmissionGroupCaseFirm")
+  filingsFirm             Filing[]             @relation("FilingCaseFirm")
+  filingItemsFirm         FilingItem[]         @relation("FilingItemCaseFirm")
+  assessmentsFirm         Assessment[]         @relation("AssessmentCaseFirm")
+  filingChangesFirm       FilingChange[]       @relation("FilingChangeCaseFirm")
+  filingFormAdditionsFirm FilingFormAddition[] @relation("FilingFormAdditionCaseFirm")
+
+  @@unique([id, firmId])
+  @@unique([workspaceId, firmId, idempotencyKey])
+  @@unique([workspaceId, firmId, reference])
+  @@unique([workspaceId, firmId, caseNumber])
   @@index([workspaceId, createdAt])
   @@index([firmId, createdAt])
   @@index([clientId])
@@ -114,6 +124,9 @@ model CaseClient {
   /// The front office's fo_person or fo_company (at most one set, a check); no foreign key (contract §1 rule 4).
   foPersonId   String?  @map("fo_person_id") @db.Uuid
   foCompanyId  String?  @map("fo_company_id") @db.Uuid
+  /// CS-K1 part 2: a client the database made or moved with no link (a fixture case, CS-W1's firm fill); the one-time job
+  /// links it and clears this. Otherwise a client of a platform firm is linked by its kind (a NOT VALID check, then validated).
+  foLinkPending Boolean @default(false) @map("fo_link_pending")
   /// The won prospect (FO-8): unique within the firm when present, so prospect.won makes one client however often it comes.
   prospectId   String?  @map("prospect_id") @db.Uuid
   /// The staff member who owns the file: null until FO-8 sets it from the won prospect's owner.
@@ -151,11 +164,11 @@ model FirmCaseCounter {
   workspaceId String @map("workspace_id") @db.Uuid
   firmKey     String @map("firm_key")
   /// CS-W1: the platform firm of firm_key (trigger case_firm_from_key); nullable until part 2.
-  firmId      String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
+  firmId      String  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   year        Int
   nextValue   Int    @map("next_value")
 
-  @@id([workspaceId, firmKey, year])
+  @@id([workspaceId, firmId, year])
   @@index([firmId, year])
   @@map("firm_case_counter")
 }
@@ -241,7 +254,7 @@ model CaseStage {
   caseId               String    @map("case_id") @db.Uuid
   firmKey              String    @map("firm_key")
   /// CS-W1: the case's firm (trigger case_firm_fill from runtime_case; a different one is refused); nullable until part 2.
-  firmId               String?   @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
+  firmId               String    @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   ord                  Int
   stageKey             String    @map("stage_key")
   staffName            String    @map("staff_name")
@@ -428,4 +441,36 @@ model CaseDecision {
   @@index([firmId, caseId])
   @@index([filingId])
   @@map("case_decision")
+}
+
+/// CS-DL3 part 1 (R1.74, QA-591; Doc 3 line 3337): a government step on a case, its due date typed from IRCC's letter
+/// (never computed, P-170). Insert-only apart from cancelling (AG-7-96 r7); the triggers refuse any other change.
+model CaseMilestone {
+  id           String    @id @default(uuid()) @db.Uuid
+  /// The case's platform firm; checked by the insert trigger.
+  firmId       String    @map("firm_id") @db.Uuid
+  caseId       String    @map("case_id") @db.Uuid
+  /// One of MILESTONE_KEYS (api/src/case-deadlines/milestones.ts), a Sample list until the configurator defines them.
+  milestoneKey String    @map("milestone_key")
+  occurredOn   DateTime  @map("occurred_on") @db.Date
+  /// Null when the letter gives none; never before occurred_on.
+  dueOn        DateTime? @map("due_on") @db.Date
+  reference    String?
+  note         String?
+  /// A typed actor ("staff:<platform_staff.id>").
+  recordedBy   String    @map("recorded_by")
+  recordedAt   DateTime  @default(now()) @map("recorded_at") @db.Timestamptz
+  cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy  String?   @map("cancelled_by")
+  cancelReason String?   @map("cancel_reason")
+  /// STANDARDS §4: the record request's key and its sha256; the same key again returns this row.
+  idempotencyKey         String? @map("idempotency_key")
+  idempotencyFingerprint String? @map("idempotency_fingerprint") @db.VarChar(64)
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, idempotencyKey])
+  @@index([firmId, caseId])
+  @@index([dueOn])
+  @@map("case_milestone")
 }

@@ -1,12 +1,12 @@
 #!/bin/bash
 # Push guard (P-82): ported from the P-81 filtered-mirror push check. Refuses a range of commits that adds
-# an excluded path, a PDF, a secret or a personal name. Called by .githooks/pre-push for every pushed ref
+# an excluded path, a PDF, a secret, a personal name or a bulk delete without its reason (ENF-803). Called by .githooks/pre-push for every pushed ref
 # and by the CI guard job for each pull request.
 #   push-guard.sh <old>..<new> [...]   check the given commit ranges
 #   push-guard.sh --unpushed <sha> [remote]   check every commit on <sha> not on <remote>'s branches (default origin)
 # Exit 1 and print every violation; exit 0 when the range is clean.
 set -u
-HERE="$(git rev-parse --show-toplevel)"; cd "$HERE" || exit 2
+GDIR="$(cd "$(dirname "$0")" && pwd)"; HERE="$(git rev-parse --show-toplevel)"; cd "$HERE" || exit 2
 
 # Never on GitHub (P-81): sources/, code/, archive/, local tools, databases/dumps, archives, env/secret files, every PDF
 # except the manifest-checksummed official blanks under official-sources/ (P-83, enforced below).
@@ -14,6 +14,13 @@ HERE="$(git rev-parse --show-toplevel)"; cd "$HERE" || exit 2
 PATH_RE='(^|/)(sources|code|archive|\.tools)/|^(sources|code|archive|\.tools)$|(^|/)\.tools$|\.(pdf|zip|tar\.gz|dump|sql\.gz)$|(^|/)\.env(\.|$)'
 # Secrets: private keys and the well-known token shapes, plus high-entropy key=value assignments.
 SECRET_RE='-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22}|sk-[A-Za-z0-9_-]{20}|xox[baprs]-[A-Za-z0-9-]{10}|AIza[0-9A-Za-z_-]{35}|(password|passwd|api[_-]?key|secret|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9._~+/=-]{16,}'
+# S1 (OS-PM 3, 25 Nov): a value that is wholly an UPPER_SNAKE constant name (with at least one underscore, so an
+# all-capitals key such as an AWS key ID is never one), bare and followed by , } ) or the end of
+# the line, is a Nest provider's injection token, not a secret: it is replaced by "=const" before the secrets scan, so
+# only that assignment is dropped and a real value elsewhere on the line still refuses. Key letters spelled both cases
+# (the scan is case-insensitive; the value test must not be). Test: check-push-guard-fixtures.sh (S1 rows).
+CONST_KEY='([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])'
+CONST_SED="s/${CONST_KEY}[[:space:]]*[:=][[:space:]]*[A-Z][A-Z0-9]*_[A-Z0-9_]*([[:space:]]*([,})]|\$))/\\1=const\\2/g"
 # Personal names (AGENTS.md rule 5: roles, not names). Edit this list when a name must be added.
 NAMES_RE='\b(Ranjan|Sanjay|Tanu|Vishrutha|Ayush|Vivek|Ishaan|Tanvi)\b'
 # L1 (B170a, accepted by Lead 16, 11 Nov): the XFA engine's four made-up test PDFs (no IRCC form: a "Sample Services
@@ -38,6 +45,8 @@ check_range() {
   # Intentionally unquoted: $range carries several rev-list args (e.g. "HEAD --not --remotes").
   commits=$(git rev-list $range 2>/dev/null) || { echo "GUARD: unresolvable range '$range' — refusing"; bad=1; return; }
   [ -n "$commits" ] || return 0
+  # ENF-803 (P-803): a commit deleting more than 50 files needs "BULK-DELETE-OK: <reason>" (22 Nov: 54e27fc66, 10,753 files).
+  bash "$GDIR/bulk-delete-guard.sh" range $range || bad=1
   # Paths added, modified, renamed-to or copied-into by the range (deletions are safe, so D is excluded).
   # P-83: a .pdf is admitted ONLY under official-sources/ and only when the blob's SHA-256 at its commit
   # equals a "sha256" value in an official-sources/*/manifest.json at the range tip; every other PDF refuses.
@@ -74,7 +83,7 @@ check_range() {
   # Added lines only: secrets and personal names.
   # Held in variables, not files, so a failed write can never read as "nothing found" (#1174 review m4).
   local hits
-  hits=$(git log -p --format='' $range 2>/dev/null | grep -nE '^\+' | grep -ivE '^\+\+\+' | grep -inE -e "$SECRET_RE" | head -5)
+  hits=$(git log -p --format='' $range 2>/dev/null | grep -nE '^\+' | grep -ivE '^\+\+\+' | LC_ALL=C sed -E "$CONST_SED" | grep -inE -e "$SECRET_RE" | head -5)
   [ -n "$hits" ] && { printf '%s\n' "$hits" | while read -r m; do echo "GUARD: possible secret in $range: $m"; done; bad=1; }
   hits=$(git log -p --format='' $range -- . ":(exclude)$GUARD_REL" 2>/dev/null | grep -nE '^\+' | grep -inE -e "$NAMES_RE" | head -5)
   [ -n "$hits" ] && { printf '%s\n' "$hits" | while read -r m; do echo "GUARD: personal name in $range: $m"; done; bad=1; }

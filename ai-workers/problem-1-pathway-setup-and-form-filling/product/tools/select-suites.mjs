@@ -31,7 +31,8 @@
 // (I1, 3 Nov) the .md files the app or a suite reads as data: the AI prompts (prototype/**/prompts/*.md), api/src/**/*.md
 // (the features guide) and test fixtures, which go through the graph; and official-sources/ (the app reads its
 // manifests and PDFs at start): all. Of product/tools/ only the files that decide how the suites run choose everything
-// (run-suites.sh, this file, cloud-setup.sh, lane.sh, change-kind.sh, ci-memory.mjs); of .github/ only workflows/ci.yml.
+// (run-suites.sh, this file, cloud-setup.sh, lane.sh, change-kind.sh, ci-memory.mjs, pr-suites-plan.sh); of .github/
+// only workflows/ci.yml and workflows/pr-suites.yml (E2: a change to how a PR's suites run runs them, report only).
 // --direct (I1, a PR check that leaves the full set to the merge queue, P-291 (3)): never ALL and never "every browser
 // suite"; a file that would choose everything chooses the suites that import it (through test helpers) or name it.
 // --why: each chosen suite's reason names the chain of files by which it uses the change; SELECT_DEBUG=1 prints every
@@ -44,6 +45,13 @@
 // never through main.ts, a suite or a script that runs every suite. A deleted file is seeded by the files whose text
 // still names it (its graph edges are gone with it). gate-b.mjs reads the packs, and the set-up scripts their run lines
 // name, from this list.
+// E3 (P-772, B203 step 4): SELECT_SUITES_GRAPH=<graph.json> (test-graph.py's coverage graph, #2370) narrows an app file
+// (api/src except main.ts, engine/, contracts/, ports/) the graph saw run: it picks the suites that ran it (plus those
+// that name it, the api/src scanners, the unmapped suites, the suites the graph does not list and the smoke set) instead
+// of the path rules above; a file in the graph's boot set also picks every server suite. The graph names a suite
+// without its extension (test-graph.py, run-suites.sh cov()); names that match no suite are dropped.
+// A file the graph never saw, a web/src file (browser code is outside Node's coverage) and anything that would run
+// everything keep the rules above. A graph that is unreadable, not schema 1, without suites, or older than SELECT_GRAPH_MAX_DAYS (default 14) is ignored, said on stderr. The merge queue still runs every suite (P-651).
 // Reads files only: no server, no database, no model call (US$0). Checks: product/tools/check-select-suites.sh.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, normalize, relative } from "node:path";
@@ -53,12 +61,16 @@ const ROOT = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).tri
 const P = "ai-workers/problem-1-pathway-setup-and-form-filling", PR = `${P}/prototype`, S = `${PR}/studio`;
 const SKIP = new Set(["check_catalogue_scale.cjs"]);   // as in run-suites.sh: not a regression suite
 const SMOKE = ["check_engine.ts", "check_case_engine.ts", "check_w1_structure.ts", "check_screen01_api.ts", "check_w1_start_setup.ts", "check_dv_backbone_browser.cjs"];
+// Lead 12, founder 24 Nov 00:4x IST: two pure guards (no server, no database; measured ~12 s and ~2 s) that read engine/,
+// api/src/ and p2/ as text always run for a change there, --direct included: 2 of 2 product reds that night were these.
+const GUARDS = ["check_b164_no_engine_keys.ts", "check_irm_editions.ts"];
+const guardSrc = (f) => /\.(ts|tsx|mjs|cjs|js)$/.test(f) && [`${S}/api/src/`, `${S}/engine/`, `${PR}/p2/`].some((d) => f.startsWith(d));
 const CONTRACT_CHECK = "check_contract_seams.ts", SCHEMA_CHECK = "check_prisma_schema.ts";   // B121, P-376 (7)
 const RUNTIME_GROUP = ["check_runtime_r1c.cjs", "check_runtime_r1d.ts", "check_runtime_r1a.ts"];
 const DOCS0 = /\.(md|txt|png|jpe?g|gif|webp|svg|pdf)$/i;
 const DATA_MD = new RegExp(`^${P}/prototype/(.*/)?prompts/|^${P}/prototype/studio/(api/src|tests/fixtures)/`);
 const DOCS = { test: (f) => DOCS0.test(f) && !DATA_MD.test(f) && !f.startsWith(`${P}/official-sources/`) || /^ai-workers\/[^/]+\/official-sources\/.*\.md$/i.test(f) };
-const SUITE_TOOLS = /\/product\/tools\/(run-suites\.sh|select-suites\.mjs|cloud-setup\.sh|lane\.sh|change-kind\.sh|ci-memory\.mjs)$/;
+const SUITE_TOOLS = /\/product\/tools\/(run-suites\.sh|select-suites\.mjs|cloud-setup\.sh|lane\.sh|change-kind\.sh|ci-memory\.mjs|pr-suites-plan\.sh)$/;
 const DIRECT = process.argv.includes("--direct"), WHY = process.argv.includes("--why");
 
 const texts = new Map();
@@ -84,7 +96,7 @@ const hit = (src, key, t) => {
 // The suites run-suites.sh runs, by the name its summary uses (file names are unique across the three folders).
 const suites = new Map();   // name -> path
 for (const f of [...ls(`${S}/tests`, /^check_.*\.(ts|cjs)$/), ...ls(`${S}/tests/runtime`, /^check_.*\.(ts|cjs)$/),
-  ...["check_p2_guard.ts", "check_p2_launch.ts"].map((n) => `${PR}/tests/${n}`).filter((f) => existsSync(join(ROOT, f)))]) {
+  ...["check_p2_guard.ts", "check_p2_launch.ts", "check_p2_shared_ledger.ts"].map((n) => `${PR}/tests/${n}`).filter((f) => existsSync(join(ROOT, f)))]) {
   if (!SKIP.has(basename(f))) suites.set(basename(f), f);
 }
 const text = new Map([...suites].map(([n, f]) => [n, read(f)]));
@@ -379,7 +391,7 @@ const webMemo = (w) => webMemos.get(w) ?? webMemos.set(w, existsSync(join(ROOT, 
 // ---- one changed file
 function pick(f) {
   if (DOCS.test(f)) return {};
-  if (f === ".github/workflows/ci.yml" || f === ".nvmrc" || /(^|\/)package(-lock)?\.json$/.test(f)) return { all: `${f}: shared` };
+  if (f === ".github/workflows/ci.yml" || f === ".github/workflows/pr-suites.yml" || f === ".nvmrc" || /(^|\/)package(-lock)?\.json$/.test(f)) return { all: `${f}: shared` };
   if (/^\.github\//.test(f)) return {};   // other workflows (nightly, demo) do not change a pull request's check
   if (f.startsWith(`${P}/product/tools/`)) return SUITE_TOOLS.test(f) ? { all: `${f.slice(P.length + 1)}: decides how the suites run` } : {};
   if (f.startsWith(`${P}/official-sources/`)) return { all: `${f.slice(P.length + 1)}: official sources (the app reads them)` };
@@ -478,7 +490,34 @@ if (process.argv.includes("--packs")) {   // D2: the acceptance and test files t
 }
 const why = new Map(), alls = [], browserWhy = [];
 const add = (n, r) => { if (!why.has(n)) why.set(n, []); if (!why.get(n).includes(r)) why.get(n).push(r); };
+// E3: the coverage graph (above). null when unset or ignored.
+const COV = (() => {
+  const gp = process.env.SELECT_SUITES_GRAPH; if (!gp) return null;
+  const no = (why) => { process.stderr.write(`select-suites: coverage graph ignored (${why}); path rules only\n`); return null; };
+  let g; try { g = JSON.parse(readFileSync(gp, "utf8")); } catch (e) { return no(`unreadable: ${String(e.message).slice(0, 80)}`); }
+  if (!g || g.schema !== 1 || !g.suites || !g.files || typeof g.suites !== "object" || typeof g.files !== "object") return no("not a schema 1 graph");
+  const t = Date.parse(g.generated), max = Number(process.env.SELECT_GRAPH_MAX_DAYS) || 14;
+  if (!(t > 0)) return no("no generated time");
+  const age = (Date.now() - t) / 864e5; if (age > max) return no(`${Math.floor(age)} days old, over ${max}`);
+  // test-graph.py names a suite by its coverage folder, the file name without .ts/.cjs (run-suites.sh cov()): map back.
+  const byStem = new Map([...suites.keys()].map((n) => [n.replace(/\.(ts|cjs|mjs|js)$/, ""), n]));
+  const real = (xs) => (Array.isArray(xs) ? xs : []).map((x) => suites.has(x) ? x : byStem.get(String(x))).filter(Boolean);
+  const seen = new Set(real(Object.keys(g.suites)));
+  return { g, real, boot: new Set(Object.keys(g.boot || {})), server: real(Object.keys(g.suites).filter((n) => g.suites[n]?.server)),
+    unmapped: real(g.unmapped), unseen: [...suites.keys()].filter((n) => !seen.has(n)) };
+})();
+const covApp = (f) => [`${S}/api/src/`, `${S}/engine/`, `${S}/contracts/`, `${S}/ports/`].some((d) => f.startsWith(d)) && f !== MAIN;
+let covUsed = false;
 for (const f of changed) {
+  if (COV && covApp(f) && (COV.g.files[f] || COV.boot.has(f))) {
+    if (COV.boot.has(f)) for (const n of COV.server) add(n, `coverage graph: ${basename(f)} runs at every server start`);
+    for (const n of COV.real(COV.g.files[f]?.suites)) add(n, `coverage graph: runs ${basename(f)}`);
+    // Text readers coverage cannot see: suites that read every file in api/src (as the path rules below).
+    if (f.startsWith(`${S}/api/src/`)) for (const n of apiScanners) add(n, "reads every file in api/src");
+    const name = basename(f), named = new RegExp(`(?<![A-Za-z0-9_.-])${esc(name)}(?![A-Za-z0-9_-])`);
+    for (const [n, t] of text) if (suites.get(n) !== f && named.test(t)) add(n, `names ${name}`);
+    covUsed = true; continue;
+  }
   const p = pick(f);
   if (DIRECT && (p.all || p.browser)) {
     // --direct: what would run everything runs only the suites that import this file (through test helpers) or name it.
@@ -507,6 +546,9 @@ for (const f of changed) {
 }
 if (alls.length) { console.log(`ALL\t${alls[0]}${alls.length > 1 ? ` (+${alls.length - 1} more)` : ""}`); process.exit(0); }
 if (browserWhy.length) for (const n of browser) add(n, `every browser suite: ${browserWhy[0]}${browserWhy.length > 1 ? ` (+${browserWhy.length - 1} more)` : ""}`);
+if (covUsed) for (const n of COV.unmapped) add(n, "coverage graph: unmapped (no data, always runs)");
+if (covUsed) for (const n of COV.unseen) add(n, "coverage graph: not in the graph (newer than it), always runs");
+{ const g = changed.find(guardSrc); if (g) for (const n of GUARDS) if (suites.has(n)) add(n, `pure guard: always for a change to api/src, engine or p2 (${basename(g)})`); }
 if (RUNTIME_GROUP.some((n) => why.has(n))) for (const n of RUNTIME_GROUP) if (!why.has(n) && suites.has(n)) add(n, "runtime R1 suites run together (one copy, in order)");
 for (const n of SMOKE) if (suites.has(n)) add(n, "smoke");
 for (const n of suites.keys()) if (why.has(n)) {

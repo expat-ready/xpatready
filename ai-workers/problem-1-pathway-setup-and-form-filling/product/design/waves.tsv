@@ -3,16 +3,16 @@ R1.1	4	J0
 R1.2	0	J0
 R1.3	3	J0
 R1.4	1	J0
-R1.5	3	J0
+R1.5	3	J0	allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov)
 R1.6	0	J0
 R1.8	1	J0
 R1.9	0	J0
 R1.10	2	J0
 R1.11	0	J0
 R1.12	0	J0
-R1.13	3	J0
-R1.14	3	J0
-R1.15	3	J0
+R1.13	3	J0	allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov)
+R1.14	3	J0	allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov)
+R1.15	3	J0	allow: P-774 wave 3 exception, J0 nearest-first (Lead 8, 21 Nov)
 R1.16	2	J0
 R1.19	2	J2
 R1.20	3	J2
@@ -100,3 +100,12 @@ R1.109	1	J10
 R1.110	2	J4
 R1.111	4	J9
 R1.112	4	J5
+R1.113	4	J0
+R1.114	4	J0
+R1.115	4	J0
+R1.116	4	J0
+R1.117	4	J0
+R1.118	4	J0
+R1.119	4	J0
+R1.120	4	J0
+R1.121	4	J0

@@ -1,8 +1,9 @@
 // J-37 (map row 37, R1.37 public booking page; no double booking): the join-and-walk row (rows rev 16.11 (b), brief
 // lead-b-briefs/J-rows.md §J-37). It adds no feature: it walks FO-3w's public booking page in two browsers and reads the
 // demo inbox, on an isolated copy of the running app (its own database and port, never :4400), on the real clock.
-//   DW1: booking's mail is the real sending path (PF-19b part 1 did the swap): A's mails are msg_outbox rows SENT by the
-//        local adapter, read back from the running app's demo inbox. Fails on the fake: fakeMail wrote no row.
+//   DW1: booking's mail is the real sending path (PF-19b part 1 did the swap): A's mails are msg_outbox rows SENT, or
+//        DELIVERED once the local Delivery test event lands (#2397, QA-570), by the local adapter, read back from the
+//        running app's demo inbox. Fails on the fake: fakeMail wrote no row.
 //   DW2: booking's arrival is the real one (FO-2 part 3b, #2196): A is an fo_person row, and after the API restarts the
 //        reminder still finds A and mails them. Fails on the fake: fakeArrival kept people in the process's memory, so
 //        after a restart the reminder found no booker and sent nothing (PF-23w's deferred J-9 W4, #1800).
@@ -148,8 +149,11 @@ try {
   // ---------------------------------------------------------------------------------------------- W4, DW1, DW2: the confirmation
   const aMails = await inbox(aEmail, 1);
   ok("J-37 W4: A's confirmation arrives in the demo inbox, for that time", aMails.length === 1 && /is booked/.test(aMails[0].subject) && aMails[0].body.includes(`(${ZONE})`), seen(aMails[0]));
+  // A delivered mail is SENT or DELIVERED: since PF-19b part 3 (#2397) the local adapter's Delivery test event moves the row
+  // SENT -> DELIVERED a moment after it is sent (local.ts, bounces.ts), so either is right; QUEUED, FAILED or BOUNCED never is (QA-570).
+  const delivered = (s: string) => s === "SENT" || s === "DELIVERED";
   const out = await db.msgOutbox.findMany({ where: { firmId: firm.id, address: aEmail }, select: { state: true, providerId: true, idempotencyKey: true } });
-  ok("J-37 DW1: A's confirmation is an outbox row SENT by the local adapter (the in-memory fake wrote none)", out.length === 1 && out[0].state === "SENT" && !!out[0].providerId?.startsWith("local:") && out[0].idempotencyKey === `mail:booking:${booking?.id}:${booking?.sequence}:mail-person`, out);
+  ok("J-37 DW1: A's confirmation is an outbox row SENT or DELIVERED by the local adapter (the in-memory fake wrote none)", out.length === 1 && delivered(out[0].state) && !!out[0].providerId?.startsWith("local:") && out[0].idempotencyKey === `mail:booking:${booking?.id}:${booking?.sequence}:mail-person`, out);
   const person = booking?.personId ? await db.foPerson.findFirst({ where: { firmId: firm.id, id: booking.personId }, select: { email: true, givenNames: true } }) : null;
   ok("J-37 DW2: A is a person in the database (FO-2's arrival; the fake kept people in memory only)", person?.email === aEmail && person?.givenNames === "Ana", person);
   const jobs = await db.$queryRawUnsafe<{ key: string; state: string }[]>(`select data->>'key' as key, state from platform_jobs.job where name = 'booking.reminder' and data->>'key' like $1`, `booking:${booking?.id}:%`);
@@ -167,7 +171,7 @@ try {
   const arrived = reminder?.sent_at ? Date.parse(reminder.sent_at) : 0;
   ok(`J-37 W4b / DW2: after the restart A's 1 h reminder arrives in the demo inbox at its due time (${clockOf(due)}), naming the time`, !!reminder && arrived >= due && arrived < due + 3 * MIN && reminder.body.includes("Hello Ana") && reminder.body.includes(`(${ZONE})`),
     { got: after.map((m) => [m.subject, m.sent_at]), due: new Date(due).toISOString() });
-  const remOut = await db.msgOutbox.count({ where: { firmId: firm.id, address: aEmail, state: "SENT", idempotencyKey: { startsWith: `mail:booking:${booking?.id}:` }, AND: { idempotencyKey: { endsWith: ":reminder-1h" } } } });
+  const remOut = await db.msgOutbox.count({ where: { firmId: firm.id, address: aEmail, state: { in: ["SENT", "DELIVERED"] }, idempotencyKey: { startsWith: `mail:booking:${booking?.id}:` }, AND: { idempotencyKey: { endsWith: ":reminder-1h" } } } });
   ok("J-37 W4b: the reminder ran once (one outbox row)", remOut === 1, remOut);
   // Read after the wait, when any mail for B would long have arrived; the inbox must answer (review m1).
   const bBox = await inboxRead(bEmail);

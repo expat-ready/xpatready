@@ -1,0 +1,17 @@
+PASS  C-R1.13 PF-23m DW1 pass: no log call under api/src puts an error's or a run's text into a line (outside the 4 listed exceptions)
+PASS  C-R1.13 PF-23m DW1 fail (review m1): each of the 7 old lines the first scan missed is flagged now
+PASS  C-R1.13 PF-23m DW1 fail: each planted leaking line is flagged by the scan, and safe lines are not
+PASS  C-R1.13 PF-23m DW1: each listed exception is still where it is named (an exception that moved is not silently kept)
+PASS  C-R1.13 PF-23m DW2 pass: each of the 31 moved sites passes the caught error or ids only to logPort, never a text
+PASS  C-R1.13 PF-23m DW2 fail (review m4): a text-like field is refused even without a template (`{ jobId, why }`, `{ note: why }`), an id field is not
+PASS  C-R1.13 PF-23m DW2 fail: the site check refuses a logPort call that builds a text from the error
+PASS  C-R1.13 PF-23m DW2 pass: a moved site's logPort.error line holds the event, the ids, the class and the code
+PASS  C-R1.13 PF-23m DW2 pass: no captured line holds the seeded name, any word of it, the passport number or the email
+PASS  C-R1.13 PF-23m DW2 fail: the old call (the error's message in a text) leaks the name even after pattern redaction
+PASS  C-R1.13 PF-23m DW2 pass (plain-run-text.ts): the page gets plain words; the log line names the run (review m3) and the length only
+PASS  C-R1.13 PF-23m DW2 pass (review m2): launcherReason gives a code (guard, usage_limit, not_found, other, none), never the words
+PASS  C-R1.13 PF-23m DW2 pass (booking/service.ts): the refused-email and after-commit warnings name the booking and the error's class, never the person
+PASS  C-R1.13 PF-23m DW3 pass: dbRuleOf keeps the constraint's name from PostgreSQL's words and from Prisma's meta
+PASS  C-R1.13 PF-23m DW3 fail: a quoted value, a passport-shaped name or no rule gives nothing (never a value)
+
+15 passed, 0 failed

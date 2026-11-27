@@ -19,6 +19,7 @@ import { Reflector } from "@nestjs/core";
 import { randomUUID } from "node:crypto";
 
 const PORT = Number(process.argv[2] ?? 4473), BASE = `http://localhost:${PORT}`;
+process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (the feature files read the loader at import)
 const { registerFeatures } = await import("../../api/src/features.ts");
 const { controllerRoutes } = await import("../../api/src/platform/identity/guard.ts");
 let pass = 0, fail = 0;

@@ -29,15 +29,20 @@ import type { JobPort, JobRun } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { MessageRefused } from "../../../../ports/messages.ts";
+import { NOTIFICATION_KIND, type NotificationPort } from "../../../../ports/notifications.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
-import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-scope.ts";
+import { enterFirm, firmScope, notInFirm, withFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { sees, visibilityOf, type Visibility } from "../sales/common.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
+import { withTimings, type WithTimings } from "./settings/timings.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
-import { issueToken, liveToken } from "./tokens.ts";
+import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
+import { agreementWarning } from "./consultation-agreement/gate.ts";
+import { linkFor, VIDEO_WORDS } from "./video/service.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -61,6 +66,8 @@ export type BookingPorts = {
   warn?: (msg: string) => void;
   /** PF-18a DW6: the host's office zone (OfficeClockPort, platform's OFFICE_CLOCK in the running app). Absent → the firm's own zone. */
   offices?: OfficeClockPort;
+  /** FO-3v part 1 (AG-4-29 rule 7): the host's one home item when a Video booking has no link (PF-18n's port; absent → none). */
+  notifications?: NotificationPort<Tx>;
 };
 // Reads are limited per IP only: a per-firm read limit let a group of addresses close a firm's page for everyone (break
 // R2-1). The per-firm booking limit counts only bookings actually made, so refused or never-offered forms cannot close it
@@ -82,9 +89,19 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
   new HttpException({ type: `https://expatready.local/problems/${slug}`, title, status, detail, ...extra }, status);
 /** The one answer for an unknown firm, an unknown or inactive type, and a bad, used, voided or expired link (AG-4-17, -21
  *  rule 3; AG-4-36): nothing in it tells which. */
-export const notFound = () => problem(404, "not-found", "Not found", "This booking page or link is not available.");
-const refused = (detail: string, issues: string[] = [], title = "Not booked") => problem(400, "booking-refused", title, detail, issues.length ? { issues } : {});
-/** The 400 titles say what was refused (FO-3m DW4): a list or an attendance answer is not a booking. */
+export const notFound = () => problem(404, "not-found", "Not found", "This page is not available.");   // QA-756: the page's words and PF-25's, one text on every address
+/** QA-756 (AG-4-17): on firm A's own address, firm B's page or link (the walls refuse it, PF-12 review R2) answers the
+ *  same one not-found as an unknown slug or link, never the walls' own "No such record.". */
+function enterPublicFirm(firmId: string) {
+  try { enterFirm(firmId); } catch (e) { if (e instanceof HttpException && e.getStatus() === HttpStatus.NOT_FOUND) throw notFound(); throw e; }
+}
+/** A refused input (PF-28 part 4, Lead B rev 17.21): 422 with `code: "INVALID"`, each field named in `fields`, and the same
+ *  words as "<field>: <words>" in `issues` (the booking pages read those). 400 stays for a body that cannot be parsed. */
+const refused = (detail: string, issues: string[] = [], title = "Not booked", fields: Record<string, string> = Object.fromEntries(issues.map((i) => (i.includes(": ") ? [i.slice(0, i.indexOf(": ")) || "body", i.slice(i.indexOf(": ") + 2)] : ["body", i])))) =>
+  problem(FIELD_ERROR_STATUS, "booking-refused", title, detail, { code: "INVALID", fields, ...(issues.length ? { issues } : {}) });
+/** The honeypot and the form stamp (too fast, forged, too old) name no field on purpose: their words are the same, so a
+ *  bot learns nothing from which check refused it (review m2). */
+/** The refusal titles say what was refused (FO-3m DW4): a list or an attendance answer is not a booking. */
 const NOT_LISTED = "Bookings not listed", NOT_RECORDED = "Attendance not recorded";
 /** The time asked is not free (taken a moment ago, or never offered): one neutral answer with fresh times (AG-4-27). */
 const slotTaken = (slots: PublicSlot[]) => problem(409, "slot-taken", "That time is not available", "That time is not available any more. Please choose another time.", { code: "SLOT_TAKEN", slots });
@@ -162,16 +179,22 @@ const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[
  *  characters, so every reason taken here fits it). */
 export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v.replace(/\r\n|[\r\n\u2028\u2029]/g, " ").trim()).pipe(z.string().max(500)
   .refine((v) => !LONE_SURROGATE.test(v) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "no control or invisible characters")).optional() });
-export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
+export const SlotsQuery = z.strictObject({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown, title?: string): z.output<T> => {
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const r = schema.safeParse(body ?? {});
-  if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), title);
+  if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), title, fieldsOf(r.error));
   return r.data;
 };
+/** PF-28 part 4: a path value is checked before the body (a malformed id or link is the one not-found), and the body
+ *  before the record is looked up (a body probe with a random id is a field error, not a 404 that proves nothing). */
+const idShape = (id: string) => (UUID.test(id) ? id : notInFirm("booking"));
+const linkShape = (token: string) => { if (!parseToken(token)) throw notFound(); return token; };
 
 export type PublicSlot = { startsAt: string; endsAt: string; label: string };
-type TypeRow = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
+/** A type with its timings resolved (FO-3a1e: the type's, else the firm's, else the default); every reader takes this. */
+type TypeRow = WithTimings<Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>>;
 type BookingRow = Awaited<ReturnType<Tx["foBooking"]["findFirstOrThrow"]>>;
 type Actor = { word: string; staffId?: string };
 /** FO-3sa: how a staff write places its time (the public door never passes one). */
@@ -224,7 +247,7 @@ export class BookingService {
     if (typeof firmKey !== "string" || typeof slug !== "string" || !FIRM_KEY.test(firmKey) || !SLUG.test(slug)) throw notFound();
     const firm = await this.publicFirm(db, firmKey);
     // A type not shown on the booking page answers like an unknown slug (FO-3pa DW2).
-    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }) });
+    const type = await withTimings(db, firm.id, await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }) }));
     if (!type) throw notFound();
     return { firm, type };
   }
@@ -232,10 +255,31 @@ export class BookingService {
   /** An ACTIVE or TRIAL firm by its key, else the one 404. */
   private async publicFirm(db: Tx | PrismaClient, firmKey: unknown) {
     if (typeof firmKey !== "string" || !FIRM_KEY.test(firmKey)) throw notFound();
-    const firm = await asBypass("fo.booking.public-page", () => db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT }));
-    if (firm) enterFirm(firm.id);   // PF-12: the page's firm, for the rest of the request
+    // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
+    const firmId = (await db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${firmKey}) as f`)[0]?.f;
+    const firm = firmId ? await withFirm(firmId, () => db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT })) : null;
+    if (firm) enterPublicFirm(firm.id);   // PF-12: the page's firm, for the rest of the request
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     return firm;
+  }
+
+  /** QA-756 (R1.24; AG-04 S3): the firm key of the address this request is on (PF-25's `req.publicFirm`), so the booking
+   *  pages served there call the same doors as on ExpatReady's own host; on ExpatReady's own host, or for a firm that is
+   *  not serving, the one 404. The key is the page's public slug already (`/book/<key>`): no id leaves (AG-4-17). */
+  async publicSite(firmId: string | null, ip: string) {
+    this.limit(`site:ip:${ip}`, this.limits.slotsPerIp);   // its own count: the page's first call never spends the times' (review m2)
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { id: firmId }, select: { key: true, status: true } })) : null;
+    if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
+    return { firmKey: firm.key };
+  }
+
+  /** QA-756: does `/book/<slug>` on this firm's address name a page? `manage` (the booker's own page), or a type the
+   *  firm's booking page lists (the same rule as `publicType`); anything else is the one plain not-found there. */
+  async publicPageExists(firmId: string, slug: string): Promise<boolean> {
+    if (slug === "manage") return true;
+    if (!SLUG.test(slug)) return false;
+    const type = await withFirm(firmId, () => this.db.foConsultationType.findFirst({ where: firmScope(firmId, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }), select: { id: true } }));
+    return !!type;
   }
 
   /** GET the firm's booking page list (FO-3pa; AG-4-16 rules 1-2, BR-1): its active free-consultation types shown on the
@@ -257,7 +301,7 @@ export class BookingService {
     const tz = q.tz ?? firmZone;
     const now = this.ports.clock.now();
     const from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.", ["to: at most 62 days after from"]);
     const slots = await this.slotsFor(this.db, firm.id, type, from, to);
     const consent = await this.ports.arrival.bookingConsentWording(this.db, firm.id);
     return {
@@ -299,7 +343,7 @@ export class BookingService {
     const out = await this.create(firm.id, type, { startsAt: b.startsAt, mode: b.mode, timeZone: b.timeZone }, { word: "system:booking-page" },
       async (tx, bookingId) => this.ports.arrival.bookingArrived(tx, { firmId: firm.id, person, ...(consent ? { consent } : {}), bookingId }),
       { gate: () => this.gate(firm.id, b.formStamp), token: true });
-    return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token as string };
+    return { ...await this.publicAnswer(out.booking, type, firm), manageToken: out.token as string };
   }
 
   /** GET the self-service view by token: what, when, and whether it can still be changed here. */
@@ -308,7 +352,7 @@ export class BookingService {
     const { booking, type, firm } = await this.byToken(this.db, token);
     const open = this.selfServiceOpen(booking, type);
     return {
-      ...this.publicAnswer(booking, type, firm),
+      ...await this.publicAnswer(booking, type, firm),
       canChange: open, canReschedule: open && type.allowReschedule, canCancel: open && type.allowCancel,
       message: open ? null : "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.",
     };
@@ -317,30 +361,33 @@ export class BookingService {
   /** GET the times a self-service reschedule may move to (the same type's slots; the booking's own time is free to it). */
   async manageSlots(token: string, query: unknown, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    linkShape(token);
+    const q = parse(SlotsQuery, query);
     const { booking, type } = await this.byToken(this.db, token);
     if (!type.allowReschedule) throw notByLink("rescheduled");
     if (!this.selfServiceOpen(booking, type)) throw tooLate();
-    const q = parse(SlotsQuery, query);
     const now = this.ports.clock.now(), from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.", ["to: at most 62 days after from"]);
     const tz = q.tz ?? booking.bookerTimeZone;
     return { timeZone: tz, slots: (await this.slotsFor(this.db, booking.firmId, type, from, to, booking.id)).map((s) => this.publicSlot(s, tz)) };
   }
 
   async selfReschedule(token: string, body: unknown, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    linkShape(token);
     const b = parse(RescheduleBody, body);
     const { booking, type, firm } = await this.byToken(this.db, token);
     const out = await this.move(booking.firmId, booking.id, b.startsAt, b.timeZone, { word: "system:booking-link" }, token);
-    return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token ?? token };
+    return { ...await this.publicAnswer(out.booking, type, firm), manageToken: out.token ?? token };
   }
 
   /** POST a cancel by link, with the booker's optional reason (kept on the booking, FO-3pa DW7, DW10). */
   async selfCancel(token: string, ip: string, body?: unknown) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    linkShape(token);
     const c = parse(CancelBody, body);
     const { booking, type, firm } = await this.byToken(this.db, token);
-    return this.publicAnswer(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token, c.reason || undefined), type, firm);
+    return await this.publicAnswer(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token, c.reason || undefined), type, firm);
   }
 
   /** GET the booking's calendar file by link: the invite the confirmation email carries (same UID, SEQUENCE and times;
@@ -350,14 +397,14 @@ export class BookingService {
     const { booking, type, firm } = await this.byToken(this.db, token);
     const person = booking.personId ? await this.ports.arrival.contactOf(this.db, booking.firmId, booking.personId) : null;
     if (!person) throw notFound();
-    return this.inviteIcs(booking, type, firm, "REQUEST", { name: `${person.givenNames} ${person.familyName}`, email: person.email });
+    return this.inviteIcs(booking, type, firm, "REQUEST", { name: `${person.givenNames} ${person.familyName}`, email: person.email }, await this.videoLink(this.db, booking));
   }
 
   // ========================================================================================= staff (services until PF-4)
   async staffCreate(ctx: StaffContext, body: unknown) {
     need(ctx, "agent/booking:create");
     const b = parse(StaffBookingBody, body);
-    const type = await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true, deletedAt: null }) });
+    const type = await withTimings(this.db, ctx.firmId, await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true, deletedAt: null }) }));
     if (!type) throw notInFirm("consultation type");
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     const contact = await this.ports.arrival.contactOf(this.db, ctx.firmId, b.personId);
@@ -382,6 +429,7 @@ export class BookingService {
 
   async staffReschedule(ctx: StaffContext, bookingId: string, body: unknown) {
     need(ctx, "agent/booking:edit");
+    idShape(bookingId);
     const b = parse(StaffRescheduleBody, body);
     await this.staffBooking(ctx, bookingId);
     if (b.startsAt.getTime() <= this.ports.clock.now().getTime()) throw refused("Please choose a time that has not started yet.", ["startsAt: in the past"]);
@@ -398,6 +446,7 @@ export class BookingService {
    *  later. The host answers their own; others need agent/booking:edit. A cancelled booking is not-active before and
    *  after its start (FO-3m DW2: checked first). */
   async recordAttendance(ctx: StaffContext, bookingId: string, body: unknown) {
+    idShape(bookingId);
     const o = parse(AttendanceBody, body, NOT_RECORDED).outcome;
     const own = await this.staffBooking(ctx, bookingId);
     if (own.staffId !== ctx.staffId) need(ctx, "agent/booking:edit");
@@ -406,14 +455,19 @@ export class BookingService {
       const b = await this.lock(tx, ctx.firmId, bookingId);
       if (!["SCHEDULED", "RESCHEDULED", "COMPLETED", "NO_SHOW"].includes(b.status)) throw problem(409, "not-active", "Cancelled", "A cancelled booking has no attendance.");
       if (b.startsAt > now) throw problem(409, "too-early", "Not yet", "Attendance is recorded once the meeting has started.");
-      if (b.status === o) return b;
+      // FO-3c-warn break F3: the warning is read in the same transaction, so a failed read saves nothing (never a 500 after
+      // the commit); a repeated answer gets it too.
+      const warn = async (row: BookingRow) => (row.status === "COMPLETED" ? agreementWarning(tx, ctx.firmId, row.id) : null);
+      if (b.status === o) return { row: b, warning: await warn(b) };
+      // FO-3c part 2 (R1.104; AG-4-15 rule 4, the founder's ruling of 24 Nov): Attended is saved whatever the consultation
+      // agreement's state; an unsigned one is a warning in the answer (`agreementWarning`), never a refusal.
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: o } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: staffActor(ctx).word, action: o === "COMPLETED" ? "booking.completed" : "booking.no_show", entity: "fo_booking", entityKey: b.id,
-        summary: `Attendance recorded: ${o === "COMPLETED" ? "attended" : "did not attend"}.`, detail: { bookingId: b.id, from: b.status, to: o, sequence: after.sequence } });
+        summary: `Attendance recorded: ${o === "COMPLETED" ? "attended" : "did not attend"}.`, detail: { bookingId: b.id, sequence: after.sequence }, before: { status: b.status }, after: { status: o } });
       await this.outbox(tx, after, o === "COMPLETED" ? EVENT.BOOKING_COMPLETED : EVENT.BOOKING_NO_SHOW);
-      return after;
+      return { row: after, warning: await warn(after) };
     }, TX);
-    return this.view(done);
+    return { ...this.view(done.row), agreementWarning: done.warning };
   }
 
   /** Bookings whose attendance question is due (30 min after the end, still unanswered): the host's own, or the firm's
@@ -428,8 +482,8 @@ export class BookingService {
   /** The staff list (AG-4-67): with agent/booking:list, the firm's bookings the person may see (FO-3vr: the record rule or
    *  their own as host), else the person's own as host. */
   async staffList(ctx: StaffContext, query: unknown) {
-    const q = parse(z.object({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
-    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", [], NOT_LISTED);
+    const q = parse(z.strictObject({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
+    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", ["to: at most 92 days after from"], NOT_LISTED);
     const all = ctx.keys.includes("agent/booking:list");
     const staffId = all ? q.staff?.toLowerCase() : ctx.staffId;
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) };
@@ -528,8 +582,10 @@ export class BookingService {
             const who = await arrive(tx, bookingId);
             const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
             const token = pub?.token ? await issueToken(tx, firmId, booking.id, booking.endsAt) : undefined;
+            await this.setVideo(tx, booking, actor);   // FO-3v: saved values only, no network, never fails on its own
             await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.scheduled", entity: "fo_booking", entityKey: booking.id,
-              summary: `Consultation booked (${type.name})${withWarnings(slot.warnings)}.`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence, ...warningDetail(slot.warnings, booking.overlapConfirmedByUserId) } });
+              summary: `Consultation booked (${type.name})${withWarnings(slot.warnings)}.`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence, ...warningDetail(slot.warnings, booking.overlapConfirmedByUserId) },
+              before: null, after: { status: booking.status, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, mode: booking.mode, startsAt: booking.startsAt.toISOString(), endsAt: booking.endsAt.toISOString(), bookerTimeZone: booking.bookerTimeZone } });
             await this.outbox(tx, booking, EVENT.BOOKING_SCHEDULED);
             return { booking, token };
           } catch (e) { held?.release(); throw e; }   // given back before the rollback lets the firm's lock go
@@ -558,7 +614,7 @@ export class BookingService {
       try {
         const done = await this.db.$transaction(async (tx) => {
           const b = await this.lock(tx, firmId, bookingId);
-          const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
+          const type = await withTimings(tx, firmId, await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) }));
           if (token) await this.recheckToken(tx, token, b, type, "rescheduled");
           if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
           // The same time is no move: nothing is written, no event, the links and reminders stay (only a new zone for
@@ -566,7 +622,7 @@ export class BookingService {
           if (startsAt.getTime() === b.startsAt.getTime()) {
             if (!zone || zone === b.bookerTimeZone) return { booking: b, type, token: undefined, oldSequence: undefined };
             const z2 = await tx.foBooking.update({ where: { id: b.id }, data: { bookerTimeZone: zone } });
-            await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.zone_changed", entity: "fo_booking", entityKey: b.id, summary: "The time zone for this booking's messages changed.", detail: { bookingId: b.id, sequence: z2.sequence } });
+            await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.zone_changed", entity: "fo_booking", entityKey: b.id, summary: "The time zone for this booking's messages changed.", detail: { bookingId: b.id, sequence: z2.sequence }, before: { bookerTimeZone: b.bookerTimeZone }, after: { bookerTimeZone: z2.bookerTimeZone } });
             return { booking: z2, type, token: undefined, oldSequence: undefined };
           }
           const slot = any ? await this.place(tx, firmId, type, startsAt, { ...any, current: b.staffId }, b.id)
@@ -574,10 +630,13 @@ export class BookingService {
           const staffId = slot.staffId;
           // A move clears an earlier overlap confirmation unless this move is itself confirmed over an overlap.
           const after = await tx.foBooking.update({ where: { id: b.id }, data: { startsAt: slot.startsAt, endsAt: slot.endsAt, staffId, status: "RESCHEDULED", overlapConfirmedByUserId: confirmer(slot, any), ...(zone ? { bookerTimeZone: zone } : {}) } });
+          if (staffId !== b.staffId) await this.setVideo(tx, after, actor);   // FO-3v (AG-4-29 rule 9): a new host's link
           // A new link for the self-service answer only; the emails issue their own (staff never get one, m7).
           const newToken = token ? await issueToken(tx, firmId, after.id, after.endsAt) : undefined;
           await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.rescheduled", entity: "fo_booking", entityKey: b.id,
-            summary: `Consultation moved to a new time${withWarnings(slot.warnings)}.`, detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence, ...warningDetail(slot.warnings, after.overlapConfirmedByUserId) } });
+            summary: `Consultation moved to a new time${withWarnings(slot.warnings)}.`, detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence, ...warningDetail(slot.warnings, after.overlapConfirmedByUserId) },
+            before: { status: b.status, staffId: b.staffId, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), bookerTimeZone: b.bookerTimeZone },
+            after: { status: after.status, staffId: after.staffId, startsAt: after.startsAt.toISOString(), endsAt: after.endsAt.toISOString(), bookerTimeZone: after.bookerTimeZone } });
           await this.outbox(tx, after, EVENT.BOOKING_RESCHEDULED);
           return { booking: after, type, token: newToken, oldSequence: b.sequence };
         }, TX);
@@ -588,7 +647,7 @@ export class BookingService {
         if (!(e instanceof NoSlot) && !isContention(e)) throw e;
         if (e instanceof NoSlot || attempt++ >= 4) {
           const b = await this.db.foBooking.findFirstOrThrow({ where: firmScope(firmId, { id: bookingId }) });
-          const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
+          const type = await withTimings(this.db, firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) }));
           throw slotTaken(await this.nextSlots(firmId, type, { startsAt, timeZone: zone ?? b.bookerTimeZone }, bookingId));
         }
         await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
@@ -599,14 +658,16 @@ export class BookingService {
   private async cancelBooking(firmId: string, bookingId: string, actor: Actor, token?: string, reason?: string) {
     const done = await this.db.$transaction(async (tx) => {
       const b = await this.lock(tx, firmId, bookingId);
-      const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
+      const type = await withTimings(tx, firmId, await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) }));
       if (token) await this.recheckToken(tx, token, b, type, "cancelled");
       if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
       // The booker's reason is kept on the booking (AG-04 v2.1 Booking.cancelReason; Lead B rev 16.30), never in the audit
       // entry, which holds ids and facts (AuditPort's rule): it says only that a reason was given (FO-3pa DW7, DW10).
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED", ...(reason ? { cancelReason: reason } : {}) } });
+      await tx.foBookingVideo.updateMany({ where: firmScope(firmId, { bookingId: b.id, voidedAt: null }), data: { voidedAt: this.ports.clock.now() } });   // FO-3v rule 9: a cancel voids the link
       await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.cancelled", entity: "fo_booking", entityKey: b.id,
-        summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
+        summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, sequence: after.sequence },
+        before: { status: b.status }, after: { status: after.status } });
       await this.outbox(tx, after, EVENT.BOOKING_CANCELLED);
       return { booking: after, type, oldSequence: b.sequence };
     }, TX);
@@ -630,7 +691,7 @@ export class BookingService {
   private async afterCommit(a: AfterCommit) {
     const { booking: b } = a;
     const keys = (seq: number) => ({ r24: `booking:${b.id}:${seq}:reminder-24h`, r1: `booking:${b.id}:${seq}:reminder-1h`, ask: `booking:${b.id}:${seq}:attendance` });
-    const safe = async (what: string, f: () => Promise<unknown>) => { try { await f(); } catch (e) { this.warn(`${what} for booking ${b.id} failed after commit: ${e instanceof Error ? e.message : String(e)}`); } };
+    const safe = async (what: string, f: () => Promise<unknown>) => { try { await f(); } catch (e) { this.warn(`${what} for booking ${b.id} failed after commit: ${e instanceof Error ? e.name : "error"}`);   /* PF-23m: never the message */ } };
     const opts = { firmId: b.firmId };
     if (a.oldSequence !== undefined) { const k = keys(a.oldSequence); for (const key of [k.r24, k.r1, k.ask]) await safe("cancel job", () => this.ports.jobs.cancel(key)); }
     if (a.kind !== "cancelled") {
@@ -653,11 +714,11 @@ export class BookingService {
     const b = await this.db.foBooking.findFirst({ where: firmScope(job.firmId, { id: p.bookingId }) });
     if (!b || b.sequence !== p.sequence) return;
     if (p.kind !== "cancelled" && !ACTIVE.includes(b.status)) return;
-    const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) });
+    const type = await withTimings(this.db, b.firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) }));
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { key: true, operatingName: true, contactEmail: true } });
     const zone = b.bookerTimeZone, when = wallLabel(b.startsAt, zone), how = MODE_WORDS[b.mode as Mode], method = METHOD[p.kind];
-    const where = meetWhere(b, type);
-    const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${method}`, bytes: new TextEncoder().encode(this.inviteIcs(b, type, firm, method, attendee)) });
+    const where = meetWhere(b, await this.videoLink(this.db, b));
+    const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${method}`, bytes: new TextEncoder().encode(this.inviteIcs(b, type, firm, method, attendee, where.link)) });
     const verb = p.kind === "booked" ? "is booked" : p.kind === "moved" ? "has moved" : "is cancelled";
     if (p.to === "host") {
       // The host's copy holds only what runs the meeting (AG-4-42).
@@ -675,7 +736,7 @@ export class BookingService {
     const link = token ? `\n\nTo reschedule or cancel: ${this.manageLink(firm.key, token)}` : "";
     try {
       await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: b.personId! }, idempotencyKey: job.key, templateKey: `booking.${p.kind}`,
-        subject: `Your ${type.name} ${verb}`, text: `Hello ${person.givenNames},\n\nYour ${type.name} with ${firm.operatingName} ${verb}${p.kind === "cancelled" ? "" : `: ${when}. ${how}. ${where}`}${link}\n\nReplies to this email reach the firm.`,
+        subject: `Your ${type.name} ${verb}`, text: `Hello ${person.givenNames},\n\nYour ${type.name} with ${firm.operatingName} ${verb}${p.kind === "cancelled" ? "" : `: ${when}. ${how}. ${where.words}`}${link}\n\nReplies to this email reach the firm.`,
         attachments: [invite({ name: `${person.givenNames} ${person.familyName}`, email: person.email })] });
     } catch (e) {
       if (token) await this.db.foBookingToken.update({ where: { id: token.split(".")[0] }, data: { voidedAt: new Date() } }).catch(() => undefined);
@@ -687,7 +748,7 @@ export class BookingService {
    *  retry would only try again to mail someone we must not mail (Lead B, #1860). Any other failure is thrown and retried. */
   private refusedIsFinal(e: unknown, bookingId: string): void {
     if (!(e instanceof MessageRefused)) throw e;
-    this.warn(`email for booking ${bookingId} not sent, final: ${e.message}`);
+    this.warn(`email for booking ${bookingId} not sent, final (${e.name})`);   /* PF-23m: never the message */
   }
 
   /** A link for the email, issued under the booking's row lock while it is still active at `sequence`; else null. */
@@ -704,12 +765,12 @@ export class BookingService {
     if (!job.firmId) return;
     const b = await this.db.foBooking.findFirst({ where: firmScope(job.firmId, { id: p.bookingId }) });
     if (!b || !ACTIVE.includes(b.status) || b.sequence !== p.sequence || !b.personId) return;   // moved, cancelled or answered since
-    const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) });
+    const type = await withTimings(this.db, b.firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) }));
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { operatingName: true, contactEmail: true } });
     const person = await this.ports.arrival.contactOf(this.db, b.firmId, b.personId);
     if (!person) return;
     await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "FO_PERSON", id: b.personId }, idempotencyKey: job.key, templateKey: `booking.reminder_${p.kind}`,
-      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
+      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.${b.mode === "VIDEO" ? ` ${meetWhere(b, await this.videoLink(this.db, b)).words}` : ""}\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
   /** The attendance question, 30 min after the end: it is shown, not pushed (AG-4-39 rule 2, "no email, no alert"; FO-3m
@@ -824,15 +885,20 @@ export class BookingService {
   }
 
   private async byToken(db: Tx | PrismaClient, token: string) {
-    const t = await asBypass("fo.booking.self-service", () => liveToken(db, token, this.ports.clock.now()));
+    // PF-12b part 2: the link's firm through the narrow definer lookup (the token row's id and its secret's hash; firm id
+    // only, null unless both match, so an unknown id and a wrong secret take the same one query), then the token's live
+    // state is checked as that firm.
+    const parsed = parseToken(token);
+    const firmId = parsed ? (await db.$queryRaw<{ f: string | null }[]>`select fo_booking_token_firm(${parsed.id}::uuid, ${hashVerifier(parsed.verifier)}) as f`)[0]?.f : null;
+    const t = firmId ? await withFirm(firmId, () => liveToken(db, token, this.ports.clock.now())) : null;
     if (!t) throw notFound();
-    enterFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
+    enterPublicFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
     // A firm on hold or locked answers its links like its page: not found (break B-5).
     const firm = await db.platformFirm.findUnique({ where: { id: t.firmId }, select: FIRM_SELECT });
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     const booking = await db.foBooking.findFirst({ where: firmScope(t.firmId, { id: t.bookingId }) });
     if (!booking || !ACTIVE.includes(booking.status)) throw notFound();
-    const type = await db.foConsultationType.findFirstOrThrow({ where: firmScope(t.firmId, { id: booking.typeId }) });
+    const type = await withTimings(db, t.firmId, await db.foConsultationType.findFirstOrThrow({ where: firmScope(t.firmId, { id: booking.typeId }) }));
     return { booking, type, firm, token: t };
   }
 
@@ -868,16 +934,45 @@ export class BookingService {
   /** The public answer about a booking (book, manage, reschedule, cancel; FO-3pa DW4, DW8): the booking, its type's name
    *  and switches, the firm's contact details and the limit in hours; the join link once the booking is confirmed and
    *  active by video. No staff, firm, person or type id. */
-  private publicAnswer(b: BookingRow, type: TypeRow, firm: FirmRow) {
+  private async publicAnswer(b: BookingRow, type: TypeRow, firm: FirmRow) {
     const live = ACTIVE.includes(b.status as Status);
-    return { ...this.publicView(b), typeName: type.name, ...typeRules(type), firm: firmContact(firm), joinLink: live && b.mode === "VIDEO" ? type.meetingLink ?? null : null };
+    return { ...this.publicView(b), typeName: type.name, ...typeRules(type), firm: firmContact(firm), joinLink: live ? await this.videoLink(this.db, b) : null };
+  }
+
+  /** FO-3v part 1: the booking's own link (fo_booking_video, not voided), for Video bookings only; else null. The one
+   *  read for the emails, the .ics, the reminders and the public answers (the type's meetingLink is not a source). */
+  private async videoLink(db: Tx | PrismaClient, b: BookingRow): Promise<string | null> {
+    if (b.mode !== "VIDEO") return null;
+    const v = await db.foBookingVideo.findFirst({ where: firmScope(b.firmId, { bookingId: b.id, voidedAt: null }), select: { meetingLink: true } });
+    return v?.meetingLink ?? null;
+  }
+
+  /** FO-3v part 1 (AG-4-29 rules 2, 6, 7, 9): inside the booking's transaction, the host's link for a Video booking,
+   *  written to fo_booking_video from saved values (no network); a new host replaces it. With no source the booking
+   *  stays made, its emails say "Your join link will follow." and the host gets one home item (one per booking: the
+   *  port keeps one per person, item and kind). Audit "video link set (source: …)", never the URL (§9). Nothing here
+   *  catches an error: a caught failure would still abort the transaction. */
+  private async setVideo(tx: Tx, b: BookingRow, actor: Actor) {
+    if (b.mode !== "VIDEO") return;
+    const got = await linkFor(tx, b.firmId, b.staffId);
+    const at = { firmId: b.firmId, bookingId: b.id };
+    if (!got) {
+      const gone = await tx.foBookingVideo.deleteMany({ where: firmScope(b.firmId, { bookingId: b.id }) });
+      if (gone.count) await this.ports.audit.record(tx, { firmId: b.firmId, actor: actor.word, action: "booking.video_link_removed", entity: "fo_booking", entityKey: b.id,
+        summary: "Video link removed (the new host has no video source).", detail: { bookingId: b.id, staffId: b.staffId }, before: { hasLink: true }, after: { hasLink: false } });
+      await this.ports.notifications?.notify(tx, { staffId: b.staffId }, NOTIFICATION_KIND.VIDEO_LINK_NEEDED, { kind: "booking", id: b.id });
+      return;
+    }
+    const row = await tx.foBookingVideo.upsert({ where: { firmId_bookingId: at }, create: { ...at, meetingLink: got.link, provider: got.provider }, update: { meetingLink: got.link, provider: got.provider, externalMeetingId: null, voidedAt: null }, select: { id: true } });
+    await this.ports.audit.record(tx, { firmId: b.firmId, actor: actor.word, action: "booking.video_link_set", entity: "fo_booking_video", entityKey: row.id,
+      summary: `Video link set (source: ${got.source === "MY_LINK" ? "my link" : got.source.toLowerCase()}).`, detail: { bookingId: b.id, staffId: b.staffId, provider: got.provider }, before: null, after: { provider: got.provider } });
   }
 
   /** The booking's invite, as the emails attach it and the link downloads it (one writer: same UID, SEQUENCE, times). */
-  private inviteIcs(b: BookingRow, type: TypeRow, firm: { operatingName: string; contactEmail: string }, method: InviteMethod, attendee: { name: string; email: string }) {
+  private inviteIcs(b: BookingRow, type: TypeRow, firm: { operatingName: string; contactEmail: string }, method: InviteMethod, attendee: { name: string; email: string }, link: string | null) {
     return bookingIcs({
       bookingId: b.id, sequence: b.sequence, method, startsAt: b.startsAt, endsAt: b.endsAt, stamp: this.ports.clock.now(),
-      summary: `${type.name} with ${firm.operatingName}`, description: `${MODE_WORDS[b.mode as Mode]}. ${meetWhere(b, type)}`, location: b.mode === "VIDEO" ? (type.meetingLink ?? undefined) : undefined,
+      summary: `${type.name} with ${firm.operatingName}`, description: `${MODE_WORDS[b.mode as Mode]}. ${meetWhere(b, link).words}`, location: b.mode === "VIDEO" ? (link ?? undefined) : undefined,
       organizer: { name: firm.operatingName, email: firm.contactEmail }, attendee,
     });
   }
@@ -970,7 +1065,8 @@ export function firmContact(firm: FirmRow) {
 /** The type's switches for the booker (FO-3pa): reschedule and cancel by link, and the self-service limit in hours. */
 const typeRules = (t: TypeRow) => ({ allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, selfServiceLimitHours: t.selfServiceLimitMinutes / 60 });
 /** Where the meeting is, in the invite's and email's words. */
-const meetWhere = (b: BookingRow, t: TypeRow) => b.mode === "VIDEO" ? (t.meetingLink ?? "Your join link will follow.") : b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.";
+/** FO-3v: a Video booking's words are its own link (fo_booking_video), else "Your join link will follow." (AG-4-29 rule 7). */
+const meetWhere = (b: BookingRow, link: string | null) => b.mode === "VIDEO" ? { words: link ?? VIDEO_WORDS.noLink, link } : { words: b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.", link: null };
 
 /** No free host at the asked time, found inside the write; the caller answers 409 with fresh times once the transaction
  *  has ended (reading them inside it would hold a second connection). */

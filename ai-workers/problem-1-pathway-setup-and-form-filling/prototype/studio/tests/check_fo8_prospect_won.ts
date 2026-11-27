@@ -3,7 +3,12 @@
 // configured checkpoint): real leads, prospects and Converts through the front office's own services, the subscriber and
 // the catch-up called as a delivery would, and an in-process app with the case opening, PF-4's sign-in and guard and this
 // row's one route. No browser, no model call (US$0).
-//   zsh studio/tools/isolated.sh fo8_won 4642 start && tsx studio/tests/check_fo8_prospect_won.ts 4642 xr_studio_fo8_won
+// The copy's own server delivers `prospect.won` too (CS-K1 part 2's poll, live.ts: at start, then every
+// PROSPECT_WON_POLL_MS, default 10 s), on this same database. Left at 10 s it made this suite's prospects clients between
+// its steps (QA-753: DW4's forced rollback read "1:1:1"; packed runs red, alone green; with the poll at 200 ms it failed
+// DW1, DW2, DW4, DW5 and DW7 every run). So the copy starts with the poll at its 1-hour maximum: its one run at start
+// finds nothing won, and every delivery in this suite is the suite's own. The live poll is checked by check_csk1s_clients_browser.ts.
+//   zsh studio/tools/isolated.sh fo8_won 4642 start PROSPECT_WON_POLL_MS=3600000 && tsx studio/tests/check_fo8_prospect_won.ts 4642 xr_studio_fo8_won
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, NestFactory } from "@nestjs/core";
@@ -52,8 +57,10 @@ const { ConsentStore } = await import("../api/src/platform/messages/consent/cons
 const { EVERYONE_SEES_ALL, writeSetting } = await import("../api/src/platform/settings.ts");
 const { seedSampleFirmsFrontOffice } = await import("../api/src/front-office/firm-seed.ts");
 const { foPersonPort } = await import("../api/src/front-office/people/fo-person-port.ts");
+const { FO_PERSON_PORT } = await import("../ports/fo-person.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
+const { clearingConflicts } = await import("./lib/conflict-clear.ts");
 const { Corporate } = await import("../api/src/front-office/sales/corporate/service.ts");
 const { catchUpProspectsWon, offerOf, onProspectWon, OFFER_REFUSED, PROSPECT_WON_ACTOR } = await import("../api/src/case-clients/prospect-won.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
@@ -61,7 +68,7 @@ type Deps = import("../api/src/case-clients/prospect-won.ts").ProspectWonDeps;
 
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("fo8-check-signing-key-0123456789abcdef0", () => clock.now());
-const providers = [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: APP_GUARD, useClass: ConfigReadGuard },
+const providers = [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: FO_PERSON_PORT, useValue: foPersonPort }, { provide: APP_GUARD, useClass: ConfigReadGuard },
   { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }];
 @Module({ controllers: [RuntimeController, PlatformIdentityController] as never[], providers: providers as never[] }) class TestApp {}
 const nest = await NestFactory.create(TestApp, { logger: false, abortOnError: false });
@@ -85,6 +92,7 @@ try {
   for (const f of [A, B]) await writeSetting(db, { firmId: f, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: auditWs });
   const ports = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, ports), pros = new Prospects(db, ports), corp = new Corporate(db, ports);
+  clearingConflicts(db, { prospects: Prospects.prototype });   // FO-13c: the conflict check first
   const deps: Deps = { workspaceId: await nest.get(Workspace).id(), foPerson: foPersonPort, audit: auditEvent };
   // A service of firm A on the released combination, so a lead can be "interested in" it (firm-seed makes these from releases).
   const service = sql(`select id from fo_service where firm_id = '${A}' and combination_id = '${VV}'`)
@@ -114,9 +122,11 @@ try {
     first?.made === true && written(ana.id) === "1:1:1" && c.display_name === "Ana Sample" && c.display_kind === "PERSON" && c.fo_person_id === ana.personId && c.fo_company_id === null && c.file_owner === R.staffId && c.firm_id === A && c.created_by === PROSPECT_WON_ACTOR
     && /^CL-\d{5}$/.test(first!.clientNumber), [first, written(ana.id), c]);
   const ev = sql(`select payload::text from module_event where type = '${EVENT.CLIENT_CREATED}' and subject_id = '${first!.clientId}'`);
-  ok("FO-8 DW1 pass: client.created carries { firm_id, prospect_id, client_id, client_number } and no name; the audit line holds ids and the client code, never the name",
+  ok("FO-8 DW1 pass: client.created carries { firm_id, prospect_id, client_id, client_number } and no name; the audit line holds ids and the client code, never the name outside its after values",
     JSON.stringify(Object.keys(JSON.parse(ev)).sort()) === JSON.stringify(["client_id", "client_number", "firm_id", "prospect_id"]) && !ev.includes("Ana")
-    && !sql(`select summary || detail::text from audit_event where entity_key = '${ana.id}' and action = '${EVENT.CLIENT_CREATED}'`).includes("Ana"), ev);
+    && !sql(`select summary || (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text from audit_event where entity_key = '${ana.id}' and action = '${EVENT.CLIENT_CREATED}'`).includes("Ana"), ev);
+  // R1.8 (QA-594, P-687): the client's name is the line's after value, in full, and nowhere else on it.
+  ok("FO-8 DW1 pass (R1.8): the client.created line holds the new client's name as an after value", sql(`select detail::text from audit_event where entity_key = '${ana.id}' and action = '${EVENT.CLIENT_CREATED}'`).includes("Ana Sample"));
   const n0 = counter(), again = await onProspectWon(db, event(ana.id), deps);
   ok("FO-8 DW1 fail: the same event delivered again makes none: the same client answered, no second client, event, audit line or client number", again?.made === false && again.clientId === first!.clientId && written(ana.id) === "1:1:1" && counter() === n0, [again, written(ana.id)]);
   const bo = await wonPerson("Bo"), three = await Promise.all([0, 1, 2].map(() => onProspectWon(db, event(bo.id), deps)));
@@ -195,9 +205,9 @@ try {
   await changing;
   ok("FO-8 DW2 fail (review N2, breaker R2-M2): a case opened by the direct route while the client is being updated waits for the update's commit (the firm's opening lock), so no case is ever opened on a client that then changes under it",
     directDuring.status === 201 && tDirect >= tChanged && sql(`select display_kind from case_client where id = '${cedarClient}'`) === "PERSON" && count("audit_event", `entity_key = '${cedar.id}' and action = 'client.subject_changed'`) === 1, [directDuring.status, tDirect - tChanged]);
-  const acc = await wonPerson("e\u0301".repeat(70), R, { interestedIn: service, email: `acc-${tag}@example.com` }), accCase = await openCase((await onProspectWon(db, event(acc.id), deps))!.clientId);
+  const acc = await wonPerson("q\u0301".repeat(50), R, { familyName: "q\u0301".repeat(50), interestedIn: service, email: `acc-${tag}@example.com` }), accCase = await openCase((await onProspectWon(db, event(acc.id), deps))!.clientId);
   const accName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${accCase.body?.id}' and p.role = 'principal'`);
-  ok("FO-8 DW1 pass (breaker R2-m2): a cut name never ends on a letter that lost its accent", accCase.status === 201 && accName.length <= 120 && /\u0301 Sample$|\u0301$/.test(accName.normalize("NFD")), [accCase.status, accCase.body?.detail, accName.length]);
+  ok("FO-8 DW1 pass (breaker R2-m2): a cut name never ends on a letter that lost its accent (q + U+0301 has no composed form, so a code-point cut would end on the bare q)", accCase.status === 201 && accName.length <= 120 && accName.length >= 118 && accName.endsWith("q\u0301"), [accCase.status, accCase.body?.detail, accName.length]);
   const emo = await wonPerson(`A${"\u{1F600}".repeat(70)}`, R, { interestedIn: service, email: `emo-${tag}@example.com` }), emoClient = (await onProspectWon(db, event(emo.id), deps))!.clientId;
   const emoCase = await openCase(emoClient);
   const emoName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${emoCase.body?.id}' and p.role = 'principal'`);

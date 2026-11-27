@@ -10,7 +10,7 @@ import type { Response } from "express";
 import { FileLinks, LocalFiles } from "../../front-office/files.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../identity/keys.ts";
 import { PlatformClock } from "../identity/port.ts";
-import { ATTACHMENT_MAX_BYTES, MAX_FILES, SUPPORT_KEYS, SupportService, type Upload } from "./support.ts";
+import { ATTACHMENT_MAX_BYTES, MAX_FILES, SUPPORT_KEYS, SupportService, type Upload, isUuid, notFound } from "./support.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
@@ -35,7 +35,7 @@ export class SupportController {
   get(@Req() r: R, @Param("id") id: string) { return this.svc.get(staffOf(r), id); }
 
   @Post("tickets/:id/messages") @HttpCode(200) @PermissionKeys(SUPPORT_KEYS.list)
-  message(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.addMessage(staffOf(r), id, b ?? {}); }
+  message(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.addMessage(staffOf(r), isUuid(id) ? id : notFound(), b ?? {}); }   // PF-28 part 2b: the id before the body
 
   /** A short-lived link to attachment `n` of a ticket the person sees. */
   @Post("tickets/:id/files/:n/link") @HttpCode(200) @PermissionKeys(SUPPORT_KEYS.list)

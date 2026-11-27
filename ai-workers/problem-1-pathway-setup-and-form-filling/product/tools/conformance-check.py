@@ -6,7 +6,8 @@ product/design/engineering-approved-setup.json, read from the same place, item b
   settings  the agents' deny lines in .claude/settings.json (a set: extra lines allowed, a missing one fails); hooks not
             switched off (disableAllHooks); each required hook entry: event + matcher + type command + command, and its
             "if" exactly as the manifest has it (absent means absent: an added "if" can stop a hook from firing);
-  mergify   .mergify.yml: max_parallel_checks, the queue names in order, each queue's batch_size, merge_method and
+  mergify   .mergify.yml: max_parallel_checks, mode, capacities (a key ending in * pins every scope of that family),
+            barrier files, the queue names in order, each queue's batch_size, merge_method and
             required queue and merge conditions (sets), auto_merge_conditions, and no way round the queues (no
             pull_request_rules entry with a merge or queue action, no extends:);
   ci        ci.yml: workflow name, the required jobs, the gate: its check name (a job's name:, else its key: what
@@ -179,7 +180,17 @@ def check_mergify(src, m, rules=None):
     sc = d.get("scopes") if isinstance(d.get("scopes"), dict) else {}
     if "capacities_required" in cfg:
         caps = sc.get("capacities") or {}
-        bad = [f"{k} {caps.get(k)} (want {v})" for k, v in cfg["capacities_required"].items() if caps.get(k) != v]
+        # A key ending in * pins a family (SPD-2, manifest 1.6.0: "mig-*": 1): at least one scope of it, and every one,
+        # in the scope list or the capacities, at exactly that capacity.
+        names = set(caps) | set((((sc.get("source") or {}).get("files")) or {}))
+        bad = []
+        for k, v in cfg["capacities_required"].items():
+            if not k.endswith("*"):
+                if caps.get(k) != v: bad.append(f"{k} {caps.get(k)} (want {v})")
+                continue
+            fam = sorted(n for n in names if str(n).startswith(k[:-1]))
+            if not fam: bad.append(f"no {k} scope (want each at {v})")
+            bad += [f"{n} {caps.get(n)} (want {v})" for n in fam if caps.get(n) != v]
         out.append(item("mergify", "mergify.capacities", "fail" if bad else "pass",
                         ", ".join(f"{k} {v}" for k, v in cfg["capacities_required"].items()), "; ".join(bad) or "as approved"))
     if "barrier_files_required" in cfg:
@@ -274,10 +285,18 @@ def check_ci(src, m, rules=None):
         bad += [f"{trig} filter {f}" for f in ("branches", "branches-ignore", "paths", "paths-ignore")
                 if isinstance(on.get(trig), dict) and f in on[trig]]
     bad += [f"forbidden trigger {t}" for t in cfg["triggers_forbidden"] if t in on]
-    bad += [f"extra trigger {t}" for t in on if t not in cfg["trigger_types_exact"] and t not in cfg["triggers_forbidden"]]
+    allowed = cfg.get("triggers_allowed") or {}   # OS-83 (manifest 1.8.0): workflow_dispatch, its inputs exactly (P-731 full runs)
+    bad += [f"extra trigger {t}" for t in on if t not in cfg["trigger_types_exact"] and t not in cfg["triggers_forbidden"] and t not in allowed]
+    for t, want in allowed.items():
+        if t in on:
+            ins = sorted(((on[t] or {}).get("inputs") or {}) if isinstance(on[t], dict) else {})
+            if ins != sorted(want.get("inputs_exact", [])):
+                bad.append(f"{t} inputs {ins or 'none'} (approved: {', '.join(sorted(want.get('inputs_exact', [])))})")
     out.append(item("ci", "ci.triggers", "fail" if bad else "pass",
                     "only " + "; ".join(f"{k}: exactly {', '.join(v)}, no filters"
-                                        for k, v in cfg["trigger_types_exact"].items()), "; ".join(bad) or "as approved"))
+                                        for k, v in cfg["trigger_types_exact"].items())
+                    + "".join(f"; {k} with inputs {', '.join(v.get('inputs_exact', []))}" for k, v in allowed.items()),
+                    "; ".join(bad) or "as approved"))
     top, allowed, bad = d.get("permissions"), cfg["write_scopes_allowed"], []
     if top is not None and write_scopes(top):
         bad.append(f"workflow-level write: {', '.join(write_scopes(top))}")
@@ -317,6 +336,9 @@ def check_heartbeat(src, m, rules=None):
     bad += [f"{w} env uses runner. (GitHub refuses the file: no run, no mail)" for w, e in envs if "runner." in str(e)]
     if per_hour * hb["every_min"] < 60:
         bad.append(f"schedule {crons or 'none'}: {per_hour} run(s) an hour")
+    # OS-83 (manifest 1.8.0): GitHub ran the 30-minute schedule only every 8-11 hours (18-26 Nov), so events start it too
+    bad += [f"no {e} trigger (the schedule alone is dropped for hours)" for e in hb.get("events_required", [])
+            if not isinstance(on, dict) or e not in on]
     jobs, top = d.get("jobs") or {}, d.get("permissions")
     if len(jobs) != 1:
         bad.append(f"{len(jobs)} jobs")

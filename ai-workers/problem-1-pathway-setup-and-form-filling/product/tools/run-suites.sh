@@ -9,6 +9,8 @@
 #        batches split across n GitHub machines, each its own fresh copy). Combines with --changed and --demo.
 #   --skip-quarantined   every suite except the QUARANTINE list below (I1: the merge queue's one full run; --changed
 #        always skips them). --direct (with --changed): select-suites.mjs --direct, never everything (CI's PR_SUITES=direct).
+#   --modules (with --changed; SPD-2 item 2, P-802): module-suites.py instead: a file in a module card's paths runs that
+#        card's suites (its Tests. line and row files), any other file select-suites.mjs --direct, plus the always-run set.
 #   --retry   (B122, P-376 (8); PR and merge-queue checks only, never the nightly full set) a failed suite runs once more,
 #        from a fresh start: a new isolated copy (270 suites), the demo restarted (check_studio_browser.cjs, which resets
 #        it), or a suite that starts its own copy or touches no database. Its row says "passed on retry" (not a
@@ -25,7 +27,7 @@
 #        $SUITES_OUT/retry-bugs.md, which CI uploads and its retry-comment job posts as a PR comment). tools/flaky.mjs counts the retries
 #        (daily-numbers.sh) and quarantines a suite that passed only on retry in 2 different runs in 7 days
 #        (tools/flaky-ledger.tsv).
-# SUITES_QUARANTINE_AUTO="<suite>|<owner>|<fix by>|<runs> ..." (CI: from flaky.mjs quarantine in the kind job, the same
+# SUITES_QUARANTINE_AUTO="<suite>|<owner>|<fix by>|<runs, or p<n> for a decision row> ..." (CI: from flaky.mjs quarantine in the kind job, the same
 #        for every part): joins QUARANTINE below for this run, its row naming the owner and the fix date.
 #   --skip-green <file>   suites remembered green (P-371 (3), tools/ci-memory.mjs): "<suite><TAB><why>" lines; each is
 #        left out of this run and shown as "remembered" with its reason. Only a pull request's check passes it.
@@ -42,11 +44,12 @@ export PATH="$ROOT/.tools/node-v24.21.0/bin:/opt/homebrew/opt/postgresql@18/bin:
 # GNU timeout: `timeout` on Linux (CI), `gtimeout` from Homebrew coreutils on the Mac. Missing → stop loudly, never run unguarded.
 TIMEOUT="$(command -v timeout || command -v gtimeout || true)"
 [ -n "$TIMEOUT" ] || { echo "GNU timeout is missing (Mac: brew install coreutils, which provides gtimeout); no suite was run"; exit 2; }
-DEMO=0; NAMES=0; LIST=0; ONLY=""; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0
+DEMO=0; NAMES=0; LIST=0; ONLY=""; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0; MODULES=0
 while [ $# -gt 0 ]; do case "$1" in
   --demo) DEMO=1;;
   --skip-quarantined) SKIPQ=1;;
   --direct) DIRECT=--direct;;
+  --modules) MODULES=1;;   # SPD-2: with --changed, module-suites.py (the module cards' suites + the always-run set)
   --retry) RETRY=1;;
   --names) NAMES=1;;   # print the names and ports this copy would use, run nothing
   --list) LIST=1;;
@@ -121,12 +124,26 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # 20 Nov: the suite derives its days from today's date (full runs 44676827988, 44676831421; #2305's batch). No product PR
 # merged for ~1.5 h. The nightly full set still runs it. The fix lane ("Fix · FO-3st2 staff-hours test fails by date")
 # pins the suite's dates and removes this hold in the same PR; it must be off this list by 21 Nov.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
+# Three browser suites quarantined 25 Nov by the tech lead (Lead 8, P-205, P-832's quarantine of the flakiest): merge
+# batches failed 9 of 15 in 6 h (flow-constraint, 17:06 IST) and these three failed both tries in batches or full runs
+# where the PR under test changed nothing they cover. The nightly full set still runs them. Each comes off this list in
+# its fix PR, after 5 green runs in a row:
+# check_fo9s_merge_browser.ts (FO-9s merge dialog, R1.29): batch run 45594684150 shard (11), "strict mode violation:
+#   locator('[data-merge-dialog]')" (two dialogs), both tries; #3659 (OAuth only) under test; a race in #3716's
+#   merge-dialog.tsx (#3659's lane). Fix: the R1.29 lane (asked 25 Nov 16:4x IST).
+# check_pf21rs_browser.ts (PF-21rs breach register screens, R1.87): batch #3749 run 45599205509 shard (7), "PF-21rs A2
+#   fail ... a breach changed elsewhere while Edit is open", both tries; Mergify: failed tested alone on top of main;
+#   #3692 (one journey file no suite imports) under test. Fix: the R1.87 lane.
+# check_uxa1_counts_browser.cjs (UX-A1 counts, Pathways screens): full run 45597595362 shard (2) on #3681 (client money
+#   only), "apiRequestContext.fetch: read ECONNRESET" on GET /api/combinations/:id/fact-sources after 38 passing steps,
+#   both tries; passed only on retry twice before (retry-watch, 17 Nov). Fix: a screens lane (a ready wait or a retry
+#   on the request).
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts check_fo9s_merge_browser.ts check_pf21rs_browser.ts check_uxa1_counts_browser.cjs"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do
   IFS='|' read -r qn qo qd qr <<< "$e"
-  if [[ "$qn" =~ ^check_[A-Za-z0-9_.-]+\.(ts|cjs)$ && "$qo" =~ ^[a-z0-9_-]+$ && "$qd" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "${qr:--}" =~ ^[0-9,-]+$ ]]; then
+  if [[ "$qn" =~ ^check_[A-Za-z0-9_.-]+\.(ts|cjs)$ && "$qo" =~ ^[a-z0-9_-]+$ && "$qd" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "${qr:--}" =~ ^([0-9,-]+|p[0-9]+)$ ]]; then   # p<n>: by a decision row (P-822: pr-suites-quarantine.txt)
     case " $QUARANTINE " in *" $qn "*) ;; *) QUARANTINE="$QUARANTINE $qn"; AUTOQ="$AUTOQ$qn|$qo|$qd|${qr:--} ";; esac
   else echo "SUITES_QUARANTINE_AUTO: ignored the malformed entry \"$e\"" >&2; fi
 done
@@ -185,7 +202,11 @@ if [ -n "$CHANGED" ]; then
   [[ "$CHANGED" == *..* ]] || { echo "--changed wants <base>..<head>; no suite was run"; exit 2; }
   base="${CHANGED%%..*}"; head="${CHANGED##*..}"
   files=$(git -c core.quotePath=false diff --no-renames --name-only "$base...$head") || { echo "git diff $base...$head failed; no suite was run"; exit 2; }
-  sel=$(printf '%s\n' "$files" | node "$P/product/tools/select-suites.mjs" $DIRECT) || { echo "select-suites.mjs failed; no suite was run"; exit 2; }
+  if [ "$MODULES" = 1 ]; then   # SPD-2 item 2 (P-802): a PR's suites by module; the merge batch and the nightly run every suite
+    sel=$(printf '%s\n' "$files" | python3 -I "$P/product/tools/module-suites.py") || { echo "module-suites.py failed; no suite was run"; exit 2; }
+  else
+    sel=$(printf '%s\n' "$files" | node "$P/product/tools/select-suites.mjs" $DIRECT) || { echo "select-suites.mjs failed; no suite was run"; exit 2; }
+  fi
   printf '%s\n' "$sel" > "$OUT/selection.tsv"
   TAB=$(printf '\t')
   if [ "${sel%%"$TAB"*}" = ALL ]; then
@@ -219,7 +240,7 @@ if [ "$SHARDS" -gt 1 ] || [ "$LIST" = 1 ]; then
   RT0="$S/tests/runtime"; [ -n "${SUITES_TESTS_DIR:-}" ] && RT0=/nonexistent
   [ -f "$RT0/check_case_engine.ts" ] && picked check_case_engine.ts && units+=(check_case_engine.ts)
   [ -f "$RT0/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && units+=(check_runtime_r1a.ts)
-  for t in check_p2_guard check_p2_launch; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
+  for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
   TURN=${#units[@]}
   MINE=" $(printf '%s\n' "${units[@]}" | awk -v n="$SHARDS" -v me="$SHARD" -v q="$QW" -v tf="$P/product/tools/suite-times.tsv" '
     BEGIN { while ((getline l < tf) > 0) { if (l ~ /^#/) continue; split(l, a, "\t"); t[a[1]] = a[2] } }
@@ -247,6 +268,8 @@ fi
 
 # A quarantined suite's reason: by hand (P-205), or by the B122 rule with its owner and fix date.
 qwhy() { local e; for e in $AUTOQ; do case "$e" in "$1|"*) IFS='|' read -r _ qo qd qr <<< "$e"
+  if [[ "$qr" =~ ^p([0-9]+)$ ]]; then local late=""; [[ "$(date -u +%F)" > "$qd" ]] && late="; overdue since $qd"
+    echo "quarantined in pr-suites by P-${BASH_REMATCH[1]} (passes most often only on retry): owner $qo, fix by $qd$late; the merge queue and nightly still run it"; return; fi
   echo "passed only on retry in 2+ runs in 7 days (runs ${qr//,/, }): owner $qo, back on $qd unless fixed sooner; nightly still runs it (B122)"; return;; esac; done
   echo "fails at random: nightly only until its fix merges (P-205)"; }
 rows=(); fail=0; failed=(); RETRIES=0; RETRIED=(); AGAIN=(); NORETRY=""; RF=""
@@ -285,6 +308,18 @@ LIMIT="${SUITES_TIMEOUT:-1200}"; [[ "$LIMIT" =~ ^[1-9][0-9]*$ ]] || LIMIT=1200
 KILL_AFTER="${SUITES_KILL_AFTER:-30}"; [[ "$KILL_AFTER" =~ ^[1-9][0-9]*$ ]] || KILL_AFTER=30
 lim() { if [ $((LIMIT % 60)) = 0 ]; then echo "$((LIMIT / 60)) min"; else echo "$LIMIT s"; fi; }
 timedout() { [ "$1" = 124 ] || { [ "$1" = 137 ] && [ "$2" -ge "$LIMIT" ]; }; }   # exit code, seconds taken
+# A hung Node suite also writes Node's own report when asked (hang-report.py prints the filtered part; the raw file never
+# leaves its private folder). Only with a Node that can leave the environment and network out, and only on Linux: a process
+# that does not catch SIGUSR2 dies of it, and /proc says which of the suite's own processes catch it.
+REPORT_OK=""; [ -d /proc/self/fd ] && node --report-exclude-env --report-exclude-network -e 0 2>/dev/null && REPORT_OK=1
+askreport() {  # askreport <timeout's pid> <folder>: SIGUSR2 to the node processes of the suite's own group that catch it and report there
+  local p c; [ -n "$2" ] || return 0
+  for p in $(ps -A -o pid=,pgid= 2>/dev/null | awk -v g="$1" '$2 == g { print $1 }'); do
+    { tr '\0' '\n' < "/proc/$p/environ"; } 2>/dev/null | grep -qF -- "--report-directory=$2" || continue
+    [ "$(basename "$(readlink "/proc/$p/exe" 2>/dev/null)")" = node ] || continue
+    c=$(awk '$1 == "SigCgt:" { print $2 }' "/proc/$p/status" 2>/dev/null); [ -n "$c" ] && [ $(( 16#${c: -3} & 16#800 )) -ne 0 ] && kill -USR2 "$p" 2>/dev/null && : > "$2/asked"
+  done
+}
 hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still run
   kill -0 "$1" 2>/dev/null || return 0
   local p fd fds
@@ -301,15 +336,23 @@ hangdump() {  # hangdump <timeout's pid>: the suite's processes while they still
 guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed out, 137 killed after ignoring the TERM)
   local log="$1"; shift; local pid w code
   # Append mode, so the suite's later lines never write over the STOP lines (its own offset would).
-  : > "$log"; "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
+  local rd="" opt=""; [ -n "$REPORT_OK" ] && rd=$(mktemp -d "${TMPDIR:-/tmp}/hang.XXXXXXXX" 2>/dev/null) && case "$rd" in *[[:space:]]*) rmdir "$rd"; rd="";; esac
+  [ -n "$rd" ] && opt="${NODE_OPTIONS:+$NODE_OPTIONS }--report-on-signal --report-exclude-env --report-exclude-network --report-directory=$rd"
+  : > "$log"; env ${opt:+"NODE_OPTIONS=$opt"} "$TIMEOUT" -k "$KILL_AFTER" "$LIMIT" "$@" < /dev/null >> "$log" 2>&1 &
   pid=$!
   ( s=""; trap '[ -n "$s" ] && kill "$s" 2>/dev/null; exit 0' TERM
-    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log" ) < /dev/null &
+    sleep "$(( LIMIT > 2 ? LIMIT - 1 : 1 ))" > /dev/null 2>&1 & s=$!; wait "$s"; hangdump "$pid" >> "$log"; askreport "$pid" "$rd" ) < /dev/null &
   w=$!
   wait "$pid"; code=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
+  [ -z "$rd" ] || { python3 -I "$P/product/tools/hang-report.py" "$rd" >> "$log" 2>/dev/null; rm -rf "${rd:?}"; }   # nothing in it when the suite ended by itself
   return "$code"
 }
+# B203 (P-744): with SUITES_COVERAGE=<dir>, each suite and the copy it starts write V8 coverage to <dir>/<suite> (the
+# preload lets a server stopped by SIGTERM flush it); test-graph.py turns it into the capability -> file -> suite graph.
+# Set before the copy starts (isolated.sh passes the environment on). Unset (every PR, batch and nightly run): nothing.
+cov() { [ -n "${SUITES_COVERAGE:-}" ] || return 0; export NODE_V8_COVERAGE="$SUITES_COVERAGE/${1%.*}"; mkdir -p "$NODE_V8_COVERAGE"
+  case " ${NODE_OPTIONS:-} " in *coverage-preload.mjs*) ;; *) export NODE_OPTIONS="--import=$ROOT/$S/tests/qa/coverage-preload.mjs${NODE_OPTIONS:+ $NODE_OPTIONS}";; esac; }   # absolute: a bare path is read as a package; added once, never replacing what was set
 run() {  # $1 file, $2 label, rest: command. AGAIN readies a retry (recopy ...); NORETRY says why there is none; both cleared.
   local f="$1" label="$2"; shift 2; local log="$OUT/${f%.*}.log" t0=$SECONDS code=0 code2=0 note="" a src="" rw=""; RF="$f"
   # CI only: one line per suite as it starts, on stderr (the job log), so a part stopped at its job limit, whose table
@@ -348,7 +391,7 @@ for path in "$TESTS"/check_*.ts "$TESTS"/check_*.cjs; do
   picked "$f" || continue
   myturn "$f" || continue
   case " $QUARANTINE " in *" $f "*) { [ -n "$CHANGED" ] || [ "$SKIPQ" = 1 ]; } && { rows+=("| $f | quarantined | | $(qwhy "$f") |"); continue; };; esac
-  usage=$(grep -m1 -E "studio/tests/$f" "$path")
+  usage=$(grep -m1 -E "studio/tests/$f" "$path"); cov "$f"
   if [ "$f" = check_studio_browser.cjs ]; then
     if [ "$DEMO" = 0 ] && [ "${SUITES_BROWSER_ISOLATED:-}" = 1 ]; then
       # The Mac CI runner (self-hosted, founder 30 Oct): the same suite on its own isolated copy, never the :4400 demo.
@@ -384,9 +427,10 @@ done
 # Suites outside tests/check_*: the runtime lane's (R1, two steps on one copy) and the drafting guard's (prototype/tests,
 # plain: they make their own temporary copies). Both lanes' Lead checks found CI skipping them (24 Oct).
 RT="$S/tests/runtime"; [ -n "${SUITES_TESTS_DIR:-}" ] && RT=/nonexistent; RN=$(iname runtime_r1); RP=$(iport 4430)
-if [ -f "$RT/check_case_engine.ts" ] && picked check_case_engine.ts && myturn check_case_engine.ts; then run check_case_engine.ts plain $TSX "$RT/check_case_engine.ts"; fi
+if [ -f "$RT/check_case_engine.ts" ] && picked check_case_engine.ts && myturn check_case_engine.ts; then cov check_case_engine.ts; run check_case_engine.ts plain $TSX "$RT/check_case_engine.ts"; fi
 # The three R1 suites share one copy and run in order: chosen together (select-suites.mjs) or not at all.
 if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && myturn check_runtime_r1a.ts; then
+  cov check_runtime_r1a.ts   # the three share one copy, so one coverage folder (test-graph.py says so)
   if zsh "$S/tools/isolated.sh" "$RN" "$RP" start >/dev/null 2>&1 && guarded "$OUT/setup_visitor_visa.log" $TSX "$RT/setup_visitor_visa.ts" "$RP" "xr_studio_$RN"; then
     # R1c's browser journey first: it publishes a release 2 that R1a expects (runtime lane, 24 Oct).
     # Never retried one by one (review M2): the three share one copy, so a retry would start from the first try's data.
@@ -397,8 +441,8 @@ if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked 
   else rows+=("| check_runtime_r1a.ts | FAIL | | isolated copy runtime_r1 or setup_visitor_visa.ts failed (see setup_visitor_visa.log) |"); fail=1; fi
   zsh "$S/tools/isolated.sh" "$RN" "$RP" stop >/dev/null 2>&1
 fi
-for t in check_p2_guard check_p2_launch; do
-  [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
+for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do
+  [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && cov "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
 done
 # Every unit dealt to this shard leaves a row: ran, quarantined or skipped (#1660, 12 Nov). One that left none is a
 # fault in this script, never a silent pass. (The R1 unit's row is check_runtime_r1a.ts, run or failed.)

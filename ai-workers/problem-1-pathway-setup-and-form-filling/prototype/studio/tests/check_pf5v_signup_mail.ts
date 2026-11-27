@@ -1,12 +1,16 @@
 // PF-5v part 1 (QA-484; R1.19, R1.100's sign-up door): an empty sign-up answers in plain words on each field, and no
-// validator text reaches an answer. DW2 needs no database (the fields are checked before any read). The verification
-// email through MailPort (QA-481, DW1, DW3) is part 2, after PF-19p (Lead B's ruling rev 16.62 on #1955).
+// validator text reaches an answer. DW2 needs no database (the fields are checked before any read).
+// Part 2 (QA-481, DW1, DW3; after PF-19p): the local stand-in's verification email goes through the MailPort it is given
+// as one platform account email (no firm), keyed by its registration; the running app's sign-up ports pass the app's
+// MailPort to both the stand-in and the door. On a running copy: tests/journeys/j_100.ts W2.
 //   tsx studio/tests/check_pf5v_signup_mail.ts
 import type { PrismaClient } from "@prisma/client";
+import { readFileSync } from "node:fs";
 import { fakeBilling } from "../ports/billing.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeMail } from "../ports/mail.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
+import { runtimeSignUpPorts } from "../api/src/platform/firms/runtime-ports.ts";
 import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
 import { EMPTY, FirmSignUp } from "../api/src/platform/firms/signup.ts";
 
@@ -35,6 +39,31 @@ const badEmail = await errorsOf(() => door.signUp({ email: "not-an-email", passw
 ok("PF-5v DW2 fail: a bad email answers \"give your work email\", not the empty words", JSON.stringify(badEmail) === JSON.stringify(["email: give your work email (name@example.com)"]), badEmail);
 const spaces = await errorsOf(() => door.signUp({ email: "a@maple.example.com", password: " ".repeat(14), firmName: "Maple Law", countryCode: "CA" }, "10.0.0.6"));
 ok("PF-5v DW2 fail: a password of spaces keeps \"not only spaces\"", JSON.stringify(spaces) === JSON.stringify(["password: not only spaces"]), spaces);
+
+// Part 2, DW1 pass: given a MailPort, the stand-in sends its verification email through it, once, as a platform account email.
+{
+  const mail = fakeMail(), id = new LocalSignUp(() => clock.now(), mail);
+  const { subject } = await id.register({ email: "owner@maple.example.com", password: "correct horse battery staple 77", firmName: "Maple Law", link: (c) => `http://localhost:4400/sign-up/verify#token=t&code=${c}` });
+  const m = mail.sent[0] as (typeof mail.sent)[number] & { platformAccount?: true; firmId?: string };
+  const code = m?.text.match(/verification code is (\d{6})\./)?.[1];
+  ok("PF-5v part 2 DW1 pass (QA-481): the verification email goes through MailPort once, to the person, transactional, with no firm (a platform account email)", mail.sent.length === 1 && m.to === "owner@maple.example.com" && m.class === "TRANSACTIONAL" && m.platformAccount === true && m.firmId === undefined && m.idempotencyKey === `signup:${subject}`, mail.sent);
+  ok("PF-5v part 2 DW1 pass: the code it carries is the one the provider confirms; the password never appears in it", !!code && (await id.confirm({ subject, code })) && !m.text.includes("correct horse"), m?.text);
+  // DW1 fail: without a MailPort (a unit test's stand-in) nothing is sent; the email is kept in memory only, as before.
+  const quiet = new LocalSignUp(() => clock.now());
+  await quiet.register({ email: "x@maple.example.com", password: "correct horse battery staple 77", firmName: "Maple Law", link: () => "l" });
+  ok("PF-5v part 2 DW1 fail: a stand-in with no MailPort keeps the email in memory only", quiet.sent.length === 1);
+}
+// Part 2, DW3: the running app's sign-up ports give the app's MailPort to the door and to the stand-in (never fakeMail).
+{
+  const mail = fakeMail();
+  const ports = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {}, mail);
+  await ports.identity.register({ email: "p@maple.example.com", password: "correct horse battery staple 77", firmName: "Maple Law", link: () => "l" });
+  ok("PF-5v part 2 DW3 pass: runtimeSignUpPorts passes the given MailPort to the door and the stand-in", ports.mail === mail && mail.sent.length === 1);
+  const other = fakeMail(), defaults = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
+  await defaults.identity.register({ email: "q@maple.example.com", password: "correct horse battery staple 77", firmName: "Maple Law", link: () => "l" });
+  ok("PF-5v part 2 DW3 fail: with no MailPort given, the ports fall back to their own fakeMail, which is not the app's (so the feature must pass MESSAGES_MAIL, checked below)", other.sent.length === 0 && defaults.mail !== mail && (defaults.mail as ReturnType<typeof fakeMail>).sent.length === 1 && mail.sent.length === 1);
+}
+ok("PF-5v part 2 DW3 pass: the app's feature binds the sign-up ports to MESSAGES_MAIL (MailPort over MessagePort)", /inject:\s*\[MESSAGES_MAIL\]/.test(readFileSync(new URL("../api/src/features/platform-firms.ts", import.meta.url), "utf8")));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
