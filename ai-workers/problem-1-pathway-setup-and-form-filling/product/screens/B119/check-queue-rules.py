@@ -206,6 +206,9 @@ def problems(cfg, have_script):
             out.append("queue pipeline: allow_checks_interruption set (a pipeline PR must not restart a running product batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
+    # OS-50 (P-733, P-820): near-Proven product PRs first. The product queue's priority rule "near-proven" holds for a body
+    # with a "Completes: R1.<n>" line (as item-proof.mjs reads it) and for no other body; it never restarts a running batch.
+    out += near_proven(cfg)
     out += fixes_main(cfg)
     out += guards_required(cfg)
     # P-717 (a), whatever the order (P-827 lists pipeline first, so routing alone no longer shows it): product keeps its
@@ -306,6 +309,41 @@ def guards_required(cfg):
     return out
 
 
+NEAR = [("Completes: R1.10", True), ("**Completes:** R1.5, R1.6", True), ("- Completes: R1.3", True),
+        ("> Completes: R1.42", True), ("Plan.\nCompletes: R1.77\nDone when: x", True),
+        ("Completes: none", False), ("no completes line", False), ("Completes R1.4 (no colon)", False),
+        ("the PR says Completes: R1.4 in prose", False), ("Completes: OS-50", False)]
+
+
+def near_proven(cfg):
+    """OS-50: the top-level priority rule near-proven (Mergify refuses priority_rules inside a queue rule, #3825)."""
+    out = [f"queue {q.get('name')}: has priority_rules, which Mergify refuses inside a queue rule (put them at the top level)"
+           for q in cfg.get("queue_rules", []) if "priority_rules" in q]
+    rules = [r for r in cfg.get("priority_rules") or [] if r.get("name") == "near-proven"]
+    if not rules:
+        return out + ["priority_rules: no rule 'near-proven' at the top level (OS-50: a PR that completes an R1 item goes first)"]
+    r = rules[0]
+    if r.get("priority") != "high":   # medium is Mergify's default: no priority at all (round 1 m2 of #3825)
+        out.append(f"queue product: priority rule near-proven has priority {r.get('priority')!r}, not high")
+    if r.get("allow_checks_interruption") is not False:
+        out.append("queue product: priority rule near-proven does not set allow_checks_interruption: false (it must not restart a running batch)")
+    for body, want in NEAR:
+        try:
+            got = all(holds(c, {"body": body, "label": ["review: approved"]}) for c in r.get("conditions") or [])
+        except (ValueError, re.error) as e:
+            out.append(f"queue product: priority rule near-proven cannot be read ({e})"); break
+        if not r.get("conditions"):
+            out.append("queue product: priority rule near-proven has no conditions (every PR would go first)"); break
+        if got != want:
+            out.append(f"queue product: priority rule near-proven {'misses' if want else 'takes'} the body {body!r}")
+    try:
+        if all(holds(c, {"body": "Completes: R1.10", "label": ["records"]}) for c in r.get("conditions") or []):
+            out.append("queue product: priority rule near-proven takes a records PR (it needs -label = records)")
+    except (ValueError, re.error) as e:
+        out.append(f"queue product: priority rule near-proven cannot be read ({e})")
+    return out
+
+
 def mutations(cfg):
     """Broken copies of the configuration, each of which the check must refuse."""
     def drop(qname, test):
@@ -346,6 +384,13 @@ def mutations(cfg):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
     def swap12(c):
         c = copy.deepcopy(c); c["queue_rules"][1], c["queue_rules"][2] = c["queue_rules"][2], c["queue_rules"][1]; return c
+    def prio(c, fn):   # OS-50: a changed near-proven rule (top level)
+        c = copy.deepcopy(c); fn(c); return c
+    def inqueue(c):   # the rule moved back inside the product queue, where Mergify refuses it (#3825)
+        c = copy.deepcopy(c)
+        for q in c["queue_rules"]:
+            if q["name"] == "product": q["priority_rules"] = c.pop("priority_rules")
+        return c
     def fm_change(c, fn):   # F2: a changed fixes-main rule (top level); not named prio (#3825's helper)
         c = copy.deepcopy(c); fn(next(r for r in c["priority_rules"] if r["name"] == "fixes-main")); return c
     def fm_drop(c):
@@ -393,6 +438,13 @@ def mutations(cfg):
         ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
         ("verdicts listed after pipeline (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
+        ("no top-level near-proven priority rule (OS-50)", prio(cfg, lambda q: q.pop("priority_rules", None))),
+        ("near-proven inside the product queue, where Mergify refuses it (#3825)", inqueue(cfg)),
+        ("near-proven takes records PRs (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"conditions": [q["priority_rules"][0]["conditions"][0]]}))),
+        ("near-proven interrupts running checks (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"allow_checks_interruption": True}))),
+        ("near-proven matches any body (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"conditions": ["body ~= ."]}))),
+        ("near-proven matches Completes anywhere in prose (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"conditions": ["body ~= Completes:\\s*R1"]}))),
+        ("near-proven at low priority (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"priority": "low"}))),
         ("no top-level fixes-main priority rule (F2)", fm_drop(cfg)),
         ("fixes-main inside the pipeline queue, where Mergify refuses it (F2, #3825)", fm_inqueue(cfg)),
         ("fixes-main interrupts running checks (F2)", fm_change(cfg, lambda r: r.update({"allow_checks_interruption": True}))),
@@ -430,7 +482,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4)")
+        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4); near-proven product PRs first, never interrupting (OS-50)")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

@@ -19,7 +19,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh check-model-rule.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh check-nightly-watch.sh check-resource-claim-guard.sh check-rule-register.sh check-decision-impact.sh check-lead-upkeep.sh check-flow-constraint.sh check-lead-gap.sh check-queue-blocked.sh check-owed-watch.sh check-lead-merge.sh check-lead-read-gate.sh check-guard-parts.sh test-spd-2.sh check-model-rule.sh check-comment-words.sh"
 TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, #2597
 TESTS="$TESTS check-rules-settled.sh"   # A348: rules before review
 TESTS="$TESTS check-ready-gate.sh"   # ENF-782a readiness gate, #2738
@@ -41,6 +41,8 @@ TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads 
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-qa-due.sh check-tools-on-main.sh check-comment-filter.sh"   # lab automation-measures: qa after merge, OS-11, OS-78 (a)
 TESTS="$TESTS check-lead-age.sh"   # LR-156: the Lead copy on live main, records on a branch under 24 h
+TESTS="$TESTS check-lane-read.sh check-lane-death.sh check-nudge-lane.sh"   # LR-154 app view enforced, LR-147 lane deaths, LR-146 nudge
+TESTS="$TESTS check-switch.sh"   # OS-86 / LR-143: the account switch (founder A417)
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -655,6 +657,11 @@ MUT="$MUT"'
 LR156 age|product/tools/lead-age.sh|s/^    \[ "\$age_h" -gt "\$H" \] \&\& want=/    false \&\& want=/|check-lead-age.sh
 LR156 ci|product/tools/lead-age.sh|s/^    if \[ "\$gap_h" -gt "\$H" \]; then$/    if false; then/|check-lead-age.sh
 LR156 keep|product/tools/lead-age.sh|s/^      if \[ "\$extra" != 0 \]; then$/      if false; then/|check-lead-age.sh
+LR154 push|product/tools/lead-check-guard.sh|s/^  \[ "\$pushed" = yes \] \&\& exit 0$/  exit 0/|check-lane-read.sh
+LR147 read|product/tools/lane-death.sh|s/^      \[\[ "\$t" =~ .*/      continue/|check-lane-death.sh
+LR146 hour|product/tools/nudge-lane.sh|s/ -lt "\$min" \]; then$/ -lt 0 ]; then/|check-nudge-lane.sh
+OS86 gate|product/tools/switch.sh|s/^    if \[ ! -s "\$D\/baseline" \]; then$/    if false; then/|check-switch.sh
+OS86 wave|product/tools/switch.sh|s/^    \[ "\$n15" -ge 4 \] .*/    true/|check-switch.sh
 M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
 M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh
 M788 prose|product/tools/model-rule-check.py|s/^        m = OTHER_MODEL.search(line) or OTHER_EFFORT.search(line)/        m = None/|check-model-rule.sh
@@ -725,6 +732,13 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# OS-78c (OS-PM 4): comment-triggered workflows start no job on a comment without their words
+MUT="$MUT"'
+OS78c queue|../../.github/workflows/queue-gate.yml|s/(contains(github.event.comment.body, .Reviewer:.) \&\& contains/(contains/|check-comment-words.sh
+OS78c rounds|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\& (contains(github.event.comment.body, .approve.)/(contains(github.event.comment.body, \x27reviewer\x27) \&\& (true/|check-comment-words.sh
+OS78c markdown|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\&/(contains(github.event.comment.body, \x27reviewer:\x27) \&\&/|check-comment-words.sh
+OS78c read|../../.github/workflows/lead-read.yml|s/(github.event.action != .created. \&\&/(true \&\&/|check-comment-words.sh
+OS78c takeback|../../.github/workflows/lead-read.yml|s/(contains(github.event.changes.body.from, .Lead.) \&\& contains(github.event.changes.body.from, .read.))/false/|check-comment-words.sh'
 # OS-82 (OS-PM 4): a head whose only pr-suites run predates job "pr-suites" counts only when its parts were skipped
 MUT="$MUT"'
 OS82 wired|product/tools/queue-gate.sh|s/\[ "\$suites_state" = missing \] \&\& noparts "\$s"; return 0; }/return 0; }/|check-queue-gate.sh
@@ -735,6 +749,10 @@ OS82 green|product/tools/queue-gate.sh|s/select(.status == "completed" and .conc
 OS82 before|product/tools/queue-gate.sh|s/ and (.created_at .. "9") < .before)/)/|check-queue-gate.sh
 OS82 level|product/tools/queue-gate.sh|s/ or .annotation_level == "warning" or .annotation_level == "failure")/)/|check-queue-gate.sh
 OS82 code|product/tools/queue-gate.sh|s/^  \[ -z "\$(grep -E .\/prototype\/.^packages\/. <<< "\${files:-}"/  [ -z "$(grep -E "^~" <<< "${files:-}"/|check-queue-gate.sh'
+# OS-50 (P-733, P-820): near-Proven product PRs first in the product queue, never interrupting a running batch
+MUT="$MUT"'
+OS50 interrupt|../../.mergify.yml|s/^    allow_checks_interruption: false/    allow_checks_interruption: true/|check-mergify-scopes.sh
+OS50 rule|../../.mergify.yml|s/^  - name: near-proven$/  - name: near-proven-off/|check-mergify-scopes.sh'
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
@@ -776,6 +794,7 @@ while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
   cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; mkdir -p "$M/$P/product/design"; cp "$ROOTD/$P/product/design/waves.tsv" "$ROOTD/$P/product/design/waves.md" "$ROOTD/$P/product/design/night-checklist.json" "$M/$P/product/design/"; cp "$ROOTD/$P/product/focus-list.md" "$M/$P/product/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"; cp -R "$ROOTD/.claude/agents" "$M/.claude/"; cp "$ROOTD/CLAUDE.md" "$ROOTD/AGENTS.md" "$M/"; cp "$ROOTD/$P/product/WAY-OF-WORKING.md" "$M/$P/product/"   # M788: check-model-rule.sh reads these
+  mkdir -p "$M/$P/product/screens"; cp -R "$ROOTD/$P/product/screens/B119" "$M/$P/product/screens/"   # OS-50: check-mergify-scopes runs B119's check-queue-rules.py
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"

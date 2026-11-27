@@ -102,6 +102,12 @@ bash "$TOOLS/records-dir.sh" --private >/dev/null 2>&1 || ACT "records: no priva
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$RECS/STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead's get_usage"
 
+# 1c2. OS-86 / LR-143 (founder A417): at 94% weekly the old side of an account switch starts (AS-1). get_usage is the
+# Lead's tool, so the Lead passes it: LEAD_WEEKLY=<pct>. switch.sh close-prep writes the ledger row and checks STATE and
+# RESUME are pushed; an ACT until it says done. An open switch with no baseline is an ACT too.
+if [ -n "${LEAD_WEEKLY:-}" ]; then cp=$(bash "$TOOLS/switch.sh" close-prep "$LEAD_WEEKLY" 2>&1) && say "$cp" || ACT "$cp"; fi
+ss=$(bash "$TOOLS/switch.sh" status 2>&1); case "$ss" in *"baseline none"*) ACT "$ss: get_usage, then switch.sh baseline <pct> (AS-4)";; *open*) say "$ss";; esac
+fresh "switch.sh: LEAD_WEEKLY from the Lead's get_usage, the switch state in ~/.claude/xr-switch, git status of STATE and RESUME, now"
 # 1c3. LR-156 (founder A433/A434): the Lead copy's branch age, every check; stale (base over 24 h or 200 behind) is an
 # ACT with the recut command (lead-age.sh; the fetch is step 1d's, so this reads the previous check's origin/main).
 la=$(bash "$TOOLS/lead-age.sh" line 2>&1) && say "$la" || ACT "$la"
@@ -336,6 +342,17 @@ fresh "outside-deps-watch.py"
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 seen "$av"
 fresh "product/state/app-view-latest.txt (app-view-check.sh)"
+# 10a. LR-146: each idle lane flagged above is woken by script (claude -p --cloud), once per lane per hour (nudge-lane.sh);
+# a failed send (archived, signed out) is an ACT. LEAD_NUDGE=0 switches it off for one run.
+if [ "${LEAD_NUDGE:-1}" = 1 ]; then
+  for sid in $(grep '^ACT .*\[idle lane' <<<"$av" | grep -oE '(session|cse)_[A-Za-z0-9]+' | sort -u); do
+    nl=$(bash "$TOOLS/nudge-lane.sh" "$sid" 2>&1) && say "$nl" || ACT "lane nudge failed: $nl (archived: restart it from its PR's hand-over; signed out: claude auth login)"
+  done
+fi
+fresh "nudge-lane.sh: the idle lanes of step 10's app view, sent now with claude -p --cloud (log ~/.claude/xr-nudges.tsv)"
+# 10d. LR-147: lanes that died on an API error since the last check (StopFailure hook lane-death.sh; its PR comments).
+ld=$(bash "$TOOLS/lane-death.sh" read "$SINCE" 2>&1); echo "$ld"; act=$((act + $(grep -c '^ACT' <<<"$ld"))); seen "$ld"
+fresh "lane-death.sh read: ~/.claude/xr-lane-deaths.tsv and GitHub's search for the marker, both now"
 # 10b. The night checklist (A334 fix 1, A332 "Keep both"): product items, then operating-system items, one ACT for each
 # not done (done = a PR number merged on main, never prose), and "operating system: n done of m". Data: design/night-checklist.json.
 nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"
