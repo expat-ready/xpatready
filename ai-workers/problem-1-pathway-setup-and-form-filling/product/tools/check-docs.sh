@@ -43,6 +43,7 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
     [ "$n" -eq 1 ] && ! grep -qE '^current_lead: [A-Za-z]+_[A-Za-z0-9_-]{8,} .*Lead [0-9]+' "$S" && echo "CURRENT LEAD: STATE.md's current_lead line needs a session id, then a title naming \"Lead N\""
   fi
   if [ -n "$RD" ] && [ -f "$S" ]; then
+    : # keeps this block valid when guard 6 deletes the size line below (#3926: an empty then broke bash -n)
     # One page (6 Nov: it reached 34 KB and every Lead re-read it; test: check-state-page.sh).
     b=$(wc -c < "$S"); [ "$b" -gt 12288 ] && echo "STATE TOO BIG ($((b / 1024)) KB > 12 KB): move the earlier page to product/history/STATE-<date>-<time>-<lead>.md and keep one page"
   fi
