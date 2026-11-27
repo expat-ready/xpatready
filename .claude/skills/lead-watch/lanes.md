@@ -1,29 +1,30 @@
 # Lanes at every check: read, answer, wake, and deaths (A430, LR-154, LR-146, LR-147)
 
+The tech lead's correction, 27 Nov: `app-view.js` on main already reads past "Show more", so LR-154 adds no tool. It enforces the tool's saved line each check, and the signed-out push.
+
 Founder A430 (27 Nov): "this also should be some hook or some code ... You should be reminding me if you're not able to manage these" and "Show more has to be clicked, otherwise you see only half of the lanes. This has to be also enforced."
 
 ## 1. Read every lane (LR-154)
-* In the built-in browser, open https://claude.ai/code and run `product/tools/claude-lanes.js` with `javascript_tool`.
-  * It clicks "Show more" until the button is gone. On 20 Nov, 11 lanes were hidden behind it, 4 of them waiting.
-  * It prints one line per WAIT (awaiting input), UNREAD and RUN session, then the summary: `claude.ai: signed in · W waiting · U unread · R running · N listed · Show more ×K`.
-* **Quote the `claude.ai:` summary line in the check's report**, word for word.
-* **Answer every WAIT in the same check**, inside the lane's brief (the skill's "Prompts in a lane" rule).
-* The app view (`app-view.js`, P-326) and `list_sessions include_archived` (for lanes archived with work left) stay as before.
+* In the built-in browser, open https://claude.ai/code and run `product/tools/app-view.js` with `javascript_tool`.
+  * It reads the page's own session list past "Show more" (B204 (4), ENF-761). On 20 Nov the sidebar hid 11 of 45 sessions.
+  * It prints one line per session, FLAG or ok.
+* Save it the same check: `bash product/tools/lead-watch.sh app-view-read <<'EOF' … EOF`. That refuses a summary without `rows=N`.
+* Act on every FLAG in that check: answer a waiting lane inside its brief, or wake it (section 4).
+* `list_sessions include_archived` still finds lanes archived with work left.
 
 ## 2. Signed out or unreachable: tell the founder at once
-* The read can fail in three ways:
-  * it prints `claude.ai: SIGNED OUT or list not loaded (<url>)`;
-  * the browser cannot be reached, in which case write the line `claude.ai: UNREACHABLE (<why>)` yourself;
-  * GitHub is signed out: on github.com, `document.querySelector('meta[name=user-login]')?.content` is empty.
-* In any of these, send a **PushNotification 🔴 to the founder in the same check**, with the URL to sign in: https://claude.ai/login or https://github.com/login.
-* The check does not wait for the next one to say it.
+* When the page cannot be read, app-view.js prints `UNREADABLE …`. That happens when claude.ai is signed out, the call is refused, or the browser cannot be reached. **Save that line anyway.**
+* Then send a **PushNotification 🔴 to the founder in the same check**, with https://claude.ai/login.
+* GitHub likewise: on github.com, `document.querySelector('meta[name=user-login]')?.content` is empty → https://github.com/login.
 
 ## 3. The enforcer
-`tools/lead-check-guard.sh` runs as a Stop hook, in the Lead's copy only. It refuses to end a turn started by `run lead-watch; read STATE Start here` in two cases:
-* the Lead's text in that turn holds no `claude.ai:` summary line;
-* the line says SIGNED OUT, "not loaded" or UNREACHABLE, and no PushNotification was sent in that turn.
+`tools/lead-check-guard.sh` refuses to end a turn started by `run lead-watch; read STATE Start here` in two cases:
+* the saved app view is over 15 min old (B197, P-798);
+* the saved view says UNREADABLE and no PushNotification was sent in that turn.
 
-Test: `check-claude-lanes.sh`.
+This Stop mode is registered in `.claude/settings.json` since LR-154. It was tested but never registered, so B197's rule never ran.
+
+It runs in the Lead's copy only. Test: `check-lane-read.sh`.
 
 ## 4. Wake an idle lane by script (LR-146)
 * For each lane lead-watch flags `[idle lane N min ...]`, lead-watch runs `tools/nudge-lane.sh <session-id> "<message>"`. It sends at most once per lane per hour.

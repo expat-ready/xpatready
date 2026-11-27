@@ -110,7 +110,7 @@ o=$(check $NOW); ok "a saved UNREADABLE line is an ACT, never a silent pass" "$(
 printf '%s\n' "$view" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null
 G="$TOOLS/lead-check-guard.sh"
 transcript() {  # $1 the turn's prompt → a transcript: the prompt, then a tool result, a meta line, a hook's feedback and a task notification
-  jq -cn --arg p "$1" '{type:"user", message:{role:"user", content:$p}}, {type:"assistant", message:{content:[{type:"text",text:"ok\nclaude.ai: signed in · 0 waiting · 0 unread · 1 running · 5 listed · Show more ×1"}]}},
+  jq -cn --arg p "$1" '{type:"user", message:{role:"user", content:$p}}, {type:"assistant", message:{content:[{type:"text",text:"ok"}]}},
     {type:"user", message:{content:[{type:"tool_result", content:"run lead-watch; read STATE Start here"}]}}, {type:"user", isMeta:true, message:{content:"x"}},
     {type:"user", message:{content:"Stop hook feedback: stale"}}, {type:"user", message:{content:"<task-notification>agent done</task-notification>"}}' > "$T/t.jsonl"; }
 stop() {  # $1 lane, $2 clock, $3 prompt → block | pass

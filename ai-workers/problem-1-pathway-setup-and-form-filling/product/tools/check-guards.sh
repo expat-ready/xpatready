@@ -38,7 +38,7 @@ TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT 
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
-TESTS="$TESTS check-claude-lanes.sh check-lane-death.sh check-nudge-lane.sh"   # LR-154 lane read, LR-147 lane deaths, LR-146 nudge
+TESTS="$TESTS check-lane-read.sh check-lane-death.sh check-nudge-lane.sh"   # LR-154 app view enforced, LR-147 lane deaths, LR-146 nudge
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -648,8 +648,7 @@ MUT="$MUT"'
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
 29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
-LR154 line|product/tools/lead-check-guard.sh|s/^  if \[ -z "\$ln" \]; then$/  if false; then/|check-claude-lanes.sh
-LR154 push|product/tools/lead-check-guard.sh|s/ \&\& \[ "\$pn" != true \]; then$/ \&\& false; then/|check-claude-lanes.sh
+LR154 push|product/tools/lead-check-guard.sh|s/^  \[ "\$pushed" = yes \] \&\& exit 0$/  exit 0/|check-lane-read.sh
 LR147 read|product/tools/lane-death.sh|s/^      \[\[ "\$t" =~ .*/      continue/|check-lane-death.sh
 LR146 hour|product/tools/nudge-lane.sh|s/ -lt "\$min" \]; then$/ -lt 0 ]; then/|check-nudge-lane.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
