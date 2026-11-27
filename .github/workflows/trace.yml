@@ -38,7 +38,8 @@ jobs:
         run: |
           git diff --name-only "$BASE...HEAD" > "$RUNNER_TEMP/changed.txt"
           if grep -qE 'trace-requirements|trace\.yml|task-spec|test_task_spec' "$RUNNER_TEMP/changed.txt"; then
-            python3 -I "$T/test_trace_requirements.py" && python3 -I "$T/test_task_spec.py"
+            python3 -I "$T/test_trace_requirements.py"
+            python3 -I "$T/test_task_spec.py"
           else
             echo "the tool did not change: tests skipped"
           fi
