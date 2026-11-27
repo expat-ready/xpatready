@@ -102,6 +102,11 @@ bash "$TOOLS/records-dir.sh" --private >/dev/null 2>&1 || ACT "records: no priva
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$RECS/STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead's get_usage"
 
+# 1c3. LR-156 (founder A433/A434): the Lead copy's branch age, every check; stale (base over 24 h or 200 behind) is an
+# ACT with the recut command (lead-age.sh; the fetch is step 1d's, so this reads the previous check's origin/main).
+la=$(bash "$TOOLS/lead-age.sh" line 2>&1) && say "$la" || ACT "$la"
+fresh "lead-age.sh: this copy's branch and origin/main as last fetched"
+
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
 # OS-11 (OS P1): the tools this check runs are main's, never a stale branch copy (tools-on-main.sh; one ACT if not).
