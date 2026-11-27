@@ -136,8 +136,14 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   await p.waitForFunction(() => /"Seen by Case officer \(Sample\)"/.test(document.querySelector("[role=dialog]")?.textContent ?? ""), null, { timeout: 10000 });
   step("C6.9 page pass (P-229 (2)): the drawer previews the stamp \"Seen by Case officer (Sample)\" (no licence, the firm's record)", /"Seen by Case officer \(Sample\)"/.test(await p.locator("[role=dialog]").innerText()));
   await state("review-drawer");
-  await tabTo(/^Mark reviewed$/); await p.keyboard.press("Enter"); await p.waitForSelector("[role=dialog]", { state: "detached" }); await settle();
-  step("C6.9 page pass (review M1): after Mark reviewed (now off), focus is on the result's heading", await focusIs() === "#result", await focusIs());
+  // LR-110 (this step's first-try failure in CI, 22-27 Nov: focus on the page itself): the drawer gave focus back to Mark
+  // reviewed… before the re-read switched it off, and a switched-off button drops focus. The re-read is held 1.5 s here,
+  // so every run takes that order; focus must still end on the result's heading once the button is off.
+  await p.route("**/runtime/cases/*/assessments", async (r) => { if (r.request().method() === "GET") await new Promise((x) => setTimeout(x, 1500)); await r.continue().catch(() => {}); });
+  await tabTo(/^Mark reviewed$/); await p.keyboard.press("Enter"); await p.waitForSelector("[role=dialog]", { state: "detached" });
+  await p.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => /^Mark reviewed/.test(b.textContent ?? "") && b.disabled), null, { timeout: 15000 }).catch(() => {});
+  await p.unroute("**/runtime/cases/*/assessments"); await settle();
+  step("C6.9 page pass (review M1): after Mark reviewed (now off), focus is on the result's heading, also when the page re-reads the check late (LR-110)", await focusIs() === "#result", await focusIs());
   step("C6.9 page pass (P-407 BIC-14): once marked, \"Already marked reviewed\" shows as text beside the switched-off button", /Already marked reviewed/.test(await text()));
   step("C6.9 page pass (BR-16): marked: \"Seen by Case officer\" on the result; Mark reviewed is then off", /Seen by Case officer/.test(await text()) && await p.getByRole("button", { name: /^Mark reviewed/ }).isDisabled());
   const latest = (await api(`/runtime/cases/${c.id}/assessments?person=${A}`)).body.assessments[0];
