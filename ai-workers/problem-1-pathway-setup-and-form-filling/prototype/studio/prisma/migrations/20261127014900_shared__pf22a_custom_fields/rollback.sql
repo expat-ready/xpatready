@@ -1,6 +1,6 @@
 -- PF-22a part 1 rollback (not a migration: Prisma reads only migration.sql). Run in one transaction, after the code that
 -- uses these tables (PF-22a part 2 onwards) is rolled back:
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261126155300_shared__pf22a_custom_fields/rollback.sql
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261127014900_shared__pf22a_custom_fields/rollback.sql
 -- The fields, values and saved views are dropped with their tables: keep a copy first if any exist.
 DROP TABLE "plat_custom_value";
 DROP TABLE "plat_custom_field";
@@ -11,4 +11,4 @@ DROP FUNCTION pf_custom_field_kept(), pf_custom_value_checked(), pf_custom_view_
 DROP TYPE "PlatCustomFieldType";
 DELETE FROM "platform_role_permission" WHERE "permission_key" = 'agent/custom-field:manage';
 DELETE FROM "platform_permission_key" WHERE "key" = 'agent/custom-field:manage';
-DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261126155300_shared__pf22a_custom_fields';
+DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261127014900_shared__pf22a_custom_fields';
