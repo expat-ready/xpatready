@@ -4,6 +4,10 @@
 #   bash product/tools/check-capacity-watch.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
+# The cases steer run() with S, N, G, NOW, RP, X and R. Inherited from the caller, they changed every run: ci.yml's job
+# "fast" exports S (the studio's path), so every run shared one state folder and "a repository that cannot be read" read
+# the run before's cached listing (#3918, #3920, #3923, 27 Nov). Start from none of them.
+unset S N G NOW RP X R
 T=$(mktemp -d "${TMPDIR:-/tmp}/cw.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }
 trap 'chmod -R u+rwx "${T:?}" 2>/dev/null; rm -rf "${T:?}"' EXIT
 gi() { git -C "$1" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "${@:2}"; }
