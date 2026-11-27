@@ -177,7 +177,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-445b | Unused connectors stay off. | prose | 11 Nov |
 | P-175b | Live AI is off on every copy; a live call only as a paid run the Lead approved, from a Terminal tab. | script: STUDIO_*_LIVE off by default in api/src (part) | P-612 |
 | P-295 | Day cap US$30, US$50 on 9 Nov (P-309, P-429, P-434); the Lead approves inside it, the founder above. | script: p2/ledger.ts (part: reserve before the call) | 9 Nov |
-| P-295b | Every paid run: usual and worst cost first, worst reserved in the ledger, one attempt, an independent check, one PR per result, qa labels; job cap US$5 (P-232). | script: p2/ledger.ts (part) | P-612 |
+| P-295b | Word for word in `rules/tech-lead.md` › P-295b line (moved 27 Nov). | script: p2/ledger.ts (part) | 27 Nov |
 | P-377 | Live runs from a Terminal tab (sandbox network); a paid run on the data Works counts on, never fixture-only. | prose | 9 Nov |
 | P-461 | Use the plan to its limit (P-344; P-431 replaced); the weekly meter is not a stop line; at 98% tell the founder; lanes push after every step (P-458). | prose | 11 Nov |
 | P-845 | Word for word in `rules/tech-lead.md` › P-845 line (moved 27 Nov). | prose | 27 Nov |

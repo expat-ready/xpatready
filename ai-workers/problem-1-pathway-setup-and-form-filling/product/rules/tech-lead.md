@@ -264,3 +264,7 @@ Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 ### P-615 line
 Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 | P-615 | Environment as memory: this register (start read ≤ 70k tokens), module cards checked by CI, why-comments, three behaviour numbers; no memory agent. | script: check-docs.sh (part: register, 25 KB) | 15 Nov |
+
+### P-295b line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-295b | Every paid run: usual and worst cost first, worst reserved in the ledger, one attempt, an independent check, one PR per result, qa labels; job cap US$5 (P-232). | script: p2/ledger.ts (part) | P-612 |
