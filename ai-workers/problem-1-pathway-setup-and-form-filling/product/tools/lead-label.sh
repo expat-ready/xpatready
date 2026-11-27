@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lead-label.sh <pr> — the Lead's one label command for a Lead-read PR (founder A435, 27 Nov; LR-157). Routine PRs need
+# lead-label.sh <pr> — the Lead's one label command for a Lead-read PR (founder A435, 27 Nov; LR-158). Routine PRs need
 # nothing: queue-gate.yml (main's copy) puts `review: approved` on by itself once the reviewer's Approve names the head,
 # ci and pr-suites are green and no path keeps the Lead's read first (queue-gate.sh label; B194, P-823). A PR touching a
 # "read first" path of lead-read-paths.txt (.github/, .mergify.yml, product/tools/, .claude/, the guards, permissions, a

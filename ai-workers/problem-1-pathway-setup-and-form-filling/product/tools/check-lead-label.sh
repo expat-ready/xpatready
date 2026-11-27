@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A435 (founder 27 Nov; LR-157): routine PRs queue by themselves on the reviewer's Approve, a Lead-read PR through one
+# A435 (founder 27 Nov; LR-158): routine PRs queue by themselves on the reviewer's Approve, a Lead-read PR through one
 # narrow command. It runs lead-label.sh with GitHub answered by a stand-in curl (the PR, its comments, the label
 # POST/DELETE written to a log): it labels only an open, ready, main-based, same-repository PR whose last reviewer line
 # about the head is "Reviewer: Approve <full head SHA>", and refuses (exit 1, nothing changed) a stale head, a short SHA,

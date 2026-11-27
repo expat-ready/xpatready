@@ -755,7 +755,7 @@ OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (
 OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
 OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
 OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
-# A435 (LR-157): the Lead's one label command; each row switches one of lead-label.sh's refusals off.
+# A435 (LR-158): the Lead's one label command; each row switches one of lead-label.sh's refusals off.
 MUT="$MUT"'
 A435 head|product/tools/lead-label.sh|s/^last=""$/last="Reviewer: Approve $head"/|check-lead-label.sh
 A435 who|product/tools/lead-label.sh|s/(.author_association == "OWNER" or /(true or .author_association == "OWNER" or /|check-lead-label.sh

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A435 (founder 27 Nov; LR-157): the auto-queue's own cases stay. Routine PRs queue by themselves on the reviewer's
+# A435 (founder 27 Nov; LR-158): the auto-queue's own cases stay. Routine PRs queue by themselves on the reviewer's
 # Approve through main's queue gate; this test names the cases that prove it, in the tests that live with their scripts,
 # and fails when any goes red or disappears: check-queue-gate.sh (queue-gate.sh label: a reviewed green head is
 # labelled; a stale-head Approve, a forged Approve and every Lead-read path are refused) and check-label-sweep.sh (a
