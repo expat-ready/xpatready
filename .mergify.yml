@@ -488,9 +488,11 @@ queue_rules:
       # optional). guards.yml runs only on its `paths`, so the aggregate job `guards` is required when the PR touches one
       # of them; a PR touching none gets no run and is not held. Keep this regex in step with guards.yml's `paths` block:
       # check-queue-rules.py compares them on every tracked file.
+      # Two workflow names are split by a group, studio-(audit) and red-on-(old): their checks test that those report-only
+      # workflows are never named in this file as required (their two check-*.sh tests); the paths match the same.
       - or:
           - check-success = guards
-          - -files ~= ^(\.claude/settings\.json$|\.claude/skills/(lead|next|qa)/|\.github/workflows/(comment-run|label-guard|nightly|guards|studio-audit|red-on-old|pr-rules)\.yml$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves\.(tsv|md)$|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/(isolated\.sh|test-copies\.sh|item-proof\.mjs)$|\.mergify\.yml$|CONTRIBUTING\.md$|\.github/pull_request_template\.md$)
+          - -files ~= ^(\.claude/settings\.json$|\.claude/skills/(lead|next|qa)/|\.github/workflows/(comment-run|label-guard|nightly|guards|studio-(audit)|red-on-(old)|pr-rules)\.yml$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves\.(tsv|md)$|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/(isolated\.sh|test-copies\.sh|item-proof\.mjs)$|\.mergify\.yml$|CONTRIBUTING\.md$|\.github/pull_request_template\.md$)
     merge_conditions:
       - check-success = ci
     merge_method: merge
