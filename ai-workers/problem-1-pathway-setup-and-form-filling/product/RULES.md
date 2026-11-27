@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-815**, 24 Nov 01:35 IST; earlier: `history/RULES-2026-11-23-2302-ld10-as-of-P-809.md` + older)
+# Rule register (Lead keeps it; as of **P-847**, 27 Nov 11:1x IST (P-816 to P-846 have no DECISIONS rows; Lead 3 checked 27 Nov); earlier: `history/RULES-2026-11-23-2302-ld10-as-of-P-809.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -9,6 +9,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
+| G-847 | Product work stops completely until the lab (pipeline, engineering, clean-up, Claude Ship, security, measures) is done; open product PRs park safely (pushed, hand-over comment, draft; nothing half-merged); restart when the lab must-haves are merged and proven and the founder is told. | prose (STATE, Lead check) | P-847, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | P-690 | `design/full-power-plan-2026-11-17.md` is the one action list; items leave only when done or dropped by the founder; briefs quote item IDs. | script: plan-watch.py via check-docs.sh and lead-watch.sh | 18 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
