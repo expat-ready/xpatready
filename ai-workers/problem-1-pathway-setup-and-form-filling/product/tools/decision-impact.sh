@@ -24,7 +24,7 @@ for id in $ids; do
   # From P-765 on (Lead 3, series 3, 20 Nov): a row that says "Kind: workflow." or "Kind: scope." is exempt by itself, so a
   # new workflow ruling no longer fails every records PR until EXEMPT is edited in a tooling PR (#2480, #2490).
   # E15 (P-772): "Kind: tooling." too, so a tooling ruling never needs an EXEMPT edit (EXEMPT is frozen at P-764).
-  grep -qE "^\| ~*$id \|.*Kind: (workflow|scope|tooling)\." "$PH/DECISIONS.md" && { echo "$id → workflow, tooling or scope (Kind: tag)"; continue; }
+  grep -hE "^\| ~*$id \|" "$PH/DECISIONS.md" "$PH"/decisions/DECISIONS-*.md 2>/dev/null | grep -qE "Kind: (workflow|scope|tooling)\." && { echo "$id → workflow, tooling or scope (Kind: tag)"; continue; }
   rows=$(grep -E "^\| C[0-9.]+ .*\b$id\b" "$PH/qa/CAPABILITIES.md" | cut -d'|' -f2 | tr -d ' ' | tr '\n' ' ')
   later=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md | cut -d'|' -f2 | tr -d ' ' | tr '\n' ' ')
   if [ -z "$rows$later" ]; then echo "NO CAPABILITY: $id — nothing a person can see or the tester can check"; bad=1

@@ -254,7 +254,12 @@ class Ctx:
 
     def read(self, name):
         p = pathlib.Path(getattr(self.a, name))
-        return p.read_text(encoding="utf-8") if p.exists() else ""
+        text = p.read_text(encoding="utf-8") if p.exists() else ""
+        # Rows moved word for word out of DECISIONS.md (decisions/DECISIONS-*.md, lab clean-up 27 Nov) still resolve.
+        if name == "decisions" and p.exists() and p.resolve() == (PRODUCT / "DECISIONS.md").resolve():
+            for q in sorted((PRODUCT / "decisions").glob("DECISIONS-*.md")):
+                text += "\n" + q.read_text(encoding="utf-8")
+        return text
 
 
 def check_item(item, ctx, decs, tids):
