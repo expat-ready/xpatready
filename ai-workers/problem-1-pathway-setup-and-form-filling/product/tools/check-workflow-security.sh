@@ -33,13 +33,17 @@ def check(d):
                 refs.append((m.group(1), m.group(2)))
             refs += [(r, "") for r in INLINE.findall(code) if not (m and r == m.group(1))]
             for ref, rest in refs:
-                if ref.startswith("./") or ref.startswith("docker://"):
+                if ref.startswith("./"):
+                    continue
+                if ref.startswith("docker://"):
+                    if not re.search(r'@sha256:[0-9a-f]{64}$', ref):
+                        errs.append(f"S1 {f}:{n}: `{ref}` is not pinned to an image digest (@sha256:...)")
                     continue
                 if not PIN.match(ref):
                     errs.append(f"S1 {f}:{n}: `{ref}` is not pinned to a full commit SHA")
                 elif m and ref == m.group(1) and not re.match(r'#\s*v?\d', rest):
                     errs.append(f"S1 {f}:{n}: `{ref}` has no version comment (# vX.Y.Z)")
-            if re.search(r'^\s*runs-on:', code) or re.search(r'runs-on:', code):
+            if code.strip():   # S2 reads every line, not only runs-on: (block lists, group/labels, matrix values)
                 for label, owner in RUNNERS.items():
                     if re.search(r'(?<![\w-])' + re.escape(label) + r'(?![\w-])', code) and f != owner:
                         errs.append(f"S2 {f}:{n}: runner `{label}` is for {owner} only")
@@ -67,6 +71,9 @@ expect("a pinned SHA with its version passes", {"a.yml": f"steps:\n  - uses: act
 expect("xr-mac in another workflow fails S2", {"ci.yml": "jobs:\n  a:\n    runs-on: [self-hosted, macOS, xr-mac]\n"}, "S2")
 expect("xr-mac-light in queue-gate fails S2", {"queue-gate.yml": "jobs:\n  a:\n    runs-on: [self-hosted, xr-mac-light]\n"}, "S2")
 expect("self-hosted elsewhere fails S2", {"x.yml": "jobs:\n  a:\n    runs-on: self-hosted\n"}, "S2")
+expect("a docker tag fails S1", {"a.yml": "steps:\n  - uses: docker://alpine:latest\n"}, "S1")
+expect("xr-mac in a block list fails S2", {"ci.yml": "jobs:\n  a:\n    runs-on:\n      - self-hosted\n      - xr-mac\n"}, "S2")
+expect("xr-mac in a matrix fails S2", {"ci.yml": "jobs:\n  a:\n    strategy: { matrix: { os: [xr-mac] } }\n    runs-on: ${{ matrix.os }}\n"}, "S2")
 expect("xr-mac in queue-gate passes", {"queue-gate.yml": "jobs:\n  a:\n    runs-on: ${{ fromJSON(vars.GATE_RUNNER || '[\"self-hosted\", \"macOS\", \"xr-mac\"]') }}\n"}, False)
 
 errs = check(sys.argv[1])
@@ -74,6 +81,6 @@ for e in errs:
     print("FAIL  " + e)
 if not errs:
     print(f"PASS  {sys.argv[1]}: every outside action SHA-pinned with its version; Mac runners only in their own workflow")
-print(f"{9 - fails + (0 if errs else 1)} passed, {fails + len(errs)} failed")
+print(f"{12 - fails + (0 if errs else 1)} passed, {fails + len(errs)} failed")
 sys.exit(1 if fails or errs else 0)
 PY

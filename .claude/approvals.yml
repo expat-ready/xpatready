@@ -10,55 +10,69 @@
 version: 1
 mode: observe
 locals:
-  # The Lead's read: one approval from the GitHub team expat-ready/tech-lead (the Lead creates it; design file step 2).
-  lead: { count: 1, from: [expat-ready/tech-lead] }
+  # The Lead's read: one approval from the team expat-ready/tech-lead by someone who is not an author of the PR.
+  lead: { count: 1, from: [expat-ready/tech-lead, "!pr/authors"] }
+  # The reviewer: one approval (a GitHub review or `@claude approve <sha>`) by someone who is not an author of the PR.
+  # One account writes every PR today, so no seat can be filled until a second account (the machine user) exists:
+  # enforce waits for it (design file §7 Q2).
 rules:
-  - purpose: "Routine product and records work: the reviewer agent's approval fills the seat, then Claude approves."
+  - purpose: "Routine product and records work: Claude approves once a reviewer who is not an author has approved."
     paths:
       - "**"
-      # Pipeline: workflows, the merge queue, hooks, agent rules, the guard tools and Prisma's configuration
       - "!.github/**"
       - "!.mergify.yml"
       - "!.githooks/**"
-      - "!**/.claude/**"
       - "!CLAUDE.md"
       - "!AGENTS.md"
       - "!ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
       - "!ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/B119/**"
       - "!ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
       - "!**/prisma.config.*"
-      # Schema and migrations
+      - "!**/.claude/**"
       - "!**/prisma/schema/**"
       - "!**/prisma/migrations/**"
-      # Permissions and the unauthenticated doors
       - "!**/api/src/platform/identity/**"
       - "!**/api/src/core.ts"
       - "!**/api/src/platform/firm-scope.ts"
       - "!**/api/src/platform/terms/gate.ts"
       - "!**/api/src/features/platform-terms.ts"
       - "!**/studio/samples/notification-groups.json"
-      - "!**/*[Pp]ermission*"
-      - "!**/*[Pp]ermission*/**"
-      - "!**/api/src/**/*[Pp]ublic*"
-      - "!**/web/src/**/*-public/**"
-      # Money: fees, prices, client money, invoices, payments, paid model runs and their ledger
-      - "!**/*[Mm]oney*"
-      - "!**/*[Mm]oney*/**"
-      - "!**/*[Ff]ee.*"
-      - "!**/*[Ff]ees.*"
-      - "!**/[Ff]ee-*"
-      - "!**/[Ff]ees-*"
-      - "!**/*-fee-*"
-      - "!**/*-fees-*"
-      - "!**/*[Pp]ric*"
-      - "!**/*[Pp]ric*/**"
-      - "!**/*[Bb]illing*"
-      - "!**/*[Pp]ayment*"
-      - "!**/*[Ss]tripe*"
-      - "!**/*[Ii]nvoice*"
-      - "!**/*[Ll]edger*"
+      - "!**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*"
+      - "!**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*/**"
+      - "!**/api/src/**/*[Pp][Uu][Bb][Ll][Ii][Cc]*"
+      - "!**/web/src/**/*-[Pp][Uu][Bb][Ll][Ii][Cc]/**"
+      - "!**/*[Mm][Oo][Nn][Ee][Yy]*"
+      - "!**/*[Mm][Oo][Nn][Ee][Yy]*/**"
+      - "!**/*[Pp][Rr][Ii][Cc]*"
+      - "!**/*[Pp][Rr][Ii][Cc]*/**"
+      - "!**/*[Bb][Ii][Ll][Ll][Ii][Nn][Gg]*"
+      - "!**/*[Bb][Ii][Ll][Ll][Ii][Nn][Gg]*/**"
+      - "!**/*[Pp][Aa][Yy][Mm][Ee][Nn][Tt]*"
+      - "!**/*[Pp][Aa][Yy][Mm][Ee][Nn][Tt]*/**"
+      - "!**/*[Ss][Tt][Rr][Ii][Pp][Ee]*"
+      - "!**/*[Ss][Tt][Rr][Ii][Pp][Ee]*/**"
+      - "!**/*[Ii][Nn][Vv][Oo][Ii][Cc][Ee]*"
+      - "!**/*[Ii][Nn][Vv][Oo][Ii][Cc][Ee]*/**"
+      - "!**/*[Ll][Ee][Dd][Gg][Ee][Rr]*"
+      - "!**/*[Ll][Ee][Dd][Gg][Ee][Rr]*/**"
+      - "!**/[Ff][Ee][Ee]"
+      - "!**/[Ff][Ee][Ee]/**"
+      - "!**/[Ff][Ee][Ee][-_.0-9]*"
+      - "!**/[Ff][Ee][Ee][-_.0-9]*/**"
+      - "!**/*[-_.0-9][Ff][Ee][Ee]"
+      - "!**/*[-_.0-9][Ff][Ee][Ee]/**"
+      - "!**/*[-_.0-9][Ff][Ee][Ee][-_.0-9]*"
+      - "!**/*[-_.0-9][Ff][Ee][Ee][-_.0-9]*/**"
+      - "!**/[Ff][Ee][Ee][Ss]"
+      - "!**/[Ff][Ee][Ee][Ss]/**"
+      - "!**/[Ff][Ee][Ee][Ss][-_.0-9]*"
+      - "!**/[Ff][Ee][Ee][Ss][-_.0-9]*/**"
+      - "!**/*[-_.0-9][Ff][Ee][Ee][Ss]"
+      - "!**/*[-_.0-9][Ff][Ee][Ee][Ss]/**"
+      - "!**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*"
+      - "!**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*/**"
       - "!**/api/src/{ai,rounds,review-runs,review-run-shapes,finder-cost,people-ai}.ts"
-    verdict: { claude: approves, seats: 1 }
+    verdict: { claude: approves, seats: [{ count: 1, from: [humans, "!pr/authors"] }] }
 
   - purpose: "Pipeline files need the Lead's read and Claude's review; Claude approves only after both."
     paths:
@@ -76,7 +90,8 @@ rules:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
 
   - purpose: "The review rules and agent settings need the Lead's read and Claude's review, in every folder."
-    paths: ["**/.claude/**"]
+    paths:
+      - "**/.claude/**"
     nested: inherit
     verdict: { claude: comments, seats: ["@lead"] }
     override:
@@ -98,31 +113,46 @@ rules:
       - "**/api/src/platform/terms/gate.ts"
       - "**/api/src/features/platform-terms.ts"
       - "**/studio/samples/notification-groups.json"
-      - "**/*[Pp]ermission*"
-      - "**/*[Pp]ermission*/**"
-      - "**/api/src/**/*[Pp]ublic*"
-      - "**/web/src/**/*-public/**"
+      - "**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*"
+      - "**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*/**"
+      - "**/api/src/**/*[Pp][Uu][Bb][Ll][Ii][Cc]*"
+      - "**/web/src/**/*-[Pp][Uu][Bb][Ll][Ii][Cc]/**"
     verdict: { claude: comments, seats: ["@lead"] }
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
 
-  - purpose: "Money (fees, prices, client money, invoices, payments, paid model runs) needs the Lead's read and Claude's review."
+  - purpose: "Money (fees, prices, client money, billing, invoices, payments, ledgers, paid model runs) needs the Lead's read and Claude's review."
     paths:
-      - "**/*[Mm]oney*"
-      - "**/*[Mm]oney*/**"
-      - "**/*[Ff]ee.*"
-      - "**/*[Ff]ees.*"
-      - "**/[Ff]ee-*"
-      - "**/[Ff]ees-*"
-      - "**/*-fee-*"
-      - "**/*-fees-*"
-      - "**/*[Pp]ric*"
-      - "**/*[Pp]ric*/**"
-      - "**/*[Bb]illing*"
-      - "**/*[Pp]ayment*"
-      - "**/*[Ss]tripe*"
-      - "**/*[Ii]nvoice*"
-      - "**/*[Ll]edger*"
+      - "**/*[Mm][Oo][Nn][Ee][Yy]*"
+      - "**/*[Mm][Oo][Nn][Ee][Yy]*/**"
+      - "**/*[Pp][Rr][Ii][Cc]*"
+      - "**/*[Pp][Rr][Ii][Cc]*/**"
+      - "**/*[Bb][Ii][Ll][Ll][Ii][Nn][Gg]*"
+      - "**/*[Bb][Ii][Ll][Ll][Ii][Nn][Gg]*/**"
+      - "**/*[Pp][Aa][Yy][Mm][Ee][Nn][Tt]*"
+      - "**/*[Pp][Aa][Yy][Mm][Ee][Nn][Tt]*/**"
+      - "**/*[Ss][Tt][Rr][Ii][Pp][Ee]*"
+      - "**/*[Ss][Tt][Rr][Ii][Pp][Ee]*/**"
+      - "**/*[Ii][Nn][Vv][Oo][Ii][Cc][Ee]*"
+      - "**/*[Ii][Nn][Vv][Oo][Ii][Cc][Ee]*/**"
+      - "**/*[Ll][Ee][Dd][Gg][Ee][Rr]*"
+      - "**/*[Ll][Ee][Dd][Gg][Ee][Rr]*/**"
+      - "**/[Ff][Ee][Ee]"
+      - "**/[Ff][Ee][Ee]/**"
+      - "**/[Ff][Ee][Ee][-_.0-9]*"
+      - "**/[Ff][Ee][Ee][-_.0-9]*/**"
+      - "**/*[-_.0-9][Ff][Ee][Ee]"
+      - "**/*[-_.0-9][Ff][Ee][Ee]/**"
+      - "**/*[-_.0-9][Ff][Ee][Ee][-_.0-9]*"
+      - "**/*[-_.0-9][Ff][Ee][Ee][-_.0-9]*/**"
+      - "**/[Ff][Ee][Ee][Ss]"
+      - "**/[Ff][Ee][Ee][Ss]/**"
+      - "**/[Ff][Ee][Ee][Ss][-_.0-9]*"
+      - "**/[Ff][Ee][Ee][Ss][-_.0-9]*/**"
+      - "**/*[-_.0-9][Ff][Ee][Ee][Ss]"
+      - "**/*[-_.0-9][Ff][Ee][Ee][Ss]/**"
+      - "**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*"
+      - "**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*/**"
       - "**/api/src/{ai,rounds,review-runs,review-run-shapes,finder-cost,people-ai}.ts"
     verdict: { claude: comments, seats: ["@lead"] }
     override:

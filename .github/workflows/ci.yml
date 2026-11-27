@@ -343,6 +343,7 @@ jobs:
           bash "$P/tools/check-flaky.sh"
           bash "$P/tools/check-write-token.sh"
           bash "$P/tools/check-workflow-security.sh"   # ship-security: outside actions SHA-pinned; Mac runners only in their own workflow
+          bash "$P/tools/check-approvals-paths.sh"   # ship-security: .claude/approvals.yml covers lead-read-paths.txt; no author fills a seat
           bash "$P/tools/pr-base.sh" --self-test
           node "$S/tools/check-gate-b.mjs"
           node "$S/tools/check-works-set.mjs"
