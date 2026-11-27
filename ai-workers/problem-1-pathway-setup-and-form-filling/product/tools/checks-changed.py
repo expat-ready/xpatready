@@ -19,7 +19,7 @@ import argparse, collections, html, os, re, subprocess, sys
 
 P = "ai-workers/problem-1-pathway-setup-and-form-filling/"
 CODE = r"\.(ts|tsx|cjs|mjs|js|py|sh)$"
-TESTS = re.compile(r"^(" + re.escape(P) + r"(prototype/studio/(tests|acceptance|deploy/.*test)/|prototype/tests/|product/tools/(check-|test[_-]|guard-test-lib)|deploy/.*test/)|(.*/)?packages/.*__tests__/|deploy/.*test/).*" + CODE + "|^" + re.escape(P) + r"product/tools/(check-[^/]+|test[_-][^/]+|guard-test-lib)\.(sh|mjs|py)$", re.S)
+TESTS = re.compile(r"^(" + re.escape(P) + r"(prototype/studio/(tests|acceptance|deploy/.*test)/|prototype/tests/|product/tools/(check-|test[_-]|guard-test-lib|guards\.d/)|deploy/.*test/)|(.*/)?packages/.*__tests__/|deploy/.*test/).*" + CODE + "|^" + re.escape(P) + r"product/tools/(check-[^/]+|test[_-][^/]+|guard-test-lib|guards\.d/[^/]+)\.(sh|mjs|py)$", re.S)
 RUN = re.compile(r"^" + re.escape(P) + r"(prototype/studio/tests/check_[^/]+|prototype/studio/acceptance/[^/]+\.test\.ts|prototype/studio/tests/journeys/j_[^/]+|product/tools/(check-|test[_-])[^/]+)$", re.S)
 SUITES, LEDGER = P + "product/tools/run-suites.sh", P + "product/tools/flaky-ledger.tsv"
 OFF = re.compile(r"\.(skip|only|todo|fixme|skipIf)\b|\b(xit|xdescribe|fit|skipTest|skipIf|skipUnless)\(|\bskip:\s*true|\bif\s*\(\s*(false|0)\s*\)|^\s*if (False|0)\s*:|(^|[;{]\s*)process\.exit\(0\)|^\s*(exit 0|return)\s*(;|$|[#/])|^\s*(if false|false &&|: *<<)|\|\| true\b|^\s*/\*\s*$|^\s*[`'\"]{3}\s*$", re.M)
@@ -68,7 +68,7 @@ def hunks(base, head, path):
 
 def like(path, l):
     """A listed line that may be a check: in a file the runner reads, anything but an import, a declaration or a bracket."""
-    return bool(RUN.match(path) or "guard-test-lib" in path or "__tests__" in path or "/test/" in path or "prototype/tests" in path) and not PLAIN.match(l)
+    return bool(RUN.match(path) or "guard-test-lib" in path or "/tools/guards.d/" in path or "__tests__" in path or "/test/" in path or "prototype/tests" in path) and not PLAIN.match(l)
 
 
 def reason(body):
