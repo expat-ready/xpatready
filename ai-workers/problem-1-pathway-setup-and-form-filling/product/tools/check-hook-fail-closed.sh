@@ -43,7 +43,7 @@ t0=$(date +%s); r=$(printf '%s' "$IN" | run "$T/hang" 2 g.sh); t1=$(date +%s)
 ok "a guard that hangs past its limit blocks, within the limit" "$([ "$r" = "exit 2" ] && grep -q 'ran over 2 s' "$T/err" && [ $((t1 - t0)) -le 5 ] && echo 1)" "$r in $((t1 - t0)) s"
 plant junk g.sh 'cat >/dev/null; echo not json'
 r=$(printf '%s' "$IN" | run "$T/junk" 5 g.sh); ok "a guard that prints junk blocks" "$([ "$r" = "exit 2" ] && grep -q 'not JSON' "$T/err" && echo 1)" "$r"
-r=$(printf '%s' "$IN" | run "$T/pass" 5 missing.sh); ok "a missing guard blocks" "$([ "$r" = "exit 2" ] && grep -q 'missing' "$T/err" && echo 1)" "$r"
+r=$(printf '%s' "$IN" | run "$T/pass" 5 missing.sh); ok "a missing guard blocks" "$([ "$r" = "exit 2" ] && grep -q 'missing.sh is missing' "$T/err" && echo 1)" "$r"
 r=$(printf '%s' "$IN" | run "$T/pass" 5 ../g.sh); ok "a guard outside the tools folder blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
 r=$(printf '%s' "$IN" | run "$T/pass" x g.sh); ok "a wrapper call without a limit blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
 r=$(printf '' | run "$T/pass" 5 g.sh); ok "empty input blocks" "$([ "$r" = "exit 2" ] && grep -q 'not a JSON object' "$T/err" && echo 1)" "$r"
