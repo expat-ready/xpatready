@@ -45,7 +45,7 @@ export class PersonTimeline {
 
   /** GET /api/runtime/clients/:id/timeline?cursor= (agent/case:show). */
   async read(ctx: StaffContext, clientId: string, q: unknown) {
-    const parsedQ = PersonTimelineQuery.safeParse(q && typeof q === "object" && !Array.isArray(q) ? q : {});
+    const parsedQ = PersonTimelineQuery.safeParse(q ?? {});   // CS-V1: the query itself reaches the parse (strict: an array or any other key is refused)
     if (!parsedQ.success) return invalid("cursor", parsedQ.error.issues[0].message);
     const cursor = parsedQ.data.cursor ? decode(parsedQ.data.cursor) : null;
     const s = await this.notes.subjectFor(ctx, "client", clientId);   // 404: another firm's person, or no such person
