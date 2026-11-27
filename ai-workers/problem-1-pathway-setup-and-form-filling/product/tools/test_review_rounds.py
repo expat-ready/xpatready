@@ -64,6 +64,10 @@ class ReviewRounds(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         rc, out = run([R1, R2, c("Reviewer: Approve %s" % SHA, cid=22)])
         self.assertEqual(rc, 0, out)
+        for line in ("Reviewer: Approved, fix X first", "Reviewer: Approve, with one rename", "Reviewer: Approve - fix the name",
+                     "Reviewer: Approve (fix the name)", "Reviewer: Approve once M1 is fixed"):
+            self.assertEqual(run([R1, R2, c(line, cid=23)])[0], 1, line)   # round 2 m3: each asks for changes
+        self.assertEqual(run([R1, R2, c("Reviewer: Approve %s." % SHA, cid=24)])[0], 0)
 
     def test_a_changes_round_after_approves_counts(self):
         rc, out = run([A1, R1, A2, R2, A1, R3])

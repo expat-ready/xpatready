@@ -655,9 +655,9 @@ for f in ".github/workflows/ci.yml" "$S/api/src/platform/identity/keys.ts" "$S/a
   ok "P-823 plant: $f beside an additive migration: refused, read first (a workflow line removed (A438), permissions)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
 done
 # --- A438 cut 2 (founder 27 Nov): a pipeline path is read first only when its diff can weaken protection (weakening.py)
-for c in ".github/workflows/ci.yml|modified" "$PR3/tools/check-new.sh|modified" "$PR3/tools/new-tool.sh|added" ".claude/skills/next/SKILL.md|modified" "AGENTS.md|modified"; do
+for c in "$PR3/tools/check-new.sh|added" "$PR3/tools/new-tool.sh|added" ".claude/skills/next/SKILL.md|modified" "AGENTS.md|modified"; do
   f=${c%|*}; fp 7 "$f" "${c##*|}" $'@@ -30 +30,2 @@\n x\n+      - run: bash new-check.sh'; run label 7
-  ok "A438: $f that only adds lines (a new step, a test case, a new tool, prose): labelled on the reviewer's Approve alone" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+  ok "A438: $f (${c##*|}: a new tool or test, or prose outside front matter): labelled on the reviewer's Approve alone" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 done
 for c in "$PR3/tools/push-guard.sh|"$'@@ -1,2 +1 @@\n x\n-[ -z "$ok" ] \&\& exit 1'"|a guard's line" \
          "$PR3/tools/check-guards.sh|"$'@@ -1,2 +1 @@\n x\n-15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh'"|mutation row" \
@@ -675,6 +675,11 @@ ok "A438: weakening.py missing: a pipeline path is refused, read first (fails cl
 sed '/^# --- pipeline/d' "$TOOLS/lead-read-paths.txt" > "$T/lrp-nopipe.txt"
 fp 7 "$PR3/tools/new-tool.sh" added $'@@ -0,0 +1 @@\n+y'; LEAD_READ_PATHS="$T/lrp-nopipe.txt"; export LEAD_READ_PATHS; run label 7; unset LEAD_READ_PATHS
 ok "A438: a list without its \"# --- pipeline\" line reads every pipeline path first (the old rule: fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+# Review round 2 on #3942: an existing test or workflow gaining lines, and any new workflow, are read first
+for c in "$PR3/tools/check-x.sh|modified" ".github/workflows/ci.yml|modified" ".github/workflows/fast-ci.yml|added"; do
+  fp 7 "${c%|*}" "${c##*|}" $'@@ -30 +30,3 @@\n x\n+  ci:\n+    runs-on: ubuntu-latest'; run label 7
+  ok "A438 (review round 2): ${c%|*} (${c##*|}) gaining lines: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'weakening, A438' <<< "$out" && echo 1)" "$out / $log"
+done
 # The breaker on #3942 (B1, B2): one added line switches a guard or a CI helper off; any edit to existing pipeline code is read
 for c in "$PR3/tools/push-guard.sh|"$'@@ -18,2 +18,3 @@\n set -uo pipefail\n+exit 0\n ROOT=x' \
          "$PR3/tools/pr-base.sh|"$'@@ -5 +5,2 @@\n x\n+  echo "$head..$head"; return 0' \

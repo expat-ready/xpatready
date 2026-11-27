@@ -446,11 +446,11 @@ queue_rules:
       # judges every push and every hand-put label (review m1 on #3942). Undo: put back the label line, delete these lines.
       - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
       - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
-      # The breaker on #3942 (M4): an .html record can carry script (cockpit/index.html, the founder's board), so a
-      # records PR touching .html still needs the reviewer's label.
+      # The breaker on #3942 (M4): an .html or .svg record can carry script (cockpit/index.html, the founder's board), so
+      # a records PR touching one still needs the reviewer's label.
       - or:
           - "label = review: approved"
-          - -files ~= \.[Hh][Tt][Mm][Ll]?$
+          - -files ~= \.([Hh][Tt][Mm][Ll]?|[Ss][Vv][Gg])$
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
     merge_conditions:
@@ -552,11 +552,11 @@ queue_rules:
       # judges every push and every hand-put label (review m1 on #3942). Undo: put back the label line, delete these lines.
       - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
       - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
-      # The breaker on #3942 (M4): an .html record can carry script (cockpit/index.html, the founder's board), so a
-      # records PR touching .html still needs the reviewer's label.
+      # The breaker on #3942 (M4): an .html or .svg record can carry script (cockpit/index.html, the founder's board), so
+      # a records PR touching one still needs the reviewer's label.
       - or:
           - "label = review: approved"
-          - -files ~= \.[Hh][Tt][Mm][Ll]?$
+          - -files ~= \.([Hh][Tt][Mm][Ll]?|[Ss][Vv][Gg])$
     merge_conditions:
       - check-success = ci
     merge_method: merge

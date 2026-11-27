@@ -128,11 +128,18 @@ for p in ".github/workflows/ci.yml" ".mergify.yml" "$PR3/tools/queue-gate.sh" "$
   ok "kept path: $p is held (a pipeline path with a weakening diff: a line removed)" "$(held)" "exit $r: $out"
 done
 # --- A438 cut 2 (founder 27 Nov): the Lead reads only where a pipeline change can weaken protection
-for c in ".github/workflows/ci.yml|modified" "$PR3/tools/check-new.sh|modified" "$PR3/tools/new-tool.sh|added" ".claude/settings.json|added" "AGENTS.md|modified" "$PR3/screens/B119/check-queue-rules.py|modified"; do
-  p=${c%|*}; f "$p" "@@ -1 +1,2 @@
+for c in "$PR3/tools/check-new.sh|added" "$PR3/tools/new-tool.sh|added" "AGENTS.md|modified" "$PR3/screens/B119/check-y.py|added" ".claude/skills/next/SKILL.md|modified"; do
+  p=${c%|*}; f "$p" "@@ -30 +30,2 @@
  x
 +      - run: bash y" "${c##*|}"; put; run judge
-  ok "A438: $p (${c##*|}) with only added lines (a new step, test case, tool or prose) is not held" "$(free)" "exit $r: $out"
+  ok "A438: $p (${c##*|}): a new file, or prose outside front matter, is not held" "$(free)" "exit $r: $out"
+done
+for p in ".github/workflows/ci.yml" "$PR3/tools/check-x.sh" ".github/workflows/new-ci.yml|added" ".claude/settings.local.json|added"; do
+  st=modified; case "$p" in *"|added") st=added; p=${p%|added};; esac
+  f "$p" "@@ -30 +30,2 @@
+ x
++      - run: bash y" "$st"; put; run judge
+  ok "A438 (review round 2): $p ($st) is held (an existing file gaining lines; a new workflow or setting acts on every PR)" "$(held)" "exit $r: $out"
 done
 f "$PR3/tools/push-guard.sh" "@@ -18,2 +18,3 @@
  set -uo pipefail

@@ -93,3 +93,105 @@ queue-gate probes above. Journey score: N/A.
 Mergify's live behaviour (rename and 3000-file semantics); the real GitHub `files` JSON for a mode-only change (assumed `changes: 0` with no patch).
 
 Verdict: Block
+
+## Round 2 (aed88ed40)
+
+Diff only: `git diff d40ab537d aed88ed40` (14 files). The local tree was clean at aed88ed40cd9945a6b194bb8b1a648e842928888. Note: the PR head on GitHub
+is now **5ee15be36**, one line later in `design/lab-register-2026-11-27.md`. This verdict is for aed88ed40 only.
+
+### What I ran
+* `check-weakening.sh` 11/0 · `check-queue-gate.sh` 278/0 · `check-lead-read-gate.sh` 140/0 · `check-records-queue.sh` 16/0 ·
+  `check-review-rounds.sh` 13 OK · `screens/B119/check-queue-rules.py` 89/0 · `weakening.py --self-test` all passed.
+* All round-1 probes from this review (20) and the breaker's (A01-A08, A11, A13, A16, A23, A29, A35, A44, m5), through `judge()`: **every one now weakens**.
+* New probes against the new code: `judge()` fixtures; real patches from `git diff --no-index` on edited copies of ci.yml, check-records-queue.sh and
+  test_review_rounds.py, run through `weakening.py --files`; and **end to end through `queue-gate.sh label`** (check-queue-gate.sh lines 1-709 as the harness, my cases
+  after them, harness 281/0). Control: push-guard.sh gaining `exit 0` is HELD. "BYPASS" means `LABEL 7` (review: approved) with no Lead read. I also checked the
+  real effect of each line: PyYAML for workflows, and bash or python3 for exit codes.
+
+### Round-1 findings
+| # | Status |
+|---|---|
+| B1 | **Fixed for code and hooks.** Any change to existing code is read, and every round-1 probe weakens. **Not fixed for tests and workflows**: see R2-B1 and R2-B2. |
+| B2 | Fixed. In code, comment lines count. `*)` is code. A moved marker and a changed case arm are both caught, with self-tests. |
+| B3 | Fixed. Unknown pipeline code is "code", so any change to it is read. migration-additive.py and write-token.py both weaken. |
+| B4 | Fixed. Any rename fails closed, and so does a missing patch (mode-only). Still open: a mode change that comes with a blank-line patch (R2-M1). |
+| M1 | Fixed: front matter is found by line numbers, and line 6 in `@@ -3,7` is caught. Still open: a two-step path through a blank line (R2-M1). |
+| M2 | Fixed for every listed form. New holes in the same area: R2-B2. |
+| M3 | Partly fixed. Capitals added where the pipeline has none are caught. The reverse collision is not (R2-M2). |
+| M4 | Fixed: about 30 self-test cases, multi-hunk ones included, and E2E cases in both gates. |
+| m1 | Fixed. The comment now names records-label.yml as the real defence. Mergify's rename and 3000-file behaviour is still not verified. |
+| m2 | **Open.** The caller says it is outside the touch list, but weakening.py:359 is in this PR. |
+| m3 | Partly fixed. "Approve with/after/once…" counts now. My own round-1 example still does not count, see R2-m2. |
+| m4 | Deferred. proof-read-watch.py is not in the PR, and the PR body lists it. Accepted. |
+| m5 | Fixed. |
+| Breaker B1-B3, M1-M3, m2, m3, m5 | Fixed (re-probed). Breaker M4: `.html` now needs the review label (Mergify or-block, with B119 and check-records-queue cases and a mutation row). The gate-input records go to the founder as Question 4 of the PR body. That is correct, because it is the founder's call. |
+
+### Blockers
+**R2-B1. An existing test can still be switched off by adding lines alone** (`weakening.py:168-175`). The rule "only gains lines, none matches OFF" is a deny-list,
+and it has holes. Three are of the tool's own making:
+* **COMMENT-shaped lines are never checked** (`:130`, COMMENT `:58`). In bash, `//usr/bin/false || exit 0` is a command (`//usr/bin/false` is
+  `/usr/bin/false`), so the test exits 0. **BYPASS end to end** with a real patch to check-records-queue.sh (after `set -u`). I ran it: the script exits 0 and checks nothing.
+  `  * ) exit 0 ;;` added as a case arm is not checked either (`\*\s`).
+* **ROW is exempt in every test, not only in check-guards.sh's MUT rows** (`:173`). `exit 0 #|a|b|c.sh` matches ROW, so OFF is waived. **BYPASS end to end.**
+* **OFF misses common forms.** Python `exit(0)`: **BYPASS end to end** on a real patch to test_review_rounds.py, which then exits 0. Also, by `judge()`:
+  `raise SystemExit(0)`, `assertEqual = lambda *a, **k: None` in the TestCase, bash `trap 'exit 0' EXIT` (exit 0 even after FAIL, run), `exit 00`,
+  `{ exit 0; }`, `eval 'ok() { echo PASS; }'` (redefines ok, run), and `fail=0` before the final check.
+Two kinds of test cannot be told apart from added lines: one that gains a case and one that gains a line which overrides the result. Fix (choose one, then self-test each
+probe above): (a) an **allow-list of added-line shapes** per test kind: an `ok "…"` call, a case-tuple row inside the cases list, a MUT row inside check-guards.sh's
+`MUT=` block (ROW only there), or a new `def test_…` method that adds no module- or class-level line; or (b) existing tests are read like code. That costs cut 2's
+savings, which is the founder's Question 3. In either case, test lines that start with `//`, `/*` or `*` are not comments in shell and Python.
+
+**R2-B2. An existing workflow can still be weakened by lines that pass the "whole new step or job" rule** (`:176-197`).
+* (i) **COMMENT-shaped lines are skipped by every workflow check** (`add` `:130`, and `continue` at `:192`). In YAML, a more-indented line continues the plain scalar above it.
+  Real ci.yml:300 `run: bash "$P/tools/check-mergify-scopes.sh"` plus the added line `          // || true` makes the run
+  `bash "$P/tools/check-mergify-scopes.sh" // || true` (PyYAML), so the step is always green in the required `ci` (job fast). **BYPASS end to end.**
+* (ii) **The rule checks only that the added run starts a step or job, not where the run goes.** Four lines (`  types-parked:` / `    if: false` /
+  `    runs-on: ubuntu-latest` / `    steps:`) after ci.yml:558 take the type check's 5 steps into a job that never runs. `types` keeps only the checkout and passes,
+  and `ci` needs `types`, not the new job (PyYAML). **BYPASS end to end.** A new step inserted after an existing `run: |` takes over that step's script in the same way (judge).
+* Fix: in workflows, only a line that starts with `#` is a comment. An added run passes only when the context line after it is a step start of the same indent, a job
+  start, or the end of the file, and the line before it does not open a block (`run: |`, `steps:`, a key with no value). The robust fix is to parse the base and head
+  workflow with YAML (the contents API, or `git show` for --git): every base job and step must be the same in the head, and all top-level keys except `jobs` unchanged.
+  Add both probes as self-tests and as one check-queue-gate.sh case.
+
+### Majors
+**R2-M1. Blank lines are never a change** (`:200-201` and `:150` `t.strip()`). (i) GitHub's files list shows no file mode. So `.githooks/pre-push` 755→644
+with one added blank line (status `modified` or `changed`, with a patch) is not weakening. **BYPASS end to end.** git then ignores the hook. This is round-1 B4(ii) again with one
+blank line. CI's push guard still runs, which is why this is Major. (ii) Two PRs, neither of them weakening (judge): PR 1 adds a blank line inside screen-reviewer.md's front matter
+(valid YAML). PR 2 lowers `effort:` in a hunk whose context holds that blank, and `:155` takes the blank as the end of the front matter. Fix: in code and
+front matter, every `+`/`-` line counts, blank ones included. In front matter, only `---` closes (keep the blank-line rule only for hunks that start after line 15).
+
+**R2-M2. The case check is one-way** (`odd_case` `:84-90`). It catches capitals added where the pipeline has none. It misses a lower-case path added where the
+pipeline has capitals. An added `.claude/skills/lead/skill.md` is "prose", so its `allowed-tools: Bash` is never read. On the Mac's disk it is the lead skill's
+SKILL.md. An added `product/screens/b119/check-queue-rules.py` collides with B119's in the same way. Both are not weakening (judge). Not verified on a Mac. Fix: an
+added path is weakening when its lower case equals the lower case of a path in the base tree (`git ls-tree`, or the gate's own file list plus the
+contents API), and `kind()` runs on the lower-cased path.
+
+### Minors
+* R2-m1 `norm()`'s `rstrip("'")` (`:113`) applies to every test and workflow line, not only to MUT rows. A line's closing quote can move to a later added line, so the
+  code in between becomes string data. I tried this on check-guards.sh's last MUT row: it breaks the syntax, because the code after MUT has its own quotes, so it is
+  not shown as a bypass. Limit it to ROW lines in check-guards.sh.
+* R2-m2 review-rounds.py `conditional` (`:50`) needs a space and then with/after/once/pending/subject to. These still count as an uncounted Approve (I ran each):
+  "Reviewer: Approved, fix X first" (my round-1 m3 example), "Reviewer: Approve, with changes: x", "Reviewer: Approve - fix M1 first",
+  "Reviewer: Approve (fix M1 first)". The breaker's `Verdict: Block` is still not counted (this was so before the PR).
+* R2-m3 TRIGGER (`:61-63`) has no `watch`, `fork`, `gollum`, `deployment`, `milestone` or similar. An existing workflow that gains `  watch:` under `on:` is not weakening (judge).
+* R2-m4 The records pattern accepts `.svg`, which can carry script just as `.html` can (breaker M4's reasoning). Add it to the or-block, or put it into the founder's Question 4.
+* R2-m5 False positives, not bypasses: every new test under a pipeline folder with capitals (any `screens/<Item>/` except B119) now needs the read. Accepted as fail-closed.
+
+### What held
+* Code, hooks, settings, gates, .mergify.yml and lead-read-paths.txt: any non-blank line changed (comments included) is read. A rename, a removal, a missing patch or a
+  path not in the list fails closed.
+* Front matter, by line numbers and the closing `---`: the real `@@ -2,8` and `@@ -3,7` hunks, a removed `hooks:` block and a removed `disallowed-tools:` line are caught. I found
+  no real agent or skill with a blank line in its front matter (all 14 checked).
+* Workflows: a changed or removed existing line (norm-compared), every round-1 risk form, an existing step gaining `if:`, `continue-on-error` in a later hunk,
+  and `toJSON(secrets)`.
+* Mergify: the `.html` or-block is in both queues (verdicts and records), with a B119 problem check, a mutation and check-records-queue cases.
+  check-guards.sh has 8 new A438 mutation rows in place of the 3 old ones, and they match the new code.
+
+### Journey test
+Not applicable: this is a merge-gate change with no screen. The gate "journeys" were walked end to end through `queue-gate.sh label`, as described above. Journey score: N/A.
+
+### Could not check
+Mergify's live behaviour (rename and the 3000-file cap); GitHub's `status` value for a mode change that also has a patch; Claude Code's handling of a blank line inside front matter
+and of a `skill.md`/`SKILL.md` pair on a case-insensitive disk.
+
+Verdict: Block

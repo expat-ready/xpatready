@@ -47,7 +47,10 @@ def judge(comments):
             continue
         body = re.sub(r"[*_`]", "", c.get("body") or "")
         verdicts = [v.lower() for v in VERDICT.findall(body)]
-        conditional = re.search(r"^\s*(?:>\s*)?reviewer:\s*approve[sd]?\s+(?:with|after|once|pending|subject to)\b", body, re.I | re.M)
+        # A plain Approve is the verdict alone, with at most a SHA and a full stop; anything else on the line ("with
+        # changes", ", fix X first", "(fix ...)", "- fix") asks for changes and counts (review m3 on #3942, rounds 1-2).
+        tails = re.findall(r"^\s*(?:>\s*)?reviewer:\s*approve[sd]?\b(.*)$", body, re.I | re.M)
+        conditional = any(not re.fullmatch(r"\s*(?:[0-9a-f]{7,40})?\s*\.?\s*", a, re.I) for a in tails)
         if verdicts and all(v.startswith("approve") for v in verdicts) and not conditional:
             approves += 1   # A438 cut 3: an Approve round never counts toward the limit
         elif verdicts:

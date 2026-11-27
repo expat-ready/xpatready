@@ -95,4 +95,67 @@ gate inputs and rule files is for the founder: list them, or move them out of th
   Prose "changes" inside an Approve is not counted.
 - Both gates call weakening.py on the same file list and give the same answer.
 
+Round-1 verdict (d40ab537d7e6): Block
+
+## Round 2 (aed88ed40)
+Method: all of it ran on a `git archive` copy of exactly aed88ed40 (this checkout's working tree already holds a later, uncommitted weakening.py). The 48 round-1 fixtures rerun; both gate harnesses rebuilt from the new whole check-queue-gate.sh and check-lead-read-gate.sh with the
+breaker cases appended; 36 new fixtures, 10 of them run end-to-end through both gates. The new A438 mutation rows were run one by one (17/17
+fail their test). Own tests: `--self-test` all passed, check-weakening 11/11, check-records-queue 16/16, check-review-rounds OK, check-queue-rules 89/89.
+
+**Round-1 findings that now hold.** B1, B2, M1, M2, M3 (A01-A35, A40-A47) are all caught. End-to-end, queue-gate.sh refused all 7 round-1
+breaker diffs and lead-read-gate.sh held all 4. B3 holds: the real `@@ -2,8` agent hunk is caught. m2 (mode-only), m3 (AGENTS.md
+removed), A48 (copied) and m4 ("Approved with changes") hold. M4 is partly fixed: .html records need the review label (.mergify.yml:451, 557).
+BUGS.md, focus-list, RULES and DECISIONS still ride the records queue. That is the founder's call.
+
+**Blockers**
+- **R2-B1. A test is switched off by adding lines only.** OFF (weakening.py:51-54) is a deny-list, and a test that "only gains lines" passes.
+  All of these are NOT WEAKENING. C19, C21, C22 and C27 got `LABEL 7` from queue-gate.sh and `OK` from lead-read-gate.sh:
+  C19 `+exit 0 # |a|b|c.sh` in check-docs.sh: any row-shaped line skips OFF (ROW, weakening.py:55, 173). C20 `sys.exit(0)  # |a|b|c.py`.
+  C22 `+finish() { echo "$pass passed, 0 failed"; exit 0; }`. C23 `+fail=0` before `finish`. C24 `+trap 'exit 0' EXIT` (tried in bash: a later
+  `exit 1` ends 0). C34 `shopt -s expand_aliases` + `alias ok=:`. C25 `+. lib2.sh`, where the new lib2.sh redefines ok (a new file needs no read). C26 `set +e`.
+  C27 `+if false; then` … `+fi` around the asserts. C28 `+never() {` … `+}`. C30 `/*` … `*/` in a .mjs test: both lines count as
+  comments and are skipped (weakening.py:58, 130). C32 Python asserts re-indented under `if not True:`: norm() drops indentation. C31 `raise SystemExit`,
+  `raise unittest.SkipTest(...)`. C29 the asserts moved below `finish`: a moved line counts as kept (weakening.py:167-171). C33b one of
+  two identical asserts removed: `back` is a set. C21 norm()'s `rstrip("'")` (weakening.py:114): `-X='a'` `+X='a` plus an added line `'`
+  two lines lower turn the asserts between them into string data (tried in bash: fail=0, exit 0).
+- **R2-B2. "Whole new steps or jobs" can switch a workflow off.** Once an added run of lines starts with STEP_START or JOB_START, every line
+  after it passes (weakening.py:187-196). All of these are NOT WEAKENING. C09, C10 and C17 got the label and OK end-to-end:
+  C09 ci.yml:359-362, the records step. A new step `- name: decision impact` / `if: ${{ false }}` / `run: |` is inserted between
+  `bash check-docs.sh` and `bash decision-impact.sh`. decision-impact.sh moves into a step that never runs. It is one of the 2 checks ci runs on records, which now need no reviewer.
+  C10 a new step writes `exit 0` to a file and adds `BASH_ENV=` to $GITHUB_ENV: every later bash `run:` in the job sources it and exits 0.
+  C12 the same with $GITHUB_PATH and a fake python3. C11 a new step overwrites check-mergify-scopes.sh before the step that runs it.
+  C16 a new job, and C17 a new workflow file (a new file is checked only against WORKFLOW_RISK, weakening.py:158-164), each with a job `ci` (or
+  `name: ci`) that waits, then passes. queue-gate.sh:85 takes the newest-started check run named ci, so this green ci decides for this PR and,
+  once merged, for every later PR. Mergify's `check-success = ci` accepts any check named ci (not checked live). Before A438 every new
+  .github/ file was read first. C13 a top-level `env:` gains `  BASH_ENV:` with its value on the next line (JOB_START shape).
+  C15 `concurrency:` gains `  cancel-in-progress:` / `    true`. C14 `on:` gains `  watch:`: TRIGGER (weakening.py:61-63) lacks watch, fork, deployment(_status),
+  milestone, gollum, project*, public, registry_package, page_build and branch_protection_rule.
+
+**Majors**
+- **R2-M1. odd_case (weakening.py:84-90) catches only capitals, but the Mac's disk folds case both ways.** A new lowercase path that shadows a capitalised one
+  is not flagged, and kind() then calls it prose or a new test. C01 an added `claude.md` (`^(CLAUDE|AGENTS)\.md$` matches it, case-insensitive).
+  On a case-insensitive checkout git writes both entries to one file, and `claude.md` sorts last, so its content wins. C02 `.claude/skills/lead/skill.md` with
+  `allowed-tools: Bash` (prose, not agent: weakening.py:72). C03 `screens/b119/check-queue-rules.py`. C04 and C05 `.claude/ſettings.json` and
+  `.githooks/pre-puſh`: Unicode case folding maps U+017F to s, but `'ſ'.lower()` leaves it unchanged. C01 and C02 got the label and OK end-to-end. The APFS
+  collision is reasoned, not run (this machine is Linux).
+- **R2-M2. Front matter closes at any blank context line** (weakening.py:155-156), even in a hunk from line 1, and an added blank line never
+  counts as touching it (weakening.py:150 needs `t.strip()`). YAML front matter may hold blank lines. Two PRs, both NOT WEAKENING: C06 adds a
+  blank line after the opening `---` of screen-reviewer.md. C07 then sets `model: haiku`, `effort: low` and tools that gain Edit (a real `git diff` hunk,
+  `@@ -2,9`). C08 does the same in a hunk from line 1. C07 got the label and OK end-to-end. No front matter has a blank line today, so the attack takes two PRs.
+
+**Minors**
+- m6 review-rounds.py:50: `Approve, with changes`, `Approve (with changes…)`, `Approve if M1 is fixed`, `Approve but fix M1 first`,
+  `Approve; changes: M1`, `Approve - after M1` and `Approve conditionally` are still uncounted Approves. `Approve with nits (optional)` and
+  `Approved with no changes needed` now count as change rounds: three of them refuse the PR.
+- m7 `.svg` is still a record with no reviewer (.mergify.yml:447). An SVG can carry `<script>` as .html can (it runs when the file is opened directly, not through `<img>`).
+- m8 Fail-closed noise: a new fixture under tools/fixtures/ named STATE.md, BACKLOG.md or CAPABILITIES.md is odd_case (8 such paths today).
+  A new job whose id is `release`, `label`, `status`, `create`, `delete`, `types` or `paths` matches TRIGGER (weakening.py:185).
+- m9 A new step with `run: &cmd "true"` redefines a YAML anchor that later `*cmd` aliases would take (C18b NOT WEAKENING). No workflow uses anchors today.
+
+**What held (round 2):** every round-1 fixture and gate case above. Any change to existing pipeline code, comment-only edits included,
+is read first, and so are a rename, a copy, a mode-only change and a removal. An added `if:` or `exit 0` inside an existing step is caught. C18 `- &setup` as the first line is caught.
+A removed duplicate assert with nothing added back (C33) is caught. In Mergify, `.htm` and `.HTML` are not records at all. The or-block is in both queues,
+and check-records-queue.sh catches it dropped, turned into an `and:` or given an extra `label = records` branch. A records PR with .html is
+labelled by queue-gate.sh after the reviewer's Approve. All 17 A438 mutation rows fail their test.
+
 Verdict: Block

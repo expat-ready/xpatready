@@ -30,6 +30,8 @@
 # Workflows and the merge queue (P-214, P-423)
 ^\.github/
 ^\.mergify\.yml$
+# Mergify's other configuration places (it reads .mergify.yml, .mergify/config.yml or .github/mergify.yml; breaker round 2)
+^\.mergify/
 # The guards themselves: the scripts main's workflows run (this list, the queue gate, label guard and sweep, the write-
 # token audit, the push guard, CI's tools), git hooks and the agents' skills and settings (review M1: a PR loosening
 # them must not be labelled by them)
