@@ -1,5 +1,7 @@
 # Capabilities — what the product must do, and what independent testing found
 
+**Screenshots cited below** (27 Nov, lab clean-up): the images under `product/screens`, `product/qa` and `studio/evidence` left the tree; each cited one is in main at commit fc05179d6: `git show fc05179d6:<path> > file`. New screenshots are git-ignored.
+
 Rows: the Lead (every product decision becomes a row or a backlog item the same day, P-74, `tools/decision-impact.sh`). Status, tested-on and evidence: the qa lane (skill `qa`); a builder may set only "Built, awaiting qa", on the rows its PR moves, in that PR (P-219). Seeded by the Lead from the 23 Oct audit (`history/AUDIT-2026-10-23.md`). Status: **Works** · **Partial** · **Broken** · **Not built** · **Not tested** (built, but no independent human-style test yet). Only the qa lane changes Status, after a run, with the commit it tested. M = milestone (M2 setup, M3 runtime, T = thin slice P-67).
 
 | # | Step | Capability (persona: what they can do) | M | Status | Tested on | Evidence / note |

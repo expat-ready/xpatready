@@ -147,6 +147,22 @@ jobs:
           name: nightly-suite-logs-part-${{ matrix.shard }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
           retention-days: 14
+      - name: collect the images this run wrote (git-ignored, untracked only; never the tracked design boards)
+        if: failure()
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots"
+          git ls-files -z --others --ignored --exclude-standard -- ai-workers/problem-1-pathway-setup-and-form-filling/product/screens ai-workers/problem-1-pathway-setup-and-form-filling/product/qa ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence \
+            | grep -zEi '\.(png|jpe?g|gif|webp|webm|mp4)$' | xargs -0 -r cp --parents -t "$RUNNER_TEMP/shots" || true
+      - name: test output (the images collected above; only when a suite failed)
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-suite-shots-part-${{ matrix.shard }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shots/
+          if-no-files-found: ignore
+          retention-days: 7
   restore-drill:
     # PF-8r (NFR5-04 "quarterly restore drill … with recorded evidence"; P-586, map row 14): every night, the restore drill
     # on compose.test.yml's pinned PostgreSQL: dump, restore into a fresh database, check, time (tools/restore-drill.sh),
