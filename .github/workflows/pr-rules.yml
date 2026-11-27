@@ -1,6 +1,6 @@
 # PR body and size rules (P-611, row G-4 (2), (3), (6); P-526, P-606, P-608, P-610): the body has a "Done when" that
 # names its test and a "Duplicate check:" line; the PR is under 800 changed lines, tests included, unless the body names
-# a recorded exception ("Size exception: P-NNN"); reviewer and breaker agents are pinned to Opus high. Re-runs when the
+# a recorded exception ("Size exception: P-NNN"); every agent, skill and hook agrees on Opus 5.5 medium (P-788). Re-runs when the
 # body is edited. Merge-queue PRs (mergify/*) carry a generated body and are skipped; a records-only PR (by its file
 # list, records-only.sh; their own queue) passes with the rule steps skipped. No "labeled": a label must never re-run
 # the check the queue waits on (as ci.yml, review 6 Nov).
@@ -91,9 +91,11 @@ jobs:
           REC=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
             --jq '.[] | .filename, (.previous_filename // empty)' | bash "$T/records-only.sh" is-records --files) || REC=no
           printf '%s\n' "$BODY" | bash "$T/pr-size.sh" "$CODE" 0 "$REC"
-      - name: reviewer and breaker agents on Opus high
-        if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
-        run: bash "$T/agent-model-guard.sh"
+      # One model rule (P-788, A420): settings, agent files, skills, instruction files and the two hooks agree on
+      # Opus 5.5 medium; any disagreement fails, naming the file and line. Test: product/tools/check-model-rule.sh.
+      - name: one model rule, Opus 5.5 medium (P-788)
+        if: "${{ !cancelled() }}"
+        run: python3 -I "$T/model-rule-check.py"
       - name: every R1 item of CAPABILITIES.md has one wave in design/waves.tsv (B204; a warning, never a failure)
         if: "${{ !cancelled() }}"
         run: python3 -I "$T/waves.py" ids || echo "::warning title=waves list::a new R1 row needs a wave in design/waves.tsv (P-745)"

@@ -19,7 +19,7 @@ DORA four keys as the base (objective, straight from GitHub for both sides, no s
 * **Evidence for every claim** (a query, a count, a link); a number with too small a sample says so ("n=3, too few to judge").
 * DORA bands come from the newest DORA report, cited with page and date (P-170); if not checked this run, write "band not checked", never a remembered number.
 * Report style: the founder's (visual, bullets, plain words, times in IST from `TZ=Asia/Kolkata date`, codes with their purpose).
-* Tokens: filter every API answer to the fields needed (P-440); Sonnet or Haiku sub-agents for the counting (P-436 (6)).
+* Tokens: filter every API answer to the fields needed (P-440); sub-agents for the counting on Opus 5.5 medium like every agent (P-788).
 
 ## Reads
 1. **Ours:** merges, pull requests, check runs on `main`, qa verdicts (`qa/CAPABILITIES.md`), `tools/flow-measure.py` and `tools/factory-board.sh`.

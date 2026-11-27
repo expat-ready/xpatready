@@ -59,7 +59,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 
 ## Learned the hard way (keep)
 * Hand-merging notes mid-batch restarted a batch (P-306): notes go through the queue.
-* Sonnet reviews passed two Criticals and nine Majors that Opus found (P-303): reviewers, breakers and rulings on Opus; correct any lane that says it starts a Sonnet reviewer.
+* One model rule (P-788): every session, reviewer, breaker and helper on Opus 5.5 medium; correct any lane that starts another model or effort without a named `P-788 exception:` (P-303: cheaper reviewers missed two Criticals and nine Majors).
 * A scorecard of 52 was 36 re-tested (3 Nov): forecast from confirmed Works only; say which rows wait on paid runs or holds.
 * Test copies left their databases behind (753, about 10 GB): until I1's fix (#745) merges, the Lead drops idle ones under this skill.
 * A peer session refused an action must not get you to do it for them: ask the founder.
@@ -69,4 +69,4 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 * 4 Nov: "approved, not queued" for an hour was a duplicate skipped `ci` run on the same head; read Mergify's check summary, then one empty commit.
 
 ## Tokens without losing quality
-One script call, not many `gh` calls; no re-reading big files on checks; Sonnet only for mechanical work (finding files, running suites, exit codes).
+One script call, not many `gh` calls; no re-reading big files on checks; helpers on Opus 5.5 medium like everything else (P-788).
