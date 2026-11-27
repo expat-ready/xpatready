@@ -662,6 +662,7 @@ LR147 read|product/tools/lane-death.sh|s/^      \[\[ "\$t" =~ .*/      continue/
 LR146 hour|product/tools/nudge-lane.sh|s/ -lt "\$min" \]; then$/ -lt 0 ]; then/|check-nudge-lane.sh
 OS86 gate|product/tools/switch.sh|s/^    if \[ ! -s "\$D\/baseline" \]; then$/    if false; then/|check-switch.sh
 OS86 wave|product/tools/switch.sh|s/^    \[ "\$n15" -ge 4 \] .*/    true/|check-switch.sh
+OS05 red part|product/tools/queue-gate.sh|s/^    \[ -n "\$url" \] .*/    url=x/|check-queue-gate.sh
 M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
 M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh
 M788 prose|product/tools/model-rule-check.py|s/^        m = OTHER_MODEL.search(line) or OTHER_EFFORT.search(line)/        m = None/|check-model-rule.sh
