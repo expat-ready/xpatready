@@ -78,3 +78,23 @@ How I ran it: the suite at the head (41 passed, 0 failed), then a round-2 harnes
 Round 1 Minors m1-m5 and m7 are unchanged at this head (none was in this diff's scope).
 
 Verdict: Approve d8a06230b519a60f86939c7c4c8551481874b189
+
+## Round 3 (diff d79dc2bb..a30ae616; verdict on daae517f, which adds only two type annotations in csvOf)
+Breaker, Opus 5.5, high. The suite passes (46 passed, 0 failed). My round-3 harness (scratchpad `brk/h4.ts`, outside the repo) runs on a scratch database, now dropped; no :4400, no AI call, US$0.
+**Majors**
+* **M4. The per-period equality with the statement now fails at day edges** (a regression from round 2; R1.111). Exports now cut by the firm's days, but part 2's statement still cuts by UTC days (statement.ts:19, :171), so exports.ts's header claim "reconcile … with the statement's INVOICES change" (E1, E13) no longer holds near midnight. *Repro:* company client Maple Works (Toronto by default), invoice EVE-1 of CAD 33 issued `2026-03-31 23:00-04`. March 2026 gives export 3300 against statement 0; April gives export 0 against statement 3300. Fix in this row's `reports/` folder by moving the statement (and the summary's periods) to `platform.time_zone`, or have the tech lead record that the equality holds only in metrics' frame. The suite's E1/E13 pass only because their rows are far from midnight.
+**Minors**
+* **m10. Rows within one firm day are not in time order.** The key is the local day plus the UTC time of day (exports.ts `T(c, at)`), so in Toronto an evening row sorts before that morning's rows. *Repro:* write-offs at `2026-03-08 05:00Z` and `2026-03-09 03:59Z` (both 8 Mar local) list DST-2 before DST-1. Keyset paging is unaffected.
+* **m11. A stored zone that fails the setting's schema makes POST answer a bare 500** (`readSetting` throws). Such a zone can only be written behind the settings route. Refusing it in words would be kinder.
+* m12 (inherited from metrics.ts paidDay): a card payment that lands exactly on 00:00:00.000000 UTC is taken as a day-only record and keeps its UTC day.
+**What held**
+* **The M3 repro:** an invoice at `2025-03-31 22:30-04` is now in March, dated 2025-03-31. The state shows `zone: America/Toronto`.
+* **DST in Toronto:** 8 Mar 2026 holds exactly 05:00Z to 03:59:59.999999Z the next day; 1 Nov holds 04:00Z to 04:59:59.999999Z the next day. Both the invoice path (timestamps) and the write-off path (days) are right at every microsecond edge.
+* **Far zones:** in Kiritimati, 1 Mar starts at 28 Feb 10:00Z; in Pago Pago at 1 Mar 11:00Z (the 09:59:59.999999Z and 10:59:59.999999Z rows fall on 28 Feb). A day-only payment (00:00Z) keeps 1 Mar in both. A timed payment at 05:00Z is 1 Mar in Kiritimati and 28 Feb in Pago Pago.
+* **Zone changed between the request and a retry:** the retry uses the zone stored in the request (Toronto) and the export is READY. A replay of the id answers the stored zone.
+* **Hostile zone:** `UTC'; drop table …` stored in the setting gives a 500 and nothing runs (invoice count unchanged). A forged manifest zone is bound: Postgres answers `time zone … not recognized` and the job fails.
+* **Credits for a company client, all time:** KEPT 60.00, APPLIED -20.00, REVERSED_APPLIED 5.00, REVERSED_KEPT -10.00 (each with its invoice) and REFUNDED -15.00 (no invoice, left out of the invoice sums). An entry naming an invoice and a payment at once is refused by `money_credit_entry_links_check`. With paid from trust (-200.00), a write-off and a credit note, the export (12500) equals the statement (12500).
+* **CREDITS paging:** 1,300 entries at one timestamp (two holders, two currencies) give 2 pages, 1,300 rows, none twice.
+* **The new columns are safe:** `related_document` and `entry_type` cells hold no live formula (`'=CR()`), and each file keeps a constant width (13/13/9).
+
+Verdict: Changes daae517f87552fea82c1e5cfa43ea1c5642e46cd
