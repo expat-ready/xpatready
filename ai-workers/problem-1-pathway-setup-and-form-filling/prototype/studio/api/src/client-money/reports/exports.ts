@@ -1,9 +1,10 @@
 // FO-7r part 3 (R1.111; AG-6-31@c963bccc rules 1-4, 10, 12; AG-6-30@3033b800; AG-6-25 rules 1-3; AG-6-59 rules 5-6):
 // the period exports for the firm's bookkeeper. One CSV each for invoices, payments, refunds, credit notes, write-offs,
-// credits (AG-6-29's credit kept, applied, refunded, reversed: Lead 1 on #3887) and the trust ledger, for a period of the
-// firm's days (platform.time_zone, kept in the request, Lead 1 on #3887; a payment recorded by its day keeps that day, as
-// reports/metrics.ts), built in the background by one JobPort job and stored through FilesPort; the link expires
-// (EXPORT_DAYS, Sample).
+// credits (AG-6-29's credit kept, applied, refunded, reversed: Lead 1 on #3887) and the trust ledger, for a period of
+// days in UTC, as part 2's statement cuts them, so the files equal it exactly (Lead 1's ruling (c) on #3887; each header
+// says "Period cut in UTC"; a follow-up row moves the statement and the export to platform.time_zone together; the zone
+// is kept in the request, so that row changes one constant), built in the background by one JobPort job and stored
+// through FilesPort; the link expires (EXPORT_DAYS, Sample).
 // * Who: `agent/billing:export`, firm-wide. AG-6-31 rule 10: "Personal data in full, governed by the key only (AG7-D10)",
 //   so an export is not narrowed by C5 (the summary and statement are). The firm is the session's (the job's), never
 //   the request's; another firm's export id is the same 404 as a missing one (FilesPort reads another firm's key as absent).
@@ -38,7 +39,6 @@ import { firmScope, withFirm } from "../../platform/firm-scope.ts";
 import { parseInput } from "../../platform/http/input.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { UUID, notFound } from "../invoices/drafts.ts";
-import { readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { Day, bad, trustShows } from "../reads/common.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -47,6 +47,9 @@ export type ExportKind = (typeof EXPORT_KINDS)[number];
 export const EXPORT_JOB = "client_money.export";
 /** Sample: how long an export's link works, in days. */
 export const EXPORT_DAYS = 7;
+/** The days a period is cut in: UTC, as the statement's (Lead 1's ruling (c) on #3887), named in each file's header. */
+export const EXPORT_ZONE = "UTC";
+const CUT = "Period cut in UTC";
 /** Sample: rows per keyset page. */
 export const PAGE = 1000;
 const FILE = (k: ExportKind) => `${k.toLowerCase()}.csv`;
@@ -55,8 +58,8 @@ const key = (id: string, file: string) => `money-exports/${id}/${file}`;
 export const COLUMNS = ["date", "number_or_reference", "client", "case", "bill_to", "amount", "tax", "currency", "method", "received_into", "related_document", "counted_on"] as const;
 export const TRUST_COLUMNS = ["date", "case_or_person", "entry_type", "reference", "payer", "amount", "currency", "running_balance", "related_document"] as const;
 /** Each file's header: credit notes add what their "Refund to the client" sent back from trust; credits their entry type. */
-export const HEADERS: Record<ExportKind, readonly string[]> = { INVOICES: COLUMNS, PAYMENTS: COLUMNS, REFUNDS: COLUMNS, WRITE_OFFS: COLUMNS,
-  CREDIT_NOTES: [...COLUMNS, "returned_from_trust"], CREDITS: [...COLUMNS, "entry_type"], TRUST_LEDGER: TRUST_COLUMNS };
+export const HEADERS: Record<ExportKind, readonly string[]> = { INVOICES: [...COLUMNS, CUT], PAYMENTS: [...COLUMNS, CUT], REFUNDS: [...COLUMNS, CUT], WRITE_OFFS: [...COLUMNS, CUT],
+  CREDIT_NOTES: [...COLUMNS, "returned_from_trust", CUT], CREDITS: [...COLUMNS, "entry_type", CUT], TRUST_LEDGER: [...TRUST_COLUMNS, CUT] };
 
 const Body = z.strictObject({ id: z.string().regex(UUID).optional(), from: Day, to: Day, kinds: z.array(z.enum(EXPORT_KINDS)).min(1).max(EXPORT_KINDS.length) });
 const Manifest = z.strictObject({ from: Day, to: Day, zone: z.string(), kinds: z.array(z.enum(EXPORT_KINDS)), by: z.string(), at: z.string() });
@@ -96,7 +99,7 @@ export class MoneyExports {
     if (kinds.length !== b.kinds.length) bad("kinds", "Name each file once.");
     if (!this.p.jobs) problem(503, "Not available", "Exports are not available on this server.", { code: "EXPORTS_OFF" });
     if (kinds.includes("TRUST_LEDGER") && !(await this.p.db.$transaction((tx) => trustShows(tx, f)))) bad("kinds", "There is no trust ledger: trust is off and no money is held.");
-    const id = (b.id ?? randomUUID()).toLowerCase(), want: Manifest = { from: b.from, to: b.to, zone: await readSetting<string>(this.p.db, f, TIME_ZONE.key), kinds, by: `staff:${ctx.staffId}`, at: this.p.clock.now().toISOString() };
+    const id = (b.id ?? randomUUID()).toLowerCase(), want: Manifest = { from: b.from, to: b.to, zone: EXPORT_ZONE, kinds, by: `staff:${ctx.staffId}`, at: this.p.clock.now().toISOString() };
     const same = (m: Manifest) => m.from === want.from && m.to === want.to && m.kinds.join() === want.kinds.join();
     let had = parse(Manifest, await this.p.files.get(f, key(id, "request.json")));
     if (!had) {
@@ -236,9 +239,9 @@ async function csvOf(tx: Tx, f: string, kind: ExportKind, m: Manifest): Promise<
   for (;;) {
     const page: Row[] = await tx.$queryRaw<Row[]>(exportPageSql(f, kind, m.from, m.to, m.zone, asOf, after));
     for (const r of page) out.push(kind === "TRUST_LEDGER"
-      ? [r.date, cell(r.caseNo ?? r.billTo), cell(r.entry), cell(r.ref), cell(r.billTo), amount(r.amount), r.currency, amount(r.running ?? null), cell(r.related)].join(",")
+      ? [r.date, cell(r.caseNo ?? r.billTo), cell(r.entry), cell(r.ref), cell(r.billTo), amount(r.amount), r.currency, amount(r.running ?? null), cell(r.related), ""].join(",")
       : [r.date, cell(r.ref), cell(r.client), cell(r.caseNo), cell(r.billTo), amount(r.amount), amount(r.tax), r.currency, cell(r.method), cell(r.into), cell(r.related), r.counted,
-        ...(kind === "CREDIT_NOTES" ? [amount(r.extra ?? null)] : kind === "CREDITS" ? [cell(r.extra)] : [])].join(","));
+        ...(kind === "CREDIT_NOTES" ? [amount(r.extra ?? null)] : kind === "CREDITS" ? [cell(r.extra)] : []), ""].join(","));   // the header's last cell names the cut; rows keep its width
     rows += page.length;
     if (page.length < PAGE) break;
     const last: Row = page.at(-1)!; after = { k: last.k, id: last.id };

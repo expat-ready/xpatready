@@ -286,13 +286,25 @@ try {
   ok("FO-7r3 E13 pass: across kinds, billed − paid − paid from trust + returned from trust − credited − written off ± credit = the statement's change in what is owed (CAD)", owed === rSt.closingMinor - rSt.openingMinor && parts.trust === -60000 && parts.returned === 5000 && parts.credit === 3000, { parts, owed, rSt });
   ok("FO-7r3 E13 fail: leave out the credits file or the trust withdrawals and it no longer reconciles (each fact counts)", owed - parts.credit !== rSt.closingMinor - rSt.openingMinor && owed - parts.trust !== rSt.closingMinor - rSt.openingMinor, { parts });
 
-  // ---------------------------------------------------------------------------------------------------- E14 (Lead 1 on #3887)
-  // the firm's days (platform.time_zone, America/Toronto by default): 22:30 on 31 March in Toronto is March's
+  // ---------------------------------------------------------------------------------------------------- E14 (Lead 1's ruling (c) on #3887)
+  // days in UTC, as the statement's, and each header says so: 22:30 on 31 March in Toronto is 02:30 UTC on 1 April
   const PZ = person(A, "zone"), iz = await make(tA, PZ, 4200);
   sql(`set session_replication_role = replica; update money_invoice set issued_at = '2025-03-31 22:30:00-04' where id = '${iz}'`);
-  const mar = await exportOf(tA, "2025-03-01", "2025-03-31", ["INVOICES"]), apr = await exportOf(tA, "2025-04-01", "2025-04-30", ["INVOICES"]);
-  ok("FO-7r3 E14 pass: an invoice issued at 22:30 on 31 March in the firm's zone (02:30 UTC on 1 April) is in March's file, dated 2025-03-31; the export names its zone", mar.out.INVOICES!.some((r) => r[4] === "Client zone Sample" && r[0] === "2025-03-31") && mar.s.body.zone === "America/Toronto", { rows: mar.out.INVOICES, zone: mar.s.body.zone });
-  ok("FO-7r3 E14 fail: it is not in April's file (a UTC cut would put it there)", !apr.out.INVOICES!.some((r) => r[4] === "Client zone Sample"), apr.out.INVOICES);
+  const mar = await exportOf(tA, "2025-03-01", "2025-03-31", ALL), apr = await exportOf(tA, "2025-04-01", "2025-04-30", ["INVOICES"]);
+  const aprSt = (await call(tA, "GET", `/front-office/money/parties/person/${PZ}/statement?from=2025-04-01&to=2025-04-30&pageSize=200`)).body.accounts.find((a: any) => a.account === "INVOICES");   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  ok("FO-7r3 E14 pass: that invoice is in April's file, dated 2025-04-01, as the statement's April (its change CAD 42.00); every file's header ends \"Period cut in UTC\"", apr.out.INVOICES!.some((r) => r[4] === "Client zone Sample" && r[0] === "2025-04-01")
+    && aprSt?.closingMinor - aprSt?.openingMinor === 4200 && ALL.every((k) => mar.out[k]![0]!.at(-1) === "Period cut in UTC") && mar.s.body.zone === "UTC", { apr: apr.out.INVOICES, aprSt, zone: mar.s.body.zone });
+  ok("FO-7r3 E14 fail: it is not in March's file (the statement's March does not hold it either)", !mar.out.INVOICES!.some((r) => r[4] === "Client zone Sample"), mar.out.INVOICES);
+  // a payment recorded by its day only (stored at 00:00 UTC) counts on that day, never the day before
+  const iD = await make(tA, PZ, 1000), pD = await call(tA, "POST", `${M}/${iD}/payments`, { method: "CASH", amountMinor: 1000, reference: "DAY-ONLY", receivedOn: "2025-05-10", idempotencyKey: "fo7r3-day-only" });
+  sql(`set session_replication_role = replica; update money_invoice set issued_at = '2025-05-09 12:00:00+00' where id = '${iD}'`);
+  const may10 = await exportOf(tA, "2025-05-10", "2025-05-10", ["PAYMENTS"]), may9 = await exportOf(tA, "2025-05-09", "2025-05-09", ["PAYMENTS"]);
+  ok("FO-7r3 E14 pass: a payment recorded as received on 10 May (stored 00:00 UTC) is in 10 May's file, dated 2025-05-10", pD.status === 201 && may10.out.PAYMENTS!.some((r) => r[1] === "DAY-ONLY" && r[0] === "2025-05-10" && r[11] === "2025-05-10"), { pD: pD.body, rows: may10.out.PAYMENTS });
+  ok("FO-7r3 E14 fail: not in 9 May's file", !may9.out.PAYMENTS!.some((r) => r[1] === "DAY-ONLY"), may9.out.PAYMENTS);
+  // a credit refunded to the client is a fact of the CREDITS file with no invoice: it never counts toward what is owed
+  sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, reason, created_by) values ('${A}', '${PR}', 'REFUNDED', -500, 'CAD', 'Credit paid back (Sample)', 'seed:FO-7r-3')`);
+  const rec2 = await exportOf(tA, "2020-01-01", today2, ["CREDITS"]), refunded = rec2.out.CREDITS!.slice(1).filter((r) => r[4] === "Client recon Sample" && r[12] === "REFUNDED");
+  ok("FO-7r3 E14 pass: a REFUNDED credit entry is in the CREDITS file (-5.00) with no invoice, so E13's sum leaves it out", refunded.length === 1 && refunded[0]![5] === "-5.00" && refunded[0]![10] === "", refunded);
 
   // ---------------------------------------------------------------------------------------------------- E10
   const BULK = 2500;
