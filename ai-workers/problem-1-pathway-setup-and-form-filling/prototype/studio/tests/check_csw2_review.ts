@@ -1,7 +1,8 @@
 // CS-W2 part review (Release 1 row R1.3; BACKLOG CS-W2; brief design/briefs/CS-W2.md part 5; contract v0.1 §8 steps 2,
 // 2a, conditions 1 and 3; P-575, P-588 (4)): the platform firm on the seven review tables. Each named case has a pass and a fail.
-//   1. a scratch database: every migration before 20261126155300_shared__csw2_review_firm_id, two Sample firms, a case of each
-//      and one of a key with no platform firm, each with a filing, an item and one row in each review table; then the
+//   1. a scratch database: every migration before 20261127005100_shared__csw2_review_firm_id, two Sample firms, a case of each
+//      and a second case of sample-firm (CS-W1 part 2, on main before this migration, makes a case's firm required, so a case
+//      of a key with no platform firm can no longer be written; the cross-case checks use a case of the same firm), each with a filing, an item and one row in each review table; then the
 //      migration and every later one. DW5.1 (backfill), DW5.2 (fill), DW5.3 (each composite key, the finding's match,
 //      the keep), DW5.4 (names, INVOKER, the follow past the append-only and round guards). A second scratch database: a
 //      round row of one firm under another firm's round stops the migration with words (DW5.1 fail).
@@ -17,7 +18,7 @@ import { call, needVisitorVisa, openCase, prepare, sql as copySql } from "../acc
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126155300_shared__csw2_review_firm_id";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261127005100_shared__csw2_review_firm_id";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", HOST = "127.0.0.1:54329", pg = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const TABLES = ["review_finding", "filing_review", "readiness_pass", "review_round", "review_round_filing", "review_round_form", "review_check"];
@@ -36,7 +37,7 @@ function scratch(name: string) {
   return { sql, err, file, drop: () => execFileSync(join(BIN, "dropdb"), [...pg, "--if-exists", "--force", DB]), rest: () => { for (const d of all.filter((x) => x > NEW)) file(join(MIG, d, "migration.sql")); } };
 }
 
-// Case n (1 sample-firm, 2 sample-solo, 3 a key with no platform firm): ids by n. The filings rows carry the firm as part
+// Case n (1 sample-firm, 2 sample-solo, 3 a second sample-firm case): ids by n. The filings rows carry the firm as part
 // filings left them (triggers are off while seeding, as a restore).
 const ids = (n: number) => ({ K: u(10 + n), ST: u(20 + n), G: u(30 + n), FL: u(40 + n), IT: u(50 + n), APP: u(500 + n * 10), PRI: u(501 + n * 10),
   RF: u(60 + n), RP: u(70 + n), RR: u(80 + n), RRF: u(90 + n), RRM: u(100 + n), RC: u(110 + n), FD: u(120 + n) });
@@ -65,7 +66,7 @@ const seedBase = `set session_replication_role = replica;
 // ------------------------------------------------------------------------------------------ 1. the scratch database
 const A = scratch("mig");
 try {
-  A.sql(seedBase + caseRows(1, "sample-firm", F1) + caseRows(2, "sample-solo", F2) + caseRows(3, "ghost-firm", null));
+  A.sql(seedBase + caseRows(1, "sample-firm", F1) + caseRows(2, "sample-solo", F2) + caseRows(3, "sample-firm", F1));
   const procs = () => A.sql(`select string_agg(p.proname, ',' order by 1) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'`).split(",");
   const before = new Set(procs());
   A.file(join(MIG, NEW, "migration.sql"));
@@ -76,8 +77,9 @@ try {
   // ---------------------------------------------------------------- DW5.1: the backfill
   const firmsOf = (t: string) => A.sql(`select count(*) filter (where firm_id = '${F1}') || '/' || count(*) filter (where firm_id = '${F2}') || '/' || count(*) filter (where firm_id is null) from ${t}`);
   const all = TABLES.map((t) => `${t}=${firmsOf(t)}`);
-  ok("CS-W2 DW5.1 pass: after the migration every row of the seven tables carries its case's firm (one of each Sample firm per table)", all.every((x) => x.endsWith("=1/1/1")), all);
-  ok("CS-W2 DW5.1 fail: a case whose key has no platform firm leaves its rows empty, never another firm's", all.every((x) => /\/1$/.test(x)));
+  ok("CS-W2 DW5.1 pass: after the migration every row of the seven tables carries its case's firm (two of sample-firm, one of sample-solo, none empty)", all.every((x) => x.endsWith("=2/1/0")), all);
+  const ghost = A.err(`insert into runtime_case (id, workspace_id, combination_id, reference, client_actor_id, created_by, firm_key, case_number) values ('${u(15)}', '${W}', '${CMB}', 'W2R-5', 'user-P', 'user-O', 'ghost-firm', 'C-2026-00005')`);
+  ok("CS-W2 DW5.1 fail: a case whose key has no platform firm cannot be written (CS-W1 part 2), so no review row is left without a firm", /null value in column "firm_id"/.test(ghost), ghost.slice(0, 120));
 
   // ---------------------------------------------------------------- DW5.2: the fill on insert
   const ins = {
@@ -124,7 +126,7 @@ try {
   ok("CS-W2 DW5.3 fail: through each of the fifteen composite keys, a firm A row cannot name a firm B parent (fill and guards set aside)", keys.length === 15 && keys.every(([, r]) => r === "refused"), keys.filter(([, r]) => r !== "refused"));
   ok("CS-W2 DW5.3 pass: the same row with all its parents of its own firm goes in", A.err(`begin; alter table review_round_filing disable trigger user; ${rrf({})}; rollback;`) === "");
   const match = [A.err(`update review_finding set filing_id = '${b.FL}' where id = '${a.FD}'`), A.err(`begin; insert into review_finding (id, workspace_id, case_id, subject_id, severity, source, quote, created_by, stage_id, filing_id) values ('${u(438)}', '${W}', '${a.K}', '${a.PRI}', 'INFO', 'manual', 'S', 'x', '${a.ST}', '${ids(3).FL}'); rollback;`)];
-  ok("CS-W2 DW5.3 fail (the finding's filing, held by a trigger, not a key): a finding cannot name another case's filing (another firm's, or a firm-less case's), on update or insert",
+  ok("CS-W2 DW5.3 fail (the finding's filing, held by a trigger, not a key): a finding cannot name another case's filing (another firm's, or another case of its own firm), on update or insert",
     match.every((e) => /case_review_firm_match: a finding can only name a filing of its own case/.test(e)), match.map((e) => e.slice(0, 100)));
   ok("CS-W2 DW5.3 pass: a finding naming its own case's filing, or none, is allowed", A.err(`begin; update review_finding set filing_id = null where id = '${a.FD}'; update review_finding set filing_id = '${a.FL}' where id = '${a.FD}'; rollback;`) === "");
   const kept = TABLES.map((t) => A.err(`update ${t} set firm_id = null where firm_id = '${F1}'`));
@@ -133,9 +135,9 @@ try {
   // A case holding only a review round (no filings rows), so the RESTRICT that answers is a review key (review m1).
   A.sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, reference, client_actor_id, created_by, firm_key, case_number, firm_id) values ('${u(14)}', '${W}', '${CMB}', 'W2R-4', 'user-P', 'user-O', 'sample-firm', 'C-2026-00004', '${F1}');
     insert into review_round (id, workspace_id, case_id, number, kind, sent_by, firm_id) values ('${u(84)}', '${W}', '${u(14)}', 1, 'send', 'x', '${F1}')`);
-  const moveCase = A.err(`update runtime_case set firm_id = '${F2}' where id = '${u(14)}'`);
+  const moveCase = A.err(`begin; alter table runtime_case disable trigger case_firm_fixed; update runtime_case set firm_id = '${F2}' where id = '${u(14)}'; rollback;`);   // CS-W1 part 2's guard set aside, so the key answers
   ok("CS-W2 DW5.3 fail: a case's firm cannot move while its review round names it (ON UPDATE RESTRICT on review_round's key)", /violates RESTRICT setting of foreign key constraint "review_round_case_id_firm_id_fkey"/.test(moveCase), moveCase.slice(0, 160));
-  // Breaker M1: a firm-less case's rows cannot name another case's rows (the keys skip them while the firm is empty).
+  // Breaker M1: a case's rows cannot name another case's rows; case 3 is of case 1's firm, so the keys pass and the trigger answers.
   const g = ids(3);
   const cross = [
     A.err(`update review_round_filing set filing_id = '${a.FL}' where id = '${g.RRF}'`, "xr_app"),
@@ -143,11 +145,11 @@ try {
     A.err(`update review_round_form set item_id = '${a.IT}' where id = '${g.RRM}'`, "xr_app"),
     A.err(`insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(442)}', '${W}', '${g.K}', '${a.RRF}', 'x', 'default', 'W')`, "xr_app"),
   ];
-  ok("CS-W2 DW5.3 fail (breaker M1): a firm-less case's round row, form or check cannot name another case's filing, filing review, item or round row, as xr_app",
+  ok("CS-W2 DW5.3 fail (breaker M1): a round row, form or check cannot name another case's filing (of the same firm), filing review, item or round row, as xr_app",
     cross.every((e) => /case_review_same_case: a \w+ row can only name rows of its own case|case_stage_ended|c83/.test(e)) && cross.filter((e) => /case_review_same_case/.test(e)).length >= 3, cross.map((e) => e.slice(0, 110)));
   // Round 2 breaker M2: a filing item cannot move to another case or filing (its review forms were checked against it).
-  const mv = [A.err(`update filing_item set case_id = '${b.K}', filing_id = '${b.FL}' where id = '${ids(3).IT}'`, "xr_app"), A.err(`update filing_item set filing_id = '${b.FL}' where id = '${a.IT}'`, "xr_app")];
-  ok("CS-W2 DW5.3 fail (round 2 M2): a filing item keeps its case and filing, as xr_app (a firm-less case's item cannot move under another firm)", mv.every((e) => /case_review_case_fixed: a filing item keeps its case and filing|case_stage_ended/.test(e)) && /case_review_case_fixed/.test(mv[0]), mv.map((e) => e.slice(0, 100)));
+  const mv = [A.err(`update filing_item set case_id = '${a.K}', filing_id = '${a.FL}' where id = '${ids(3).IT}'`, "xr_app"), A.err(`update filing_item set filing_id = '${b.FL}' where id = '${a.IT}'`, "xr_app")];
+  ok("CS-W2 DW5.3 fail (round 2 M2): a filing item keeps its case and filing, as xr_app (case 3's item cannot move to case 1 of the same firm)", mv.every((e) => /case_review_case_fixed: a filing item keeps its case and filing|case_stage_ended/.test(e)) && /case_review_case_fixed/.test(mv[0]), mv.map((e) => e.slice(0, 100)));
   // Review m2: a filing review inserted with no firm takes its filing's.
   ok("CS-W2 DW5.2 pass (review m2): a filing review inserted with no firm takes its filing's firm",
     A.sql(`begin; insert into filing_review (id, workspace_id, filing_id, reviewed_by, kind, licence_number, facts_hash) values ('${u(443)}', '${W}', '${a.FL}', 'x', 'reviewed', 'L', 'h') returning firm_id; rollback;`).includes(F1));
@@ -162,22 +164,25 @@ try {
     /permission denied/.test(A.err(`select count(*) from case_review_fill_mark`, "xr_app")) && /permission denied/.test(A.err(`delete from case_review_fill_mark`, "xr_app"))
     && A.sql(`select has_function_privilege('xr_app', 'case_review_mark_fill()', 'EXECUTE')::text || has_function_privilege('public', 'case_review_filled_now(uuid)', 'EXECUTE')::text`) === "falsefalse");
   ok("CS-W2 DW5.4 fail: the backfill is not callable by PUBLIC", A.sql(`select has_function_privilege('public', 'case_review_firm_backfill()', 'EXECUTE')`) === "f");
-  // Breaker M2: the ghost case's round row is decided (sent back) before its firm arrives; in the transaction that fills
-  // the firm, the C8.3 "written in this transaction" opening must not let a check be added or a form stamped.
+  // Breaker M2: a round row decided (sent back) while its firm is still empty (as a row the migration's backfill meets); in the
+  // transaction that fills its firm, the C8.3 "written in this transaction" opening must not let a check be added or a form stamped.
   const g4 = ids(3);
-  A.sql(`set session_replication_role = replica; update review_round_filing set status = 'sent_back', reasons = '["r"]', decided_by = 'x', decided_at = now(), opened_by = 'x', opened_at = now() where id = '${g4.RRF}'`);
-  A.sql(`set session_replication_role = replica; insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values ('${F3}', 'ghost-firm', 'Ghost', 'CA', 'a@ghost.example.com', now())`);
-  const m2 = A.err(`begin; select case_firm_backfill(); insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(444)}', '${W}', '${g4.K}', '${g4.RRF}', 'late', 'default', 'Late check'); rollback;`, "xr_studio");
-  ok("CS-W2 DW5.4 fail (breaker M2): in the transaction that fills a case's firm, a check cannot be added to its sent-back round row", /the filing is decided; nothing is added to it/.test(m2), m2.slice(0, 160));
-  // Round 2 M2: the fill done by hand (no follow, no backfill) and then a session setting cannot reopen it either.
-  const g5 = ids(3);
-  const byHand = A.err(`begin; set local session_replication_role = replica; update runtime_case set firm_id = '${F3}' where id = '${g5.K}'; update filing set firm_id = '${F3}' where case_id = '${g5.K}'; update filing_review set firm_id = '${F3}' where id = '${g5.RF}'; update review_round set firm_id = '${F3}' where id = '${g5.RR}'; set local session_replication_role = origin; update review_round_filing set firm_id = '${F3}' where id = '${g5.RRF}' and firm_id is null; set local xr.case_firm_fill = 'off'; insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(445)}', '${W}', '${g5.K}', '${g5.RRF}', 'late2', 'default', 'Late check'); rollback;`, "xr_studio");
+  A.sql(`set session_replication_role = replica; update review_round_filing set firm_id = null, status = 'sent_back', reasons = '["r"]', decided_by = 'x', decided_at = now(), opened_by = 'x', opened_at = now() where id = '${g4.RRF}'`);
+  const m2 = A.err(`begin; select case_review_firm_backfill(); insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(444)}', '${W}', '${g4.K}', '${g4.RRF}', 'late', 'default', 'Late check'); rollback;`, "xr_studio");
+  ok("CS-W2 DW5.4 fail (breaker M2): in the transaction that fills a round row's firm (the backfill), a check cannot be added to the sent-back row", /the filing is decided; nothing is added to it/.test(m2), m2.slice(0, 160));
+  // Round 2 M2: the fill done by hand (no backfill) and then a session setting cannot reopen it either.
+  const byHand = A.err(`begin; update review_round_filing set firm_id = '${F1}' where id = '${g4.RRF}' and firm_id is null; set local xr.case_firm_fill = 'off'; insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(445)}', '${W}', '${g4.K}', '${g4.RRF}', 'late2', 'default', 'Late check'); rollback;`, "xr_studio");
   ok("CS-W2 DW5.4 fail (round 2 M2): a round row's firm filled by hand in this transaction, then any session setting: a check still cannot be added to the decided row", /the filing is decided; nothing is added to it/.test(byHand), byHand.slice(0, 160));
   ok("CS-W2 DW5.4 pass: a decided round row whose firm was not filled in this transaction behaves as before (the opening only covers the approving transaction)",
-    /the filing is decided; nothing is added to it/.test(A.err(`insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(446)}', '${W}', '${g5.K}', '${g5.RRF}', 'late3', 'default', 'Late check')`)));
-  A.sql(`select case_firm_backfill()`);
-  const after = TABLES.map((t) => `${t}=${A.sql(`select count(*) filter (where firm_id = '${F3}') || '/' || count(*) filter (where firm_id is null) from ${t}`)}`);
-  ok("CS-W2 DW5.4 pass (the follow): when the ghost key's case gets its firm, its rows in all seven tables follow, past the append-only and round guards", after.every((x) => x.endsWith("=1/0")), after);
+    /the filing is decided; nothing is added to it/.test(A.err(`insert into review_check (id, workspace_id, case_id, round_filing_id, item_key, source, wording) values ('${u(446)}', '${W}', '${g4.K}', '${g4.RRF}', 'late3', 'default', 'Late check')`)));
+  // The follow: a filing whose firm arrives later (a filing written with no firm, as a restore) takes its filing review and
+  // readiness pass along, past the append-only guard. (The case-side follow can no longer fire: CS-W1 part 2 fixes a case's firm.)
+  A.sql(`set session_replication_role = replica; update filing set firm_id = null where id = '${g4.FL}'; update filing_review set firm_id = null where id = '${g4.RF}'; update readiness_pass set firm_id = null where id = '${g4.RP}'`);
+  A.sql(`update filing set firm_id = '${F1}' where id = '${g4.FL}'`);
+  const followed = [A.sql(`select firm_id from filing_review where id = '${g4.RF}'`), A.sql(`select firm_id from readiness_pass where id = '${g4.RP}'`)];
+  A.sql(`select case_review_firm_backfill()`);
+  const after = TABLES.map((t) => `${t}=${A.sql(`select count(*) filter (where firm_id is null) from ${t}`)}`);
+  ok("CS-W2 DW5.4 pass (the follow): when a filing gets its firm, its filing review and readiness pass follow past the append-only guard; the backfill fills the rest, none left empty", followed.every((f) => f === F1) && after.every((x) => x.endsWith("=0")), [followed, after]);
   const guards = [
     A.err(`update filing_review set kind = 'self_reviewed' where id = '${a.RF}'`), A.err(`update readiness_pass set reason = 'Changed reason' where id = '${a.RP}'`),
     A.err(`update review_round set sent_by = 'x' where id = '${a.RR}'`), A.err(`update review_round_filing set filing_round = 5 where id = '${a.RRF}'`),
