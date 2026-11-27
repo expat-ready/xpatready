@@ -42,11 +42,14 @@ before Approve. (No repository-wide "require conversation resolution": too tight
 2. **Round 2: diff only.** Read only the commits since the SHA round 1 reviewed (`git diff <reviewed-sha>..HEAD`), and
    check that each round-1 Important is fixed. A new finding in round 2 must sit in that diff; nothing from the
    untouched code is raised again or newly.
-3. **Stop.** After round 2 the verdict is Approve or Block. A third round only with the tech lead's written allowance;
-   otherwise the tech lead chooses a fresh reviewer. Never an Approve without a review of the current head.
-* A push after Approve is a new round 2 on its diff only. A pure merge of the main branch needs no new review.
+3. **Stop.** After round 2 the verdict is Approve or Block (an Important still open after round 2 is a Block, and the
+   tech lead decides). A third round only with the tech lead's written `Lead allows round 3:` line; otherwise the tech
+   lead chooses a fresh reviewer. Never an Approve without a review of the current head.
+* A push after Approve gets a diff-only review of that push; if two rounds are used, it is round 3 and needs the tech
+  lead's line. A pure merge of the main branch that touches none of the PR's files keeps the approval.
 
 ## 7. The builder's side
-A brief and a PR carry `Done when` (the test that proves it) and a stop rule (`stop after N tries`); the builder fixes
+A brief carries `Done when` (the test that proves it) and a stop rule (`stop after N tries`; a check refuses a brief
+without one), and the PR repeats them; the builder fixes
 every Important with a failing test first, answers each finding once (fixed in `<sha>`, or the one-line reason), and
 asks for round 2 only when all are answered.

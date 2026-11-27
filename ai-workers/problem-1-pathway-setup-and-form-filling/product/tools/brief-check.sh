@@ -6,13 +6,14 @@
 # "Item: R1.x" (several: "Item: R1.4, R1.8") or "Item: none (tooling|qa|records|lead)" (only when its own row has that
 # BACKLOG area, or it names no row), and each item must be in a wave open
 # for lane starts (waves.py allow; B204, P-745), else "OUTSIDE WAVE: ...". Reads the text on stdin; exit 1 with what is
-# missing. Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Tests: check-g4-rules.sh, check-review-converges.sh (LR-121); the Item line and waves: check-lane-preflight.sh.
+# missing. Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Tests: check-g4-rules.sh, check-review-converges.sh (LR-121), check-focus-list.sh, check-touch-overlap.sh; the Item line and waves: check-lane-preflight.sh.
 set -u
 # LR-121 (founder A425; Loops article: "specific completion criteria and explicit turn caps"): a start brief that carries a
 # "Done when" also carries a stop rule, e.g. "stop after 3 tries", "at most two rounds", "a two-round cap". PR bodies are
 # not asked for it. --self-test proves the rule on fixed texts (check-review-converges.sh runs it; US$0, no network).
 N='([0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)'
-stop_rule() { grep -qiE "stop after (at most )?$N( failed)? (tries|try|attempts|rounds|runs|turns)|at most $N( failed)? (tries|attempts|rounds|runs|turns)|(turn|try|tries|round|attempt)[ -]cap"; }
+C="[*_]*$N[*_]*"; U='( failed)? (tries|try|attempts|rounds|runs|turns|failures)'
+stop_rule() { grep -qiE "stop (after|at) (at most )?$C$U|(at most|max|up to) $C$U|$C[ -](turn|try|round|attempt)[ -]cap|(turn|try|round|attempt) cap (of )?$C"; }
 if [ "${1:-}" = --self-test ]; then
   f=0; t() { if printf '%s\n' "$2" | stop_rule; then got=1; else got=0; fi; [ "$got" = "$1" ] && echo "PASS  $3" || { echo "FAIL  $3"; f=1; }; }
   t 1 "Done when: check.sh exits 0. Stop after 3 tries and ask the Lead." "a numbered stop after N tries"
@@ -22,6 +23,9 @@ if [ "${1:-}" = --self-test ]; then
   t 0 "Done when: check.sh exits 0. Context limit ~400k tokens." "a brief with no stop rule is refused"
   t 0 "Stop when it feels done; try again later." "stop with no number is refused"
   t 0 "stop after many tries" "stop after with no count is refused"
+  t 1 "Stop at **3** tries; max 3 failures." "stop at, bold count, max N failures"
+  t 1 "Up to 2 attempts, then ask." "up to N attempts"
+  t 0 "There is no round cap here." "a cap with no count is refused"
   out=$(printf 'Done when: x.sh exits 0.\nContext limit 400k.\n' | bash "$0" --stop-only); r=$?
   [ "$r" = 1 ] && printf '%s' "$out" | grep -q 'stop rule' && echo "PASS  --stop-only refuses, naming the stop rule" || { echo "FAIL  --stop-only refusal (exit $r: $out)"; f=1; }
   out=$(printf 'Done when: x.sh exits 0; stop after 3 tries.\n' | bash "$0" --stop-only); r=$?
@@ -32,7 +36,7 @@ if [ "${1:-}" = --self-test ]; then
 fi
 txt=$(tr -d '\r'); bad=""
 stop_bad() { printf '%s\n' "$txt" | grep -qi 'done when' && ! printf '%s\n' "$txt" | stop_rule \
-  && echo " no stop rule next to \"Done when\" (e.g. \"stop after 3 tries\", \"at most two rounds\"; LR-121);"; }
+  && echo " a \"Done when\" with no stop rule in the brief (e.g. \"stop after 3 tries\", \"at most two rounds\"; LR-121);"; }
 # --stop-only: only the LR-121 rule (for the self-test; no git, no network)
 [ "${1:-}" = --stop-only ] && { b=$(stop_bad); [ -z "$b" ] && exit 0; echo "MISSING:${b%;}."; exit 1; }
 # ENF-803 (P-803): a start brief's "Duplicate check:" names the origin/main sha and the exact IST time it was read, and a
