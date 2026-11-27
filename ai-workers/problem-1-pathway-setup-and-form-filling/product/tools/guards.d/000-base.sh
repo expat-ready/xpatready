@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# The mutation rows of check-guards.sh up to OS-85, moved here unchanged from check-guards.sh (lines 58-776 at origin/main
-# 8cb806729, 27 Nov). Frozen: a new item adds its own guards.d/OS-<n>.sh, never a block here (check-guards-d.sh).
+# The mutation rows of check-guards.sh up to OS-85, moved here unchanged from check-guards.sh (lines 58-787 at origin/main
+# a77497eb7, 27 Nov). Frozen: a new item adds its own guards.d/OS-<n>.sh, never a block here (check-guards-d.sh).
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
 # Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
@@ -678,6 +678,13 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# OS-78c (OS-PM 4): comment-triggered workflows start no job on a comment without their words
+MUT="$MUT"'
+OS78c queue|../../.github/workflows/queue-gate.yml|s/(contains(github.event.comment.body, .Reviewer:.) \&\& contains/(contains/|check-comment-words.sh
+OS78c rounds|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\& (contains(github.event.comment.body, .approve.)/(contains(github.event.comment.body, \x27reviewer\x27) \&\& (true/|check-comment-words.sh
+OS78c markdown|../../.github/workflows/review-rounds.yml|s/(contains(github.event.comment.body, .reviewer.) \&\&/(contains(github.event.comment.body, \x27reviewer:\x27) \&\&/|check-comment-words.sh
+OS78c read|../../.github/workflows/lead-read.yml|s/(github.event.action != .created. \&\&/(true \&\&/|check-comment-words.sh
+OS78c takeback|../../.github/workflows/lead-read.yml|s/(contains(github.event.changes.body.from, .Lead.) \&\& contains(github.event.changes.body.from, .read.))/false/|check-comment-words.sh'
 # OS-82 (OS-PM 4): a head whose only pr-suites run predates job "pr-suites" counts only when its parts were skipped
 MUT="$MUT"'
 OS82 wired|product/tools/queue-gate.sh|s/\[ "\$suites_state" = missing \] \&\& noparts "\$s"; return 0; }/return 0; }/|check-queue-gate.sh
@@ -688,6 +695,10 @@ OS82 green|product/tools/queue-gate.sh|s/select(.status == "completed" and .conc
 OS82 before|product/tools/queue-gate.sh|s/ and (.created_at .. "9") < .before)/)/|check-queue-gate.sh
 OS82 level|product/tools/queue-gate.sh|s/ or .annotation_level == "warning" or .annotation_level == "failure")/)/|check-queue-gate.sh
 OS82 code|product/tools/queue-gate.sh|s/^  \[ -z "\$(grep -E .\/prototype\/.^packages\/. <<< "\${files:-}"/  [ -z "$(grep -E "^~" <<< "${files:-}"/|check-queue-gate.sh'
+# OS-50 (P-733, P-820): near-Proven product PRs first in the product queue, never interrupting a running batch
+MUT="$MUT"'
+OS50 interrupt|../../.mergify.yml|s/^    allow_checks_interruption: false/    allow_checks_interruption: true/|check-mergify-scopes.sh
+OS50 rule|../../.mergify.yml|s/^  - name: near-proven$/  - name: near-proven-off/|check-mergify-scopes.sh'
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
