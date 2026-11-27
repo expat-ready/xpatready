@@ -74,5 +74,5 @@ ok "six owed in all" "$(grep -q 'typed turn: 6:' <<<"$out" && echo 1)" "$out"
 # --- wiring in lead-watch.sh
 L="$TOOLS/lead-watch.sh"
 ok "lead-watch.sh step 13b runs lanes on the board and counts its ACT lines" "$(grep -q 'owed-watch.py" lanes --board' "$L" && grep -q 'echo "\$lr"; act=\$((act + \$(grep -c .^ACT. <<<"\$lr")))' "$L" && echo 1)" "no 13b wiring in $L"
-ok "lead-watch.sh step 13c runs starts on STATE and counts its ACT lines" "$(grep -q 'owed-watch.py" starts --state "\$TOOLS/../STATE.md"' "$L" && grep -q 'echo "\$so"; act=\$((act + \$(grep -c .^ACT. <<<"\$so")))' "$L" && echo 1)" "no 13c wiring in $L"
+ok "lead-watch.sh step 13c runs starts on STATE and counts its ACT lines" "$(grep -q 'owed-watch.py" starts --state "\$RECS/STATE.md"' "$L" && grep -q 'echo "\$so"; act=\$((act + \$(grep -c .^ACT. <<<"\$so")))' "$L" && echo 1)" "no 13c wiring in $L"
 finish

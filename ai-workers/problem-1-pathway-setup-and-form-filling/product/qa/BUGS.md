@@ -1,5 +1,7 @@
 # Findings — open only (the qa lane writes this file; the Lead's lane assignments reach it through the qa lane's "From the Lead" note; closed after a qa retest)
 
+**Screenshots cited below** (27 Nov, lab clean-up): the images under `product/screens`, `product/qa` and `studio/evidence` left the tree; each cited one is in main at commit fc05179d6: `git show fc05179d6:<path> > file`. New screenshots are git-ignored.
+
 **Type:** Bug (built but wrong) · Gap (requirement or decision not met or not built) · Conflict (behaviour, requirement and decision disagree) · Ambiguity (unclear, as a question) · UX (works but confusing, slow or unclear words). **Severity:** Blocker (data at risk or the proof cannot run) · Critical (a capability gives a wrong result) · Major (a real gap or misleading message) · Minor. Closed findings: `qa/BUGS-CLOSED.md`. Each finding has a replayable check in `prototype/studio/tests/qa/` (index: `tests/qa/README.md`). Lane = the Lead's assignment (latest: 27 Oct, after b93d2ba), else the qa lane's guess.
 `ws/` = `reports/2026-10-29-wording-sweep/`.
 

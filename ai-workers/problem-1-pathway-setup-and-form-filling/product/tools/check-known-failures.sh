@@ -112,7 +112,7 @@ printf '[{"number":3,"title":"lead: old records","createdAt":"2026-01-01T00:00:0
 ms_now() { python3 -I -c 'import time; print(time.time_ns() // 1000000)'; }
 t0=$(ms_now)
 w=$(cd "$T/root" && git() { echo "qa: capability rows"; }; act=0; STATE_DIR="$T/st"; SEEN="$T/st/seen"; printf 'queue 0 queued\nsle   due Q #12\nACT   SLE Q #12 unanswered 40 min\n' > "$SEEN"
-    D=p/DECISIONS.md; COCKPIT_DATA="$T/board.json"; prs='[]'; alive=$'claude/q1\nclaude/q2'; eval "$step"; echo "act=$act")
+    D=p/DECISIONS.md; RECS="$T/root/p"; COCKPIT_DATA="$T/board.json"; prs='[]'; alive=$'claude/q1\nclaude/q2'; eval "$step"; echo "act=$act")
 ms=$(( $(ms_now) - t0 ))
 grep -q '^ACT   known size-rules: RULES.md is near its 25 KB wall' <<<"$w" && grep -q '^seen  known questions: covered above, 1 ACT' <<<"$w" \
   && grep -q '^ACT   known records-pr-age: .* oldest: #3 open ' <<<"$w" \

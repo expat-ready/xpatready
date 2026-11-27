@@ -43,4 +43,24 @@ git -C "$C" commit -qam "lead: Lead 2 took over; start read ~100k"
 out=$(bash "$C/$D/takeover.sh" 2>&1)
 ok "the new Lead's own edit to its line is not taken for a hand-over" "$(echo "$out" | grep -q 'Hand-over: Lead 1 -> Lead 2' && echo 1)" "$out"
 out=$($H "$NEXT" "$TITLE" --dry-run 2>&1); ok "the same session id is refused at once" "$([ $? = 1 ] && echo "$out" | grep -q 'already the current Lead' && echo 1)" "$out"
+# Private split (PS-1b): STATE.md in the private copy, CURRENT-LEAD.md in xpatready. The hand-over rewrites both,
+# commits STATE.md in the private copy and pushes it there, and commits CURRENT-LEAD.md alone on the lead branch.
+docs_copy "$T/s2"; cp "$TOOLS/items.py" "$TOOLS/handover.sh" "$TOOLS/takeover.sh" "$TOOLS/lane-branches.sh" "$T/s2/$D/"
+mkdir -p "$T/s2/$PRODREL/state" && echo '[]' > "$T/s2/$PRODREL/state/items.json"
+grep '^current_lead: ' "$T/s2/$PRODREL/STATE.md" > "$T/s2/$PRODREL/CURRENT-LEAD.md"; mkdir -p "$T/pv/xpatready/product"
+mv "$T/s2/$PRODREL/STATE.md" "$T/pv/xpatready/product/"
+git -C "$T/s2" add -A && git -C "$T/s2" commit -qm "split" && git -C "$T/s2" checkout -qb lead/x
+git init -q --bare -b main "$T/o2.git"; git -C "$T/s2" remote add origin "$T/o2.git"; git -C "$T/s2" -c push.negotiate=false push -q origin main lead/x
+git -C "$T/pv" init -q -b main && git -C "$T/pv" config user.email t@t && git -C "$T/pv" config user.name t && git -C "$T/pv" add -A && git -C "$T/pv" commit -qm init
+git init -q --bare -b main "$T/pv.git"; git -C "$T/pv" remote add origin "$T/pv.git"; git -C "$T/pv" -c push.negotiate=false push -q origin main
+git clone -q -b lead/x "$T/o2.git" "$T/c2"; git -C "$T/c2" config user.email t@t; git -C "$T/c2" config user.name t
+out=$(XR_RECORDS="$T/pv/xpatready/product" bash "$T/c2/$D/handover.sh" "$NEXT" "$TITLE" 2>&1); r=$?
+want="current_lead: $NEXT $TITLE (took over from Lead 1, local_aaa-0000)"
+ok "private copy: the hand-over pushes CURRENT-LEAD.md on the lead branch" "$([ $r = 0 ] && git -C "$T/o2.git" show "lead/x:$PRODREL/CURRENT-LEAD.md" | grep -qxF "$want" && echo 1)" "exit $r: $out"
+ok "... and STATE.md in the private repository" "$(git -C "$T/pv.git" show "main:xpatready/product/STATE.md" | grep -qxF "$want" && echo 1)" "$out"
+ok "... and the lead branch's commit holds CURRENT-LEAD.md only" "$([ "$(git -C "$T/c2" show --name-only --format= HEAD)" = "$PRODREL/CURRENT-LEAD.md" ] && echo 1)" "$(git -C "$T/c2" show --stat HEAD)"
+out=$(bash "$T/c2/$D/takeover.sh" 2>&1); ok "takeover reads the line from CURRENT-LEAD.md" "$(echo "$out" | grep -q "^lead  $NEXT" && echo "$out" | grep -q 'Hand-over: Lead 1 -> Lead 2' && echo 1)" "$out"
+out=$(XR_RECORDS="$T/none" bash "$T/c2/$D/handover.sh" local_ccc-0000-3333 "Lead 3 · x" 2>&1); r=$?
+ok "no STATE.md anywhere: the hand-over refuses (exit 1) and names the private copy" "$([ $r = 1 ] && echo "$out" | grep -q 'private copy' && echo 1)" "exit $r: $out"
+
 finish
