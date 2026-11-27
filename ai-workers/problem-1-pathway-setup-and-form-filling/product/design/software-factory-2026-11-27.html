@@ -58,14 +58,124 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <h1>Expat Ready Software Factory</h1>
 <p class="lede">How the agents build, check and merge the product today, where the rules are enforced and where people still do steps by hand, and how we move to the target set-up (factory v3), with the corrections from today's research. Written so the founder can explain it to anyone.</p>
 <nav class="toc">
-<a href="#progress">Lab progress</a><a href="#beforeafter">Before and after</a><a href="#audit">Deep audit</a><a href="#today">Where we stand</a><a href="#who">Who does what</a><a href="#flow">Life of one change</a><a href="#enforce">How rules are enforced</a><a href="#manual">Still by hand</a><a href="#measure">Measures</a><a href="#target">Target</a><a href="#compare">Today vs target</a><a href="#money">Where the tokens come from</a><a href="#cleanup">Repository clean-up</a><a href="#gaps">Inconsistencies found</a><a href="#words">Words</a>
+<a href="#landscape">Engineering landscape</a><a href="#respond">Enforced and response</a><a href="#switch">Account switch</a><a href="#progress">Lab progress</a><a href="#beforeafter">Before and after</a><a href="#audit">Deep audit</a><a href="#today">Where we stand</a><a href="#who">Who does what</a><a href="#flow">Life of one change</a><a href="#enforce">How rules are enforced</a><a href="#manual">Still by hand</a><a href="#measure">Measures</a><a href="#target">Target</a><a href="#compare">Today vs target</a><a href="#money">Where the tokens come from</a><a href="#cleanup">Repository clean-up</a><a href="#gaps">Inconsistencies found</a><a href="#words">Words</a><a href="#versions">Version history</a>
 </nav>
+
+<div class="stats" style="grid-template-columns:1fr"><div class="stat"><span class="eyebrow">Version 6 · 27 Nov 2026 12:08 IST</span><span> · This page is updated in place; each version is kept in git history (the archive). See <a href="#versions">Version history</a>.</span></div></div>
+
+<h2 id="landscape">Engineering landscape: who sits where</h2>
+<p>One picture of the whole set-up: the people, the Claude accounts, the Mac, the cloud lanes, the two repositories and the services, and how work moves between them.</p>
+<pre class="mermaid">
+flowchart TB
+  F["Founder: product direction, decisions,&lt;br/&gt;money above caps, accounts and passwords&lt;br/&gt;(reads no code)"]
+  subgraph ACC["Claude accounts"]
+    IND["Founder's 3-4 individual accounts&lt;br/&gt;rotated when the weekly meter nears its limit"]
+    TEAM["Team organisation Expatready (founder = Owner)&lt;br/&gt;admin settings, GitHub analytics on&lt;br/&gt;Code Review billed to Team, cap US$100/month"]
+    SHIP["Claude Ship: Code Review Manual on risky paths&lt;br/&gt;PR Steward off until the approval rule lands&lt;br/&gt;Claude Approvals = approver (P-849)"]
+    TEAM --- SHIP
+  end
+  subgraph MAC["Mac: main copy, Claude desktop app"]
+    LEAD["Tech lead (Lead)&lt;br/&gt;30-min check + lane watch"]
+    SB["Standby lead&lt;br/&gt;idle until 'take over now'"]
+    DEMO["Demo on :4400"]
+    LB["At most two local builders"]
+  end
+  subgraph CLOUD["Cloud lanes on claude.ai/code"]
+    BL["Builder lanes&lt;br/&gt;one row = one PR"]
+    QA["qa lanes"]
+    LAB["Lab lanes: register, fast route, ship-security,&lt;br/&gt;cleanup, automation-measures, full-power, private-split"]
+    REV["Reviewer subagent (Opus) in each lane&lt;br/&gt;+ breaker for money, schema, permissions, new screens"]
+    BL --- REV
+  end
+  subgraph GH["GitHub Enterprise Cloud: org expat-ready"]
+    PUB["PUBLIC expat-ready/xpatready&lt;br/&gt;product code, builder skills and agents, CI workflows,&lt;br/&gt;hooks config, .mergify.yml, check tools,&lt;br/&gt;shared records: DECISIONS, RULES, BACKLOG, design/"]
+    PRIV["PRIVATE expat-ready/private&lt;br/&gt;Lead's working records after the split: STATE, history,&lt;br/&gt;lanes, inbox, reports, RESUME; Lead-only skills;&lt;br/&gt;side-session notes; commercial"]
+    MAIN["main branch"]
+  end
+  subgraph SVC["Services"]
+    MG["Mergify: the only thing that merges&lt;br/&gt;batches, 24 test parts; tooling and records queues"]
+    GA["GitHub Actions: CI, nightly, pipeline heartbeat,&lt;br/&gt;qa-after-merge trigger"]
+    RUN["Mac self-hosted runner&lt;br/&gt;queue gate only"]
+    DB["Dependabot"]
+  end
+  IND -->|"runs the desktop app"| MAC
+  IND -->|"starts lanes"| CLOUD
+  F -->|"chat, decisions"| LEAD
+  LEAD -->|"briefs, PR comments, nudges"| CLOUD
+  LEAD -->|"writes records"| PRIV
+  BL -->|"branch + PR"| PUB
+  REV -->|"Approve line"| PUB
+  SHIP -->|"Code Review findings on risky PRs"| PUB
+  SHIP -->|"Claude Approvals: GitHub approval"| PUB
+  PUB --> GA
+  GA --> MG
+  RUN --> MG
+  MG -->|"merge"| MAIN
+  MAIN -->|"demo updates"| DEMO
+  MAIN -->|"qa after merge"| QA
+  QA -->|"capability Works"| PUB
+  DB --> PUB
+</pre>
+<div class="tbl"><table>
+<tr><th>Who or what</th><th>Sits</th><th>Does</th><th>Talks to</th></tr>
+<tr><td><b>Founder</b></td><td>Chat with the Lead</td><td>Product direction, decisions, money above caps, accounts and passwords; reads no code</td><td>The Lead only</td></tr>
+<tr><td><b>Individual Claude accounts</b> (3-4)</td><td>The founder's; one active at a time</td><td>Run the desktop app on the Mac and start the cloud lanes; rotated near the weekly limit (see <a href="#switch">Account switch</a>)</td><td>Mac sessions, cloud lanes</td></tr>
+<tr><td><b>Team organisation "Expatready"</b></td><td>claude.ai admin (founder = Owner)</td><td>Claude Ship (Code Review, PR Steward, Claude Approvals), GitHub analytics, credits and caps</td><td>GitHub, through the Claude app</td></tr>
+<tr><td><b>Lead and standby lead</b></td><td>Mac, main copy</td><td>Shape work, steer lanes, read risky diffs, write records</td><td>Founder, lanes, both repositories</td></tr>
+<tr><td><b>Builder, qa and lab lanes</b></td><td>Cloud (up to two builders on the Mac)</td><td>One row = one PR; qa proves "Works"; lab lanes improve the factory</td><td>Public repository, the Lead</td></tr>
+<tr><td><b>Public repository</b> <code>expat-ready/xpatready</code></td><td>GitHub</td><td>Everything that builds, checks and merges the product, plus the shared records builders read</td><td>Actions, Mergify, Claude app</td></tr>
+<tr><td><b>Private repository</b> <code>expat-ready/private</code></td><td>GitHub</td><td>The Lead's working records, Lead-only skills (lead, lead-watch, strategy-desk, cto-review), side-session notes, commercial</td><td>The Lead</td></tr>
+<tr><td><b>Mergify, Actions, Mac runner, Dependabot</b></td><td>Services</td><td>Merge, test, gate the queue, raise dependency updates</td><td>Public repository</td></tr>
+</table></div>
+<div class="rec"><b>Why public plus private is safe:</b> GitHub and Claude Code read workflows, hooks and merge rules only in the repository they guard, so those stay in the public one; nothing secret is in the public repository; content already published stays in public git history (no rewrite).</div>
+
+<h2 id="respond">Where rules are enforced and how we respond</h2>
+<p>Each change passes these layers in order. The detailed list of what each machine check refuses is in <a href="#enforce">How rules are enforced</a>; this section adds what each layer misses and what we do when it fires.</p>
+<pre class="mermaid">
+flowchart LR
+  S1["1 Self-check&lt;br/&gt;in the lane"] --> S2["2 Reviewer&lt;br/&gt;subagent"]
+  S2 --> S3["3 Breaker&lt;br/&gt;risky changes"]
+  S3 --> S4{"4 CI path route"}
+  S4 -->|"docs"| S5
+  S4 -->|"tooling"| S5
+  S4 -->|"full"| S5
+  S5["5 Code Review&lt;br/&gt;risky paths"] --> S6["6 Claude Approvals&lt;br/&gt;GitHub approval"]
+  S6 --> S7["7 Mergify queue&lt;br/&gt;24 test parts"]
+  S7 --> S8["8 qa after merge&lt;br/&gt;Works"]
+</pre>
+<div class="tbl"><table>
+<tr><th>Layer</th><th>Enforced by</th><th>What it catches</th><th>What it misses</th><th>How we respond when it fires</th></tr>
+<tr><td>1 Self-check</td><td>Hook + prose (skill)</td><td>Failing tests, brief and wave rules, disk, model</td><td>Anything the builder did not think to test</td><td>Fix in the same lane</td></tr>
+<tr><td>2 Reviewer</td><td>Subagent (Opus) + CI checks its Approve line</td><td>Gaps against the concept, standards, 20 quality dimensions</td><td>What a reviewer sharing the builder's account and context misses</td><td>Fix in the same lane; at most two rounds, then the Lead decides</td></tr>
+<tr><td>3 Breaker</td><td>Subagent, required by prose and hook for money, schema, permissions, new screens</td><td>Ways to break the screen or the API</td><td>Ordinary changes (it does not run on them)</td><td>Fix in the same lane</td></tr>
+<tr><td>4 CI path routes</td><td>CI (docs / tooling / full)</td><td>Broken tests, rule breaks in <code>pr-rules</code>, label without Approve</td><td>A path that lands on a lighter route than it needs</td><td>Fix in the same lane; the bot's "covered" line comes from run data (P-848)</td></tr>
+<tr><td>5 Code Review</td><td>Service (Team), Manual on risky paths</td><td>Logic and security issues in risky diffs</td><td>PRs it is not triggered on</td><td>Lane fixes; the Lead's after-read of risky merges (P-823)</td></tr>
+<tr><td>6 Claude Approvals</td><td>Service, the GitHub approver (P-849)</td><td>A PR without a passing review; a push cancels the approval</td><td>Whatever the earlier layers missed</td><td>No approval, no queue; lane fixes</td></tr>
+<tr><td>7 Mergify queue</td><td>Service, <code>.mergify.yml</code></td><td>A change that breaks <code>main</code> together with others</td><td>Bugs no test covers</td><td>Dequeued; fixed or covered in the same lane, then requeued</td></tr>
+<tr><td>8 qa after merge</td><td>Actions trigger + qa lane</td><td>Capabilities that do not work for a person</td><td>Untested journeys</td><td>Bug logged; an escape becomes a reviewer test case (LR-136, LR-142)</td></tr>
+</table></div>
+
+<h2 id="switch">Account switch</h2>
+<ol class="flow">
+<li><b>Trigger.</b> The active individual account's weekly meter nears its limit.</li>
+<li><b>Close side.</b> At 94% the Lead's check runs close-prep: STATE and RESUME pushed, every lane pushes its work.</li>
+<li><b>New side.</b> A SessionStart hook detects the new account, prints the checklist and starts blocked until the minute-0 reading is taken.</li>
+<li><b>Ledger.</b> One row per switch.</li>
+</ol>
+<p><span class="pill warn">Being built</span> register row LR-143.</p>
+
+<div class="note"><b>Gaps found while drawing this</b>
+<ul>
+<li>Team-organisation server-managed settings (the one-model rule, LR-145) reach only sessions signed in to the Team organisation. Our lanes run on individual accounts, so the repository's own hooks and settings remain the enforcement that reaches every account.</li>
+<li>The harness's small fast model (the <code>/goal</code> evaluator and helpers) is not Opus today: a founder decision is owed.</li>
+<li>The private split moves records only after every reader is re-pointed (PR #3911 plan).</li>
+</ul></div>
 
 <h2 id="progress">Lab progress</h2>
 <p>The lab is ready when every workstream below is done. Each is weighted by its estimated effort in working days; progress is the share of that effort done, judged from merged PRs and settings seen today. The folder move is left out on purpose (deferred until Release 1 is nearly proven).</p>
 <div class="tbl"><table>
 <tr><th>Workstream</th><th>Effort (days)</th><th>Done</th><th>Progress</th><th>Waits on</th></tr>
-<tr><td><b>Claude Ship rollout</b>: caps, environment, manual Code Review, Approvals, the switch</td><td class="pct">3.0</td><td>Caps set, Review Manual, Steward off, test environment created</td><td><div class="bar"><i style="width:25%"></i></div><span class="pct">25%</span></td><td>Your US$100 top-up · the other Claude organisation releasing expat-ready · machine user</td></tr>
+<tr><td><b>Claude Ship rollout</b>: caps, environment, manual Code Review, Approvals, the switch</td><td class="pct">3.0</td><td>Caps set, Review Manual, Steward off, test environment created</td><td><div class="bar"><i style="width:25%"></i></div><span class="pct">25%</span></td><td>Top-up done and Approvals connected (27 Nov); no machine user (P-849); policy file and approval rule in lane ship-security</td></tr>
 <tr><td><b>Clean-up stages 1–4</b>: unused files out, test output out of git, stale pieces, records shrunk</td><td class="pct">4.0</td><td>Stages 0, 2a, 8 merged earlier; stage 1 lane running now</td><td><div class="bar"><i style="width:20%"></i></div><span class="pct">20%</span></td><td>Stage 1 review and a quiet queue</td></tr>
 <tr><td><b>Use Claude Code instead of hand-built steps</b>: the audit's "use the tool" and "simplify" rows</td><td class="pct">5.0</td><td>Audit done (below)</td><td><div class="bar"><i style="width:10%"></i></div><span class="pct">10%</span></td><td>Your go on the order</td></tr>
 <tr><td><b>Full-power plan, still-needed items</b> (67 kept + 15 to settle)</td><td class="pct">6.0</td><td>44 of 111 relevant items found done since</td><td><div class="bar"><i style="width:40%"></i></div><span class="pct">40%</span></td><td>Lane time</td></tr>
@@ -114,7 +224,7 @@ flowchart TB
 flowchart TB
   L[Lead shapes tasks: one spec, one glossary,\npass/fail check] --> B[Builder: saved workflow +\n/goal until the check passes]
   B --> R[Reviewer subagent + Code Review\non risky paths]
-  R --> A[GitHub approval: Claude Approvals\nor machine user; a push cancels it]
+  R --> A[GitHub approval: Claude Approvals;\na push cancels it]
   A --> M[Mergify batch: 24 test parts]
   M -- red --> S[PR Steward / auto-fix repairs\nin the shared test environment]
   S --> M
@@ -194,7 +304,7 @@ flowchart LR
 <h2 id="manual">Still done by people</h2>
 <div class="tbl"><table>
 <tr><th>Step</th><th>Who</th><th>Why it is still by hand</th><th>Target</th></tr>
-<tr><td>Reading money, permission, schema and pipeline changes</td><td>Lead</td><td>No second approver on GitHub yet: the founder's account is the author of every PR</td><td>Machine user approves; Claude Approvals handles routine paths</td></tr>
+<tr><td>Reading money, permission, schema and pipeline changes</td><td>Lead</td><td>No second approver on GitHub yet: the founder's account is the author of every PR</td><td>Claude Approvals is the approver; Code Review pass on risky paths; Lead after-read (P-849)</td></tr>
 <tr><td>Labels, "ready for review", reopen when the shell refuses</td><td>Lead, in the browser</td><td>Lane sessions cannot post some comments</td><td>Approval replaces the label</td></tr>
 <tr><td>Restarting quiet or stuck lanes</td><td>Lead, every 30 min</td><td>Cloud lanes do not wake on messages</td><td>PR Steward picks up red checks and conflicts</td></tr>
 <tr><td>Lead hand-over and standbys</td><td>Lead + founder's typed turn</td><td>Sessions start only in a turn the founder typed</td><td>Unchanged (deliberate)</td></tr>
@@ -215,10 +325,10 @@ flowchart LR
 <div class="tbl"><table>
 <tr><th>Step</th><th>What</th><th>Status 27 Nov</th></tr>
 <tr><td>0</td><td>Team plan "Expatready", caps set before anything runs</td><td><span class="pill ok">Done</span> Code Review US$100/month, PR Steward US$50/month, organisation US$200</td></tr>
-<tr><td>1</td><td>Top up credits; connect the GitHub organisation for Approvals</td><td><span class="pill warn">Waiting</span> balance is US$10, so reviews would skip · Approvals' <b>Connect</b> is greyed out: another Claude organisation also has the GitHub app on expat-ready</td></tr>
+<tr><td>1</td><td>Top up credits; connect the GitHub organisation for Approvals</td><td><span class="pill ok">Done</span> 27 Nov: US$100 top-up; Approvals connected for expat-ready</td></tr>
 <tr><td>2</td><td>Claude Code Review, Manual: the Lead triggers <code>@claude review</code> on money, schema, migration, permission and pipeline PRs; about 20 reviews, then set the cap from the real average cost</td><td><span class="pill acc">Ready</span> after the top-up</td></tr>
 <tr><td>3</td><td>Shared test environment so agents can run our real suites in the cloud</td><td><span class="pill ok">Created</span> Healthy; runs <code>tools/cloud-setup.sh</code> (Node, PostgreSQL 18, migrations); first real session still to prove it</td></tr>
-<tr><td>4</td><td>Claude Approvals in observe mode (billed): Claude approves routine paths after a review passes; risky paths and <code>.github/**</code> need a non-author approval (the machine user)</td><td><span class="pill bad">Blocked</span> Connect, machine user</td></tr>
+<tr><td>4</td><td>Claude Approvals in observe mode (billed), then enforce: Claude is the approver GitHub records; risky paths and <code>.github/**</code> need a Claude Code Review pass first; the Lead reads them after merge (P-823). No machine user (P-849)</td><td><span class="pill acc">In progress</span> policy file in PR #3899</td></tr>
 <tr><td>5</td><td>The switch, one revertible PR: GitHub rule on <code>main</code> (1 approval, stale approvals dismissed, <code>ci</code> required, no force-push); Mergify waits for the approval instead of the label; PR Steward Manual, then On</td><td><span class="pill warn">Later</span> never before an approver exists, or every merge stops</td></tr>
 <tr><td>6</td><td>Two weeks on the five DORA measures; retire the label-guard family, watch scripts and the records label; shrink the rules to what tools don't enforce</td><td><span class="pill warn">Later</span></td></tr>
 </table></div>
@@ -228,7 +338,7 @@ flowchart LR
 <div class="tbl"><table>
 <tr><th>Area</th><th>Today</th><th>Target</th></tr>
 <tr><td>What lets a PR into the queue</td><td>A label, guarded by our own scripts</td><td>A GitHub approval that a new push cancels, plus Claude Approvals and <code>ci</code></td></tr>
-<tr><td>Second pair of eyes on risky code</td><td>Reviewer agent + breaker + the Lead's read</td><td>The same, plus Claude Code Review (hosted, improves without our work) and a machine-user approval</td></tr>
+<tr><td>Second pair of eyes on risky code</td><td>Reviewer agent + breaker + the Lead's read</td><td>The same, plus Claude Code Review (hosted) and Claude Approvals as the approver (P-849)</td></tr>
 <tr><td>Red checks and merge conflicts</td><td>The Lead notices at a check and restarts the lane</td><td>PR Steward fixes them in the shared test environment</td></tr>
 <tr><td>Who merges</td><td>Mergify</td><td>Mergify (unchanged; the docs give no reason to change it)</td></tr>
 <tr><td>Main branch protection</td><td>Our push guard</td><td>A GitHub ruleset as well, with Claude's app unable to bypass it</td></tr>
@@ -342,5 +452,13 @@ flowchart TB
 <tr><td>P-nnn / A-nnn</td><td>A founder or Lead decision / a founder ask, in DECISIONS and STATE</td></tr>
 <tr><td>R1.n</td><td>Release 1 capability number</td></tr>
 </table></div>
+<h2 id="versions">Version history</h2>
+<div class="tbl"><table>
+<tr><th>Version</th><th>Date</th><th>What changed</th></tr>
+<tr><td>v1–v5</td><td>26–27 Nov 2026</td><td>Earlier versions: lab progress and forecast, before and after, deep audit</td></tr>
+<tr><td><b>v6</b></td><td>27 Nov 2026 12:08 IST</td><td>Engineering landscape (who sits where, public and private repositories, accounts), where rules are enforced and how we respond, account switch, gaps found; lab register frozen at 153 rows</td></tr>
+</table></div>
+<p class="src">Git history of this file is the archive of every version.</p>
+
 <p class="src">Sources: <code>product/WAY-OF-WORKING.md</code>, <code>RULES.md</code>, <code>.claude/settings.json</code>, <code>.githooks/</code>, <code>.github/workflows/</code>, <code>.mergify.yml</code>, <code>design/factory-v3-plan-2026-11-26.html</code>, <code>design/claude-ship-best-practice-2026-11-27.md</code>, code.claude.com docs (read 27 Nov 2026), dora.dev.</p>
 </div>
