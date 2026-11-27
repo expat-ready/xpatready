@@ -1,7 +1,7 @@
 # Break report: FO-7r part 3 (R1.111, period exports; API only)
 
 Breaker, 27 Nov 2026, Opus 5.5, effort high. Branch `claude/runtime-fo7r3-exports` at `bd0c92a7560b5ef3a87c4fcf37dc14ea75bf13e3`.
-How I ran it: the builder's suite (`tests/check_fo7r3_exports.ts`, 35 passed, 0 failed), then my own harness kept outside the repo (scratchpad `brk/h1.ts`). The harness copies the suite's setup: a scratch database on 127.0.0.1:54329, every migration, the money features in a Nest app with PF-4's guard and PF-12's walls, `fakeJobs` and `fakeFiles`, and fixtures written through the real routes or, for bulk rows, by replica-role SQL. I did not use :4400, made no AI call and spent US$0. I dropped my scratch databases (other `xr_studio_fo7r3_*` databases belong to other sessions and were left alone).
+How I ran it: the builder's suite (`tests/check_fo7r3_exports.ts`, 35 passed, 0 failed), then my own harness kept outside the repo (scratchpad `brk/h1.ts`). The harness copies the suite's setup: a scratch database on 127.0.0.1:54329, every migration, the money features in a Nest app with PF-4's guard and PF-12's walls, `fakeJobs` and `fakeFiles`, and fixtures written through the real routes or, for bulk rows, by replica-role SQL. Every finding was re-run on a clean `git archive` of the head sha; this matters because, during my run, someone else's uncommitted edits to `exports.ts` and the suite (answering "review M1") appeared in this working tree. I did not make them and did not test them. I did not use :4400, made no AI call and spent US$0. I dropped my scratch databases (other `xr_studio_fo7r3_*` databases belong to other sessions and were left alone).
 Scope: part 3 of the brief (`POST /exports`, `GET /exports/:id`, `GET /exports/:id/<kind>.csv`, the worker).
 
 ## Blockers
@@ -9,7 +9,7 @@ None.
 
 ## Majors
 **M1. The trust ledger file is in random (uuid) order, so its running-balance column cannot be followed.** `pageSql` TRUST_LEDGER `order by e.id` (exports.ts:191), and the outer `order by x.k, x.id` where `k` is the constant `'0'` (exports.ts:159, :166). FO-7t's own ledger reader orders by `seq` (trust/reads.ts:61-67), and AG-6-60 rule 8 is a ledger with a running balance.
-*Repro:* trust is Yes. Make six deposits for one client (CAD 10 to 60, refs SEQ-0 to SEQ-5) on top of ET-1 CAD 1,500, then pay CAD 50 from trust to an invoice. Export TRUST_LEDGER. The rows came out in this order: `INV-0006 -50.00 1660.00 · SEQ-0 10.00 1510.00 · SEQ-2 30.00 1560.00 · ET-1 1500.00 1500.00 · SEQ-3 … · SEQ-5 60.00 1710.00`. 6 of 7 consecutive rows break "previous running balance + amount = running balance".
+*Repro:* trust is Yes. Make six deposits for one client (CAD 10 to 60, refs SEQ-0 to SEQ-5) on top of ET-1 CAD 1,500, then pay CAD 50 from trust to an invoice. Export TRUST_LEDGER. The rows came out in this order: `INV-0006 -50.00 1660.00 · SEQ-0 10.00 1510.00 · SEQ-2 30.00 1560.00 · ET-1 1500.00 1500.00 · SEQ-3 … · SEQ-5 60.00 1710.00`. 6 of 7 consecutive rows break (7 of 7 on the re-run) "previous running balance + amount = running balance".
 *Expected:* each party and currency in `seq` order (or date, then seq), so the balance runs down the file.
 *Also:* the suite's E1 check "its last running balance the TRUST closing" (`trust.at(-1)`) passes only because its period holds one entry per currency. With two entries it becomes random.
 

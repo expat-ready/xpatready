@@ -9,7 +9,8 @@
 //   `money-exports/<id>/`: request.json (the period, the kinds, who, when), one <kind>.csv per kind, done.json (row
 //   counts) last, failed.json when a run threw. READY = done.json; FAILED = failed.json and no done.json; else QUEUED.
 // * Facts as the statement dates them (statement.ts ledgerCtes): an invoice by its issue, a fact on an invoice at
-//   greatest(its own time, the issue), a trust entry by its time. So for one client and currency, invoices − payments
+//   greatest(its own time, the issue), a trust entry by its time: the `counted_on` column, which the period cuts by;
+//   `date` is the fact's own day (a payment received before its invoice was issued shows when it came: break M2). So for one client and currency, invoices − payments
 //   into operating + refunds − credit notes − write-offs over a period is the statement's INVOICES closing − opening
 //   when no trust or credit was applied (check S1), and the trust ledger's amounts are its TRUST change.
 // * As of the request: a row recorded after the request is left out (rows are insert-only), so a retried run writes the
@@ -45,7 +46,7 @@ export const PAGE = 1000;
 const FILE = (k: ExportKind) => `${k.toLowerCase()}.csv`;
 const key = (id: string, file: string) => `money-exports/${id}/${file}`;
 
-export const COLUMNS = ["date", "number_or_reference", "client", "case", "bill_to", "amount", "tax", "currency", "method", "received_into", "related_document"] as const;
+export const COLUMNS = ["date", "number_or_reference", "client", "case", "bill_to", "amount", "tax", "currency", "method", "received_into", "related_document", "counted_on"] as const;
 export const TRUST_COLUMNS = ["date", "case_or_person", "entry_type", "reference", "payer", "amount", "currency", "running_balance"] as const;
 
 const Body = z.strictObject({ id: z.string().regex(UUID).optional(), from: Day, to: Day, kinds: z.array(z.enum(EXPORT_KINDS)).min(1).max(EXPORT_KINDS.length) });
@@ -152,10 +153,10 @@ export class MoneyExports {
 }
 
 // ------------------------------------------------------------------------------------------------- the readers per kind
-type Row = { k: string; id: string; date: string; ref: string | null; client: string | null; caseNo: string | null; billTo: string | null; amount: string; tax: string | null; currency: string; method: string | null; into: string | null; related: string | null; entry?: string | null; running?: string | null };
+type Row = { k: string; id: string; date: string; counted: string; ref: string | null; client: string | null; caseNo: string | null; billTo: string | null; amount: string; tax: string | null; currency: string; method: string | null; into: string | null; related: string | null; entry?: string | null; running?: string | null };
 
 /** The party's name (person or company) and the case's client and number, around one kind's page `x`. */
-const named = (f: string, x: Prisma.Sql) => Prisma.sql`select x.*, to_char(x.at at time zone 'UTC', 'YYYY-MM-DD') as date,
+const named = (f: string, x: Prisma.Sql) => Prisma.sql`select x.*, to_char(x.at at time zone 'UTC', 'YYYY-MM-DD') as counted, to_char(x.own at time zone 'UTC', 'YYYY-MM-DD') as date,
     coalesce(nullif(trim(concat_ws(' ', pp.given_names, pp.family_name)), ''), nullif(trim(co.operating_name), '')) as "billTo", rc.case_number as "caseNo",
     coalesce(cc.display_name, nullif(trim(concat_ws(' ', pp.given_names, pp.family_name)), ''), nullif(trim(co.operating_name), '')) as client
   from (${x}) x left join fo_person pp on pp.firm_id = ${f}::uuid and pp.id = x.pid left join fo_company co on co.firm_id = ${f}::uuid and co.id = x.cid
@@ -173,26 +174,26 @@ function pageSql(f: string, kind: ExportKind, start: Prisma.Sql, end: Prisma.Sql
     e: `(coalesce(e.person_id, e.company_id)::text || '|' || e.currency::text || '|' || lpad(e.seq::text, 10, '0'))` };
   const inv = Prisma.sql`left join money_invoice i on i.firm_id = ${f}::uuid and i.id`;
   switch (kind) {
-    case "INVOICES": return Prisma.sql`select to_char(i.issued_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as k, i.id, i.issued_at as at, i.number as ref, i.person_id as pid, i.company_id as cid, i.case_id, t.total::text as amount, t.tax::text as tax, i.currency::text as currency,
+    case "INVOICES": return Prisma.sql`select to_char(i.issued_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as k, i.id, i.issued_at as at, i.issued_at as own, i.number as ref, i.person_id as pid, i.company_id as cid, i.case_id, t.total::text as amount, t.tax::text as tax, i.currency::text as currency,
         null::text as method, null::text as into, null::text as related from money_invoice i
         cross join lateral (select coalesce(sum(l.amount_minor::bigint + l.tax_minor), 0) as total, coalesce(sum(l.tax_minor::bigint), 0) as tax from money_invoice_line l where l.firm_id = i.firm_id and l.invoice_id = i.id) t
       where i.firm_id = ${f}::uuid and i.issued_at is not null and i.issued_at <= ${asOf} and ${inP("i.issued_at")} ${cur("i.issued_at", "i.id")} order by i.issued_at, i.id limit ${PAGE}`;
-    case "PAYMENTS": return Prisma.sql`select ${Prisma.raw(K.p)} as k, p.id, greatest(p.received_at, i.issued_at) as at, p.reference as ref, coalesce(i.person_id, r.person_id, e.person_id) as pid, coalesce(i.company_id, r.company_id, e.company_id) as cid,
+    case "PAYMENTS": return Prisma.sql`select ${Prisma.raw(K.p)} as k, p.id, greatest(p.received_at, i.issued_at) as at, p.received_at as own, p.reference as ref, coalesce(i.person_id, r.person_id, e.person_id) as pid, coalesce(i.company_id, r.company_id, e.company_id) as cid,
         coalesce(i.case_id, r.case_id, e.case_id) as case_id, p.amount_minor::text as amount, null::text as tax, p.currency::text as currency, p.method::text as method, p.received_into::text as into, coalesce(i.number, r.number) as related
       from money_payment p ${inv} = p.invoice_id left join money_trust_request r on r.firm_id = p.firm_id and r.id = p.trust_request_id left join money_trust_entry e on e.firm_id = p.firm_id and e.payment_id = p.id
       where p.firm_id = ${f}::uuid and p.created_at <= ${asOf} and ${inP("greatest(p.received_at, i.issued_at)")} ${keyed(K.p, "p.id")}`;
-    case "REFUNDS": return Prisma.sql`select ${Prisma.raw(K.x)} as k, x.id, greatest(x.created_at, i.issued_at) as at, p.reference as ref, coalesce(i.person_id, r.person_id, e.person_id) as pid, coalesce(i.company_id, r.company_id, e.company_id) as cid,
+    case "REFUNDS": return Prisma.sql`select ${Prisma.raw(K.x)} as k, x.id, greatest(x.created_at, i.issued_at) as at, x.created_at as own, p.reference as ref, coalesce(i.person_id, r.person_id, e.person_id) as pid, coalesce(i.company_id, r.company_id, e.company_id) as cid,
         coalesce(i.case_id, r.case_id, e.case_id) as case_id, x.amount_minor::text as amount, null::text as tax, x.currency::text as currency, x.route::text as method, p.received_into::text as into, coalesce(i.number, r.number) as related
       from money_refund x join money_payment p on p.firm_id = x.firm_id and p.id = x.payment_id ${inv} = p.invoice_id left join money_trust_request r on r.firm_id = p.firm_id and r.id = p.trust_request_id
         left join money_trust_entry e on e.firm_id = p.firm_id and e.payment_id = p.id
       where x.firm_id = ${f}::uuid and x.created_at <= ${asOf} and ${inP("greatest(x.created_at, i.issued_at)")} ${keyed(K.x, "x.id")}`;
-    case "CREDIT_NOTES": return Prisma.sql`select ${Prisma.raw(K.c)} as k, c.id, greatest(c.created_at, i.issued_at) as at, c.number as ref, i.person_id as pid, i.company_id as cid, i.case_id, c.amount_minor::text as amount, null::text as tax,
+    case "CREDIT_NOTES": return Prisma.sql`select ${Prisma.raw(K.c)} as k, c.id, greatest(c.created_at, i.issued_at) as at, c.created_at as own, c.number as ref, i.person_id as pid, i.company_id as cid, i.case_id, c.amount_minor::text as amount, null::text as tax,
         c.currency::text as currency, null::text as method, null::text as into, i.number as related from money_credit_note c ${inv} = c.invoice_id
       where c.firm_id = ${f}::uuid and c.created_at <= ${asOf} and ${inP("greatest(c.created_at, i.issued_at)")} ${keyed(K.c, "c.id")}`;
-    case "WRITE_OFFS": return Prisma.sql`select ${Prisma.raw(K.w)} as k, w.id, greatest(w.created_at, i.issued_at) as at, i.number as ref, i.person_id as pid, i.company_id as cid, i.case_id, w.amount_minor::text as amount, null::text as tax,
+    case "WRITE_OFFS": return Prisma.sql`select ${Prisma.raw(K.w)} as k, w.id, greatest(w.created_at, i.issued_at) as at, w.created_at as own, i.number as ref, i.person_id as pid, i.company_id as cid, i.case_id, w.amount_minor::text as amount, null::text as tax,
         w.currency::text as currency, null::text as method, null::text as into, i.number as related from money_write_off w ${inv} = w.invoice_id
       where w.firm_id = ${f}::uuid and w.created_at <= ${asOf} and ${inP("greatest(w.created_at, i.issued_at)")} ${keyed(K.w, "w.id")}`;
-    case "TRUST_LEDGER": return Prisma.sql`select ${Prisma.raw(K.e)} as k, e.id, e.created_at as at, coalesce(p.reference, r.number, i.number) as ref, e.person_id as pid, e.company_id as cid, e.case_id, e.amount_minor::text as amount, null::text as tax,
+    case "TRUST_LEDGER": return Prisma.sql`select ${Prisma.raw(K.e)} as k, e.id, e.created_at as at, e.created_at as own, coalesce(p.reference, r.number, i.number) as ref, e.person_id as pid, e.company_id as cid, e.case_id, e.amount_minor::text as amount, null::text as tax,
         e.currency::text as currency, null::text as method, null::text as into, null::text as related, e.kind::text as entry, e.balance_after_minor::text as running
       from money_trust_entry e left join money_payment p on p.firm_id = e.firm_id and p.id = e.payment_id left join money_trust_request r on r.firm_id = e.firm_id and r.id = e.trust_request_id ${inv} = e.invoice_id
       where e.firm_id = ${f}::uuid and e.created_at <= ${asOf} and ${inP("e.created_at")} ${keyed(K.e, "e.id")}`;
@@ -211,7 +212,7 @@ async function csvOf(tx: Tx, f: string, kind: ExportKind, m: Manifest): Promise<
     const page = await tx.$queryRaw<Row[]>(exportPageSql(f, kind, m.from, m.to, asOf, after));
     for (const r of page) out.push(kind === "TRUST_LEDGER"
       ? [r.date, cell(r.caseNo ?? r.billTo), cell(r.entry), cell(r.ref), cell(r.billTo), amount(r.amount), r.currency, amount(r.running ?? null)].join(",")
-      : [r.date, cell(r.ref), cell(r.client), cell(r.caseNo), cell(r.billTo), amount(r.amount), amount(r.tax), r.currency, cell(r.method), cell(r.into), cell(r.related)].join(","));
+      : [r.date, cell(r.ref), cell(r.client), cell(r.caseNo), cell(r.billTo), amount(r.amount), amount(r.tax), r.currency, cell(r.method), cell(r.into), cell(r.related), r.counted].join(","));
     rows += page.length;
     if (page.length < PAGE) break;
     const last = page.at(-1)!; after = { k: last.k, id: last.id };

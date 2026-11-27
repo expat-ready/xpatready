@@ -240,8 +240,8 @@ try {
   ok("FO-7r3 E11 pass: one holder's eight same-day deposits list in the ledger's order, each running balance the sum so far, the last the statement's trust closing", rising && minor(tRows.at(-1)![7]!) === tClose, { tRows: tRows.map((r) => r[7]), tClose });
   const firstPT = ord.out.TRUST_LEDGER!.findIndex((r) => r[4] === "Client trust Sample");
   ok("FO-7r3 E11 fail: no other holder's row falls inside that holder's run (a running balance never jumps to another client's)", ord.out.TRUST_LEDGER!.slice(firstPT, firstPT + 8).every((r) => r[4] === "Client trust Sample"), ord.out.TRUST_LEDGER!.map((r) => r[4]));
-  const dated = ["INVOICES", "PAYMENTS", "REFUNDS", "CREDIT_NOTES", "WRITE_OFFS"].every((k) => ord.out[k]!.slice(1).every((r, i, a) => i === 0 || a[i - 1]![0]! <= r[0]!));
-  ok("FO-7r3 E11 pass: every other file is in date order", dated, ord.out.PAYMENTS!.map((r) => r[0]));
+  const dated = ["INVOICES", "PAYMENTS", "REFUNDS", "CREDIT_NOTES", "WRITE_OFFS"].every((k) => ord.out[k]!.slice(1).every((r, i, a) => i === 0 || a[i - 1]![11]! <= r[11]!));
+  ok("FO-7r3 E11 pass: every other file is in order of the day each row counts on (counted_on)", dated, ord.out.PAYMENTS!.map((r) => r[0]));
   // a holder with more entries than a page: 1,200 entries over two keyset pages, each once, in seq order
   const PT2 = person(A, "trust-bulk");
   sql(`set session_replication_role = replica; with p as (insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, created_at)
@@ -250,6 +250,17 @@ try {
     select gen_random_uuid(), '${A}', '${PT2}', 'DEPOSIT', 100, 'CAD', g, 100 * g, (select p.id from p where p.idempotency_key = 'fo7r3-bulk-' || g), 'seed:FO-7r-3', '2020-05-05 10:00:00+00' from generate_series(1, 1200) g`);
   const tb = await exportOf(tA, "2020-05-05", "2020-05-05", ["TRUST_LEDGER"]), tbRows = tb.out.TRUST_LEDGER!.slice(1);
   ok(`FO-7r3 E11 pass: 1,200 entries of one holder at one time export over two pages (${PAGE} a page), each once, in seq order`, tbRows.length === 1200 && tbRows.every((r, k) => minor(r[7]!) === 100 * (k + 1)), { n: tbRows.length, first: tbRows[0], last: tbRows.at(-1) });
+
+  // ---------------------------------------------------------------------------------------------------- E12 (break M2)
+  // a payment received before its invoice was issued: `date` is the day it came, `counted_on` the issue day the statement
+  // counts it on; the period cuts by counted_on, so the export's sums still equal the statement's change
+  const PE = person(A, "early"), iE = await make(tA, PE, 30000), pE = await pay(tA, iE, 10000);
+  sql(`set session_replication_role = replica; update money_invoice set issued_at = '2020-02-20 10:00:00+00' where id = '${iE}'; update money_payment set received_at = '2020-02-02 10:00:00+00', reference = 'EARLY-1' where id = '${pE.id}'`);
+  const feb = await exportOf(tA, "2020-02-01", "2020-02-29", ["INVOICES", "PAYMENTS"]), jan = await exportOf(tA, "2020-01-01", "2020-01-31", ["PAYMENTS"]);
+  const earlyRow = feb.out.PAYMENTS!.find((r) => r[1] === "EARLY-1"), stE = (await call(tA, "GET", `/front-office/money/parties/person/${PE}/statement?from=2020-02-01&to=2020-02-29&pageSize=200`)).body.accounts.find((a: any) => a.account === "INVOICES" && a.currency === "CAD");   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  const febSum = feb.out.INVOICES!.filter((r) => r[4] === "Client early Sample").reduce((t, r) => t + minor(r[5]!), 0) - feb.out.PAYMENTS!.filter((r) => r[4] === "Client early Sample" && r[9] === "OPERATING").reduce((t, r) => t + minor(r[5]!), 0);
+  ok("FO-7r3 E12 pass: the early payment shows the day it came (2020-02-02) and counts on the issue day (2020-02-20); the period's sums equal the statement's change", earlyRow?.[0] === "2020-02-02" && earlyRow?.[11] === "2020-02-20" && febSum === stE.closingMinor - stE.openingMinor && febSum === 20000, { earlyRow, febSum, stE });
+  ok("FO-7r3 E12 fail: January (the day it came) does not hold it: the period cuts by counted_on, as the statement", !jan.out.PAYMENTS!.some((r) => r[1] === "EARLY-1"), jan.out.PAYMENTS);
 
   // ---------------------------------------------------------------------------------------------------- E10
   const BULK = 2500;
