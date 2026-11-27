@@ -37,15 +37,18 @@ jobs:
   # the rows run in N parts (check-guards.sh --mutate --part i/N: the plain tests in part 1, every N-th row in each), and
   # the job named guards, run always(), is green only when every part succeeded: a failed, cancelled or skipped part is
   # red. check-guard-parts.sh proves the parts cover every test and row exactly once and checks this wiring.
+  # Lab lane, 27 Nov (Lead 4 on #3902): 4 → 6 parts. Part 1 (plain tests, about 10 min, plus its share of rows) ran
+  # 37-44 min and hit the 45-minute limit on #3893, #3896 and #3902; parts 2-4 ran 33-41 min. About 140 min of rows over
+  # 6 parts is about 23 min each, so part 1 is about 33 min and the others about 23, each well under the limit.
   part:
     if: "${{ !github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/') }}"   # SPD-2 item 5 (b): not on a draft (a merge-queue batch is a draft and still runs it)
-    name: guards part ${{ matrix.part }}/4
+    name: guards part ${{ matrix.part }}/6
     runs-on: ubuntu-latest
     timeout-minutes: 45   # CI-PRE (19 Nov) and ENF-758 (20 Nov): the limit stays; the parts keep each run well under it
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2, 3, 4]
+        part: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - name: zsh (isolated.sh is a zsh script)
@@ -62,7 +65,7 @@ jobs:
         if: ${{ matrix.part == 1 }}
         run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_focus_truth.py
       - name: this part's guard tests and mutation rows (each test fails without its guard)
-        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-guards.sh --mutate --part ${{ matrix.part }}/4
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-guards.sh --mutate --part ${{ matrix.part }}/6
   guards:
     needs: part
     if: "${{ always() && (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}"
