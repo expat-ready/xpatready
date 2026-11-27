@@ -14,12 +14,17 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { READ_ACTIONS } from "../case-document-reads.ts";
 import { caseOf as caseNamedBy, firmMayRead } from "../case-feed.ts";
 import { Db } from "../core.ts";
 import { problem, type StaffContext } from "../platform/identity/keys.ts";
 import { CaseNotes } from "./service.ts";
 
 export const TIMELINE_PAGE = 50;
+/** Part 4 (ruling 2 on #3694; review M1, break M1): a document's access lines (viewed, read, checked unchanged) are
+ *  access records, kept on the document's own Reads list, never timeline lines: left out here, in SQL, so a page is never
+ *  filled by them. "found changed" stays (something happened). */
+export const ACCESS = READ_ACTIONS.filter((a) => a !== "found changed");
 export const TIMELINE_KINDS = ["NOTE", "DOCUMENT", "DECISION", "ACTIVITY"] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 type Source = "audit" | "note";
@@ -97,7 +102,8 @@ export class CaseTimeline {
           from audit_event a
           where a.workspace_id = ${c.workspaceId}::uuid   -- review m2: a case's lines are in its workspace (the index)
             and (a.case_id = ${c.id}::uuid or (a.case_id is null and (a.entity_key = ${c.id} or strpos(lower(a.summary), ${short}) > 0)))
-            and not (a.entity = 'case note' and a.action = 'case.note.added')) t
+            and not (a.entity = 'case note' and a.action = 'case.note.added')
+            and not (a.entity = 'case document' and a.action = any(${ACCESS}::text[]))) t
         where true ${after(f, "audit", actors)}
         order by t.us desc, t.id collate "C" desc limit ${take}`;
       // Lines before AUD-1m's case_id: case-feed.ts's rule decides (the case it names is this one), never another firm's.
@@ -168,7 +174,8 @@ export class CaseTimeline {
         from audit_event a
         where a.workspace_id = ${c.workspaceId}::uuid   -- review m2: a case's lines are in its workspace (the index)
           and (a.case_id = ${c.id}::uuid or (a.case_id is null and (a.entity_key = ${c.id} or strpos(lower(a.summary), ${short}) > 0)))
-          and not (a.entity = 'case note' and a.action = 'case.note.added')) t
+          and not (a.entity = 'case note' and a.action = 'case.note.added')
+          and not (a.entity = 'case document' and a.action = any(${ACCESS}::text[]))) t
       where true ${after(f, "audit", actors)}
       order by t.us desc, t.id collate "C" desc offset ${take - 1} limit 1`;
     return r ? { us: BigInt(r.us), source: "audit", id: r.id } : null;

@@ -16,6 +16,8 @@ on:
       - ".github/workflows/cockpit-tests.yml"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/human-sample.py"   # P-782 (1): the weekly human sample lead-watch prints
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_human_sample.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/measures.py"   # lab: DORA five, works, tokens
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_measures.py"
 permissions:
   contents: read
 concurrency:
@@ -53,3 +55,5 @@ jobs:
           PY
       - name: human sample states (ENF-782b part 2, P-782 (1); due, open, yes, no, overdue; no network)
         run: python3 -I "$P/tools/test_human_sample.py"
+      - name: measures.py (DORA five, works per day, tokens per capability; hand-worked numbers, no network)
+        run: python3 -I "$P/tools/test_measures.py"

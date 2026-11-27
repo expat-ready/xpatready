@@ -76,7 +76,7 @@ try {
   @Module({ controllers: [PlatformIdentityController, ...features.flatMap((x) => x.controllers)] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
-  ok("setup: the reports feature registers its controller and its two services", reports.controllers.length === 1 && reports.controllers[0] === MoneyReportsController && reports.providers.length === 2);
+  ok("setup: the reports feature registers its controller and its three services (part 2 adds Send statement)", reports.controllers.length === 1 && reports.controllers[0] === MoneyReportsController && reports.providers.length === 3);
   const call = async (token: string | undefined, method: string, path: string, body?: unknown): Promise<Res> => {
     const r = await fetch(`${base}/api${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
     const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b };

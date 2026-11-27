@@ -16,6 +16,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { call, needVisitorVisa, openCase, sql as copySql } from "../acceptance/lib/m3.ts";
 import { recorder } from "./runtime/api.ts";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 
 const { ok, summary } = recorder();
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126091000_links__csw2_firm_id";
@@ -35,7 +36,9 @@ function scratch(name: string) {
   execFileSync(join(BIN, "createdb"), [...pg, DB]);
   const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
   for (const d of all.filter((x) => x < NEW)) file(join(MIG, d, "migration.sql"));
-  return { sql, err, file, drop: () => execFileSync(join(BIN, "dropdb"), [...pg, "--if-exists", "--force", DB]), rest: () => { for (const d of all.filter((x) => x > NEW)) file(join(MIG, d, "migration.sql")); } };
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks run on the migrations before
+  // it; part 2 has its own suite check_csw1_part2.ts.
+  return { sql, err, file, drop: () => execFileSync(join(BIN, "dropdb"), [...pg, "--if-exists", "--force", DB]), rest: () => { for (const d of all.filter((x) => x > NEW && x < CSW1_PART2)) file(join(MIG, d, "migration.sql")); } };
 }
 
 // Case n (1 sample-firm, 2 sample-solo, 3 a key with no platform firm): a link L (superseded by L'), a session, a message.

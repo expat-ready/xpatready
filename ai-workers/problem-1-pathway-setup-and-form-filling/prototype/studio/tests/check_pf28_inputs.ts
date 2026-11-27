@@ -230,7 +230,11 @@ REAL[":inviteToken"] = "A".repeat(43);
 // FO-6 part 4b: the signing door's link token is firm-first (32 hex, a dot, 43 base64url); a well-formed unknown one reaches
 // its body schema, so its probes are judged (a malformed one is the one 404 before the body).
 REAL[":signToken"] = `${randomUUID().replace(/-/g, "")}.${"A".repeat(43)}`;
-const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p === ":token" && path.startsWith("/api/public/bookings/") ? ":linkToken" : p === ":token" && path.startsWith("/api/public/signup/") ? ":inviteToken" : p === ":token" && path.startsWith("/api/public/sign/") ? ":signToken" : p);
+// FO-7r part 2 (#3753): a money party's kind is person or company, not the branding door's logo; with a real kind the
+// doors check the path's shape (else the one not-found), then read the body or query, then look the client up, so a
+// body probe here is a field error and a malformed kind or id is 404 before the body.
+REAL[":partyKind"] = "person";
+const keyOf = (path: string, p: string) => (p === ":kind" && path.startsWith("/api/front-office/money/parties/") ? ":partyKind" : p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p === ":token" && path.startsWith("/api/public/bookings/") ? ":linkToken" : p === ":token" && path.startsWith("/api/public/signup/") ? ":inviteToken" : p === ":token" && path.startsWith("/api/public/sign/") ? ":signToken" : p);
 const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");
 const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : REAL[keyOf(path, m)] || randomUUID()));
 /** Whether a 404 may stand for "this random record does not exist": only when some path value is a random id. */

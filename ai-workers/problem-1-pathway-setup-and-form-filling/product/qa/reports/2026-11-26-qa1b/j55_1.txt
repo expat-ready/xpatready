@@ -1,0 +1,36 @@
+PASS  J-55 setup: the Sample firm and its front office are seeded — []
+PASS  J-55 setup: client A's retainer is Sent (version 2, by screens, as J-53 ends) — "SENT"
+PASS  J-55 W1 (parts missing: FO-6, the signing request): Send made one live signing request with the client's link for version 2 — "1|SENT:-"
+PASS  J-55 W1 (parts missing: FO-5s' Withdraw panel): the retainer page offers Withdraw on a sent retainer — "1 Withdraw buttons; the page says: Back Sales › P-00001 › Retainer Retainer for ClientAmwx68j7w Sample Sent Version 2 P-00001 Waiting for ClientAmwx68j7w Sample to sign version 2. Edit makes a new version; the sent one stays as it was "
+PASS  J-55 W1 fail: a withdraw with a blank reason is refused on the reason field (422); the retainer stays Sent — {"status":422,"body":{"type":"https://expatready.local/problems/invalid","title":"Check the details","status":422,"detail":"A reason is required.","message":"A reason is required.","code":"INVALID","fields":{"reason":"A reason is required."}}}
+PASS  J-55 W1 fail: a withdraw of a version the page no longer shows is refused (409), nothing changes — 409
+PASS  J-55 W1: Withdraw with a reason: the retainer is Withdrawn, the reason kept, version 2's request ended (WITHDRAWN), one audit line — {"status":200,"r":"WITHDRAWN"}
+PASS  J-55 W1 (parts missing: FO-6, the withdraw stops the signing link): the client's signing request is cancelled with reason WITHDRAWN — "1|CANCELLED:WITHDRAWN"
+PASS  J-55 W1 fail: a withdrawn retainer is not withdrawn again (409) — 409
+PASS  J-55 W1: the retainer page says it is withdrawn and to prepare a new one from the prospect
+PASS  J-55 W1 the withdrawn retainer: axe finds no serious or critical WCAG A/AA finding — []
+PASS  J-55 W2: after the withdraw, client A takes a new retainer from the card (Prepare, by screens), sent as version 2; the withdrawn one is kept — ["WITHDRAWN:2","SENT:2"]
+PASS  J-55 W2: from Declined, Edit and resend makes version 3 in Draft (version 2 keeps its fee, ended) — {"status":"DRAFT","v":3,"page":"Back Sales › P-00002 › Retainer Retainer for ClientBmwx68j7w Sample Declined Version 2 P-00002 Agreement Edit Template Standard retainer mwx68j7w · version 1 Si"}
+PASS  J-55 W2: the re-issued version 3 is sent — "SENT"
+PASS  J-55 W2 the re-issued retainer: axe finds no serious or critical WCAG A/AA finding — []
+PASS  J-55 W3 (parts missing: FO-6, the signing email and its public door): the client has a signing link for version 3 in their email — {"mails":["Please sign your retainer agreement with Sample immigration firm","Please sign your retainer agreement with Sample immigration firm"]}
+FAIL  J-55 W3 (parts missing: FO-6, the decline with its reason): the client's decline is kept with their own reason, word for word, and the retainer reads DECLINED — {"declinedVia":"no Decline on the door","kept":"0"}
+FAIL  J-55 W3 (parts missing: FO-6 decline, FO-5s' declined state): the retainer page shows Declined with the client's reason, word for word — "Back Sales › P-00002 › Retainer Retainer for ClientBmwx68j7w Sample Sent Version 3 P-00002 Waiting for ClientBmwx68j7w Sample to sign version 3. Edit makes a new version; the sent one stays as it was and the new one is sent again. Agreement Edit Template Stan
+PASS  J-55 W4 (parts missing: FO-5s' Signed offline panel): the retainer page offers Signed offline on a sent retainer — "1 buttons"
+PASS  J-55 W4 fail: Signed offline with no file is refused on the file field in words ("Upload the signed PDF."); nothing changes — {"status":422,"body":{"type":"https://expatready.local/problems/invalid","title":"Check the details","status":422,"detail":"Upload the signed PDF.","message":"Upload the signed PDF.","code":"INVALID","fields":{"file":"Upload the signed PDF."}}}
+PASS  J-55 W4 fail: a file that is not a PDF (named .pdf) is refused (422, "must be a PDF"); nothing changes — {"status":422,"body":{"type":"https://expatready.local/problems/invalid","title":"Check the details","status":422,"detail":"The signed copy must be a PDF.","message":"The signed copy must be a PDF.","code":"INVALID","fields":{"file":"A PDF only."}}}
+PASS  J-55 W4 fail: Signed offline with no reason is refused (422) — 422
+PASS  J-55 W4: with the PDF and a reason the retainer is filed Signed on paper (SIGNED_OFFLINE, the file's sha256 kept) — {"status":200,"r":"SIGNED_OFFLINE"}
+PASS  J-55 W4: the prospect moves to Won (via SIGNED_OFFLINE) once, with one prospect.won audit line — "WON|SIGNED_OFFLINE"
+PASS  J-55 W4 fail: a second Signed offline is refused (409); still one prospect.won line — 409
+PASS  J-55 W4 fail: a retainer signed on paper cannot be withdrawn (409, final) — 409
+PASS  J-55 W4: as a signature does, the paper signature raises its event and prospect.won once (outbox) — "1|1"
+PASS  J-55 W4: the prospect's card says the retainer is signed on paper — "Retainer Signed on paper Version 3 Open the retainer"
+PASS  J-55 W4 the won prospect's card: axe finds no serious or critical WCAG A/AA finding — []
+PASS  J-55 W5 fail: with no session, withdraw and signed offline are refused (401) and nothing changes — [401,401]
+PASS  J-55 W6: the walk ends at R1.56's first step: an invoice draft for the won client is accepted (FO-7b) — {"status":201,"body":"{\"id\":\"aaff325c-32ab-41a3-aea3-1e397cc11861\",\"status\":\"DRAFT\",\"number\":null,\"personId\":\"aa44e541-4da0-4a45-ab2d-a6cf4139baf8\",\"companyId\":null,\"currency\":\"CAD\",\"billToProvince\":\"ON\",\"lines\":[],\"subtot"}
+PASS  J-55 W6: the signed retainer page at 400 px has no sideways scroll — 0
+PASS  J-55 W6: the signed retainer page at 1024 px has no sideways scroll — 0
+PASS  J-55: no page error during the walk — []
+
+32/34 passed

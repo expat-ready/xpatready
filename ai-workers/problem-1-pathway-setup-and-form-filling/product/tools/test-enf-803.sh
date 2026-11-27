@@ -42,7 +42,10 @@ gcfg() { git -C "$1" config commit.gpgsign false; git -C "$1" config core.hooksP
 # ---------- 1. bulk delete and the temp index, through the real hooks
 R="$T/repo"; git init -q -b main "$R"; gcfg "$R"
 mkdir -p "$R/$PRODREL/tools" "$R/.githooks" "$R/old" "$R/keep"
-cp "$TOOLS/bulk-delete-guard.sh" "$TOOLS/push-guard.sh" "$R/$PRODREL/tools/"; cp "$ROOTD"/.githooks/{pre-commit,commit-msg,pre-push} "$R/.githooks/"
+cp "$TOOLS/bulk-delete-guard.sh" "$TOOLS/push-guard.sh" "$TOOLS/pr-open-guard.sh" "$R/$PRODREL/tools/"; cp "$ROOTD"/.githooks/{pre-commit,commit-msg,pre-push} "$R/.githooks/"
+# pre-push also runs pr-open-guard.sh (G-4 (1), #3921). No network here: its GitHub question goes to a closed local port,
+# so it warns and passes ("GitHub unreadable"), and these pushes test the push guard alone.
+export API=http://127.0.0.1:9 GH_TOKEN=x
 for i in $(seq 1 60); do echo "old file $i" > "$R/old/f$i.txt"; echo "kept $i" > "$R/keep/k$i.txt"; done
 git -C "$R" add -A && git -C "$R" commit -qm "sixty files" || { echo "setup commit failed: nothing was checked"; exit 2; }
 cm() { out=$(git -C "$R" commit "$@" 2>&1); r=$?; }

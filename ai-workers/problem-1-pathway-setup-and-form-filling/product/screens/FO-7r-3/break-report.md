@@ -1,0 +1,113 @@
+# Break report: FO-7r part 3 (R1.111, period exports; API only)
+
+Breaker, 27 Nov 2026, Opus 5.5, effort high. Branch `claude/runtime-fo7r3-exports` at `bd0c92a7560b5ef3a87c4fcf37dc14ea75bf13e3`.
+How I ran it: the builder's suite (`tests/check_fo7r3_exports.ts`, 35 passed, 0 failed), then my own harness kept outside the repo (scratchpad `brk/h1.ts`). The harness copies the suite's setup: a scratch database on 127.0.0.1:54329, every migration, the money features in a Nest app with PF-4's guard and PF-12's walls, `fakeJobs` and `fakeFiles`, and fixtures written through the real routes or, for bulk rows, by replica-role SQL. Every finding was re-run on a clean `git archive` of the head sha; this matters because, during my run, someone else's uncommitted edits to `exports.ts` and the suite (answering "review M1") appeared in this working tree. I did not make them and did not test them. I did not use :4400, made no AI call and spent US$0. I dropped my scratch databases (other `xr_studio_fo7r3_*` databases belong to other sessions and were left alone).
+Scope: part 3 of the brief (`POST /exports`, `GET /exports/:id`, `GET /exports/:id/<kind>.csv`, the worker).
+
+## Blockers
+None.
+
+## Majors
+**M1. The trust ledger file is in random (uuid) order, so its running-balance column cannot be followed.** `pageSql` TRUST_LEDGER `order by e.id` (exports.ts:191), and the outer `order by x.k, x.id` where `k` is the constant `'0'` (exports.ts:159, :166). FO-7t's own ledger reader orders by `seq` (trust/reads.ts:61-67), and AG-6-60 rule 8 is a ledger with a running balance.
+*Repro:* trust is Yes. Make six deposits for one client (CAD 10 to 60, refs SEQ-0 to SEQ-5) on top of ET-1 CAD 1,500, then pay CAD 50 from trust to an invoice. Export TRUST_LEDGER. The rows came out in this order: `INV-0006 -50.00 1660.00 · SEQ-0 10.00 1510.00 · SEQ-2 30.00 1560.00 · ET-1 1500.00 1500.00 · SEQ-3 … · SEQ-5 60.00 1710.00`. 6 of 7 consecutive rows break (7 of 7 on the re-run) "previous running balance + amount = running balance".
+*Expected:* each party and currency in `seq` order (or date, then seq), so the balance runs down the file.
+*Also:* the suite's E1 check "its last running balance the TRUST closing" (`trust.at(-1)`) passes only because its period holds one entry per currency. With two entries it becomes random.
+
+**M2. A payment received before its invoice was issued is exported with the wrong date and in the wrong period.** PAYMENTS uses `greatest(p.received_at, i.issued_at)` as both the period filter and the `date` column (exports.ts:173, :176). This copies the statement's sort rule (statement.ts:106-111) into a bookkeeping file, where the date column should be when the money was received.
+*Repro:* invoice issued 2024-05-20 15:00Z; payment `EARLY-1` with `received_at` 2024-04-02. The April 2024 PAYMENTS export is header-only. The May export has `2024-05-20,EARLY-1,…,333.00,…,CASH,OPERATING,INV-0002`.
+*Expected:* `2024-04-02`, in April, so the file matches the bank. If the R1.111 sums must still match the statement, that is a question for the tech lead. The export should not silently re-date a recorded fact (AG-6-29: facts kept apart). REFUNDS, CREDIT_NOTES and WRITE_OFFS use the same `greatest(…)` (exports.ts:177-187), but those can only be later than the issue.
+
+**M3. Periods are cut in UTC days, but the firm has a time zone (default America/Toronto), so evening rows land in the next day and month.** exports.ts:197 builds `from::date::timestamp at time zone 'UTC'`, and the `date` column is `to_char(at at time zone 'UTC')` (exports.ts:155). The firm setting `platform.time_zone` defaults to `America/Toronto` (platform/settings.ts:218-221).
+*Repro:* an invoice issued `2025-03-31 22:30-04` (Toronto evening). The 2025-03-01..31 INVOICES export has 0 rows. The April export holds it, dated `2025-04-01`. Every invoice, credit note, write-off and trust entry made after 19:00/20:00 local moves to the next day, and on the last day of a month to the next month, so month-end exports will not match the firm's books.
+*Note:* part 2's statement uses the same UTC rule (statement.ts:19, "Sample"). Fixing it, or accepting it, is one ruling for both parts. I rate it Major because this is the bookkeeper's file. A ruling accepting UTC would make it a Minor.
+
+## Minors
+* **m1. A retry after the data changed can never succeed, and the same id cannot be queued again.** exports.ts:15-16 says a retried run "writes the same bytes", but names are read live at run time (exports.ts:155-159). *Repro:* make `payments.csv`'s put fail so the run fails after `invoices.csv` is stored. Rename the client. Run the job again, as pg-boss's retry would: `FileKeyTaken: …/invoices.csv already holds other content`, still FAILED. A new POST with the same id answers 202 FAILED and queues nothing, because a job key queues once (ports/jobs.ts:13-17). Users must make a new export, which the 409 wording does tell them.
+* **m2. FAILED is shown while PF-14 retries are still pending, and can later flip to READY.** `answer` returns FAILED as soon as `failed.json` exists (exports.ts:145). The download then says "This export failed. Make a new export" (exports.ts:114), yet an unchanged retry turned it READY in my run. Contract gap (4) in the brief proposed "still preparing" during retries.
+* **m3. Two audit lines for one export.** If the `done.json` put fails after the audit transaction (exports.ts:131-133), the retry writes the audit again. *Repro:* make the `done.json` put fail, then run again: `count(*)` of `money_export.created` for that id = 2.
+* **m4. A file over 25 MB is found only after every file is built in memory, and a failed run leaves its earlier files in storage.** All kinds' CSV text is held until the transaction ends (exports.ts:127, :200-212), and `FileTooLarge` comes only at put time. *Repro:* 45,000 payments of about 640 bytes each: FAILED in 2.4 s, error `a file is at most 26214400 bytes; this one is 28653998` (no personal data). `invoices.csv` of the failed export stays stored, and PF-14 would rerun the same doomed work 3 more times. The download is a whole buffer (`res.send(Buffer)`, export-routes.ts:23), not a stream (AG-6-30 rule 3, brief "streamed"). FilesPort has no stream call, so this may be a contract gap.
+* **m5. The trust rule gives opposite answers on the same export.** A replay of an existing TRUST_LEDGER id after trust is switched to No with nothing held gets 422, because the trust check (exports.ts:85) runs before the id lookup (exports.ts:88). Yet `GET …/trust_ledger.csv` of that same export still answers 200, because `download` has no trust check. *Repro:* firm B trust Yes, export TRUST_LEDGER with id X; set trust No; POST X again → 422 "There is no trust ledger"; GET the file → 200.
+* **m6. The other kinds are also in uuid order, not by date** (exports.ts:176, :181, :184, :187). *Repro:* the PAYMENTS export of 2020-01-01..today is not sorted by its `date` column.
+* **m7. The trust ledger's running balance covers the client's money across all cases, but each row is labelled with one case** (`balance_after_minor` is kept per party and currency; `case_or_person` = case number, exports.ts:189, :206). With two cases, the balance shown against case 1 includes case 2's money. AG-6-60 rule 8 asks for a ledger per case.
+
+## What held
+* **Walls:** the same uuid used in firm A and firm B is two separate exports. Firm B posting firm A's id gets 202 for its own period, with no 409 to reveal that the id exists. Each file holds only its firm's rows. Job keys carry the firm (`money_export:<A>:<id>`, `money_export:<B>:<id>`). Firm B reading firm A's id gets 404. An uppercase id is folded to lower case.
+* **Keys:** a Case Officer (no `agent/billing:export`) gets 403 on POST, state and download, and no session gets 401. Only Owner, Admin and Billing/Finance hold the key.
+* **Path tricks** in the file segment all give 404: `INVOICES.csv`, `request.json`, `done.json`, a kind not asked for, `..%2Frequest.json`, `%2E%2E%2Fdone.json`, `invoices.csv%00`, `invoices.CSV`, `invoices.csv.`, `invoices`, an extra path segment.
+* **The kinds list:** a reordered list with the same id gives 202 and one job. A duplicated kind gives 422 "Name each file once.". The same id for other kinds gives 409. Four concurrent POSTs of one id with different periods give one 202 and three 409s.
+* **Trust:** trust No with money held allows TRUST_LEDGER (202). Trust No with nothing held, or unanswered, gives 422 naming `kinds`.
+* **Formula injection, all text columns:** tested client name `=1+1`, a `Quote "Q", Inc` name, the case client's display name `=HYPERLINK(…)`, invoice numbers `=INV("x")` and `\r=WO`, credit-note number `@CN`, payment references `\t=TAB`, `-2+3`, `@SUM(1,2)`, and a trust deposit reference `+CMD|' /C calc'!A0`. Across all six files, no cell starts with a live `= + - @ \t \r`, quotes and commas are quoted, and every row has a constant width (11 columns, 8 for the trust ledger). References with a newline are refused at input. A leading space, U+2028 or a full-width ＝ is not prefixed, and none of these starts a formula in a spreadsheet.
+* **Dates:** 2000-01-01..2999-12-31 is accepted and READY. 1999-12-31, 3000-01-01, 2024-02-30, `20240101` and a date with a time all give 422. 2024-02-29 is accepted.
+* **Keyset paging:** 1,300 rows sharing one timestamp in each of the six kinds export whole, none twice, none missed, and the row counts equal the audit counts (pages of 1,000).
+* **As of the request:** a payment and an invoice recorded after the POST are left out.
+* **Expiry** works (suite E8).
+* **The R1.111 sums:** the suite's E1 holds. This needs the trust ledger's WITHDRAWAL_TO_INVOICE rows for a client paid from trust. Credit (KEPT/APPLIED) is in none of AG-6-31's six files, which is not a finding.
+* **Personal data:** none in job errors (`store refused`, `FileKeyTaken <key>`, `FileTooLarge` sizes), the Nest logs, problem answers or the audit detail (kinds, period, counts).
+* **Speed:** 30,000 payments (19 MB) export in 2.1 s.
+
+Verdict: Changes bd0c92a7560b5ef3a87c4fcf37dc14ea75bf13e3
+
+## Round 2 (head d8a06230b519a60f86939c7c4c8551481874b189)
+
+Breaker, 27 Nov 2026, Opus 5.5, effort high. Read only `git diff bd0c92a7..d8a06230` (exports.ts, the suite).
+How I ran it: the suite at the head (41 passed, 0 failed), then a round-2 harness kept outside the repo (scratchpad `brk/h3.ts`, the same setup as round 1). I ran it twice: on a C-collation scratch database, and on one created with `--locale=en_US.utf8`, because the new keyset keys are text and the official Postgres image defaults to that locale. Both scratch databases are dropped. No :4400, no AI call, US$0.
+
+**Re-runs:**
+* **M1 is fixed.** Same repro (ET-1 CAD 1,500, SEQ-0..5, CAD 50 paid from trust). The rows now read `ET-1 1500.00 1500.00 · SEQ-0 10.00 1510.00 · … · SEQ-5 60.00 1710.00 · INV-0001 -50.00 1660.00`. 0 of 7 steps break, under both collations.
+* **m6 is fixed.** Every other file is in `counted_on` order: 60,000 PAYMENTS rows, each `counted_on` ≥ the one before.
+* **M2 is fixed.** The `date` column is now the fact's own day. Same repro: May's export holds `2024-04-02,EARLY-1,…,INV-0002,2024-05-20` and April's is header-only. The period cuts by `counted_on`, the column is visible, and its header is the 12th.
+* **The reviewer's m7 is fixed.** The download's first bytes are `efbbbf`.
+
+**New probes:**
+* **Keyset paging holds on all six kinds with text keys.**
+  * Setup: 2,100 rows at one timestamp per kind, so every row ties on `k` and only the id breaks the tie. Page edges fall at 1,000 and 2,000. PAYMENTS had 4,200 rows, with trust-request payments added.
+  * The trust entries were split over a person holder and a company holder (Pine Bakery), in CAD and USD, with seq 1-7 and then gaps (seq = 3n + 1000).
+  * Results, files and direct page loops alike: none twice, none missed, counts equal the audit counts. INVOICES 2,100, PAYMENTS 4,200 over 5 pages, REFUNDS, CREDIT_NOTES and WRITE_OFFS 2,100 each, TRUST_LEDGER 2,100 over 3 pages.
+  * In the trust file, each holder and currency is one contiguous run (840 / 210 / 840 / 210 rows) with 0 running-balance breaks across page edges and seq gaps.
+  * `order by k` under en_US.utf8 matched `collate "C"` on every trust key (0 differences), and the same results held under both collations.
+* **Mixed currencies on one holder** each get their own run, never summed. A person holder and a company holder never interleave.
+
+**Round 2 findings:**
+* **Blockers:** none.
+* **Majors:** none new. M3 (UTC days instead of the firm's time zone) stays open, as the coordinator says: it goes to the tech lead as a question, because it is part 2's rule too.
+* **m8 (Minor, new). Each page now re-scans every row of the firm for that kind, not just the period's.** The `keyed` sort (exports.ts:172-173) uses a text key on an expression with no index. So every page scans and sorts the firm's whole table for that kind, and the total cost is the number of pages times the firm's row count. Round 1's id-ordered read made one pass over the table.
+  * *Repro:* a firm with 360,000 payments, 60,000 of them in March 2017. The March PAYMENTS export: READY in 6.7 s (8.0 s under en_US), 61 pages at about 117 ms each (`explain analyze`).
+  * At the 25 MB cap (about 80,000 rows) in a firm of 2 million payments, I extrapolate roughly 80 × 0.65 s ≈ 52 s, against the 120 s transaction timeout (exports.ts:128). That is fine at today's sizing; it is a note for FO-7mv-scale firms.
+* **m9 (Minor, the M2 follow-on). The bookkeeper must use `counted_on`, not `date`, to see which period a row belongs to.** The fix keeps the period cut on `counted_on`, so money received on 2 April for an invoice issued in May is in May's file, not April's. Both dates are now shown truthfully, so this is a note for the screen's help text (FO-7s5), not a data error.
+
+Round 1 Minors m1-m5 and m7 are unchanged at this head (none was in this diff's scope).
+
+Verdict: Approve d8a06230b519a60f86939c7c4c8551481874b189
+
+## Round 3 (diff d79dc2bb..a30ae616; verdict on daae517f, which adds only two type annotations in csvOf)
+Breaker, Opus 5.5, high. The suite passes (46 passed, 0 failed). My round-3 harness (scratchpad `brk/h4.ts`, outside the repo) runs on a scratch database, now dropped; no :4400, no AI call, US$0.
+**Majors**
+* **M4. The per-period equality with the statement now fails at day edges** (a regression from round 2; R1.111). Exports now cut by the firm's days, but part 2's statement still cuts by UTC days (statement.ts:19, :171), so exports.ts's header claim "reconcile … with the statement's INVOICES change" (E1, E13) no longer holds near midnight. *Repro:* company client Maple Works (Toronto by default), invoice EVE-1 of CAD 33 issued `2026-03-31 23:00-04`. March 2026 gives export 3300 against statement 0; April gives export 0 against statement 3300. Fix in this row's `reports/` folder by moving the statement (and the summary's periods) to `platform.time_zone`, or have the tech lead record that the equality holds only in metrics' frame. The suite's E1/E13 pass only because their rows are far from midnight.
+**Minors**
+* **m10. Rows within one firm day are not in time order.** The key is the local day plus the UTC time of day (exports.ts `T(c, at)`), so in Toronto an evening row sorts before that morning's rows. *Repro:* write-offs at `2026-03-08 05:00Z` and `2026-03-09 03:59Z` (both 8 Mar local) list DST-2 before DST-1. Keyset paging is unaffected.
+* **m11. A stored zone that fails the setting's schema makes POST answer a bare 500** (`readSetting` throws). Such a zone can only be written behind the settings route. Refusing it in words would be kinder.
+* m12 (inherited from metrics.ts paidDay): a card payment that lands exactly on 00:00:00.000000 UTC is taken as a day-only record and keeps its UTC day.
+**What held**
+* **The M3 repro:** an invoice at `2025-03-31 22:30-04` is now in March, dated 2025-03-31. The state shows `zone: America/Toronto`.
+* **DST in Toronto:** 8 Mar 2026 holds exactly 05:00Z to 03:59:59.999999Z the next day; 1 Nov holds 04:00Z to 04:59:59.999999Z the next day. Both the invoice path (timestamps) and the write-off path (days) are right at every microsecond edge.
+* **Far zones:** in Kiritimati, 1 Mar starts at 28 Feb 10:00Z; in Pago Pago at 1 Mar 11:00Z (the 09:59:59.999999Z and 10:59:59.999999Z rows fall on 28 Feb). A day-only payment (00:00Z) keeps 1 Mar in both. A timed payment at 05:00Z is 1 Mar in Kiritimati and 28 Feb in Pago Pago.
+* **Zone changed between the request and a retry:** the retry uses the zone stored in the request (Toronto) and the export is READY. A replay of the id answers the stored zone.
+* **Hostile zone:** `UTC'; drop table …` stored in the setting gives a 500 and nothing runs (invoice count unchanged). A forged manifest zone is bound: Postgres answers `time zone … not recognized` and the job fails.
+* **Credits for a company client, all time:** KEPT 60.00, APPLIED -20.00, REVERSED_APPLIED 5.00, REVERSED_KEPT -10.00 (each with its invoice) and REFUNDED -15.00 (no invoice, left out of the invoice sums). An entry naming an invoice and a payment at once is refused by `money_credit_entry_links_check`. With paid from trust (-200.00), a write-off and a credit note, the export (12500) equals the statement (12500).
+* **CREDITS paging:** 1,300 entries at one timestamp (two holders, two currencies) give 2 pages, 1,300 rows, none twice.
+* **The new columns are safe:** `related_document` and `entry_type` cells hold no live formula (`'=CR()`), and each file keeps a constant width (13/13/9).
+
+Verdict: Changes daae517f87552fea82c1e5cfa43ea1c5642e46cd
+
+## Round 4 (diff daae517f..206a6a51; Lead 1's ruling (c) on #3887: UTC days, as the statement)
+Breaker, Opus 5.5, high. The suite passes (49 passed, 0 failed). My round-4 harness (scratchpad `brk/h5.ts`, outside the repo) runs on a scratch database, now dropped; no :4400, no AI call, US$0. The client in every test is the company Maple Works.
+* **M4 is answered.** EVE-1 (CAD 33, issued 23:00 Toronto on 31 Mar 2026) is in April in both: April export 3300 = statement 3300; March export 0 = statement 0. The state answers `zone: UTC`.
+* **Equality across kinds at the UTC midnight edge holds.**
+  * Setup: each kind placed at 30 Jun 23:59:59.999999Z or 1 Jul 00:00Z. On 30 Jun: an invoice issued, a payment, a credit note, a withdrawal from trust to an invoice. On 1 Jul: a payment, a refund, a write-off, an APPLIED credit entry.
+  * Export against statement: June 59800 = 59800 (trust withdrawal -900), July -11300 = -11300 (credit -400), 30 Jun–1 Jul -11500 = -11500. Over all time, with KEPT, APPLIED, both reversals and REFUNDED, 12500 = 12500.
+* **Day-only payments** (received on 30 Apr, 1 May, 31 May and 1 Jun, each stored at 00:00Z): May's file holds exactly the 1 May and 31 May payments, each with `date` = `counted_on`.
+* **Widths:** in all seven files every row is as wide as its header (INVOICES, PAYMENTS, REFUNDS, WRITE_OFFS 13; CREDIT_NOTES and CREDITS 14; TRUST_LEDGER 10). Every header ends "Period cut in UTC" and every row's last cell is empty.
+* **Gone with the zone read:** m10 (order within a day) and m11 (the 500 on a bad zone setting). m12 remains, now the statement's own rule: a payment at exactly 00:00:00.000000 UTC is taken as day-only, and in UTC that is its day anyway.
+* **New findings:** none. Round 1 Minors m1-m5 and m7, and round 2's m8 and m9, stand as recorded.
+
+Verdict: Approve 206a6a5134baef81319dee3a3ee9702e91482983

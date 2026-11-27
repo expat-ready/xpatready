@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { recorder } from "./runtime/api.ts";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 
 const { ok, summary } = recorder();
 const PORT = Number(process.argv[2] ?? 4641), COPY = process.argv[3] ?? "xr_studio_csk1_client";
@@ -84,7 +85,9 @@ try {
   const had = new Set(procs());
   psql(DB, ["-f", join(MIG, NEW, "migration.sql")]);
   const added = procs().filter((p) => !had.has(p));
-  for (const d of after) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks (the ghost-firm case filled later)
+  // run on the migrations before it (part 2 has its own suite check_csw1_part2.ts); the rest follow once that case has its firm.
+  for (const d of after.filter((x) => x < CSW1_PART2)) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
   const text = readFileSync(join(MIG, NEW, "migration.sql"), "utf8");
 
   // DW1: every existing case has a client
@@ -133,14 +136,6 @@ try {
   ok("CS-K1 DW8 pass: every function the migration adds is named case_client_*", added.length === 5 && added.every((p) => p.startsWith("case_client_")) && !/CREATE (OR REPLACE )?FUNCTION (?!case_client_)/.test(text), added);
   ok("CS-K1 DW8 fail: no function of the migration runs as definer (part 2's one, case_client_validate_link_check, must: VALIDATE needs the owner), and its text says how to roll back",
     sql(`select string_agg(proname, ',') from pg_proc where proname like 'case_client%' and prosecdef`) === "case_client_validate_link_check" && /Rollback \(in this order\)/.test(text));
-  {
-    mkdirSync(join(STUDIO, "var"), { recursive: true });
-    const cfg = join(STUDIO, "var", `csk1-${process.pid}.config.ts`);
-    writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(DB))} } });\n`);
-    const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
-    rmSync(cfg, { force: true });
-    ok("CS-K1 DW8 pass: migrate diff from the migrated database to the schema is empty", r.status === 0, `${r.stdout}${r.stderr}`.slice(-600));
-  }
   ok("CS-K1 DW8 fail: the migration does not apply twice", (() => { try { psql(DB, ["-f", join(MIG, NEW, "migration.sql")]); return false; } catch (e) { return /already exists/.test(String((e as { stderr?: string }).stderr)); } })());
 
   // DW8a: the client's firm is its case's firm
@@ -161,6 +156,16 @@ try {
   const filled = sql(`select case_firm_backfill()`);
   ok("CS-K1 DW8a pass: a case whose firm id is filled later (CS-W1's backfill, after the Sample seed) takes its client with it to the same firm",
     g0 === "null|null" && ghost() === `${u(8)}|${u(8)}` && Number(filled) >= 1, [g0, ghost(), filled]);
+  // Every case now has its firm: the rest of the migrations (CS-W1 part 2 onward), then the diff on the fully migrated database.
+  for (const d of after.filter((x) => x >= CSW1_PART2)) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
+  {
+    mkdirSync(join(STUDIO, "var"), { recursive: true });
+    const cfg = join(STUDIO, "var", `csk1-${process.pid}.config.ts`);
+    writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(DB))} } });\n`);
+    const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
+    rmSync(cfg, { force: true });
+    ok("CS-K1 DW8 pass: migrate diff from the migrated database to the schema is empty", r.status === 0, `${r.stdout}${r.stderr}`.slice(-600));
+  }
 
   // The fill trigger: a case written straight to the table gets a client of its own firm (also with the replica role)
   const direct = (id: string, key: string, extra = "") => `insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number${extra ? ", client_id" : ""}) values ('${id}', '${W}', '${CORP}', 'user-P', 'user-O', '${key}', 'C-2028-0${id.slice(-4)}'${extra}); select k.display_name || '|' || k.display_kind || '|' || k.firm_key || '|' || coalesce(k.firm_id::text, 'null') from case_client k join runtime_case c on c.client_id = k.id where c.id = '${id}'`;

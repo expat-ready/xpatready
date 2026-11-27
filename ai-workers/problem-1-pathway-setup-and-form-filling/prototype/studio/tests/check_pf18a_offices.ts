@@ -11,6 +11,7 @@ import { APP_GUARD, NestFactory } from "@nestjs/core";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { officeClockPortContract, type OfficeClockHarness } from "../ports/contracts/office-clock-port.contract.ts";
 import { fakeOfficeClock, type OfficeClockValues } from "../ports/offices.ts";
@@ -88,7 +89,7 @@ try {
   const demoBefore = sql(DEMO, demoRows);
   psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]);   // rows rev 16.7 (review M2): checked right after its own migration, before any later one
   ok("PF-18a DW7 pass: on a demo-data copy the migration leaves every row as it was and writes no office (nothing seeded)", sql(DEMO, demoRows) === demoBefore && sql(DEMO, "select count(*) from platform_office") === "0", [demoBefore, sql(DEMO, demoRows)]);
-  for (const d of all.filter((x) => x > NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
+  for (const d of all.filter((x) => x > NEW)) { if (d.startsWith(CSW1_PART2)) sql(DEMO, SAMPLE_FIRMS_SQL); psql(DEMO, ["-f", join(MIG, d, "migration.sql")]); }   // CS-W1 part 2 needs the case's firm
   ok("PF-18a DW7 pass: migrate diff after it on the demo-data copy names no office table", officesDiff(DEMO).length === 0, officesDiff(DEMO));
   const pack = JSON.parse(readFileSync(join(STUDIO, "samples", "province-time-zones-ca.json"), "utf8"));
   const tzNames = new Set(sql(EMPTY, "select name from pg_timezone_names").split("\n"));
