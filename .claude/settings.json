@@ -163,6 +163,11 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/stop-check.sh",
             "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-check-guard.sh",
+            "timeout": 15
           }
         ]
       }
@@ -174,6 +179,17 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/ai-workers/tools/prompt-log.sh 2>/dev/null || true",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane-death.sh 2>/dev/null || true",
+            "timeout": 20
           }
         ]
       }

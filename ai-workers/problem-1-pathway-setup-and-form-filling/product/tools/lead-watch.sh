@@ -325,6 +325,15 @@ fresh "outside-deps-watch.py"
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 seen "$av"
 fresh "product/state/app-view-latest.txt (app-view-check.sh)"
+# 10a. LR-146: each idle lane flagged above is woken by script (claude -p --cloud), once per lane per hour (nudge-lane.sh);
+# a failed send (archived, signed out) is an ACT. LEAD_NUDGE=0 switches it off for one run.
+if [ "${LEAD_NUDGE:-1}" = 1 ]; then
+  for sid in $(grep '^ACT .*\[idle lane' <<<"$av" | grep -oE '(session|cse)_[A-Za-z0-9]+' | sort -u); do
+    nl=$(bash "$TOOLS/nudge-lane.sh" "$sid" 2>&1) && say "$nl" || ACT "lane nudge failed: $nl (archived: restart it from its PR's hand-over; signed out: claude auth login)"
+  done
+fi
+# 10d. LR-147: lanes that died on an API error since the last check (StopFailure hook lane-death.sh; its PR comments).
+ld=$(bash "$TOOLS/lane-death.sh" read "$SINCE" 2>&1); echo "$ld"; act=$((act + $(grep -c '^ACT' <<<"$ld"))); seen "$ld"
 # 10b. The night checklist (A334 fix 1, A332 "Keep both"): product items, then operating-system items, one ACT for each
 # not done (done = a PR number merged on main, never prose), and "operating system: n done of m". Data: design/night-checklist.json.
 nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"

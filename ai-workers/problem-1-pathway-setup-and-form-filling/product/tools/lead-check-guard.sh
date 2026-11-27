@@ -11,6 +11,8 @@
 # check turn (its prompt is that one line) cannot end while the app view (app-view-check.sh --stale-only: missing or over
 # 15 min old, P-798) is stale; it asks again on every stop until the view is saved (a page that cannot be read is saved as its
 # UNREADABLE line). Other turns, and other copies, stop freely. Test: check-app-view.sh.
+# LR-154 (founder A430, 27 Nov): the same check turn cannot end without a "claude.ai:" summary line from claude-lanes.js in
+# the Lead's text, nor with a SIGNED OUT / not loaded / UNREACHABLE line and no PushNotification. Test: check-claude-lanes.sh.
 CANON="run lead-watch; read STATE Start here"
 HEARTBEAT="run lead-heartbeat; notify the founder if stale"
 GAP="run lead-watch gap"   # ENF-761 part 4: every standby's 10-min watchdog (lead-watch.sh gap; skill lead, hand-over)
@@ -34,6 +36,45 @@ for l in open(sys.argv[1], encoding="utf-8"):
     if t and not t.startswith(("Stop hook feedback","<system-reminder>","<task-notification","[SYSTEM NOTIFICATION")): last=t
 print(last)' "$tp" 2>/dev/null)
   case "$(norm "$turn")" in *"$(norm "$CANON")"*) ;; *) exit 0;; esac
+  # LR-154 (founder A430, 27 Nov: "Show more has to be clicked ... This has to be also enforced"): the check's own text
+  # quotes claude-lanes.js's "claude.ai:" summary line; a SIGNED OUT, not loaded or UNREACHABLE line needs a
+  # PushNotification to the founder in the same turn. Read from the turn: the Lead's text and tool calls after its prompt.
+  lanes=$(python3 -I - "$tp" <<'PY' 2>/dev/null
+import json, re, sys
+ev = []
+for l in open(sys.argv[1], encoding="utf-8"):
+    try: ev.append(json.loads(l))
+    except Exception: pass
+def utext(e):
+    c = (e.get("message") or {}).get("content")
+    t = c if isinstance(c, str) else " ".join(x.get("text", "") for x in (c or []) if isinstance(x, dict) and x.get("type") == "text")
+    return t.strip()
+start = 0
+for i, e in enumerate(ev):
+    if e.get("type") == "user" and not e.get("isMeta"):
+        t = utext(e)
+        if t and not t.startswith(("Stop hook feedback", "<system-reminder>", "<task-notification", "[SYSTEM NOTIFICATION")): start = i
+line, push = "", False
+for e in ev[start + 1:]:
+    if e.get("type") != "assistant": continue
+    for x in (e.get("message") or {}).get("content") or []:
+        if not isinstance(x, dict): continue
+        if x.get("type") == "text":
+            m = re.findall(r"claude\.ai: (?:signed in|SIGNED OUT|UNREACHABLE)[^\n`]*", x.get("text", ""))
+            if m: line = m[-1]
+        if x.get("type") == "tool_use" and re.search(r"(^|__)PushNotification$", x.get("name", "")): push = True
+print(json.dumps({"line": line, "push": push}))
+PY
+)
+  ln=$(printf '%s' "$lanes" | jq -r '.line // empty' 2>/dev/null); pn=$(printf '%s' "$lanes" | jq -r '.push // false' 2>/dev/null)
+  if [ -z "$ln" ]; then
+    jq -n '{decision:"block",reason:"This is a lead-watch check and its report quotes no \"claude.ai:\" line (LR-154, founder A430). Run product/tools/claude-lanes.js in the built-in browser on https://claude.ai/code (it clicks Show more until gone), quote its summary line, and answer every WAIT. If the browser cannot be reached, write \"claude.ai: UNREACHABLE (<why>)\" and send the founder a PushNotification. Rules: .claude/skills/lead-watch/lanes.md."}'
+    exit 0
+  fi
+  if printf '%s' "$ln" | grep -qE 'SIGNED OUT|not loaded|UNREACHABLE' && [ "$pn" != true ]; then
+    jq -n --arg l "$ln" '{decision:"block",reason:("The lane read says \"" + $l + "\": send the founder a PushNotification 🔴 in this check with the sign-in URL (https://claude.ai/login; GitHub: https://github.com/login), then stop (LR-154, founder A430: \"You should be reminding me\").")}'
+    exit 0
+  fi
   out=$(bash "$(dirname "$0")/app-view-check.sh" --stale-only 2>&1)
   [ -z "$out" ] && exit 0
   jq -n --arg r "$out" '{decision:"block",reason:("This is a 30-minute check and the app view is stale (B197, founder A110): read every lane before you stop.\n" + $r + "\nIf the page cannot be read, save its UNREADABLE line and ask the founder to sign in.")}'
