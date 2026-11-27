@@ -16,16 +16,22 @@ checks each one against the page in the browser.
 - cc/approvals-pull-requests: `@claude approve` "Can count as your approval of the latest commit, for the **Claude Approvals** check. To name a commit, add its full SHA ... Make it the comment's only text." "You need write access to the repository." cc/approvals-github-rules: "GitHub doesn't count an author who fills a seat, or an `@claude approve` comment."
 - cc/approvals-policy: "Approvals normally asks GitHub to dismiss Claude's own approval when it evaluates the push, and Claude approves the new commit only if the **Claude Approvals** check passes again."
 
-**The policy (six rules, no overlap).** `product/tools/check-approvals-paths.sh` runs in ci and proves three things. A1: the routine rule's `!` list equals the other rules' paths, and no tracked file is in both. A2: every tracked file that `lead-read-paths.txt` names lands in a Lead-read rule. Before the review fix, 29 files did not. A3: every seat excludes the PR's authors.
+**The policy: seven rules in three tiers (P-823 and P-849; the Lead's answers on #3899, 27 Nov).** Claude is the approver that GitHub records. There is no machine user (P-849, founder 27 Nov). `product/tools/check-approvals-paths.sh` runs in ci and proves three things:
+- **A1:** the routine rule's `!` list equals the other rules' paths, and no tracked file is in both.
+- **A2:** every tracked file that `lead-read-paths.txt` names falls outside the routine rule, and every file its read-first lines name falls in a rule with the Lead's seat. Before the first review fix, 29 files fell in the routine rule.
+- **A3:** every non-routine rule approves only on `claude/code_review = pass`, and no seat draws on an unnamed set (`humans`, `everyone`, a bare count) that the author would fill.
 
-| Rule | Paths | Who fills the seat | Claude | Billed? |
+| Tier | Paths | Seat | Claude | Billed? |
 |---|---|---|---|---|
-| Routine | everything else (product code, tests, records) | 1 seat from `[humans, "!pr/authors"]`: a GitHub approval or `@claude approve <head sha>` by an account that is **not** an author (the machine user that runs the reviewer agent) | **approves** once the seat is filled | No: no classifier, no review |
-| Pipeline | `.github/**`, `.mergify.yml`, `.githooks/**`, `CLAUDE.md`, `AGENTS.md`, `product/tools/**`, `product/screens/B119/**`, `studio/tools/**`, `**/prisma.config.*` | `@lead`: team `expat-ready/tech-lead`, authors excluded | comments; approves only when `claude/code_review = pass` | Yes, one Code Review (Standard) per head |
-| Review rules | `**/.claude/**` (`nested: inherit`, as the docs' own starter) | `@lead` | same | Yes |
-| Schema and migrations | `**/prisma/schema/**`, `**/prisma/migrations/**` | `@lead` | same | Yes |
-| Permissions and public routes | identity, `core.ts`, firm wall, terms gate, notification groups, `*permission*`, `api/src/**/*public*`, `web/src/**/*-public/**` | `@lead` | same | Yes |
-| Money | `*money*`, fee/fees files, `*pric*`, billing, payment, stripe, invoice, ledger, the paid-run files (`ai.ts`, `rounds.ts`, ...) | `@lead` | same | Yes |
+| Routine | everything else (product code, tests, records) | none | **approves**. The reviewer agent's `Reviewer: Approve <sha>` still gates the merge through the label during the overlap. | No: no classifier, no review |
+| Read first: pipeline | `.github/**`, `.mergify.yml`, `.githooks/**`, `CLAUDE.md`, `AGENTS.md`, `product/tools/**`, `product/screens/B119/**`, `studio/tools/**`, `**/prisma.config.*` | `@lead`: team `expat-ready/tech-lead`, filled by the Lead's `@claude approve <head sha>` | comments; **approves** only when `claude/code_review = pass` and the seat is filled | Yes, one Code Review (Standard) per head |
+| Read first: review rules | `**/.claude/**` (`nested: inherit`, as in the docs' own starter) | `@lead` | same | Yes |
+| Read first: permissions | identity, `core.ts`, firm wall, terms gate, notification groups, `*permission*` | `@lead` | same | Yes |
+| Read after: public routes | `api/src/**/*public*`, `web/src/**/*-public/**` | none | comments; **approves** when `claude/code_review = pass` | Yes |
+| Read after: schema and migrations | `**/prisma/schema/**`, `**/prisma/migrations/**` | none | same. A **destructive** migration stays read-first through `queue-gate.sh destructive()`, which reads the added lines; no path rule can see them. | Yes |
+| Read after: money | `*money*`, fee/fees, `*pric*`, billing, payment, stripe, invoice, ledger, the paid-run files (`ai.ts`, `rounds.ts`, ...) | none | same | Yes |
+
+**The Lead's seat and the one account.** The Lead works from the account that authors every PR, so the `@lead` seat does not exclude authors. Per the docs, an author's explicit `@claude approve` comment can count ("Comment `@claude approve` on your own pull request when the check's summary says that you don't count as an approval", cc/approvals-pull-requests). Whether authorship alone fills a named team's seat, before any comment, is shown by the observe-mode check summary on the first read-first PR. The Lead checks that before enforce. Either way, read-first paths keep a second gate that does not depend on Approvals: `queue-gate.sh` never puts the label on them before the Lead's read (P-423, P-823), and Mergify needs the label during the overlap.
 
 The paths are `product/tools/lead-read-paths.txt` turned into globs. That file is regex and case-insensitive, so the globs spell every letter as a class, for example `[Bb][Ii]...`, and cover both a file and a folder (`*word*` and `*word*/**`). The money word `fee` is bounded by `-`, `_`, `.` or a digit, as the regex's `[^a-z]` is. Globs that match too much (for example `*fee.*` also matches `coffee.ts`) send a file to the Lead's read: the safe side.
 
@@ -37,7 +43,7 @@ The paths are `product/tools/lead-read-paths.txt` turned into globs. That file i
 
 **Why together, not now.** Every PR is authored by one account. GitHub never lets an author approve their own PR, so today no PR has a GitHub approval. If the rule went on alone, every merge would stop. The approver is Claude: its approving review counts ("Claude's approving review can meet a GitHub branch rule that requires one approval", cc/approvals-github-rules). That review exists only in **enforce** mode. So the rule, enforce mode and Mergify's new conditions go on in the same hour.
 
-**What resets on a push (the point of the switch).** (a) GitHub dismisses every approval on a new commit (the rule). (b) Approvals dismisses Claude's own approval and re-decides. (c) label-guard.yml already takes `review: approved` off a pushed head (best effort, event-driven, with a 10-minute sweep). After the switch, (a) is native and needs no event, so a PR Steward push or any other push leaves a PR that cannot merge until it is approved again.
+**What resets on a push (the point of the switch).** (a) GitHub dismisses every approval on a new commit (the rule). (b) Approvals dismisses Claude's own approval and re-decides. (c) label-guard.yml already takes `review: approved` off a pushed head (best effort, event-driven, with a 10-minute sweep). After the switch, (a) is native and needs no event, so a PR Steward push or any other push leaves a PR that cannot merge until it is approved again. **What that approval means, by tier (P-849):** on read-first and read-after paths, Claude approves again only after a new `claude/code_review = pass` on the new head (and, read-first, the Lead's new `@claude approve <sha>`). On routine paths, Claude approves again with no review, so there the reset that matters is the label: the reviewer's `Reviewer: Approve <sha>` names the exact head, and label-guard and queue-gate drop the label otherwise. That is why Mergify keeps the label during the overlap. Retiring it needs either `claude/code_review` on routine paths (billed per PR) or an accepted lower bar, and that is a decision for the Lead and the founder after the observe window.
 
 **Mergify change (the switch PR; each of the four queues: verdicts, pipeline, product, records):**
 ```yaml
@@ -56,9 +62,9 @@ The paths are `product/tools/lead-read-paths.txt` turned into globs. That file i
 ```
 Mergify cannot tell which app posted a check called "Claude Approvals". The GitHub ruleset enforces the check's source (step 8). Mergify merges each original PR (`merge_method: merge`), so the ruleset's approval rule applies to each PR, not to the `mergify/merge-queue/*` batch branches. The ruleset targets `main` only. `product/screens/B119/check-queue-rules.py` and `engineering-approved-setup.json` follow in the same PR.
 
-**The reviewer agent's step (skills, in the switch PR):** the reviewer agent runs as the machine user, not as the PR's author. After `Reviewer: Approve <head sha>`, it submits a GitHub approving review, or posts `@claude approve <head sha>` as a comment of its own. On Lead-read paths, a `tech-lead` member who is not the author does the same.
+**The Lead's step (skills, in the switch PR):** on a read-first PR, after reading it, the Lead posts a comment whose only text is `@claude approve <head sha>`, next to the existing "Lead read" record. The reviewer agent's step does not change.
 
-**Prerequisite for enforce (review of #3899, Majors 1-2):** per the docs, an author alone meets `seats: 1` unless the seat excludes authors. With one account writing every PR, an author's seat would be no read at all, so every seat here excludes authors. As a result, **no seat can be filled until a second account exists**. Observe mode will show every PR as waiting. That is expected, and it is why enforce waits for the machine user. The docs also say: "In a set of named people, name at least one more than `count`, or an author's own pull request can wait". So `tech-lead` needs at least two members.
+**Before enforce:** (a) the observe window: about 20 read-first and read-after PRs, with their review cost read; (b) the seat check above; (c) the overlap plan in this section. No machine user is needed (P-849).
 
 ## 3. PR Steward: Manual first
 
@@ -109,7 +115,7 @@ cc/pr-steward-setup: Manual = "When a person with write access comments `@claude
 ## 6. Overlap with draft #3851 (Factory v2 switch, 26 Nov, "do not merge before the founder's yes")
 
 #3851 adds its own `.claude/approvals.yml`, plus `CODEOWNERS`, `dependabot.yml` and `REVIEW.md`. Whichever of the two merges second conflicts on the policy file. What this lane changes, and why:
-- **Routine paths:** #3851 has `claude: comments, seats: 0`, so Claude never approves anywhere and GitHub's "1 approval" rule can never be met. Here, Claude approves once a non-author (the machine user running the reviewer agent) fills one seat. That is what lets "1 approval + dismiss stale" go on at all (the lane's goal: approvals replace labels).
+- **Routine paths:** #3851 has `claude: comments, seats: 0`, so Claude never approves anywhere and GitHub's "1 approval" rule can never be met. Here, Claude approves (P-849: Claude is the approver GitHub records). That is what lets "1 approval + dismiss stale" go on at all (the lane's goal: approvals replace labels).
 - **Lead-read paths:** the paths are the same in substance. Here, the seat is named (`@lead` = `expat-ready/tech-lead`) instead of any person. Claude approves only after `claude/code_review = pass`, which fails closed when the budget runs out.
 - **Mergify:** #3851 proposes `or: [#approved-reviews-by >= 1, check-success = Claude Approvals]`. Here it is **and**, plus the label during the overlap. With "or", a passing check alone would merge a PR. A neutral observe-mode check, or a check from another source (Mergify cannot see the check's source), would then be enough.
 - **Pins:** #3851 left them out because two tools asserted `actions/checkout@v4` word for word. This PR changes those two tools and pins.
@@ -117,6 +123,8 @@ cc/pr-steward-setup: Manual = "When a person with write access comments `@claude
 
 **Recommendation:** this PR carries the policy file. #3851 drops its `.claude/approvals.yml` and keeps the rest.
 
-## 7. Questions for the tech lead (also posted on the PR)
-- **Q1 P-823 versus this policy.** P-823 lets money, additive migrations and public routes merge with the Lead reading *after*. This policy puts a Lead seat on them (read *first*), as the lane's task asks. In observe mode nothing is decided, so no conflict bites yet. **Recommendation:** before enforcement, the founder decides: keep read-first (the policy as written), or give those three rules `seats: 1` (reviewer) with Claude approving on `claude/code_review = pass`, keeping the after-read.
-- **Q2 One account.** Settled by the review: an author counts unless excluded, so every seat now excludes authors. **Prerequisite, not an option:** before enforce, create the machine user. The reviewer agent approves as that account, and it (plus the Lead's own account, once it is not the PR author) joins `tech-lead`, which needs at least 2 members. Until then nothing can merge through Approvals. The label path is unchanged.
+## 7. Answers from the tech lead (27 Nov, on #3899)
+- **P-823 stands** (a founder decision, not a new question). Additive migrations, money and public routes are read-after: Claude approves when its review passes, and the Lead reads after the merge. Workflows, permissions and destructive migrations stay read-first. The policy now follows this.
+- **No machine user (P-849, founder 27 Nov):** Claude Approvals is the approver that GitHub records. The machine-user step and the enforce precondition that depended on it are removed.
+- **#3851** drops its own `.claude/approvals.yml`; one policy file.
+- **The reviewer's three small follow-ups** (fee bounds, `self-hosted` text in run lines, the version comment not checked against the SHA) go in one small PR after #3899 merges.

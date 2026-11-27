@@ -1,22 +1,28 @@
 # Claude Approvals policy (lab lane ship-security, 27 Nov 2026). Design, sources and the switch plan:
 # ai-workers/problem-1-pathway-setup-and-form-filling/product/design/ship-security-2026-11-27.md
-# Schema: https://code.claude.com/docs/en/approvals-policy (read 27 Nov 2026).
+# Schema: https://code.claude.com/docs/en/approvals-policy (read 27 Nov 2026). Paths: product/tools/lead-read-paths.txt as
+# globs; product/tools/check-approvals-paths.sh (ci) proves every file it names lands in the right tier.
 #
+# Claude is the approver GitHub records (P-849, founder 27 Nov: no machine user). Three tiers, as P-823:
+#   routine     Claude approves; no review, no seat, not billed. The reviewer agent's Approve still gates the merge
+#               through the label (queue-gate.sh) during the overlap.
+#   read-after  money, schema and migrations, public routes: Claude approves once claude/code_review passes (billed as
+#               Code Review); the Lead reads after the merge (queue-gate's "Lead after-read owed"). A destructive
+#               migration stays read-first through queue-gate.sh destructive(), which a path rule cannot see.
+#   read-first  pipeline, review rules, permissions: Claude approves only after its review passes AND a member of
+#               expat-ready/tech-lead posts `@claude approve <head sha>` (the Lead's read).
 # observe (billed): the Claude Approvals check only shows what these rules would decide, ends neutral and Claude posts
-# no approving review. The Code Reviews a rule starts (claude/code_review, billed as Code Review) still run and bill in
-# observe mode, so only the Lead-read rules below name it; the routine rule starts no review and costs nothing.
-# Delete the `mode: observe` line in the switch PR, together with the GitHub rule "1 approval + dismiss stale approvals"
-# and Mergify's new queue conditions (design file, part 2), never alone.
+# no approving review; the read-after and read-first reviews still run and bill. Delete `mode: observe` in the switch
+# PR, together with the GitHub rule "1 approval + dismiss stale approvals" and Mergify's conditions, never alone.
 version: 1
 mode: observe
 locals:
-  # The Lead's read: one approval from the team expat-ready/tech-lead by someone who is not an author of the PR.
-  lead: { count: 1, from: [expat-ready/tech-lead, "!pr/authors"] }
-  # The reviewer: one approval (a GitHub review or `@claude approve <sha>`) by someone who is not an author of the PR.
-  # One account writes every PR today, so no seat can be filled until a second account (the machine user) exists:
-  # enforce waits for it (design file §7 Q2).
+  # The Lead's read: an approval (`@claude approve <sha>` or a review) from the team expat-ready/tech-lead. The Lead
+  # works from the account that authors every PR, so the author is not excluded here; queue-gate.sh also withholds the
+  # label from these paths until the Lead has read them.
+  lead: { count: 1, from: [expat-ready/tech-lead] }
 rules:
-  - purpose: "Routine product and records work: Claude approves once a reviewer who is not an author has approved."
+  - purpose: "Routine product and records work: Claude approves; the reviewer's Approve and ci gate the merge."
     paths:
       - "**"
       - "!.github/**"
@@ -29,8 +35,6 @@ rules:
       - "!ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
       - "!**/prisma.config.*"
       - "!**/.claude/**"
-      - "!**/prisma/schema/**"
-      - "!**/prisma/migrations/**"
       - "!**/api/src/platform/identity/**"
       - "!**/api/src/core.ts"
       - "!**/api/src/platform/firm-scope.ts"
@@ -41,6 +45,8 @@ rules:
       - "!**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*/**"
       - "!**/api/src/**/*[Pp][Uu][Bb][Ll][Ii][Cc]*"
       - "!**/web/src/**/*-[Pp][Uu][Bb][Ll][Ii][Cc]/**"
+      - "!**/prisma/schema/**"
+      - "!**/prisma/migrations/**"
       - "!**/*[Mm][Oo][Nn][Ee][Yy]*"
       - "!**/*[Mm][Oo][Nn][Ee][Yy]*/**"
       - "!**/*[Pp][Rr][Ii][Cc]*"
@@ -72,9 +78,9 @@ rules:
       - "!**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*"
       - "!**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*/**"
       - "!**/api/src/{ai,rounds,review-runs,review-run-shapes,finder-cost,people-ai}.ts"
-    verdict: { claude: approves, seats: [{ count: 1, from: [humans, "!pr/authors"] }] }
+    verdict: { claude: approves, seats: 0 }
 
-  - purpose: "Pipeline files need the Lead's read and Claude's review; Claude approves only after both."
+  - purpose: "Read first: pipeline files need the Lead's read and Claude's review."
     paths:
       - ".github/**"
       - ".mergify.yml"
@@ -89,7 +95,7 @@ rules:
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
 
-  - purpose: "The review rules and agent settings need the Lead's read and Claude's review, in every folder."
+  - purpose: "Read first: the review rules and agent settings, in every folder."
     paths:
       - "**/.claude/**"
     nested: inherit
@@ -97,15 +103,7 @@ rules:
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
 
-  - purpose: "Schema and migrations need the Lead's read and Claude's review."
-    paths:
-      - "**/prisma/schema/**"
-      - "**/prisma/migrations/**"
-    verdict: { claude: comments, seats: ["@lead"] }
-    override:
-      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
-
-  - purpose: "Permissions and public routes need the Lead's read and Claude's review."
+  - purpose: "Read first: permissions and identity."
     paths:
       - "**/api/src/platform/identity/**"
       - "**/api/src/core.ts"
@@ -115,13 +113,27 @@ rules:
       - "**/studio/samples/notification-groups.json"
       - "**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*"
       - "**/*[Pp][Ee][Rr][Mm][Ii][Ss][Ss][Ii][Oo][Nn]*/**"
-      - "**/api/src/**/*[Pp][Uu][Bb][Ll][Ii][Cc]*"
-      - "**/web/src/**/*-[Pp][Uu][Bb][Ll][Ii][Cc]/**"
     verdict: { claude: comments, seats: ["@lead"] }
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
 
-  - purpose: "Money (fees, prices, client money, billing, invoices, payments, ledgers, paid model runs) needs the Lead's read and Claude's review."
+  - purpose: "Read after (P-823): public routes, once Claude's review passes."
+    paths:
+      - "**/api/src/**/*[Pp][Uu][Bb][Ll][Ii][Cc]*"
+      - "**/web/src/**/*-[Pp][Uu][Bb][Ll][Ii][Cc]/**"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
+  - purpose: "Read after (P-823): schema and migrations, once Claude's review passes (destructive ones stay read-first in queue-gate)."
+    paths:
+      - "**/prisma/schema/**"
+      - "**/prisma/migrations/**"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
+  - purpose: "Read after (P-823): money (fees, prices, client money, billing, invoices, payments, ledgers, paid model runs), once Claude's review passes."
     paths:
       - "**/*[Mm][Oo][Nn][Ee][Yy]*"
       - "**/*[Mm][Oo][Nn][Ee][Yy]*/**"
@@ -154,6 +166,6 @@ rules:
       - "**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*"
       - "**/*[-_.0-9][Ff][Ee][Ee][Ss][-_.0-9]*/**"
       - "**/api/src/{ai,rounds,review-runs,review-run-shapes,finder-cost,people-ai}.ts"
-    verdict: { claude: comments, seats: ["@lead"] }
+    verdict: { claude: comments, seats: 0 }
     override:
-      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }

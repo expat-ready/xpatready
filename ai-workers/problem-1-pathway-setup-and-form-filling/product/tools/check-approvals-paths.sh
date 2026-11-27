@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Claude Approvals paths against the Lead's read (lab lane ship-security, 27 Nov; design/ship-security-2026-11-27.md).
-#   A1  the routine rule (the first rule, where Claude approves on a reviewer's approval) excludes exactly the paths
-#       the other rules name, so every file falls in one rule only;
-#   A2  every tracked file that product/tools/lead-read-paths.txt keeps for the Lead (read first or read after) lands in
-#       a Lead-read rule, never in the routine rule (the regexes are case-insensitive; the globs must keep up);
-#   A3  every seat excludes the PR's authors ("!pr/authors"): one account writes every PR, and an author's own seat is
-#       no read at all (review of #3899, Major 1-2).
+#   A1  the routine rule (the first rule, where Claude approves with no review) excludes exactly the paths the other
+#       rules name, so every file falls in one rule only;
+#   A2  every tracked file that product/tools/lead-read-paths.txt keeps for the Lead lands outside the routine rule
+#       (the regexes are case-insensitive; the globs must keep up), and every file its read-first lines name (before
+#       "# --- read-after") lands in a rule whose seats include the Lead (@lead), as P-823 splits them;
+#   A3  every rule but the routine one approves only on claude/code_review = pass (its own verdict is `comments`), and
+#       no seat draws on an unnamed set (humans, everyone) that the PR's author would fill: one account writes every PR
+#       and Claude is the approver GitHub records (P-849); the Lead's seat names the team expat-ready/tech-lead.
 # Globs as code.claude.com/docs/en/approvals-policy: * one segment, ** whole segments, {a,b}, [ab], ?; ! negates.
 #   bash product/tools/check-approvals-paths.sh       (run by ci's tools step; US$0, no network)
 set -u
@@ -60,19 +62,32 @@ lines = [l.split(" #")[0].strip() for l in open(lrp) if l.strip() and not l.lstr
 rx = [re.compile(l, re.I) for l in lines]
 miss = [f for f in files if any(r.search(f) for r in rx) and (matches(routine["paths"], f) or not any(matches(r["paths"], f) for r in lead))]
 report(len(files) > 1000, f"A2 the tracked file list was read ({len(files)} files)")
-report(not miss, f"A2 every tracked file lead-read-paths.txt names is in a Lead-read rule ({len(miss)} not)")
+report(not miss, f"A2 every tracked file lead-read-paths.txt names is outside the routine rule ({len(miss)} not)")
 for f in miss[:20]: print("      " + f)
+raw = open(lrp).read().splitlines()
+cut = next(i for i, l in enumerate(raw) if l.startswith("# --- read-after"))
+first = [re.compile(l.split(" #")[0].strip(), re.I) for l in raw[:cut] if l.strip() and not l.lstrip().startswith("#")]
+def has_lead(r):
+    return any(isinstance(x, str) and x == "@lead" for v in [r["verdict"]] + [o.get("verdict", {}) for o in r.get("override", [])]
+               for x in (v.get("seats") if isinstance(v.get("seats"), list) else []))
+nolead = [f for f in files if any(r.search(f) for r in first) and not any(matches(r["paths"], f) and has_lead(r) for r in lead)]
+report(bool(first) and not nolead, f"A2 every tracked file a read-first line names is in a rule with the Lead's seat ({len(nolead)} not)")
+for f in nolead[:20]: print("      " + f)
 both = [f for f in files if matches(routine["paths"], f) and any(matches(r["paths"], f) for r in lead)]
 report(not both, f"A1 no tracked file is in the routine rule and a Lead-read rule ({len(both)})")
 
-def seats_ok(v, loc):
-    for s in (v.get("seats") if isinstance(v.get("seats"), list) else [v.get("seats")]):
-        if isinstance(s, str) and s.startswith("@"): s = loc.get(s[1:])
-        if not (isinstance(s, dict) and "!pr/authors" in s.get("from", [])): return False
-    return True
 loc = pol.get("locals", {})
-bad = [r["purpose"] for r in rules for v in [r["verdict"]] + [o.get("verdict", {}) for o in r.get("override", [])] if not seats_ok(v, loc)]
-report(not bad, "A3 every seat excludes the PR's authors" + ("" if not bad else f" ({bad[:3]})"))
+gated = [r["purpose"] for r in lead if r["verdict"].get("claude") != "comments"
+         or not r.get("override") or any(o.get("if") != "claude/code_review = pass" for o in r["override"])]
+report(not gated, "A3 every Lead-read rule approves only when claude/code_review passes" + ("" if not gated else f" ({gated[:3]})"))
+def sets(v):
+    for x in (v.get("seats") if isinstance(v.get("seats"), list) else []):
+        x = loc.get(x[1:]) if isinstance(x, str) and x.startswith("@") else x
+        yield from (x.get("from", []) if isinstance(x, dict) else ["?"])
+unnamed = [r["purpose"] for r in rules for v in [r["verdict"]] + [o.get("verdict", {}) for o in r.get("override", [])]
+           if any(m in ("humans", "everyone", "?") for m in sets(v)) or isinstance(v.get("seats"), int) and v["seats"] > 0]
+report(not unnamed, "A3 no seat draws on an unnamed set the author fills (humans, everyone, a bare count)" + ("" if not unnamed else f" ({unnamed[:3]})"))
+report(loc.get("lead", {}).get("from") == ["expat-ready/tech-lead"], "A3 the Lead's seat is the team expat-ready/tech-lead")
 
 # Self-test of the glob reader (a reader that matches nothing would pass A2 vacuously)
 for g, f, want in [("**", "a/b.ts", True), ("**/*[Mm]oney*/**", "x/client-money/a.ts", True), ("**/*[Mm]oney*", "x/client-money/a.ts", False),
