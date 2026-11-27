@@ -28,15 +28,20 @@ Scheduled qa after merge (lab lane automation-measures; ops/qa-after-merge-task.
 1. In this session's checkout of expat-ready/xpatready: git fetch origin main, then
    bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/qa-due.sh
 2. If its line starts with NONE or BUSY: reply with that one line and stop. Do nothing else (no files, no PR, no messages).
-3. If it starts with DUE: you are the qa lane for this round. Run the skill /qa after-merge on main, with the DUE line as
-   the message that started you (it names the newest app-code merge and the last qa merge). Follow AGENTS.md and the qa
-   skill exactly: test what is on main, one qa PR titled "qa: ..." or "records: qa ...", questions as
-   "Question for the tech lead" PR comments, never app-code fixes, no paid AI runs.
+3. If it starts with DUE: you are the qa lane for this round. FIRST, before any testing, mark the round as running so
+   the next hourly firing sees it (qa-due.sh prints BUSY while an open "qa: after-merge" PR was updated in the last 12 h):
+   branch claude/qa-after-merge-<UTC yyyymmdd-hhmm> from origin/main; write
+   ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/reports/after-merge-<same stamp>.md with the DUE line
+   and "in progress"; commit, push, open a DRAFT PR titled "qa: after-merge <d Mon> — in progress (main <sha9>)".
+   Then run the skill /qa after-merge on that branch, with the DUE line as the message that started you, and finish in
+   that same PR (retitle it "qa: after-merge <d Mon> — <summary>"; push at least every few hours while working). Follow
+   AGENTS.md and the qa skill exactly: test what is on main, questions as "Question for the tech lead" PR comments,
+   never app-code fixes, no paid AI runs.
 ```
 
 ## How to check it works
 
 - The task's run list on claude.ai/code/routines shows one session per firing.
-- A `DUE` firing ends in a qa PR whose body names the run.
+- A `DUE` firing opens a draft "qa: after-merge … in progress" PR at once, and ends in that same PR with the verdicts.
 - `qa-due.sh` then prints `NONE` until the next app-code merge.
 - Test: `bash product/tools/check-qa-due.sh`.

@@ -43,6 +43,12 @@ check("works: R1.1 (h5) and R1.3 (h80) newly Works; R1.2's baseline Works is not
 check("works net: start R1.2 Works (1) → end R1.1, R1.3 (2) = +1", r["works_net"] == 1 and r["works_now"] == 2, (r["works_net"], r["works_now"]))
 check("tokens: 10 + 20 + 5 (new week) + 10 (new account) = 45% over 2 newly Works", r["tokens"].startswith("22.5% of a weekly plan per newly Works row (45% / 2)"), r["tokens"])
 check("deploy job: counts by conclusion", r["deploy_job"] == "failure 1, success 2", r["deploy_job"])
+ms3 = [m("f" * 40, 10, "qa: capability R1.45 — Partial, QA-796 open, regression R1.24", app=False, first=9),
+       m("g" * 40, 11, "records: qa 1 after-merge — regressions R1.42", app=False, first=10),
+       m("h" * 40, 12, "runtime: R1.5 — x", first=11), m("i" * 40, 13, 'Revert "runtime: R1.5 — x"', first=12)]
+r3 = M.compute(ms3, {}, [], T0, T1, runs=[])
+check("rework: qa and records PRs that mention QA-n or regressions are not rework; the Revert is", r3["rework_n"] == 1, r3["rework_n"])
+check("a Revert \"<title>\" PR finds the PR it reverts: one failure, recovered in 1 h", [f["what"] for f in r3["fails"]] == ["revert of hhhhhhhhh"] and r3["recovery_median_h"] == 1, r3["fails"])
 r2 = M.compute([], {}, [(h(-50), 10, "A1")], T0, T1, runs="HTTP 403")
 check("no readings in the window: tokens unreadable, never 0", r2["tokens"].startswith("unreadable (cockpit/usage-log.tsv has no reading in the window; last"), r2["tokens"])
 check("no deployments: change fail rate and rework unreadable, never 0", r2["cfr"] is None and r2["rework"] is None and r2["lead_median_h"] is None, r2)

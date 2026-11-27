@@ -27,12 +27,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0       # main's merges and CAPABILITIES.md history for the window
+          fetch-depth: 0       # every branch, so origin/main is main even when run by hand from another branch
           filter: blob:none    # trees and only the blobs the script reads
       - name: the daily line
         run: |
           set -o pipefail
-          git update-ref refs/remotes/origin/main HEAD
           python3 -I "$P/tools/measures.py" --days "$DAYS" | tee measures.txt
           python3 -I "$P/tools/measures.py" --days "$DAYS" --line | tee measures-line.tsv
           { echo '```'; cat measures.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -11,14 +11,18 @@ be reached from the cloud container on 27 Nov, so the Lead re-checks the wording
   1 deployment frequency          deployments per day over the window (all, and app code).
   2 lead time for changes         per merged PR, its first commit's author time → merge time; median and p90 hours.
   3 change fail rate              failed deployments / app-code deployments. Failed = reverted by a later merge
-                                  ("This reverts commit <sha>" or "Revert" PR of that PR), or a Release 1 capability
+                                  ("This reverts commit <sha>" in its branch's commits, or a PR titled
+                                  Revert "<that PR's title>"), or a Release 1 capability
                                   that was Works on main went to Partial/Broken/Not built in the window (qa's regression,
-                                  counted once per row and event).
+                                  counted once per row and event). Failures are counted by event, so in a window
+                                  with more failures than app-code deployments the rate can pass 100%: read the
+                                  count beside it.
   4 failed deployment recovery    for each failure: time until it was undone (the revert merged, or the row Works again);
                                   median hours; open failures are listed, never dropped.
   5 deployment rework rate        unplanned deployments made because of a failure in production: merges whose PR title
                                   starts "Revert", "fix" or "hotfix", or names a regression or a qa bug (QA-n), over all
-                                  deployments.
+                                  deployments; qa reports, records and Lead PRs (titles starting qa, records, lead)
+                                  only mention bugs and are never counted.
   works per day                   Release 1 rows newly Works in the window (distinct rows whose Works streak started then), and the
                                   net change in Works rows; per day.
   tokens per proven capability    percent of a weekly plan used in the window (cockpit/usage-log.tsv: rises between
@@ -42,6 +46,7 @@ _spec.loader.exec_module(fm)
 P = "ai-workers/problem-1-pathway-setup-and-form-filling"
 APP = re.compile(rf"^{P}/prototype/studio/(api/src|web/src|engine|prisma|contracts|samples|packages)/")
 USAGE = f"{P}/product/cockpit/usage-log.tsv"
+NOT_FIX = re.compile(r"^(qa\b|records\b|lead\b)", re.I)
 REWORK = re.compile(r"^(revert\b|fix\b|fix\(|hotfix\b)|\bregression|\bQA-\d+", re.I)
 
 
@@ -67,7 +72,7 @@ def merges(repo, ref, since, until):
         m = re.search(r"#(\d+)", subj)
         files = git(repo, "diff", "--name-only", f"{sha}^1", sha).splitlines()
         firsts = git(repo, "log", "--format=%at", f"{sha}^1..{sha}^2").split()
-        body = rec
+        body = rec + "\n" + git(repo, "log", "--format=%B", f"{sha}^1..{sha}^2")   # a GitHub merge's own message never holds "This reverts commit"
         out.append({"sha": sha, "time": datetime.fromisoformat(when).astimezone(timezone.utc), "pr": int(m.group(1)) if m else None,
                     "title": title or subj, "app": any(APP.match(f) for f in files),
                     "first": datetime.fromtimestamp(min(map(int, firsts)), timezone.utc) if firsts else None,
@@ -118,6 +123,12 @@ def compute(ms, hist, usage_rows, since, until, runs=None):
     r["lead_median_h"], r["lead_p90_h"], r["lead_n"] = pct(lt, 0.5), pct(lt, 0.9), len(lt)
     # failures: reverts of a merge in or before the window, reverted in the window; and Works → not Works events
     fails = []
+    for m in ms:   # a "Revert \"<title>\"" PR names what it reverts by title
+        rt = re.match(r'^Revert "(.+)"$', m["title"] or "")
+        if rt and not m["reverts"]:
+            bad = next((x for x in ms if x["title"] == rt.group(1) and x["time"] < m["time"]), None)
+            if bad:
+                m["reverts"] = [bad["sha"]]
     for m in ms:
         for s in m["reverts"]:
             bad = next((x for x in ms if x["sha"].startswith(s)), None)
@@ -134,7 +145,8 @@ def compute(ms, hist, usage_rows, since, until, runs=None):
     rec = [(f["end"] - f["start"]).total_seconds() / 3600 for f in fails if f["start"] and f["end"]]
     r["recovery_median_h"], r["recovery_n"] = pct(rec, 0.5), len(rec)
     r["open_fails"] = [f["what"] for f in fails if not f["end"]]
-    rw = [m for m in ms if REWORK.search(m["title"] or "") or m["reverts"]]
+    # qa reports, records and Lead PRs only mention bugs and regressions; they are never the fix (reviewer of #3902)
+    rw = [m for m in ms if m["reverts"] or (not NOT_FIX.match(m["title"] or "") and REWORK.search(m["title"] or ""))]
     r["rework"] = (len(rw) / len(ms)) if ms else None
     r["rework_n"] = len(rw)
     # distinct rows whose Works streak started in the window (a row that regressed and came back counts once)

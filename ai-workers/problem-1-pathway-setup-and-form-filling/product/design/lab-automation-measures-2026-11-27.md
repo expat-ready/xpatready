@@ -73,18 +73,18 @@ Verdicts: **replaced** means the built-in Claude Code, GitHub or Mergify feature
 
 `tools/measures.py` reads git, qa/CAPABILITIES.md, cockpit/usage-log.tsv and the runs API only. `.github/workflows/measures.yml` writes the daily line at 07:07 IST to the run summary and a 90-day artifact. Definitions are in the script's header.
 
-First reading, 27 Nov 11:35 IST, 7 days, main fc05179d6:
+First reading, 27 Nov 11:4x IST, 7 days, main fc05179d6 (after the reviewer's fixes: qa, records and Lead PRs are not rework; reverts read from the branch's commits and "Revert" titles):
 
 ```
-1 deployment frequency   604 merges to main = 86.3/day; app code 251 = 35.9/day
-2 lead time for changes  median 2.8 h, p90 23.5 h (first commit → merge, 604 PRs)
+1 deployment frequency   603 merges to main = 86.1/day; app code 251 = 35.9/day
+2 lead time for changes  median 2.8 h, p90 23.7 h (first commit → merge, 603 PRs)
 3 change fail rate       0% (1 failures / 251 app-code deployments)
     - R1.53 Works → Partial: 24 Nov 16:14 IST → 25 Nov 08:07 IST
 4 recovery time          median 15.9 h (1 recovered, 0 open)
-5 deployment rework rate 19% (116 of 604 merges were fixes or reverts)
+5 deployment rework rate 7% (45 of 603 merges were fixes or reverts)
 works                    48 newly Works (6.9/day; target 10/day), net +48, now 67 of 110
 tokens per capability    unreadable (cockpit/usage-log.tsv has no reading in the window; last 15 Nov 22:04 IST)
-deploy job               demo-update.yml on main: cancelled 145, failure 86, success 373
+deploy job               demo-update.yml on main: cancelled 145, failure 86, success 372
 ```
 
 How to read these numbers:
