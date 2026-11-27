@@ -19,7 +19,7 @@ norm() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ' |
 if [ "$(printf '%s' "$input" | jq -r '.hook_event_name // empty' 2>/dev/null)" = Stop ]; then
   cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null); tp=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
   ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
-  [ "$(cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)" = lead ] || exit 0
+  [ "$(cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null | sed "s/^lead-stale$/lead/")" = lead ] || exit 0
   # The turn's prompt: the newest user text in the transcript that is not a tool result, a meta line, a hook's feedback or
   # a background task's notification (one arriving mid-check must not end the check unread: review on #1925).
   turn=$([ -f "$tp" ] && python3 -I -c 'import json,sys
@@ -46,7 +46,7 @@ recurring=$(printf '%s' "$input" | jq -r 'if .tool_input.recurring == false then
 [ "$(norm "$prompt")" = "$(norm "$GAP")" ] && exit 0
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
-LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)
+LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null | sed "s/^lead-stale$/lead/")
 why=""
 printf '%s' "$prompt" | grep -qi 'lead-watch' && why="it names lead-watch but is not the check's one line"
 [ -z "$why" ] && [ "$LANE" = lead ] && [ "$recurring" = yes ] && why="it is a recurring job in the Lead's copy, whose only recurring job is the check"
