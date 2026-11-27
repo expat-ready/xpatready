@@ -290,8 +290,8 @@ export class Submission {
 export class SubmissionController {
   constructor(@Inject(Submission) private readonly x: Submission) {}
   @Patch("groups/:gid/record") record(@Headers("x-actor") a: H, @Param("gid") gid: string, @Body() b: unknown) { return this.x.record(actorOf(a), gid, b); }
-  // One byte over 20 MB so a file of exactly 20 MB is taken (as C6.4, C8.1); the route's own check refuses more.
-  @Post("filings/:id/record/fee-receipt") @HttpCode(HttpStatus.OK) @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES + 1, files: 1 } }))
+  // multer >= 2.3 takes a file of exactly fileSize bytes and refuses one byte more (it was one byte under), so 20 MB is taken (as C6.4, C8.1).
+  @Post("filings/:id/record/fee-receipt") @HttpCode(HttpStatus.OK) @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
   feeReceipt(@Headers("x-actor") a: H, @Param("id") id: string, @UploadedFiles() files: Upload[]) { return this.x.feeReceipt(actorOf(a), id, files); }
   @Post("filings/:id/record/corrections") @HttpCode(HttpStatus.OK) correct(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.x.correct(actorOf(a), id, b); }
 }
