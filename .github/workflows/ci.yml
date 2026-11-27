@@ -319,21 +319,21 @@ jobs:
       - name: test databases are cleaned up (check-test-dbs.sh; needs the database cloud-setup.sh started)
         if: env.ROUTE == 'full'
         run: bash "$P/tools/check-test-dbs.sh"
+      - name: tooling route, the packages the tools' checks read (npm ci --ignore-scripts; no database, no app build)
+        # Review of #3908 (blocking): the repository-wide checks below read tool and workflow files (check-skeleton-scope,
+        # ci-and-lists, graph.mjs --check, test-spd-2, check-queue-rules), so the tooling route keeps every one of them;
+        # it skips only what the app needs (cloud-setup.sh's database and build, check-test-dbs.sh) and the type check.
+        # Before tooling-checks.sh (review of #3908, minor 2): a changed tool's own test may read node_modules.
+        if: env.ROUTE == 'tooling'
+        run: npm ci --prefix "$S" --ignore-scripts --no-audit --no-fund
       - name: tooling route, lint and the tests of the changed tool files (tooling-checks.sh; fast route, P-847)
         # Every changed path is pipeline or tooling (or a record) and no product suite depends on it (change-route.sh), so
         # no app set-up, no type check, no suite: each changed file is linted and the tests that cover it run (its
         # check-/test- files, its own --self-test, check-queue-rules.py for .mergify.yml). guards.yml and
         # lead-tools-tests.yml still run their path-filtered guard tests beside this; the nightly runs everything on main.
+        # change-route.sh --self-test runs once, in the tools' list below (review of #3908, minor 4).
         if: env.ROUTE == 'tooling'
-        run: |
-          bash "$P/tools/tooling-checks.sh" "$RANGE"
-          bash "$P/tools/change-route.sh" --self-test
-      - name: tooling route, the packages the tools' checks read (npm ci --ignore-scripts; no database, no app build)
-        # Review of #3908 (blocking): the repository-wide checks below read tool and workflow files (check-skeleton-scope,
-        # ci-and-lists, graph.mjs --check, test-spd-2, check-queue-rules), so the tooling route keeps every one of them;
-        # it skips only what the app needs (cloud-setup.sh's database and build, check-test-dbs.sh) and the type check.
-        if: env.ROUTE == 'tooling'
-        run: npm ci --prefix "$S" --ignore-scripts --no-audit --no-fund
+        run: bash "$P/tools/tooling-checks.sh" "$RANGE"
       - name: static sweeps on the PR merged onto main, before the label (static-sweeps.mjs; ENF-782a part 2, P-782 (2))
         # Measured 20-21 Nov (merge-queue-causes.py): check_aud_values.ts, a sweep of every audit write that starts nothing,
         # broke 4 merge batches by a member's own code (#1959's was the 10:55 IST wave) and 7 more by cascade, because a
@@ -351,6 +351,17 @@ jobs:
         if: env.KIND == 'code'
         continue-on-error: true
         run: python3 -I "$P/tools/own-migration-guard.py"
+      - name: flaky-test guard, report-only (flaky-guard.sh; LR-151)
+        # A wait, retry or skip added to a test needs a "Flaky-reason:" line in the PR body (or on the line). Report-only
+        # (P-717 (2)): measured 27 Nov, it would have stopped 11 of the last 60 merged PRs, several of them deliberate
+        # (race tests, a mocked slow route), so the tech lead decides when it blocks; then drop continue-on-error.
+        # A batch runs it too (check-queue-run-scope.sh: every PR step runs in the batch) with no one PR body, so a batch
+        # reports every addition; report-only, it holds nothing. Test: flaky-guard.sh --self-test (the tools' list).
+        continue-on-error: true
+        env: { PR_BODY: "${{ github.event.pull_request.body }}" }
+        run: |
+          set -o pipefail
+          bash "$P/tools/flaky-guard.sh" "$RANGE" | tee flaky-guard.txt || { { echo "**Flaky guard (LR-151, report-only):**"; echo '```'; cat flaky-guard.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"; exit 1; }
       - name: records rules, pull requests only (check-docs.sh, decision-impact.sh; ENF-746c, skipped in a merge-queue batch)
         # ENF-746c (P-746, founder 20 Nov): these judge the records (STATE, RULES, DECISIONS: the P-734 lock note, the rule
         # register, decision impact, skill sizes, links), not the code. Each PR passes them before it is queued; in a batch
@@ -382,6 +393,7 @@ jobs:
           bash "$P/tools/check-write-token.sh"
           bash "$P/tools/change-route.sh" --self-test   # fast route (P-847): docs, tooling, full
           bash "$P/tools/tooling-checks.sh" --self-test
+          bash "$P/tools/flaky-guard.sh" --self-test   # LR-151: planted wait, retry and skip fail; a reason line passes
           bash "$P/tools/pr-base.sh" --self-test
           node "$S/tools/check-gate-b.mjs"
           node "$S/tools/check-works-set.mjs"
