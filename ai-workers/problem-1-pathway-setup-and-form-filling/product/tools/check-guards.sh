@@ -609,7 +609,7 @@ MUT="$MUT"'
 40 parts round|product/tools/check-guards.sh|s/\$((part - 1)) \] .. continue$/$((part - 1)) ] \&\& true/|check-guard-parts.sh
 40 parts tests|product/tools/check-guards.sh|s/^if \[ "\$part" = 1 \]; then$/if true; then/|check-guard-parts.sh
 40 parts refuse|product/tools/check-guards.sh|s/\[ "\$part" -le "\$parts" \] .. {/false \&\& {/|check-guard-parts.sh
-40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4\]$/        part: [1, 2, 3]/|check-guard-parts.sh
+40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4, 5, 6\]$/        part: [1, 2, 3, 4, 5]/|check-guard-parts.sh
 40 parts always|../../.github/workflows/guards.yml|s/always() \&\& //|check-guard-parts.sh
 40 parts result|../../.github/workflows/guards.yml|s/\[ "\$PARTS" = success \]/[ -n "$PARTS" ]/|check-guard-parts.sh
 37 merge read|product/tools/lead-merge.sh|s/; then post "Lead read the diff: <head sha>" (P-423)//|check-lead-merge.sh
