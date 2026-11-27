@@ -100,6 +100,8 @@ fresh "lead-upkeep.py context: STATE.md in this copy and LEAD_CONTEXT from the L
 
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
+# OS-11 (OS P1): the tools this check runs are main's, never a stale branch copy (tools-on-main.sh; one ACT if not).
+tm=$(bash "$TOOLS/tools-on-main.sh" 2>&1); say "$tm"; grep -q '^ACT' <<<"$tm" && act=$((act + 1))
 pn=$(python3 -I "$TOOLS/proof-number.py" 2>&1); echo "$pn"; act=$((act + $(grep -c '^ACT' <<<"$pn"))); seen "$pn"
 grep -qE '^(proven |ACT   proven)' <<<"$pn" || ACT "proven: proof-number.py did not run ($(head -1 <<<"$pn"))"
 fresh "proof-number.py: qa/CAPABILITIES.md and app code on origin/main (git only)"

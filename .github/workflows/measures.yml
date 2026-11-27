@@ -1,0 +1,45 @@
+# Measures, the daily line (lab lane automation-measures, 27 Nov; audit "Measures" and "What we expect to gain"): the
+# 7-day window of DORA's five (deployment frequency, lead time for changes, change fail rate, failed deployment recovery
+# time, deployment rework rate), Release 1 rows newly Works per day and tokens per proven capability, read by
+# product/tools/measures.py from git, qa/CAPABILITIES.md, cockpit/usage-log.tsv and the runs API only. Once a day after
+# the 07:00 IST count (01:37 UTC = 07:07 IST) and by hand. The line goes to the run's summary and a 90-day artifact; the
+# 7-day baseline before the factory switch is the line of the day before it. Reads only (contents, actions); US$0 (one
+# hosted Linux job, about a minute; the repository is public). Test: product/tools/test_measures.py (cockpit-tests.yml).
+name: measures
+on:
+  schedule:
+    - cron: "37 1 * * *"
+  workflow_dispatch:
+    inputs:
+      days: { description: "window in days", required: false, default: "7" }
+permissions:
+  contents: read
+  actions: read
+concurrency: { group: measures, cancel-in-progress: false }
+jobs:
+  line:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      GH_TOKEN: ${{ github.token }}
+      DAYS: ${{ inputs.days || '7' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # main's merges and CAPABILITIES.md history for the window
+          filter: blob:none    # trees and only the blobs the script reads
+      - name: the daily line
+        run: |
+          set -o pipefail
+          git update-ref refs/remotes/origin/main HEAD
+          python3 -I "$P/tools/measures.py" --days "$DAYS" | tee measures.txt
+          python3 -I "$P/tools/measures.py" --days "$DAYS" --line | tee measures-line.tsv
+          { echo '```'; cat measures.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: measures-${{ github.run_id }}
+          path: |
+            measures.txt
+            measures-line.tsv
+          retention-days: 90

@@ -94,6 +94,11 @@ jobs:
       - name: reviewer and breaker agents on Opus high
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         run: bash "$T/agent-model-guard.sh"
+      # OS-78 (a) (OS P1): every issue_comment workflow skips, at the job, a comment without its words (no runner per
+      # comment). Test: product/tools/check-comment-filter.sh.
+      - name: comment-triggered workflows filter at the job (OS-78 (a))
+        if: "${{ !cancelled() }}"
+        run: python3 -I "$T/comment-filter-check.py"
       - name: every R1 item of CAPABILITIES.md has one wave in design/waves.tsv (B204; a warning, never a failure)
         if: "${{ !cancelled() }}"
         run: python3 -I "$T/waves.py" ids || echo "::warning title=waves list::a new R1 row needs a wave in design/waves.tsv (P-745)"
