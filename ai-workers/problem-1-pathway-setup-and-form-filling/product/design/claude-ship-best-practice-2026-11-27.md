@@ -1,8 +1,8 @@
 # Claude Ship best practice vs factory v3 — 27 Nov 2026 (Lead 2)
 
-Founder ask (typed, 10:1x IST 27 Nov): research the current docs and best-in-class agentic pipelines, no stale information, and recommend. Sources were read on 27 Nov 2026; "cc/" = https://code.claude.com/docs/en/. The Lead re-checked three claims directly (cc/code-review-costs, cc/pr-steward-setup).
+Founder ask (typed, 09:4x IST 27 Nov): research the current docs and best-in-class agentic pipelines, no stale information, and recommend. Sources were read on 27 Nov 2026; "cc/" = https://code.claude.com/docs/en/. The Lead re-checked three claims directly (cc/code-review-costs, cc/pr-steward-setup).
 
-## Settings applied 10:1x IST (founder "Yes, apply them")
+## Settings applied 09:4x IST (founder "Yes, apply them")
 Code Review: on; xpatready Review runs = Manual (`@claude review`), Standard. Steward: Off on xpatready. Spend limits: Code Review US$100 a month, PR Steward US$50 a month. Org cap US$200, balance US$10. Approvals: not connected ("expat-ready is shared with another Claude organization"). No default cloud environment.
 
 ## Facts that matter (current docs)
