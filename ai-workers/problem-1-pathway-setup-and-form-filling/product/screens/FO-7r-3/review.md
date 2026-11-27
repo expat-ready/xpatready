@@ -106,3 +106,58 @@ Reviewed only `git diff bd0c92a75..d8a06230b`: exports.ts (+48 −21), check_fo7
 **Blockers:** none. **Majors:** none open. Journey re-score: correct data 1 → **8/10**, a pass with no 0.
 
 Verdict: Approve d8a06230b519a60f86939c7c4c8551481874b189
+
+## Round 3: head `daae517f87552fea82c1e5cfa43ea1c5642e46cd` (27 Nov 2026)
+
+**What I reviewed:** only `git diff d79dc2bb..daae517f`. a30ae616 answers Lead 1 on #3887 (comment 7208236591); daae517f adds the two type annotations `page: Row[]` and `last: Row` (TS7022) and changes nothing else.
+* **Suite:** `check_fo7r3_exports.ts` gives **46 passed, 0 failed**.
+* **Probe:** scratch database `xr_studio_brk7r3_<pid>`, dropped afterwards. Nothing ran on :4400 and no product code was edited.
+* **Size:** 622 code lines against main, under P-610's 800.
+
+### What holds
+* **The `$Z` helper (exports.ts pageSql).**
+  * `sql()` splits a code-built string on `$Z` and passes the zone as a bound parameter at every place it appears; no request text reaches the SQL text.
+  * The zone comes from `platform.time_zone` through `readSetting`, whose schema accepts only an IANA zone (settings.ts:221).
+  * The zone is stored in request.json, so a retry cuts the same days, and the state answer names it (E14).
+  * Invoices keep the index range: `from::date::timestamp at time zone $Z` up to `(to + 1)…`, which is right across DST.
+* **paidDay.** `case when t = date_trunc('day', t, 'UTC') then the UTC date else the zone's day` is exactly metrics.ts:97.
+  * Probe: a payment stored at 2025-03-31 00:00 UTC reads 2025-03-31, not Toronto's 30 March.
+  * `counted_on = greatest(own day, the issue day in the zone)` matches metrics' onOrAfterIssue.
+* **Keyset keys (counted day text + UTC time).** Each key is built from its own row and the id breaks ties. The cursor `(k, id) > (after.k, after.id)` and `order by k, id` use the same expression and the same collation, so no row is skipped or repeated.
+  * Invoices still page on `(issued_at, id)`.
+  * The trust ledger keeps holder|currency|seq.
+* **CREDITS.**
+  * The invoice is `coalesce(n.invoice_id, v.invoice_id, p.invoice_id)`, where p is the payment of the entry or of the reversed entry. That is ca's resolution in statement.ts:103-105 for one invoice. The reversed entry's kind gives `REVERSED_APPLIED` or `REVERSED_KEPT`, and amounts are signed as stored, as the statement's CREDIT_APPLIED, KEPT_AS_CREDIT and their reversals.
+  * The trust ledger's `related_document` is the withdrawal's invoice, or the invoice of the withdrawal being corrected (statement.ts:117-118).
+  * CREDIT_NOTES' `returned_from_trust` is `overpaid_minor` only for OVERPAID_REFUND (statement.ts:119-120).
+  * The new headers are AG-6-31's minimum columns plus one trailing column each.
+* **E13 is a strong test.** Its pass assertion pins each part: trust withdrawals −600.00, returned 50.00, credit +30.00 (kept 50.00, applied −30.00, reversed +10.00). It also requires the sum across kinds to equal the statement's INVOICES change. That proves Lead 1's "billed − paid − credited − written off + refunded = owed, including a credit applied and a trust return". Its "fail" half is arithmetic only, but the pinned parts already carry the proof.
+* **E14 is a strong test.** A UTC cut would put the 22:30 Toronto invoice in April, which would fail both its pass and its fail assertions.
+
+### Findings (no Blocker, no Major)
+* **r3-m1 (Minor; for the Lead read, not settled here). Per period, the export and the statement now cut different days.**
+  * The export cuts by the firm's days, as Lead 1 ruled. Part 2's statement still cuts by UTC days (statement.ts:205): breaker M3, now with the tech lead.
+  * Probe, March 2025 in Toronto:
+    * invoices at 1 March 00:30, 31 March 09:00 and 31 March 22:30, and a 10.00 payment on the last one;
+    * the export's March sum is **590.00**; the statement's March change is **500.00**;
+    * the 22:30 invoice and its payment fall in the statement's April.
+  * The whole-history reconciliation that Lead 1 asked for (E13, against owed) holds. R1.111's per-period "sums equal the statement" holds again once the statement uses the firm's days. The tech lead should decide that, rather than leave it settled silently.
+* **r3-m2 (Minor). Within one firm day, the non-invoice files are not in time order.**
+  * The key is the local day followed by the **UTC** time of day, so after about 19:00-20:00 in Toronto (00:00 UTC) a row sorts before that morning's rows.
+  * counted_on order holds (E11), and invoices are fine because they key on UTC timestamps.
+  * Fix: make the time part the zone's time, `to_char(t at time zone $Z, '"T"HH24:MI:SS.US')`.
+* **r3-m3 (Minor; for the tech lead). A credit entry that names two invoices.**
+  * The case: the entry names invoice X directly, and its payment belongs to another invoice Y.
+  * The statement's `ca` counts it under both X and Y, through its second branch with `is distinct from`. The export counts it once, under X; the builder notes this.
+  * If both invoices belong to the same client, the statement counts the entry twice. That looks like a part 2 question, not an export defect.
+* **r3-m4 (Minor, test gaps).** No check covers:
+  * the paidDay midnight rule;
+  * the zone cut on a non-invoice kind;
+  * a REFUNDED credit entry, which must stay out of the INVOICES reconciliation;
+  * the type check that daae517f fixes.
+* **Note for the Lead read.** Lead 1's item 3 says "keep it in the JobPort job's own record". JobPort has no way to read a job's state (ports/jobs.ts), so state is still kept in write-once FilesPort files, as accepted in round 1. I have no objection.
+* **Still open from earlier rounds, all Minor:** m2, m3, m4, m5, m6. m1 is answered by E13 for whole-history reconciliation; the per-period limit is r3-m1.
+
+**Blockers:** none. **Majors:** none open. Journey: 8/10, as in round 2.
+
+Verdict: Approve daae517f87552fea82c1e5cfa43ea1c5642e46cd
