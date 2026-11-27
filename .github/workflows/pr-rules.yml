@@ -97,6 +97,11 @@ jobs:
       - name: one model rule, Opus 5.5 medium (P-788)
         if: "${{ !cancelled() }}"
         run: python3 -I "$T/model-rule-check.py"
+      # OS-78 (a) (OS P1): every issue_comment workflow skips, at the job, a comment without its words (no runner per
+      # comment). Test: product/tools/check-comment-filter.sh.
+      - name: comment-triggered workflows filter at the job (OS-78 (a))
+        if: "${{ !cancelled() }}"
+        run: python3 -I "$T/comment-filter-check.py"
       # LR-156 (founder A433/A434; P-388): a records PR, or any PR from a lead/* branch, is cut from main under 24 h before
       # main's tip, so the Lead never writes records on a stale branch. Runs on records-only PRs too (that is its point):
       # there it is a red pr-rules for the Lead to see, since the records queue waits only on ci (.mergify.yml); on a

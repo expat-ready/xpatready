@@ -39,6 +39,7 @@ TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT 
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
+TESTS="$TESTS check-qa-due.sh check-tools-on-main.sh check-comment-filter.sh"   # lab automation-measures: qa after merge, OS-11, OS-78 (a)
 TESTS="$TESTS check-lead-age.sh"   # LR-156: the Lead copy on live main, records on a branch under 24 h
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
