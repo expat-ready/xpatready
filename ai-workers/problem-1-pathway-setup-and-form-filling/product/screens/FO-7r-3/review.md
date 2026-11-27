@@ -79,3 +79,30 @@ D1 Requirement fit Partly: AG-6-31 rules 1-4 and 12 are met; rule 2's running ba
 The app's real PlatformJobs (pg-boss) retry count, the S3 FilesPort adapter, and booting the full app.
 
 Verdict: Changes bd0c92a7560b5ef3a87c4fcf37dc14ea75bf13e3
+
+## Round 2: head `d8a06230b519a60f86939c7c4c8551481874b189` (27 Nov 2026)
+
+Reviewed only `git diff bd0c92a75..d8a06230b`: exports.ts (+48 −21), check_fo7r3_exports.ts (+36) and the records.
+* **Suite:** `check_fo7r3_exports.ts` gives **41 passed, 0 failed** at this head.
+* **Probe:** reran on a scratch database `xr_studio_brk7r3_<pid>`, dropped afterwards. Nothing ran on :4400 and no product code was edited.
+
+### Round 1 findings
+* **M1 (row order): fixed.**
+  * The trust ledger now pages on the text key `holder|currency|lpad(seq,10)`, then id (exports.ts K.e). Every other kind pages on its counted time to the microsecond (`…SS.US`), then id. The cursor is `(k, id) > (after.k::text, after.id::uuid)` with `order by k, id` under the same collation, so the cursor and the sort cannot disagree. This also holds under a collation that ignores punctuation, because every key has a fixed width.
+  * Probe: eight same-day deposits for one client plus four for another. The file reads OTH-1..4 with balances 5, 15, 30, 50, then ORD-1..8 with 1510 … 1860. The last CAD balance is 1860, which is the statement's trust closing; in round 1 it was 1710. PAYMENTS now come out in time order.
+  * E11 covers the same case, adds 1,200 entries for one holder over two pages, and checks counted_on order. Under round 1's id order its pass and fail assertions would both fail, so the test is real.
+* **m7 (BOM): fixed.** Both downloaded files start with EF BB BF. No check asserts this (see r2-m1).
+* **Breaker M2 (payment received before its invoice was issued): fixed.**
+  * `date` is now the fact's own day, and the trailing `counted_on` column is the statement's day. The period cuts by counted_on, so the sums are unchanged.
+  * E12 asserts 2020-02-02 / 2020-02-20, the February sum equal to the statement's change, and the payment absent from January.
+  * AG-6-31 rule 2's minimum columns are all still present.
+* **Speed after the change:** the non-invoice kinds now sort each page with no index, a top-N over the period. Probe: 40,000 operating payments in one day exported in 3.3 s, READY, in time order. That is acceptable inside the 25 MB bound; m5 stands as written.
+* **Still open from round 1, all Minor:** m1 (state the limit of the statement equality in the PR body, ask the founder), m2 (DW7 as named), m3, m4, m5, m6.
+* **Breaker M3 (UTC days):** part 2's rule too, and rightly sent to the tech lead; not a finding here.
+
+### New in round 2
+* **r2-m1 (Minor):** no check asserts the BOM. One `startsWith("﻿")` on a raw download would keep m7 fixed.
+
+**Blockers:** none. **Majors:** none open. Journey re-score: correct data 1 → **8/10**, a pass with no 0.
+
+Verdict: Approve d8a06230b519a60f86939c7c4c8551481874b189
