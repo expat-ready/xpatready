@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { CARD_DOWN, CardPay, LINK_NOT_WORKING, NOT_AVAILABLE } from "../api/src/client-money/card/pay.ts";
+import { CARD_DOWN, CardPay, LINK_NOT_WORKING } from "../api/src/client-money/card/pay.ts";
 import { RailAccountGone, RailRefused, fakeCardRail, type HostedPaymentInput } from "../api/src/client-money/card/rail.ts";
 import { StripeCardRail } from "../api/src/client-money/card/stripe-rail.ts";
 
@@ -111,8 +111,10 @@ try {
   const officer = await call(tOfficer, "POST", LINK(I1)), anon = await call(undefined, "POST", LINK(I1));
   ok("FO-7c DW5 fail: a person without agent/payment:online → 403; not signed in → 401", officer.status === 403 && anon.status === 401, [officer.body, anon.body]);
   sql(`update platform_firm set status = 'SECURITY_LOCK' where id = '${A}'`); const locked = await call(tOwner, "POST", LINK(I1)); sql(`update platform_firm set status = 'ACTIVE' where id = '${A}'`);
-  ok("FO-7c DW5 fail (PF-27's stand-in): a locked firm → PF-27's neutral refusal (409 NOT_AVAILABLE), the word \"lock\" nowhere; the link unchanged",
-    (locked.status === 409 && locked.body.code === "NOT_AVAILABLE" && locked.body.detail === NOT_AVAILABLE && !/lock/i.test(JSON.stringify(locked.body))), locked.body);
+  // PF-27 part 3a's firm guard answers first (SA-2-6: a security lock means no staff sign-in): the firm's own staff are
+  // told 401 FIRM_LOCKED. The neutral words with no "lock" are the clients' (SA-2-35): the door below tests them.
+  ok("FO-7c DW5 fail (PF-27, SA-2-6): a locked firm's Owner → PF-27's 401 FIRM_LOCKED from the firm guard; the link unchanged",
+    locked.status === 401 && locked.body.code === "FIRM_LOCKED" && hashOf(I1) === createHash("sha256").update(T1).digest("hex"), locked.body);
 
   // --------------------------------------------------------------------------------------------- DW4: the walls
   const other = await call(tB, "POST", LINK(I1));
