@@ -6,7 +6,8 @@ A reviewer round is one PR comment, by someone with write access (OWNER, MEMBER,
 a public repository), with a line that starts "Reviewer: <verdict>" (Approve, Changes, Changes requested, Request
 changes, Block, Reject; markdown * _ ` ignored). Bots never count. A438 cut 3 (founder 27 Nov 14:3x IST, "Yes, all
 three"): only rounds that ask for changes count (Changes, Block, Reject, needs changes); an Approve, the first one or a
-re-review of a later diff, is reported but never counted (a records PR needed 4 rounds for STATE line edits, 27 Nov).
+re-review of a later diff, is reported but never counted ("Approve with changes", "Approve after ..." asks for changes:
+it counts, review m3 on #3942) (a records PR needed 4 rounds for STATE line edits, 27 Nov).
 Change-requesting rounds 1 and 2 pass. Round k > 2 passes only when a
 write-access comment has a line starting "Lead allows round N:" with N >= k (so "Lead allows round 3:" allows a third
 round; a fourth needs "Lead allows round 4:"). A PR with the `records` label is exempt (P-385: the Lead's records
@@ -46,7 +47,8 @@ def judge(comments):
             continue
         body = re.sub(r"[*_`]", "", c.get("body") or "")
         verdicts = [v.lower() for v in VERDICT.findall(body)]
-        if verdicts and all(v.startswith("approve") for v in verdicts):
+        conditional = re.search(r"^\s*(?:>\s*)?reviewer:\s*approve[sd]?\s+(?:with|after|once|pending|subject to)\b", body, re.I | re.M)
+        if verdicts and all(v.startswith("approve") for v in verdicts) and not conditional:
             approves += 1   # A438 cut 3: an Approve round never counts toward the limit
         elif verdicts:
             rounds += 1

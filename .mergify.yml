@@ -440,9 +440,10 @@ queue_rules:
       # A438 cut 1 (founder 27 Nov 14:3x IST, "Yes, all three"): a records-only PR needs no reviewer and no
       # `review: approved` label: the label "records" (records-label.yml: main's records-only.sh, the one definition)
       # and a green ci (check-docs.sh and decision-impact.sh on its records) let it queue, and a later records push needs
-      # no new review. Mergify also reads the head's own files, so a code file pushed later, or a "records" label put on
-      # by hand, can never ride this queue: every file is a record under product/ (.md, image, .txt, .html), never under
-      # product/tools/ (any case: the Mac's disk). Undo: put back the label line and delete these two -files lines.
+      # no new review. Mergify also reads the head's own files: every file is a record under product/ (.md, image, .txt,
+      # .html), never under product/tools/ (any case: the Mac's disk), so a code or tool file pushed later never rides this
+      # queue. A record that change-kind.sh calls code (a .md a suite reads) is kept out only by records-label.yml, which
+      # judges every push and every hand-put label (review m1 on #3942). Undo: put back the label line, delete these lines.
       - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
       - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
       # The breaker on #3942 (M4): an .html record can carry script (cockpit/index.html, the founder's board), so a
@@ -545,9 +546,10 @@ queue_rules:
       # A438 cut 1 (founder 27 Nov 14:3x IST, "Yes, all three"): a records-only PR needs no reviewer and no
       # `review: approved` label: the label "records" (records-label.yml: main's records-only.sh, the one definition)
       # and a green ci (check-docs.sh and decision-impact.sh on its records) let it queue, and a later records push needs
-      # no new review. Mergify also reads the head's own files, so a code file pushed later, or a "records" label put on
-      # by hand, can never ride this queue: every file is a record under product/ (.md, image, .txt, .html), never under
-      # product/tools/ (any case: the Mac's disk). Undo: put back the label line and delete these two -files lines.
+      # no new review. Mergify also reads the head's own files: every file is a record under product/ (.md, image, .txt,
+      # .html), never under product/tools/ (any case: the Mac's disk), so a code or tool file pushed later never rides this
+      # queue. A record that change-kind.sh calls code (a .md a suite reads) is kept out only by records-label.yml, which
+      # judges every push and every hand-put label (review m1 on #3942). Undo: put back the label line, delete these lines.
       - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
       - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
       # The breaker on #3942 (M4): an .html record can carry script (cockpit/index.html, the founder's board), so a

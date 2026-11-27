@@ -5,11 +5,11 @@
 # #2897 added @PermissionKeys routes in platform/settings/offices/routes.ts, was labelled and queued, and the Lead's
 # read came 14 minutes before the merge (design/open-contribution-gate-2026-11-22.md).
 # A PR keeps the Lead's read when
-#   (a) a changed path (either side of a rename) matches lead-read-paths.txt, the one list; a path of its "# --- pipeline"
-#       section (.github/, .mergify.yml, the guards, hooks, agent settings) only when weakening.py finds its diff can
-#       weaken protection (A438 cut 2, founder 27 Nov: a new test, a stricter check or an added tool needs no read) (.github/, .mergify.yml, the
+#   (a) a changed path (either side of a rename) matches lead-read-paths.txt, the one list (.github/, .mergify.yml, the
 #       guards, the schema, migrations, money, and the permission machinery itself: platform/identity/, core.ts, the firm
-#       wall, the terms gate). When the list carries the line "# --- records-exempt" (#2428), the lines after it (money,
+#       wall, the terms gate); a path of its "# --- pipeline" section (.github/, .mergify.yml, the guards, hooks, agent
+#       settings) only when weakening.py finds its diff can weaken protection (A438 cut 2, founder 27 Nov: a new test, a
+#       test gaining cases, a new workflow step or an added tool needs no read). When the list carries the line "# --- records-exempt" (#2428), the lines after it (money,
 #       permissions) are not set off by a screenshot (*.png under screens/) or by an image or .txt under product/
 #       outside product/tools/; every line before it holds for any file; or
 #   (b) an added or removed line of an API source or data file (studio/api/src/**.{ts,tsx,mts,cts,js,mjs,cjs,json},

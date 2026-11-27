@@ -13,7 +13,8 @@ a guard off; a tool's name does not say whether CI runs it), so the rule is shap
   * an existing workflow that only gains whole new steps or jobs (each added run of lines starts a step or job), with no
     WORKFLOW_RISK line and no removed line that does not come back unchanged;
   * an allow-list (quarantine, known failures, typecheck-known, route-has-screen-allow) that only loses entries;
-  * comments, and prose (.md) outside the front matter of agents and skills;
+  * comments in tests and workflows, and prose (.md) outside the front matter of agents and skills (a comment in
+    other pipeline code counts: in lead-read-paths.txt a "# --- " marker is a rule);
   needs the Lead's read first: everything else on a pipeline path, which includes
   * any change to existing pipeline code (a guard, a gate, a CI helper, a hook, prototype/studio/tools/) other than a test
     gaining lines; any change to .mergify.yml or .claude/ settings (*.json, *.yml);
@@ -38,7 +39,7 @@ import sys
 ALLOWLISTS = {"pr-suites-quarantine.txt", "known-failures.tsv", "typecheck-known.txt", "route-has-screen-allow.txt"}
 WORKFLOW_RISK = [
     (re.compile(r"pull_request_target"), "pull_request_target"),
-    (re.compile(r"secrets\s*[.\[]"), "a secret"),
+    (re.compile(r"\bsecrets\b"), "a secret"),
     (re.compile(r"write"), "a write permission"),
     (re.compile(r"continue-on-error"), "continue-on-error"),
     (re.compile(r"(^|\s)uses:\s*(?!\./|actions/)\S"), "a third-party action"),
@@ -54,7 +55,7 @@ OFF = re.compile(r"\.(skip|only|todo|fixme|skipIf)\b|\b(xit|xdescribe|fit|skipTe
 ROW = re.compile(r"^[^|\s][^|]*\|[^|]+\|.+\|[\w./-]+\.(sh|py)'?$")   # a check-guards.sh mutation row: its sed text is data
 STEP_START = re.compile(r"^\s*-\s+(name|uses|run|id|if|with|env|shell|working-directory|timeout-minutes)\s*:")
 JOB_START = re.compile(r"^  [A-Za-z0-9_-]+:\s*(#.*)?$")
-COMMENT = re.compile(r"^\s*(#|//|/\*|\*|<!--|$)")
+COMMENT = re.compile(r"^\s*(#|//|/\*|\*(\s|/|$)|<!--|$)")   # "*)" (a shell case arm) is code, not a comment (review B2)
 FRONT_MATTER_LINES = 15   # agents' and skills' front matter sits in their first lines (7 and 4 today); up to line 60 a
 FM_KEY = re.compile(r"^[A-Za-z][\w-]*\s*:")   # changed line in key form ("hooks:", "model:") counts too
 TRIGGER = re.compile(r"^\s*-?\s*(on|pull_request|pull_request_target|push|schedule|workflow_dispatch|workflow_run|workflow_call|"
@@ -75,6 +76,18 @@ def kind(path):
     if re.match(r"(check-|check_|test_|test-)", base) or "/guards.d/" in path or base == "guard-test-lib.sh":
         return "test"
     return "code"   # .mergify.yml, .claude/*.json|yml, hooks, guards, gates, CI helpers: any change is read
+
+
+CASED = {"AGENTS.md", "CLAUDE.md", "SKILL.md", "README.md", "MODULE.md"}
+
+
+def odd_case(path):
+    """A path with capitals where the pipeline has none (review M3: on the Mac's case-insensitive disk an added
+    .GitHooks/pre-push or product/Tools/push-guard.sh is the hook or the guard)."""
+    parts = path.replace("/screens/B119/", "/screens/b119/").split("/")
+    if parts[-1] in CASED:
+        parts = parts[:-1]
+    return any(p != p.lower() for p in parts)
 
 
 def hunks(patch):
@@ -109,6 +122,8 @@ def judge(f):
         return "a pipeline file removed"
     if status == "renamed" or f.get("previous_filename"):
         return "renamed from %s (a workflow, hook or test may no longer find it)" % f.get("previous_filename", "?")
+    if status == "added" and odd_case(path):
+        return "a new path whose case differs from the repository's (on the Mac's disk it replaces %s)" % path.lower()
     if not patch:
         return "" if (k == "prose" and status == "added") else "no patch given (too large, binary or a mode change): read first (fails closed)"
     rows = hunks(patch)
@@ -180,7 +195,11 @@ def judge(f):
                 return "changes an existing step, job or trigger (only whole new steps or jobs need no read): %s" % t.strip()[:80]
             new_block = True
         return ""
-    if add or rem:   # code: .mergify.yml, settings, hooks, guards, gates, CI helpers
+    # code: .mergify.yml, lead-read-paths.txt, settings, hooks, guards, gates, CI helpers. Comment lines count too: a
+    # marker line ("# --- pipeline") is a rule there (review B2).
+    add = [t for _, _, s, t in rows if s == "+" and t.strip()]
+    rem = [t for _, _, s, t in rows if s == "-" and t.strip()]
+    if add or rem:
         return "changes existing pipeline code or settings (a script cannot tell stricter from looser): %s" % (rem or add)[0].strip()[:80]
     return ""
 
@@ -230,9 +249,9 @@ def self_test():
         (True, "a guard line gains a pipe (existing code: read)", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-LANE=$(lane.sh whoami)\n+LANE=$(lane.sh whoami | sed s/x/y/)")),
         (True, "a guard's check removed", f(T + "merge-guard.sh", "@@ -1,2 +1 @@\n x\n-[ -z \"$ok\" ] && exit 1")),
         (True, "a guard's threshold lowered", f(T + "wip-guard.py", "@@ -1 +1 @@\n-if n > 3: refuse()\n+if n > 9: refuse()")),
-        (False, "comments only", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-# old words\n+# new words")),
+        (True, "comments only in existing code (a comment can be a rule marker, review B2)", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-# old words\n+# new words")),
         (True, "a gate: any code change", f(T + "queue-gate.sh", "@@ -1 +1,2 @@\n x\n+autocover && return 0")),
-        (False, "a gate: comments only", f(T + "queue-gate.sh", "@@ -1 +1 @@\n-# a\n+# b")),
+        (True, "a gate: comments only (markers)", f(T + "queue-gate.sh", "@@ -1 +1 @@\n-# a\n+# b")),
         (True, ".mergify.yml condition", f(".mergify.yml", "@@ -1 +1 @@\n-      - check-success = ci\n+      - check-success = cj")),
         (True, "an allow-list entry added", f(T + "pr-suites-quarantine.txt", "@@ -1 +1,2 @@\n x\n+check_a.ts|runtime|2026-12-02|p822")),
         (False, "an allow-list entry removed", f(T + "pr-suites-quarantine.txt", "@@ -1,2 +1 @@\n x\n-check_a.ts|runtime|2026-12-02|p822")),
@@ -291,6 +310,18 @@ def self_test():
         (True, "minor: a hook made non-executable (mode only)", {"filename": ".githooks/pre-push", "status": "changed", "changes": 0}),
         (False, "a test gains a case (moved rows and a closing quote aside)", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n-29 e7ran|product/tools/stop-check.sh|/E7/d|check-stop-check.sh'\n+29 e7ran|product/tools/stop-check.sh|/E7/d|check-stop-check.sh\n+LR1 x|product/tools/x.sh|s/a/b/|check-x.sh'")),
         (False, "a workflow gains a whole new job", f(".github/workflows/ci.yml", "@@ -1 +1,4 @@\n x\n+  lint:\n+    runs-on: ubuntu-latest\n+    steps: [{run: bash lint.sh}]")),
+        # The reviewer on #3942 (B2, M2, M3) and multi-hunk patches (M4)
+        (True, "R-B2: the # --- pipeline marker moved in lead-read-paths.txt", f(T + "lead-read-paths.txt", "@@ -20,3 +20,3 @@\n x\n-# --- pipeline: read first only when\n+/api/src/core\\.ts$\n y\n@@ -28,2 +28,2 @@\n z\n-/api/src/core\\.ts$\n+# --- pipeline: read first only when")),
+        (True, "R-B2: a shell case arm changed", f(T + "lead-read-gate.sh", "@@ -131 +131 @@\n-    *) echo x; s=failure;;\n+    *) echo x; s=success;;")),
+        (True, "R-M2: toJSON(secrets) in a new step", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: t\n+        run: echo '${{ toJSON(secrets) }}'")),
+        (True, "R-M2: continue-on-error in a later hunk after a new step", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: new\n+        run: bash new.sh\n@@ -40,2 +42,3 @@\n       - name: lint\n+        continue-on-error: true\n         run: bash lint.sh")),
+        (True, "R-M2: an existing step gains if in a second hunk", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: new\n+        run: bash new.sh\n@@ -40,2 +42,3 @@\n       - name: lint\n+        if: ${{ !true }}\n         run: bash lint.sh")),
+        (True, "R-M3: an added .GitHooks/pre-push", f(".GitHooks/pre-push", "@@ -0,0 +1 @@\n+exit 0", "added")),
+        (True, "R-M3: an added product/Tools/push-guard.sh", f("ai-workers/problem-1-pathway-setup-and-form-filling/product/Tools/push-guard.sh", "@@ -0,0 +1 @@\n+exit 0", "added")),
+        (False, "a new test under screens/B119/ (its real case)", f("ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/B119/check-y.py", "@@ -0,0 +1 @@\n+x = 1", "added")),
+        (True, "R-B1: TESTS line loses a test (check-guards.sh)", f(T + "check-guards.sh", "@@ -41 +41 @@\n-TESTS=\"$TESTS check-weakening.sh check-records-queue.sh\"\n+TESTS=\"$TESTS check-weakening.sh\"")),
+        (True, "R-B1: a guard check wrapped in if false", f(T + "migration-additive.py", "@@ -9,2 +9,3 @@\n def scan(s):\n+    if False:\n     if re.search('DROP', s): return 'no'")),
+        (True, "R-B4: push-guard.sh renamed to push-guard.md", {"filename": T + "push-guard.md", "previous_filename": T + "push-guard.sh", "status": "renamed", "patch": "", "changes": 0}),
         (True, "a removed tool", f(T + "push-guard.sh", "", "removed")),
         (True, "no patch given", {"filename": T + "big.sh", "status": "modified", "changes": 900}),
         (True, "a rename", {"filename": T + "x2.sh", "previous_filename": T + "x.sh", "status": "renamed", "patch": "", "changes": 0}),

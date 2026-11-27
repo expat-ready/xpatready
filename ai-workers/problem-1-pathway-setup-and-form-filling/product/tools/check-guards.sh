@@ -758,10 +758,12 @@ OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$
 
 # A438 (founder 27 Nov 14:3x IST, "Yes, all three"): each row switches off one protection the three cuts keep.
 MUT="$MUT"'
-A438 weak code|product/tools/weakening.py|s/^    if add or rem:   # code/    if False:   # code/|check-weakening.sh
+A438 weak code|product/tools/weakening.py|s/^    if add or rem:$/    if False:/|check-weakening.sh
 A438 weak test|product/tools/weakening.py|s/^            if norm(t) not in back:$/            if False:/|check-weakening.sh
-A438 weak off|product/tools/weakening.py|s/^            if OFF.search(t):$/            if False:/|check-weakening.sh
-A438 weak front|product/tools/weakening.py|s/^            if s in "+-" and t.strip() and (no <= FRONT_MATTER_LINES or.*/            if False:/|check-weakening.sh
+A438 weak off|product/tools/weakening.py|s/^            if OFF.search(t) and not ROW.match(t.strip()):$/            if False:/|check-weakening.sh
+A438 weak front|product/tools/weakening.py|s/^            if not closed and s in "+-" and t.strip() and (no <= FRONT_MATTER_LINES or.*/            if False:/|check-weakening.sh
+A438 weak case|product/tools/weakening.py|s/^    if status == "added" and odd_case(path):$/    if False:/|check-weakening.sh
+A438 rounds cond|product/tools/review-rounds.py|s/ and not conditional:$/:/|check-review-rounds.sh
 A438 weak workflow|product/tools/weakening.py|s/^    if k == "workflow":$/    if False:/|check-weakening.sh
 A438 weak missing|product/tools/weakening.py|s/why = judge(f) if f else "not in the PR.s file list: read first (fails closed)"/why = judge(f) if f else ""/|check-weakening.sh
 A438 qg pipe|product/tools/queue-gate.sh|s/^      w=\$(weak "\$f"); \[ -n "\$w" \]/      w=""; [ -n "$w" ]/|check-queue-gate.sh
