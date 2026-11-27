@@ -10,5 +10,7 @@
 # check_s5_slice3_browser.cjs (finder.tsx: a first read of an ended find refreshes the lines), check_c69_page_browser.cjs
 # (eligibility.tsx: focus to the result's heading once marked), check_c83_review_browser.cjs (representative-review.tsx:
 # the chip uses the shared Tip, a focus's scroll no longer closes it).
+# check_fo8_prospect_won.ts: its cause (the copy's own prospect.won poll delivering between the suite's steps, QA-753) was
+# fixed by 843d2d3b5 (on main 23 Nov 21:35 UTC, #3280); all 8 of its first-try failures in CI's retry records (22 Nov
+# 15:08 to 23 Nov 20:45 UTC) ran without it, none since; 5 green runs in a row on 27 Nov. The list is empty.
 # <suite>|<owner lane>|<fix by, yyyy-mm-dd>|p822
-check_fo8_prospect_won.ts|runtime|2026-12-02|p822
