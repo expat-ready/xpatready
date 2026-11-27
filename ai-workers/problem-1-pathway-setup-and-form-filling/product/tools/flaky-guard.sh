@@ -5,26 +5,30 @@
 # --retry) or a skip (test/it/describe .skip or .fixme, xit, xdescribe) fails, unless it says why: a line of its own in
 # the PR body "Flaky-reason: <the cause found, or why the test goes>", or "Flaky-reason:" on the added line itself.
 # The rule behind it: find the root cause, or delete the test and write down why; never hide a red.
-# Only added lines count (the suites already hold about 1,400 waits; those are not judged here). A test file is under a
-# tests/, test/, acceptance/ or __tests__/ folder, or named *.test.* or *.spec.*.
+# Only added lines count (the suites already hold about 1,400 waits; those are not judged here). A test file is a code
+# file (js, ts and their c/m/x forms, py) under a tests/, test/, acceptance/ or __tests__/ folder or named *.test.* or
+# *.spec.*, or a playwright/vitest/jest config (where retries are set).
 #   flaky-guard.sh <base>..<head>     PR_BODY from the environment (CI passes the PR's body)
 #   flaky-guard.sh --self-test        planted fixtures in a throwaway repository: fail, then pass with the reason
 # Exit 0: nothing added, or every addition has a reason. Exit 1: an addition without a reason (each one named).
+# Exit 2: git could not diff the range (nothing was judged).
 set -uo pipefail
 
-TEST_FILE='(^|/)(tests?|acceptance|__tests__)/|\.(test|spec)\.[cm]?[jt]sx?$'
+TEST_FILE='((^|/)(tests?|acceptance|__tests__)/.*|\.(test|spec))\.([cm]?[jt]sx?|py)$|(^|/)(playwright|vitest|jest)\.config\.[cm]?[jt]s$'
 # Fixed waits, retries, skips. Word-bounded so "isleep(" or "retriesLeft" do not match.
-PATTERN='waitForTimeout\(|(^|[^A-Za-z0-9_.])sleep\(|setTimeout\(|(^|[^A-Za-z0-9_])retries[[:space:]]*[:=]|\.retry\(|--retry([^A-Za-z0-9-]|$)|(^|[^A-Za-z0-9_])(test|it|describe)(\.describe)?\.(skip|fixme)\(|(^|[^A-Za-z0-9_])x(it|describe)\('
+PATTERN='waitForTimeout[[:space:]]*\(|(^|[^A-Za-z0-9_])((time|asyncio)\.)?sleep[[:space:]]*\(|setTimeout[[:space:]]*\(|(^|[^A-Za-z0-9_])retries[[:space:]]*[:=(]|\.retry[[:space:]]*\(|retryTimes[[:space:]]*\(|--retry([^A-Za-z0-9-]|$)|(^|[^A-Za-z0-9_])(test|it|describe)(\.describe)?(\.(serial|parallel))?\.(skip|fixme)[[:space:]]*\(|(^|[^A-Za-z0-9_])x(it|describe|test)[[:space:]]*\('
 
 hits() {   # <base>..<head> → "file:line: text" for each added line that matches, in a test file, without its own reason
-  local range="$1" f="" n=0 line
-  git -c core.quotePath=false diff --no-renames -U0 "${range%%..*}...${range##*..}" | while IFS= read -r line; do
+  local range="$1" f="" n=0 line diff
+  # A diff git cannot make (a bad or unfetched range) is an error, never "nothing added" (review of #3921, minor 1).
+  diff=$(git -c core.quotePath=false diff --no-renames -U0 "${range%%..*}...${range##*..}") || return 2
+  printf '%s\n' "$diff" | while IFS= read -r line; do
     case "$line" in
-      "+++ b/"*) f="${line#+++ b/}";;
+      "+++ b/"*) f="${line#+++ b/}"; f="${f%$'\t'}";;   # git ends a path with a space by a tab (minor 3)
       "+++ /dev/null") f="";;
       "@@ "*) n=$(sed -E 's/^@@ -[0-9,]+ \+([0-9]+).*/\1/' <<< "$line");;
       "+"*)
-        if [ -n "$f" ] && grep -qE "$TEST_FILE" <<< "$f" && grep -qE "$PATTERN" <<< "${line#+}" && ! grep -q 'Flaky-reason:' <<< "$line"; then
+        if [ -n "$f" ] && grep -qE "$TEST_FILE" <<< "$f" && grep -qE "$PATTERN" <<< "${line#+}" && ! grep -qE 'Flaky-reason:[[:space:]]*[^[:space:]]' <<< "$line"; then   # an empty reason is none (minor 5)
           echo "$f:$n: ${line#+}" | cut -c1-200
         fi
         n=$((n+1));;
@@ -34,7 +38,7 @@ hits() {   # <base>..<head> → "file:line: text" for each added line that match
 
 check() {
   local found
-  found=$(hits "$1")
+  found=$(hits "$1") || { echo "flaky guard: git could not diff $1: nothing judged" >&2; return 2; }
   if [ -z "$found" ]; then echo "flaky guard: no wait, retry or skip added to a test"; return 0; fi
   if printf '%s\n' "${PR_BODY:-}" | grep -qE '^[[:space:]]*Flaky-reason:[[:space:]]*[^[:space:]]'; then
     echo "flaky guard: waits, retries or skips added, with the PR's Flaky-reason line:"; printf '%s\n' "$found" | sed 's/^/  /'
@@ -76,6 +80,17 @@ self_test() {
   out=$(run "$r" ""); ok "a wait in app code (not a test) is not judged" "$([ $? = 0 ] && echo 1)" "$out"
   r=$(plant plain studio/tests/check_a.ts 'const retriesLeft = 3; const isleep = 1;')
   out=$(run "$r" ""); ok "look-alike names (retriesLeft, isleep) pass" "$([ $? = 0 ] && echo 1)" "$out"
+  r=$(plant spaced studio/tests/check_a.ts 'await page.waitForTimeout (100); time.sleep(1); jest.retryTimes(3); xtest("c", () => {}); test.describe.serial.skip("d", () => {});')
+  out=$(run "$r" ""); ok "spaced and other forms (waitForTimeout (, time.sleep, retryTimes, xtest, describe.serial.skip) fail" "$([ $? = 1 ] && echo 1)" "$out"
+  mkdir -p "$d/web" && git -C "$d" checkout -q -B cfg "$base" && printf 'export default { retries: 2 };\n' > "$d/web/playwright.config.ts" && git -C "$d" add -A && git -C "$d" commit -qm cfg
+  out=$(run "$base..$(git -C "$d" rev-parse HEAD)" ""); ok "retries set in a playwright config fail" "$([ $? = 1 ] && echo 1)" "$out"
+  git -C "$d" checkout -q -B spacepath "$base" && mkdir -p "$d/web/a b" && printf 'await sleep(5);\n' > "$d/web/a b/x.spec.ts" && git -C "$d" add -A && git -C "$d" commit -qm sp
+  out=$(run "$base..$(git -C "$d" rev-parse HEAD)" ""); ok "a spec file in a folder with a space is judged" "$([ $? = 1 ] && grep -q 'a b/x.spec.ts:1:' <<< "$out" && echo 1)" "$out"
+  r=$(plant readme studio/tests/README.md 'Never add sleep( or waitForTimeout( to a suite.')
+  out=$(run "$r" ""); ok "a README under tests/ is not judged" "$([ $? = 0 ] && echo 1)" "$out"
+  r=$(plant emptyinline studio/tests/check_a.ts 'await sleep(300); // Flaky-reason:')
+  out=$(run "$r" ""); ok "an empty inline Flaky-reason does not count" "$([ $? = 1 ] && echo 1)" "$out"
+  out=$(run "0000000000000000000000000000000000000000..$base" ""); ok "a range git cannot diff exits 2, never 'nothing added'" "$([ $? = 2 ] && echo 1)" "$out"
   git -C "$d" checkout -q -B removed "$base" && sed -i '1d' "$d/studio/tests/check_a.ts" && git -C "$d" commit -qam removed
   out=$(run "$base..$(git -C "$d" rev-parse HEAD)" ""); ok "removing an old wait passes (only added lines count)" "$([ $? = 0 ] && echo 1)" "$out"
   rm -rf "$d"
