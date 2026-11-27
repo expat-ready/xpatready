@@ -257,6 +257,7 @@ def self_test():
         (False, "a workflow gains a step", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: lint\n+        run: bash lint.sh")),
         (True, "a workflow loses a step", f(".github/workflows/ci.yml", "@@ -1,3 +1 @@\n x\n-      - name: lint\n-        run: bash lint.sh")),
         (False, "a workflow's parts 4 to 6", f(".github/workflows/guards.yml", "@@ -1 +1 @@\n-        part: [1, 2, 3, 4]\n+        part: [1, 2, 3, 4, 5, 6]")),
+        (True, "a step gated on pull_request_target", f(".github/workflows/x.yml", "@@ -1 +1,2 @@\n x\n+        if: github.event_name == 'pull_request_target'")),
         (True, "pull_request_target added", f(".github/workflows/x.yml", "@@ -1 +1,2 @@\n on:\n+  pull_request_target:")),
         (True, "permissions widened", f(".github/workflows/x.yml", "@@ -1 +1 @@\n-permissions: { contents: read }\n+permissions: { contents: write }")),
         (True, "a secret", f(".github/workflows/x.yml", "@@ -1 +1,2 @@\n x\n+        env: { T: \"${{ secrets.PAT }}\" }")),
