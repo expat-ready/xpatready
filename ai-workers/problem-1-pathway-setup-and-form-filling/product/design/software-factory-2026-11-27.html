@@ -165,6 +165,17 @@ flowchart LR
 <tr><td>Measures</td><td>Our flow measures + DORA four</td><td>DORA five + Works per day</td></tr>
 </table></div>
 
+<h2 id="gains">What we expect to gain, and how we will know</h2>
+<p>These are targets, not promises. Each has a measure we take before the switch (a 7-day baseline) and again two weeks after; the go/no-go on day 4 compares them, and we go only if waits are shorter, failures are not higher, the Lead's hand steps are fewer and spend is within the caps.</p>
+<div class="tbl"><table>
+<tr><th>Gain</th><th>Where it comes from</th><th>What we see today</th><th>Target</th><th>Measured by</th></tr>
+<tr><td><b>Speed</b></td><td>Records and tooling leave the product queue; PR Steward repairs red PRs and conflicts instead of waiting for the Lead's next check; flaky tests isolated</td><td>About 40% of last week's merges (261 of 651) were records or tooling sharing the product queue. On 27 Nov one failing shared test held every batch for about 3 hours (nothing merged 06:43–09:4x IST)</td><td>Approve-to-merge under 1 hour at the median; a red batch repaired within 1 hour; 10 capabilities proven a day</td><td><code>flow-measure.py</code>, Works per day</td></tr>
+<tr><td><b>Quality</b></td><td>A hosted, independent reviewer on the riskiest 10–15% of PRs; an approval that a new push cancels (closing today's hole where a label survives a push); a GitHub rule on <code>main</code>; CodeQL and Dependabot</td><td>Risky changes rely on our reviewer agent plus the Lead's read</td><td>Change failure rate and bugs found after merge both lower than the baseline; zero merges of an unreviewed commit</td><td>DORA change failure rate and rework rate, qa's bug log</td></tr>
+<tr><td><b>Scalability</b></td><td>Machines do what the Lead does by hand today; the Lead stops being the bottleneck</td><td>About 60 rules enforced only by hand; the Lead labels, nudges lanes and restarts work every 30 minutes; 12 lanes is today's ceiling</td><td>Hand-enforced rules cut by more than half; Lead hand steps per day cut by more than half; lanes raised beyond 12 only while batch failures stay under 10%</td><td>Lead steps per day, lanes running, batch failure rate</td></tr>
+<tr><td><b>Token efficiency</b></td><td>Clean repository and one short rules page: agents read less to start each row; fewer re-runs and re-reviews after red batches</td><td>Agents read rules spread over several files (about 850 decision rows) and a folder full of history; every red batch costs a full re-run</td><td>Tokens per proven capability lower than the baseline; Lead context per day lower</td><td>Weekly plan % per capability proven (<code>get_usage</code>), CI hours thrown away</td></tr>
+</table></div>
+<p class="src">Baseline still to record: the 7-day flow measure was rate-limited by GitHub on 27 Nov and is re-run at the next quiet check.</p>
+
 <h2 id="money">Where the tokens come from</h2>
 <div class="tbl"><table>
 <tr><th>Work</th><th>Paid from</th><th>Why</th></tr>
@@ -183,7 +194,36 @@ flowchart LR
 <tr><td>Rules spread over RULES, DECISIONS, rules/*.md, skills and WAY-OF-WORKING, with some disagreeing (see below)</td><td>One rules page generated from the decisions, and skills that point to it</td></tr>
 <tr><td>Names: rows, parts, codes (R1.x, FO-7r, PF-22a, OS-50, P-nnn, A-nnn)</td><td>One glossary; every code shown with its plain purpose</td></tr>
 </table></div>
-<div class="note"><b>Cost and risk:</b> moving the product folder touches every path in CI, Mergify scopes, hooks and about 110 test packs. It must be one planned change, done in a quiet window with the queue empty, with every check re-run, and reverted in one step if anything breaks. Estimate: a shaped plan in half a day; the move itself in one to two days of lane time. It slows product work for that window.</div>
+<h3>What the inventory found</h3>
+<ul>
+<li>About 17,100 tracked files, 1.5 GB. Most of the weight is test output kept in git: screenshots (652 MB) and qa reports (378 MB).</li>
+<li>About 1,150 files (170 MB) of October history that nothing references: old notes, drafts, illustrations, superseded requirements, earlier operating models.</li>
+<li>The long path is written out about 670 times: 26 workflows, the merge queue's rules, 86 tools, hooks, skills, and the app itself.</li>
+<li>The same idea lives in several places: decisions, requirements, tools, tests and rules in three places each, evidence in four. BACKLOG and DECISIONS are about 0.8 MB each, too big for an agent to read whole.</li>
+</ul>
+<h3>Plan: seven phases, each one revertible pull request</h3>
+<div class="tbl"><table>
+<tr><th>#</th><th>Phase</th><th>Risk</th></tr>
+<tr><td>1</td><td>Delete the 1,150 unreferenced history files (git keeps them)</td><td><span class="pill ok">Low</span></td></tr>
+<tr><td>2</td><td>Stop committing test output: screenshots and qa reports go to CI run artifacts (about 1 GB out of the tree)</td><td><span class="pill warn">Medium</span></td></tr>
+<tr><td>3</td><td>Retire stale experiment pieces and the old history folder; fix the stale launch file</td><td><span class="pill ok">Low</span></td></tr>
+<tr><td>4</td><td>Shrink the records: open backlog rows and the last 30 days of decisions stay; one generated rules page</td><td><span class="pill ok">Low</span></td></tr>
+<tr><td>5</td><td>Route every path through one path map, with nothing moved yet</td><td><span class="pill warn">Medium</span></td></tr>
+<tr><td>6</td><td>The move into the target layout, in a quiet window with no lanes open; CI and merge-queue rules generated, not hand-edited</td><td><span class="pill bad">High</span></td></tr>
+<tr><td>7</td><td>Remove the empty old folders after one green nightly run</td><td><span class="pill ok">Low</span></td></tr>
+</table></div>
+<pre class="mermaid">
+flowchart TB
+  root["/"] --> app["app/ — Release 1 app, tests, fixtures"]
+  root --> pk["packages/ — form engine, the one path map"]
+  root --> ref["reference/ — official sources, newest requirements"]
+  root --> rec["records/ — STATE, open BACKLOG, recent DECISIONS"]
+  root --> ru["rules/ — one rules page, way of working, standards"]
+  root --> de["design/ — one folder per screen"]
+  root --> fa["factory/tools/"]
+  root --> ev["evidence/ — not in git; kept as CI artifacts"]
+</pre>
+<div class="note"><b>Cost and risk:</b> phases 1–4 run alongside product work (about half a day of Lead time and 1–2 builder days). Phases 5–7 take another half day and 1–2 builder days, plus a quiet window for the move. Phase 6 carries the real risk: a merge-queue rule that stops matching could skip a required check, so the PR must show every required check actually ran. The factory switch comes after phase 6, so its new rules are written once, on the clean layout. Full plan: <code>design/repo-cleanup-plan-2026-11-27.md</code>.</div>
 
 <h2 id="gaps">Inconsistencies found today</h2>
 <ul>
