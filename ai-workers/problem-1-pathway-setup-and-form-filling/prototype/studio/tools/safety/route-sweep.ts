@@ -11,7 +11,8 @@
 // The check names and marks count only when imported from the app's own core.ts or identity keys.ts (a local `need` or a
 // lookalike `readerOf(type)` is not a check). A call counts only where it always runs before the handler returns: not in
 // an if or switch branch, a loop body, a try with a catch (the refusal could be swallowed), a lambda (except the callback
-// of a helper on RUNS, which always runs it) or the right side of && || ??. Known limits: a check placed after the write on the same path, inherited routes and aliased decorators are not
+// of a helper on RUNS, which always runs it), the right side of && || ??, or after a branch that can return early. Known
+// limits: a check placed after the write on the same path, a check of a fixed person (need(actorOf("user-R"), ...)), inherited routes and aliased decorators are not
 // seen; the live signed-out and wrong-role walk (LR-074's other half) proves the rest. A listed route that is guarded now,
 // or gone, is reported too (the list only shrinks). Report-only in safety.yml at first.
 //   tsx studio/tools/safety/route-sweep.ts [api-src-dir]     exit 1 when anything is reported
@@ -125,20 +126,42 @@ function fieldClass(c: ts.ClassDeclaration, field: string): string | null {
   return null;
 }
 const SHORT = new Set([ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken]);
-/** Visits only the parts of `n` that always run when `n` runs (see the header). */
-function straight(n: ts.Node, visit: (k: ts.Node) => void): void {
-  const go = (k: ts.Node | undefined) => k && straight(k, visit);
+/** Whether a branch inside `n` (not a nested function) can leave early: return, break or continue. */
+function exits(n: ts.Node): boolean {
+  if (ts.isFunctionLike(n) || ts.isClassLike(n)) return false;
+  if (ts.isReturnStatement(n) || ts.isBreakStatement(n) || ts.isContinueStatement(n)) return true;
+  return ts.forEachChild(n, (k) => (exits(k) ? true : undefined)) ?? false;
+}
+const BRANCHING = (n: ts.Node) => ts.isIfStatement(n) || ts.isSwitchStatement(n) || ts.isTryStatement(n) || ts.isLabeledStatement(n) || ts.isIterationStatement(n, false);
+/** Visits only the parts of `n` that always run when `n` runs, in order (see the header); after a branch that can leave
+ *  early (if (x) return this.write()), nothing later counts. */
+function straight(n: ts.Node, visit: (k: ts.Node) => void, st = { stopped: false }): void {
+  if (st.stopped) return;
+  const go = (k: ts.Node | undefined) => k && straight(k, visit, st);
   if (ts.isFunctionLike(n) || ts.isClassLike(n)) return;
+  if (ts.isTryStatement(n)) {   // a finally block always runs, even after a return in the try
+    if (!n.catchClause) go(n.tryBlock);
+    const after = st.stopped || (!!n.catchClause && exits(n));
+    st.stopped = false;
+    go(n.finallyBlock);
+    st.stopped ||= after;
+    return;
+  }
+  if (BRANCHING(n) && exits(n)) {
+    if (ts.isIfStatement(n) || ts.isSwitchStatement(n)) go(n.expression);
+    st.stopped = true;
+    return;
+  }
   if (ts.isIfStatement(n) || ts.isSwitchStatement(n)) return go(n.expression);
   if (ts.isConditionalExpression(n)) return go(n.condition);
   if (ts.isBinaryExpression(n) && SHORT.has(n.operatorToken.kind)) return go(n.left);
   if (ts.isWhileStatement(n) || ts.isForInStatement(n) || ts.isForOfStatement(n)) return go(n.expression);
   if (ts.isForStatement(n)) return go(n.initializer);
   if (ts.isDoStatement(n)) { go(n.statement); return go(n.expression); }
-  if (ts.isTryStatement(n)) { if (!n.catchClause) go(n.tryBlock); return go(n.finallyBlock); }
   if (ts.isCallExpression(n) && n.questionDotToken) return go(n.expression);
   visit(n);
   ts.forEachChild(n, go);
+  if (ts.isReturnStatement(n) || ts.isThrowStatement(n)) st.stopped = true;
 }
 type Level = "role" | "identity" | null;
 /** The strongest check that always runs in `fn` of class `cls`, itself or through this.m() / this.field.m(). */
@@ -233,6 +256,7 @@ import { oneAtATime } from "${up}form-uses.ts";\n`;
       @Post("lookalike") lookalike(@Body() b: { type: string }) { return readerOfType(b.type); }
       @Post("localneed") localneed(@Body() b: unknown) { return needLocal(b); }
       @Post("readmark") @OpenRead("x") readmark() { return 1; }
+      @Post("early") early(@Headers("x-actor") h: string, @Body() b: { p: boolean }) { if (b.p) return 1; need(actorOf(h), "x"); return 2; }
       @Post("later") later(@Headers("x-actor") h: string) { return [1].map(() => actorOf(h)); } }
       export class Svc2 { files = { signed: (k: string) => k }; label(b: { audit: boolean }) { if (b.audit) actorOf("x"); return 1; } }
       const readerOfType = (t: string) => t; function needLocal(b: unknown) { return b; }
@@ -245,14 +269,14 @@ import { oneAtATime } from "${up}form-uses.ts";\n`;
   });
   const v = sweep(dir);
   const unguarded = v.filter((x) => !x.how).map((x) => x.key).sort();
-  const want = ["POST /api/platform/s", "POST /api/studio/bad/branch", "POST /api/studio/bad/dead", "POST /api/studio/bad/lambda", "POST /api/studio/bad/later", "POST /api/studio/bad/localneed",
+  const want = ["POST /api/platform/s", "POST /api/studio/bad/branch", "POST /api/studio/bad/dead", "POST /api/studio/bad/early", "POST /api/studio/bad/lambda", "POST /api/studio/bad/later", "POST /api/studio/bad/localneed",
     "POST /api/studio/bad/lookalike", "POST /api/studio/bad/none", "POST /api/studio/bad/presign", "POST /api/studio/bad/readmark", "POST /api/studio/bad/short",
     "POST /api/studio/bad/svc", "POST /api/studio/bad/swallow", "POST /api/studio/cfg", "POST /api/studio/fake", "PUT /api/link2/a", "PUT /api/runtime/w"].sort();
   let fail = 0;
   const ok = (name: string, c: boolean, d?: unknown) => { if (!c) fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${d !== undefined ? ` — ${JSON.stringify(d)}` : ""}`); };
   const guarded = v.filter((x) => x.how);
   ok("RS1 the good writes are guarded (role check, followed service, ConfigRead, check as an argument, check in finally, a oneAtATime callback, default-deny, class declaration, link session)", guarded.length === 9, guarded.map((x) => [x.key, x.how]));
-  ok("RS2 every planted bad write is caught (none, dead branch, one branch, swallowed, lambda, a callback of a helper not on RUNS, && right side, branch-only service, presign lookalike, readerOf lookalike, local need, OpenRead, handler CaseRead over class ConfigRead, StaffSignIn over class keys, StaffSignIn, link with no session, local fake PermissionKeys)", JSON.stringify(unguarded) === JSON.stringify(want), unguarded.filter((k) => !want.includes(k)).concat(want.filter((k) => !unguarded.includes(k)).map((k) => `missed ${k}`)));
+  ok("RS2 every planted bad write is caught (none, dead branch, an early return before the check, one branch, swallowed, lambda, a callback of a helper not on RUNS, && right side, branch-only service, presign lookalike, readerOf lookalike, local need, OpenRead, handler CaseRead over class ConfigRead, StaffSignIn over class keys, StaffSignIn, link with no session, local fake PermissionKeys)", JSON.stringify(unguarded) === JSON.stringify(want), unguarded.filter((k) => !want.includes(k)).concat(want.filter((k) => !unguarded.includes(k)).map((k) => `missed ${k}`)));
   ok("RS3 actorOf alone is identity, need is role", v.find((x) => x.key === "POST /api/studio/x/arg")?.level === "identity" && v.find((x) => x.key === "POST /api/studio/x")?.level === "role");
   ok("RS4 a GET is not a write", !v.some((x) => x.route.verb === "GET"));
   ok("RS5 an allow-listed bad write is not reported", report(dir, Object.fromEntries(want.map((k) => [k, "t"]))).length === 0);

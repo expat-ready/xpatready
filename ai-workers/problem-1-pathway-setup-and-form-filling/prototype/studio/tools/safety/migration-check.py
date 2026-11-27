@@ -13,7 +13,9 @@ A statement is judged by its first word, an ALTER TABLE clause by clause. Report
   * a change to, or removal of, a migration the base already has (history rewritten under a database that ran it).
 A statement may carry a reviewed waiver: `-- destructive-ok: <reason of 3+ words>` on a line before it, or after its `;` on
 the same line. It covers that whole statement (split an ALTER TABLE to waive one clause); one inside a statement waives
-nothing. Known limits: dynamic SQL (EXECUTE in a body) and DROP FUNCTION / TRIGGER / POLICY are not read. Report-only in safety.yml at first (LR-045: warning before it refuses).
+nothing. A DO block runs during the migration, so its statements are read like any other (a function or trigger body runs
+later and is not). Known limits: dynamic SQL (EXECUTE '...'), DROP FUNCTION / TRIGGER / POLICY, UPDATE ... SET x = NULL and
+a DELETE inside WITH are not read. Report-only in safety.yml at first (LR-045: warning before it refuses).
   python3 studio/tools/safety/migration-check.py [--base origin/main]   exit 1 when anything is reported
   python3 studio/tools/safety/migration-check.py --files a.sql b.sql    the statement rules only, on given files
   python3 studio/tools/safety/migration-check.py --self-test            planted good and bad migrations
@@ -41,6 +43,7 @@ CLAUSE_RULES = [
 ]
 ADD_COLUMN = re.compile(rf"^ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?!(?:CONSTRAINT|PRIMARY|UNIQUE|FOREIGN|CHECK|EXCLUDE)\b){IDENT}\s", re.I)
 ALTER_TABLE = re.compile(rf"^ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?{QNAME}\s*\*?\s*", re.I)
+PLPGSQL = re.compile(r"^(?:DECLARE\b.*?\bBEGIN|BEGIN|ELSE|LOOP|EXCEPTION|(?:IF|ELSIF|WHEN)\b.*?\bTHEN|END\s+(?:IF|LOOP))\s+", re.I | re.S)
 WAIVER = re.compile(r"destructive-ok:\s*(\S+\s+\S+\s+\S+)", re.I)
 STAMP = re.compile(r"^(\d{14})_")
 HOW = "make it additive (expand, backfill, contract in a later PR), or waive it on the line above: -- destructive-ok: <reason>"
@@ -76,14 +79,18 @@ def statements(sql):
         if not "".join(buf).strip() and not c.isspace() and start is None:
             start = line
         if c in "'\"":
+            esc = c == "'" and i > 0 and sql[i - 1] in "eE" and (i < 2 or not (sql[i - 2].isalnum() or sql[i - 2] == "_"))   # E'..\'..'
             j = i + 1
             while j < n and not (sql[j] == c and not sql.startswith(c * 2, j)):
-                j += 2 if sql.startswith(c * 2, j) else 1
+                j += 2 if (sql.startswith(c * 2, j) or (esc and sql[j] == "\\")) else 1
             line += sql.count("\n", i, j)
             buf.append(sql[i:j + 1] if c == '"' else "''"); i = j + 1; continue
         m = re.match(r"\$([A-Za-z_]\w*)?\$", sql[i:i + 64])
         if m:
-            tag = m.group(0); j = sql.find(tag, i + len(tag)); j = n if j < 0 else j + len(tag)
+            tag = m.group(0); body_at = i + len(tag); j = sql.find(tag, body_at); j = n if j < 0 else j + len(tag)
+            if re.fullmatch(r"\s*DO(\s+LANGUAGE\s+\w+)?\s*", "".join(buf), re.I):   # a DO block runs now: its statements are read too
+                for s0, t0, w0 in statements(sql[body_at:max(body_at, j - len(tag))]):
+                    out.append([s0 + line - 1, t0, w0 or pending, -1])
             line += sql.count("\n", i, j); buf.append("$$ $$"); i = j; continue
         if c == ";":
             flush(); last_end = line; i += 1; continue
@@ -103,15 +110,22 @@ def clauses(rest):
 
 def check_sql(name, sql):
     found = []
+    temps = {m.group(1).strip('"').lower() for m in re.finditer(rf"\bCREATE\s+(?:LOCAL\s+|GLOBAL\s+)?TEMP(?:ORARY)?\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?({IDENT})", sql, re.I)}
     for line, text, waived in statements(sql):
         if waived:
             continue
+        while (p := PLPGSQL.match(text)):   # inside a DO block: BEGIN, IF ... THEN, ELSE, LOOP ... before the statement
+            text = text[p.end():]
         hit = next((k for k, rx in STATEMENT_RULES if rx.search(text)), None)
+        d = re.match(r"^DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s+(?:CASCADE|RESTRICT))?$", text, re.I)
+        if hit and d and all(x.strip().strip('"').lower() in temps for x in d.group(1).split(",")):
+            hit = None   # a temporary table this migration made itself
         m = ALTER_TABLE.match(text)
         if not hit and m:
             for cl in clauses(text[m.end():]):
                 hit = next((k for k, rx in CLAUSE_RULES if rx.search(cl)), None)
-                if not hit and ADD_COLUMN.search(cl) and re.search(r"\bNOT\s+NULL\b", cl, re.I) and not re.search(r"\b(DEFAULT|GENERATED)\b", cl, re.I):
+                bare = re.sub(r'"(?:[^"]|"")*"', '""', cl)   # a column or table named "default" is not a DEFAULT
+                if not hit and ADD_COLUMN.search(cl) and re.search(r"\bNOT\s+NULL\b", bare, re.I) and not re.search(r"\b(DEFAULT|GENERATED)\b", bare, re.I):
                     hit = "non-additive"
                 if hit:
                     break
@@ -182,6 +196,11 @@ def self_test():
         "block comments inside": 'ALTER TABLE "Case" /* x */ DROP /* y */ COLUMN "note";',
         "a ; in a default": 'ALTER TABLE "A" ADD COLUMN "s" TEXT DEFAULT \'x;y\', ADD COLUMN "t" TEXT NOT NULL;',
         "waiver inside an open statement does not carry over": 'ALTER TABLE "Case"\n  ADD COLUMN "y" TEXT,\n  -- destructive-ok: never shipped beyond local copies\n  DROP COLUMN "old";\nDROP TABLE "Answer";',
+        "drop of a real table beside a temp one": 'CREATE TEMP TABLE k AS SELECT 1;\nDROP TABLE k, "Case";',
+        "drop inside a DO block": 'DO $$ BEGIN DROP TABLE "x"; END $$;',
+        "set not null inside a DO block, after IF ... THEN": 'DO $p$\nDECLARE bad text;\nBEGIN\n  IF true THEN ALTER TABLE "c" ALTER COLUMN "f" SET NOT NULL; END IF;\nEND $p$;',
+        "drop after an E-string with an escaped quote": "INSERT INTO n VALUES (E'it\\'s'); DROP TABLE \"Case\";",
+        "add not null referencing a table named default": 'ALTER TABLE "A" ADD COLUMN "d" TEXT NOT NULL REFERENCES "default"("id");',
         "waiver with a short reason": '-- destructive-ok: fine\nDROP TABLE "T";',
     }
     good = {
@@ -193,6 +212,9 @@ def self_test():
         "truncate guard trigger and revoke": 'CREATE TRIGGER "t_no_truncate" BEFORE TRUNCATE ON "t" FOR EACH STATEMENT EXECUTE FUNCTION f();\nREVOKE DELETE, TRUNCATE ON "t" FROM xr_data;',
         "check constraint naming NOT NULL": 'ALTER TABLE "x" ADD CONSTRAINT "c" CHECK ("a" IS NOT NULL);',
         "delete inside a trigger body": 'CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN IF TG_OP = \'DELETE\' THEN DELETE FROM idx WHERE id = OLD.id; END IF; RETURN NULL; END; $$ LANGUAGE plpgsql;',
+        "a DO block with only reads and a lock": 'DO $$ DECLARE n int; BEGIN LOCK TABLE t IN SHARE MODE; SELECT count(*) INTO n FROM t; IF n > 0 THEN RAISE EXCEPTION \'stop\'; END IF; END $$;',
+        "drop of a temp table it made": 'CREATE TEMP TABLE k ON COMMIT DROP AS SELECT 1;\nDROP TABLE k;',
+        "waived DO block": '-- destructive-ok: scratch table never shipped anywhere\nDO $$ BEGIN DROP TABLE "scratch"; END $$;',
         "decimal not null with default": 'ALTER TABLE "I" ADD COLUMN "t" DECIMAL(65,30) NOT NULL DEFAULT 0;',
         "rename an index or a constraint": 'ALTER INDEX "a" RENAME TO "b";\nALTER TABLE "T" RENAME CONSTRAINT "c" TO "d";',
         "drop default": 'ALTER TABLE "T" ALTER COLUMN "a" DROP DEFAULT;',
