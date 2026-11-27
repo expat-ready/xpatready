@@ -2,7 +2,7 @@
 
 current_lead: local_6d88d41d-0b95-4dac-944d-a47b645aaff2 Lead 3 (new account) · 27 Nov 10:4x IST (after Lead 2 local_1f9a58f1 at ~418k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-27 11:05 IST (clock): **Lead 3 took over 10:47 (check 8777acd2 at 3,33; watch armed; standby Lead 4 local_9f3ea9d5). Founder 10:5x: US$100 top-up done; audit changes approved (A420). Lead 3 in browser: fork-PR approval saved, Claude Approvals connected (no policy file yet). A421 lab-first: half-day must-have plan proposed, awaiting Go. #3884 merged.** Lead 2's updated line word for word: `history/STATE-2026-11-27-1105-lead3-lead2-updated-line.md`.
+updated: 2026-11-27 11:37 IST (clock): **Lab run on (5 cloud lanes; anchor design/lab-before-after-2026-11-27.md L-1..L-9). Lead 3 took over 10:47 (check 8777acd2 at 3,33; watch armed; standby Lead 4 local_9f3ea9d5). Founder 10:5x: US$100 top-up done; audit changes approved (A420). Lead 3 in browser: fork-PR approval saved, Claude Approvals connected (no policy file yet). A421 lab-first: half-day must-have plan proposed, awaiting Go. #3884 merged.** Lead 2's updated line word for word: `history/STATE-2026-11-27-1105-lead3-lead2-updated-line.md`.
 
 ## Hand-over Lead 2 → Lead 3, 10:4x IST 27 Nov (new account)
 **Do first:** rename yourself "Lead 3 · 27 Nov <IST>", invoke `lead`, check `current_lead:` names you, create your check (cron 3,33; prompt exactly `run lead-watch; read STATE Start here`), re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Times ONLY from `TZ=Asia/Kolkata date` (Lead 2 wrote 11:xx twice before the clock said 10:44). Standby: Lead 4 (local_9f3ea9d5-da4f-4fb4-8a71-6d7f9466abde), started ~11:0x IST 27 Nov, idle until "take over now".
