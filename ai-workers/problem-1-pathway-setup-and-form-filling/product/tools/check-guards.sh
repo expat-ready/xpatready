@@ -40,6 +40,7 @@ TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
 TESTS="$TESTS check-qa-due.sh check-tools-on-main.sh check-comment-filter.sh"   # lab automation-measures: qa after merge, OS-11, OS-78 (a)
+TESTS="$TESTS check-lead-age.sh"   # LR-156: the Lead copy on live main, records on a branch under 24 h
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -613,7 +614,7 @@ MUT="$MUT"'
 40 parts round|product/tools/check-guards.sh|s/\$((part - 1)) \] .. continue$/$((part - 1)) ] \&\& true/|check-guard-parts.sh
 40 parts tests|product/tools/check-guards.sh|s/^if \[ "\$part" = 1 \]; then$/if true; then/|check-guard-parts.sh
 40 parts refuse|product/tools/check-guards.sh|s/\[ "\$part" -le "\$parts" \] .. {/false \&\& {/|check-guard-parts.sh
-40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4\]$/        part: [1, 2, 3]/|check-guard-parts.sh
+40 parts matrix|../../.github/workflows/guards.yml|s/^        part: \[1, 2, 3, 4, 5, 6\]$/        part: [1, 2, 3, 4, 5]/|check-guard-parts.sh
 40 parts always|../../.github/workflows/guards.yml|s/always() \&\& //|check-guard-parts.sh
 40 parts result|../../.github/workflows/guards.yml|s/\[ "\$PARTS" = success \]/[ -n "$PARTS" ]/|check-guard-parts.sh
 37 merge read|product/tools/lead-merge.sh|s/; then post "Lead read the diff: <head sha>" (P-423)//|check-lead-merge.sh
@@ -651,6 +652,9 @@ MUT="$MUT"'
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
 29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
+LR156 age|product/tools/lead-age.sh|s/^    \[ "\$age_h" -gt "\$H" \] \&\& want=/    false \&\& want=/|check-lead-age.sh
+LR156 ci|product/tools/lead-age.sh|s/^    if \[ "\$gap_h" -gt "\$H" \]; then$/    if false; then/|check-lead-age.sh
+LR156 keep|product/tools/lead-age.sh|s/^      if \[ "\$extra" != 0 \]; then$/      if false; then/|check-lead-age.sh
 M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
 M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh
 M788 prose|product/tools/model-rule-check.py|s/^        m = OTHER_MODEL.search(line) or OTHER_EFFORT.search(line)/        m = None/|check-model-rule.sh
