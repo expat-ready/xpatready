@@ -110,12 +110,17 @@ def gh_api_write(args):
 def judge_words(words, hostvars, depth):
     """A simple command's words: the HTTP client, gh api, an interpreter or a shell may sit after any prefix
     (sudo -u x, env -i, xargs -I %, watch, time, if, do, then ...), so every word is tried as the program."""
+    def elsewhere(args):   # a POST to localhost carrying $GH_TOKEN names no GitHub host: not a GitHub write
+        urls = re.findall(r"https?://([^/\s'\"]+)", " ".join(args))
+        return bool(urls) and not any(re.search(r"(^|\.)github\.com$", u.split(":")[0]) for u in urls) \
+            and not any(re.search(r"(?:api|uploads)\.github\.com|github\.com/api/", a) for a in args)
+
     def hosted(a):
         return HOST.search(a) or any(re.search(r"\$\{?" + v + r"\b", a) for v in hostvars)
     for i, w in enumerate(words):
         prog = w.rsplit("/", 1)[-1]
         args = words[i + 1:]
-        if prog in CLIENTS and any(hosted(a) for a in args):
+        if prog in CLIENTS and any(hosted(a) for a in args) and not elsewhere(args):
             why = {"curl": curl_write, "wget": wget_write}.get(prog, httpie_write)(args)
             if why:
                 return why
@@ -123,33 +128,92 @@ def judge_words(words, hostvars, depth):
             why = gh_api_write(args[1:])
             if why:
                 return why
-        if prog in INTERP:   # python -c, node -e, ruby -e, perl -MLWP -e: the code follows the first -c, -e or -E
-            k = next((j for j, a in enumerate(args) if a in ("-c", "-e", "-E")), None)
+        if prog in INTERP:   # python -Ic, node -e, ruby -e, perl -MLWP -e: the code follows the first flag holding c, e or E
+            k = next((j for j, a in enumerate(args) if re.match(r"^-[A-Za-z]*[ceE][A-Za-z]*$", a)), None)
             if k is not None and k + 1 < len(args) and hosted(args[k + 1]) and CODE_WRITE.search(args[k + 1]):
                 return "inline code writing to the GitHub API"
-        if (prog in SHELLS and args[:1] == ["-c"] or prog == "eval") and args:
-            why = judge(args[1] if prog in SHELLS else " ".join(args), depth + 1, hostvars)
+        if prog in SHELLS:   # bash -c, bash -lc, sh -ec, bash -euo pipefail -c: the command follows the flag holding c
+            k = next((j for j, a in enumerate(args) if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a)), None)
+            if k is not None and k + 1 < len(args):
+                why = judge(args[k + 1], depth + 1, hostvars)
+                if why:
+                    return why
+        if prog == "eval" and args:
+            why = judge(" ".join(args), depth + 1, hostvars)
             if why:
                 return why
     return ""
 
 
+HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([A-Za-z_][\w-]*)\1")
+
+
+def interp_heredoc_write(text):
+    """python3 - <<EOF ... EOF (or node, ruby, perl): the body is code; it may not name the API with a write."""
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        m = HEREDOC.search(line)
+        if m and CODE.search(line[:m.start()]):
+            body = []
+            for b in lines[i + 1:]:
+                if b.strip() == m.group(2):
+                    break
+                body.append(b)
+            body = "\n".join(body)
+            if HOST.search(body) and CODE_WRITE.search(body):
+                return True
+    return False
+
+
+def strip_heredocs(text):
+    """A heredoc body is text, not commands (a commit message or PR body may describe a write), unless a shell reads it
+    (bash <<EOF). A Python or node heredoc was judged before this, on the whole text."""
+    out, lines, i = [], text.split("\n"), 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        m = HEREDOC.search(line)
+        if not m:
+            continue
+        delim, shell = m.group(2), re.search(r"(^|[\s;&|(])(bash|sh|zsh|dash)(\s|$)", line[:m.start()])
+        body = []
+        while i < len(lines) and lines[i].strip() != delim:
+            body.append(lines[i])
+            i += 1
+        if shell:
+            out.extend(body)
+        if i < len(lines):
+            out.append("")   # the delimiter line
+            i += 1
+    return "\n".join(out)
+
+
 def judge(text, depth=0, hostvars=()):
     if depth > 4:
         return "commands nested too deep to read"
-    if CODE.search(text) and "<<" in text and HOST.search(text) and CODE_WRITE.search(text):
+    if interp_heredoc_write(text):
         return "inline code (a heredoc) writing to the GitHub API"
-    text = text.replace("\\\n", " ")   # a line continued with a backslash is one command
-    marked = re.sub(r"`|\$\(|<\(|>\(", SUB, text).replace("\n", " ; ")
+    text = strip_heredocs(text.replace("\\\n", " "))   # a line continued with a backslash is one command
+    marked = re.sub(r"(?<!\\)`|\$\(|<\(|>\(", SUB, text).replace("\n", " ; ")   # an escaped backtick is text
     try:
         words = split(marked)
-    except ValueError:   # an open quote: judge the whole text
-        if HOST.search(text) and re.search(r"\b(curl|wget|xh|http)\b", text) and re.search(
-                r"(^|\s)(-[A-Za-z]*[XdFT]|--(request|data|json|form|upload-file|post-|body-|method))", text):
-            return "a GitHub API write in a command that cannot be split"
-        return ""
+    except ValueError:
+        try:   # an apostrophe in a comment ("# don't"): split again without comments
+            words = split(re.sub(r"(^|[ \t;])#[^\n]*", r"\1", re.sub(r"`|\$\(|<\(|>\(", SUB, text)).replace("\n", " ; "))
+        except ValueError:   # an open quote: judge the whole text
+            if HOST.search(text) and re.search(r"\b(curl|wget|xh|http)\b", text) and re.search(
+                    r"(^|\s)(-[A-Za-z]*[XdFT]|--(request|data|json|form|upload-file|post-|body-|method))", text):
+                return "a GitHub API write in a command that cannot be split"
+            if re.search(r"\bgh\s+api\b", text) and re.search(r"(^|\s)(-[fF]|--field|--raw-field|--input|-X\s*['\"]?(POST|PUT|PATCH|DELETE)|--method)", text) \
+                    and not re.search(r"(^|\s)(-X\s*GET|--method[= ]GET)\b", text):
+                return "a gh api write in a command that cannot be split"
+            return ""
     hostvars = set(hostvars) | {m.group(1) for w in words for m in [re.match(r"^([A-Za-z_]\w*)=(.*)$", w, re.S)]
                                 if m and HOST.search(m.group(2))}
+    for j, w in enumerate(words[:-2]):   # for url in https://api.github.com/...; do curl -X POST "$url"
+        if w == "for" and words[j + 2] == "in" and any(HOST.search(x) for x in words[j + 3:j + 50]):
+            hostvars.add(words[j + 1])
     seg = []
     for w in words + [";"]:
         if w in SEP or set(w) <= set(";&|()"):

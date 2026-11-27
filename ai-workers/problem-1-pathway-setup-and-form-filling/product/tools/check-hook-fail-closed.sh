@@ -13,7 +13,7 @@ IN='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"
 run() {  # $1 tools dir, $2 seconds, $3 guard, stdin → prints "exit <n>" and keeps stderr in $T/err
   bash "$1/hook-fail-closed.sh" "$2" "$3" 2>"$T/err"; echo "exit $?"; }
 plant() {  # $1 name, $2 guard file name, $3 body → a copy of the wrapper next to a planted guard
-  mkdir -p "$T/$1"; cp "$W" "$T/$1/"; printf '%s\n' "$3" > "$T/$1/$2"; }
+  mkdir -p "$T/$1"; cp "$W" "$TOOLS/hook-fail-closed.py" "$T/$1/"; printf '%s\n' "$3" > "$T/$1/$2"; }
 
 # The settings: every PreToolUse and Stop command hook is wrapped; the wrapper's limit is under the hook's timeout.
 cmds=$(jq -r '.hooks.PreToolUse[], .hooks.Stop[] | .hooks[] | select(.type == "command") | "\(.timeout // 600) \(.command)"' "$S")
@@ -59,6 +59,19 @@ ok "a child a guard leaves behind is stopped once the guard answers" "$([ "$out"
 r=$( (sleep 7) | run "$T/pass" 5 g.sh); ok "no input within 5 s blocks" "$([ "$r" = "exit 2" ] && grep -q 'within 5 s' "$T/err" && echo 1)" "$r"
 mkdir -p "$T/nojq"; for b in bash cat head tr mktemp rm dirname; do ln -s "$(command -v $b)" "$T/nojq/$b"; done
 r=$(printf '%s' "$IN" | PATH="$T/nojq" run "$T/pass" 5 g.sh); ok "no jq blocks" "$([ "$r" = "exit 2" ] && grep -q 'jq is missing' "$T/err" && echo 1)" "$r"
+ln -s "$(command -v jq)" "$T/nojq/jq"
+r=$(printf '%s' "$IN" | PATH="$T/nojq" run "$T/pass" 5 g.sh); ok "no python3 blocks" "$([ "$r" = "exit 2" ] && grep -q 'python3 is missing' "$T/err" && echo 1)" "$r"
+plant crash g.sh 'cat >/dev/null; exit 0'; printf 'raise SystemExit(3)\n' > "$T/crash/hook-fail-closed.py"
+r=$(printf '%s' "$IN" | run "$T/crash" 5 g.sh); ok "a runner that ends with another code blocks" "$([ "$r" = "exit 2" ] && grep -q 'ended with exit 3' "$T/err" && echo 1)" "$r"
+r=$(printf '%s' "$IN" | 3<&- bash "$T/pass/hook-fail-closed.sh" 5 g.sh 0<&- 2>"$T/err"; echo "exit $?"); ok "a closed stdin blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r $(cat "$T/err")"
+# Round 2 of #3971: a shell watchdog's trap raced and lost input (false blocks) or a deny (an allow). Under 6 parallel
+# loops every deny stays a deny and every allow stays an allow.
+stress() {  # $1 dir → prints one result word per run
+  for i in $(seq 1 40); do o=$(printf '%s' "$IN" | bash "$1/hook-fail-closed.sh" 5 g.sh 2>/dev/null); rc=$?
+    if [ $rc = 2 ]; then echo block; elif printf '%s' "$o" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1; then echo deny; else echo allow; fi; done; }
+for k in 1 2 3; do stress "$T/deny" > "$T/sd$k" & stress "$T/pass" > "$T/sp$k" & done; wait
+ok "under load, 120 denies all come back as denies" "$([ "$(cat "$T"/sd? | sort | uniq -c | tr -s ' ')" = " 120 deny" ] && echo 1)" "$(cat "$T"/sd? | sort | uniq -c | tr '\n' ' ')"
+ok "under load, 120 allows all come back as allows" "$([ "$(cat "$T"/sp? | sort | uniq -c | tr -s ' ')" = " 120 allow" ] && echo 1)" "$(cat "$T"/sp? | sort | uniq -c | tr '\n' ' ')"
 
 # Each guard named in settings.json: the real one refuses unreadable input; a planted error and a planted hang block.
 for g in $(printf '%s\n' "$cmds" | grep -oE 'hook-fail-closed\.sh [0-9]+ [^ ]+' | awk '{print $3}' | sort -u); do

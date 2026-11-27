@@ -53,6 +53,15 @@ deny|gh api graphql --input m.json
 deny|gh api graphql -F query=@m.graphql
 deny|perl -MLWP::UserAgent -e 'LWP::UserAgent->new->post("https://api.github.com/x", Content => "{}")'
 deny|ruby -rnet/http -e 'h.request(Net::HTTP::Post.new(URI("https://api.github.com/x")))'
+deny|bash -lc "curl -X POST https://api.github.com/repos/o/r/issues/1/comments -d '{}'"
+deny|sh -ec "gh api repos/o/r/issues/1/comments -f body=hi"
+deny|bash -euo pipefail -c 'gh api repos/o/r/issues/1/comments -f body=hi'
+deny|python3 -Ic "import requests; requests.post('https://api.github.com/x', json={})"
+deny|gh api repos/o/r/issues/1/comments -f body=hi # don't forget
+deny|gh api repos/o/r/issues/1/comments -f body=$'It\'s done'
+deny|for url in https://api.github.com/repos/o/r/issues/1/labels; do curl -X POST "$url" -d '{}'; done
+allow|curl -s -X POST http://localhost:4400/api/programs -d "{\"token\":\"$GH_TOKEN\"}"
+allow|git commit -m "fix" -m "Use \`gh api -X GET\` for reads; \`curl -d\` to api.github.com is refused"
 allow|curl -sSL https://api.github.com/repos/o/r/pulls?state=open
 allow|grep -rn "curl -X POST https://api.github.com" ai-workers/
 allow|git commit -m "refuse curl -X POST to api.github.com"
@@ -76,6 +85,12 @@ NL=$'\n'; BS='\'
 r=$(guard "curl -sS $BS${NL}  -X POST $BS${NL}  https://api.github.com/repos/o/r/issues/1/comments $BS${NL}  -d x"); ok "deny: a curl continued over lines with backslashes" "$([ "$r" = deny ] && echo 1)" "got $r"
 r=$(guard "cd /tmp${NL}curl -X POST https://api.github.com/repos/o/r/issues -d x"); ok "deny: a write on the second line of a command" "$([ "$r" = deny ] && echo 1)" "got $r"
 r=$(guard "python3 - <<EOF${NL}import requests; requests.post(\"https://api.github.com/x\", json={})${NL}EOF"); ok "deny: a Python heredoc writing to the API" "$([ "$r" = deny ] && echo 1)" "got $r"
+Q="'"
+r=$(guard "gh api repos/o/r/issues/1/comments -F body=@- <<${Q}EOF${Q}${NL}Round 2 done, it${Q}s green${NL}EOF"); ok "deny: gh api -F body=@- with an apostrophe in its heredoc" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard "git commit -F - <<${Q}EOF${Q}${NL}guard: refuse curl -X POST to api.github.com${NL}${NL}it${Q}s a write${NL}EOF"); ok "allow: a commit message heredoc that describes a write" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(guard "gh pr create --title G --body \"\$(cat <<${Q}EOF${Q}${NL}- gh api repos/o/r/issues -f title=x is denied${NL}EOF${NL})\""); ok "allow: a PR body heredoc in \$(cat) that describes a write" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(guard "gh pr comment 1 --body-file - <<${Q}EOF${Q}${NL}python3 -c \"requests.post(${Q}https://api.github.com/x${Q}, data=1)\" is denied${NL}EOF"); ok "allow: a PR comment heredoc quoting inline code" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(guard "bash <<${Q}EOF${Q}${NL}curl -X POST https://api.github.com/x -d x${NL}EOF"); ok "deny: a heredoc a shell runs" "$([ "$r" = deny ] && echo 1)" "got $r"
 msg=$(jq -n '{tool_name:"Bash", tool_input:{command:"gh api repos/o/r/issues/1/comments -f body=x"}}' | python3 -I "$TOOLS/github-write-guard.py" | jq -r '.hookSpecificOutput.permissionDecisionReason')
 ok "the refusal names the door that works in a cloud session (the GitHub connector), not only gh" "$(grep -q 'GitHub connector tools (mcp__github__' <<< "$msg" && echo 1)" "$msg"
 r=$(printf '{"tool_name":"Bash","tool_input":{}}' | bash "$TOOLS/hook-fail-closed.sh" 10 github-write-guard.py 2>/dev/null; echo $?)
