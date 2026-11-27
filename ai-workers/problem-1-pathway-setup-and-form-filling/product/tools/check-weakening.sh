@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # A438 cut 2 (founder 27 Nov 14:3x IST, "Yes, all three"): weakening.py decides from a pipeline file's diff whether the
-# Lead must read it first. Its own cases (--self-test: a new tool, test or step passes; a removed assertion, mutation
-# row, guard line or workflow line, a gate change, an allow-list entry, pull_request_target, a secret, write permission,
-# an agent's effort, a settings allow rule or removed hook all weaken), then the command line: GitHub's file-list form,
+# Lead must read it first. Its own cases (--self-test: a new tool or test, a test gaining cases, a new step or job pass;
+# any change to existing pipeline code or settings, a removed or changed test line, an added exit or skip, a changed
+# workflow step or trigger, an allow-list entry, an agent's front matter, and the breaker's cases on #3942 all weaken),
+# then the command line: GitHub's file-list form,
 # paths on stdin, a path missing from the list and an unreadable list fail closed. US$0, no network.
 #   bash product/tools/check-weakening.sh
 set -u
@@ -19,7 +20,7 @@ cat > "$T/files.json" <<JSON
 JSON
 out=$(printf '%s\n' "$G/check-new.sh" "$G/check-guards.sh" ".github/workflows/ci.yml" "$G/old-guard.sh" "$G/not-there.sh" | python3 -I "$W" --files "$T/files.json"); r=$?
 ok "a new test and a new workflow step: not weakening" "$([ $r = 0 ] && ! grep -q 'check-new.sh' <<< "$out" && ! grep -q 'ci.yml' <<< "$out" && echo 1)" "$out"
-ok "a removed mutation row: weakening, with the row named" "$(grep -q "^$G/check-guards.sh	removes or changes a test assertion or mutation row: 15 ci" <<< "$out" && echo 1)" "$out"
+ok "a removed mutation row: weakening, with the row named" "$(grep -q "^$G/check-guards.sh	removes or changes a test line (an assertion, a mutation row, its set-up): 15 ci" <<< "$out" && echo 1)" "$out"
 ok "a guard renamed: weakening by its old name too" "$(grep -q "^$G/old-guard.sh	renamed from" <<< "$out" && echo 1)" "$out"
 ok "a path missing from the file list: weakening (fails closed)" "$(grep -q "^$G/not-there.sh	not in the PR's file list" <<< "$out" && echo 1)" "$out"
 out=$(python3 -I "$W" --files "$T/files.json" ".github/workflows/ci.yml"); ok "paths as arguments: one judged, nothing printed when it does not weaken" "$([ -z "$out" ] && echo 1)" "$out"

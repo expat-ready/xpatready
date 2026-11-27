@@ -128,12 +128,23 @@ for p in ".github/workflows/ci.yml" ".mergify.yml" "$PR3/tools/queue-gate.sh" "$
   ok "kept path: $p is held (a pipeline path with a weakening diff: a line removed)" "$(held)" "exit $r: $out"
 done
 # --- A438 cut 2 (founder 27 Nov): the Lead reads only where a pipeline change can weaken protection
-for p in ".github/workflows/ci.yml" "$PR3/tools/check-new.sh" "$PR3/tools/new-tool.sh" ".claude/settings.json" "AGENTS.md" "$PR3/screens/B119/check-queue-rules.py"; do
-  f "$p" "@@ -1 +1,2 @@
+for c in ".github/workflows/ci.yml|modified" "$PR3/tools/check-new.sh|modified" "$PR3/tools/new-tool.sh|added" ".claude/settings.json|added" "AGENTS.md|modified" "$PR3/screens/B119/check-queue-rules.py|modified"; do
+  p=${c%|*}; f "$p" "@@ -1 +1,2 @@
  x
-+y"; put; run judge
-  ok "A438: $p with only added lines (a new step, test or tool) is not held" "$(free)" "exit $r: $out"
++      - run: bash y" "${c##*|}"; put; run judge
+  ok "A438: $p (${c##*|}) with only added lines (a new step, test case, tool or prose) is not held" "$(free)" "exit $r: $out"
 done
+f "$PR3/tools/push-guard.sh" "@@ -18,2 +18,3 @@
+ set -uo pipefail
++exit 0
+ ROOT=x"; put; run judge
+ok "A438 (breaker B1): an existing guard gaining exit 0 is held" "$(held)" "exit $r: $out"
+f ".claude/agents/screen-reviewer.md" "@@ -2,8 +2,8 @@
+ name: screen-reviewer
+-model: opus
++model: haiku
+ ---"; put; run judge
+ok "A438 (breaker B3): an agent's model changed in a hunk from line 2 is held" "$(held)" "exit $r: $out"
 f "AGENTS.md" "@@ -1,2 +1 @@
  x
 -a rule in prose"; put; run judge

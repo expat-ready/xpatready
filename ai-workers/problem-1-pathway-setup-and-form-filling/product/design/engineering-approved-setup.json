@@ -67,7 +67,7 @@
   {
    "version": "1.9.0",
    "date": "2026-11-27",
-   "change": "A438 cut 1: the queues records and verdicts no longer require the label review: approved (a records-only PR needs no reviewer); in its place each requires every file of the head to be a record under product/ (-files ~= ^(?!...product/...(md|png|jpe?g|gif|webp|svg|txt|html)$)) and none under product/tools/ in any case, so a code file or a hand-put records label never rides them. product and pipeline keep the review label.",
+   "change": "A438 cut 1: the queues records and verdicts no longer require the label review: approved (a records-only PR needs no reviewer); in its place each requires every file of the head to be a record under product/ (-files ~= ^(?!...product/...(md|png|jpe?g|gif|webp|svg|txt|html)$)) and none under product/tools/ in any case, so a code file or a hand-put records label never rides them; a records PR touching .html (script, e.g. the founder's board) still needs the review label. product and pipeline keep the review label.",
    "approval": "founder, 27 Nov 14:3x IST (A438, typed: \"Yes, all three\" to the tech lead's three cuts), passed on by the tech lead in the builder's brief"
   }
  ],
@@ -218,7 +218,7 @@
      "check-success = ci",
      "label = records",
      "-files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\\.(md|png|jpe?g|gif|webp|svg|txt|html)$)",
-     "-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/",
+     "-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/", {"or": ["label = review: approved", "-files ~= \\.[Hh][Tt][Mm][Ll]?$"]},
      "title ~= ^qa:",
      "files ~= qa/CAPABILITIES\\.md$"
     ],
@@ -269,7 +269,7 @@
    "records": {
     "batch_size": 2,
     "batch_max_failure_resolution_attempts": 2,
-    "queue_conditions_required": ["base = main", "-draft", "check-success = ci", "label = records", "-files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\\.(md|png|jpe?g|gif|webp|svg|txt|html)$)", "-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/"],
+    "queue_conditions_required": ["base = main", "-draft", "check-success = ci", "label = records", "-files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\\.(md|png|jpe?g|gif|webp|svg|txt|html)$)", "-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/", {"or": ["label = review: approved", "-files ~= \\.[Hh][Tt][Mm][Ll]?$"]}],
     "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    }

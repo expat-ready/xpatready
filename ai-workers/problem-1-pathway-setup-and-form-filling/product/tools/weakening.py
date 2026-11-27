@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
-"""Does a pipeline change weaken protection? (A438 cut 2, founder 27 Nov 14:3x IST: "Yes, all three"; P-423, P-823.)
+"""Can a pipeline change weaken protection? (A438 cut 2, founder 27 Nov 14:3x IST: "Yes, all three"; P-423, P-823.)
 
 Before A438 every pipeline path (.github/, .mergify.yml, the guards under product/tools/, hooks, agent settings) waited for
-the Lead's read first; 17 lab PRs waited 18 min to 84 h. Now a pipeline path keeps the read first only when its diff can
-weaken protection; a new test, a stricter check or an added tool merges on the reviewer's Approve alone. Decided from
-the patch GitHub gives with the file list (the PR's code is never checked out or run), per file:
-  * any file: removed or renamed (a guard, test or workflow that no longer runs), or no patch given (too large, binary):
-    weakening (fails closed);
-  * a gate (the files that decide labels, queues, routes and this read: GATES below, .mergify.yml): any changed line
-    that is not a comment. A script cannot tell a stricter gate from a looser one, so the Lead reads every gate change;
-  * an allow-list (quarantine, known failures, typecheck-known, route-has-screen-allow): an added entry;
-  * a workflow (.github/**): an added pull_request_target, secrets., write permission, if: false,
-    continue-on-error: true on an existing step (on a step the patch adds it is a report-only start, P-717 (b)), "|| true", --no-verify or a third-party action (not actions/); a new trigger (an added trigger key in a
-    changed workflow; a privileged one in a new workflow); a removed line that no added line keeps (numbers aside);
-  * agent settings (.claude/*.json, .claude/*.yml): an added allow rule, tool pattern, mode or hook switch; a removed line;
-  * agent definitions (.claude/agents/*.md, skills' front matter): a changed model, effort, tools or permission line;
-  * a test (check-*, test_*, test-*, guards.d/, check-guards.sh's mutation rows): a removed assertion that no added
-    line keeps (an "ok ...", assert, PASS/FAIL, case(...) or mutation row);
-  * a guard (.githooks/, .claude/hooks/, or a tool named guard, gate, check, hook, push, merge, label, queue, records,
-    review, suites, route, ...: GUARD below): a removed code line (not a comment) that no added line keeps;
-  * other pipeline code (reports, counters, the Lead's watch): never by itself; the reviewer reads it.
-A removed line is "kept" when one added line of the same file holds all of its words and operators (so a line that only
-gains a flag or a pipe is kept; a removed step, condition, comparison, threshold or exit is not). Instructions in prose (skills' and agents'
-bodies, AGENTS.md, CLAUDE.md, .md files) are never weakening by themselves: the reviewer reads them.
+the Lead's read first; 17 lab PRs waited 18 min to 84 h. Now a pipeline path keeps the read first only when its diff CAN
+weaken protection. A script cannot tell a stricter edit from a looser one (the breaker on #3942: one added "exit 0" switches
+a guard off; a tool's name does not say whether CI runs it), so the rule is shape, and it fails closed:
+  needs no read (the reviewer's Approve alone):
+  * a new file (a new tool, test or workflow), unless a new workflow holds a privileged trigger or a WORKFLOW_RISK line;
+  * an existing test (check-*, check_*, test_*, test-*, guards.d/, check-guards.sh's rows) that only gains lines: every
+    removed line comes back unchanged (moved; a row's closing quote aside), and no added line skips, exits or swallows a
+    failure (OFF below);
+  * an existing workflow that only gains whole new steps or jobs (each added run of lines starts a step or job), with no
+    WORKFLOW_RISK line and no removed line that does not come back unchanged;
+  * an allow-list (quarantine, known failures, typecheck-known, route-has-screen-allow) that only loses entries;
+  * comments, and prose (.md) outside the front matter of agents and skills;
+  needs the Lead's read first: everything else on a pipeline path, which includes
+  * any change to existing pipeline code (a guard, a gate, a CI helper, a hook, prototype/studio/tools/) other than a test
+    gaining lines; any change to .mergify.yml or .claude/ settings (*.json, *.yml);
+  * an agent's or a skill's front matter touched (its first lines, by the hunk's line numbers);
+  * a file removed, renamed, mode-only or with no patch (too large, binary): fails closed.
 This is a tripwire, not a proof: the reviewer still reads every line, and money, permissions code, the schema and
 migrations keep their own rules (lead-read-paths.txt's other sections, P-823).
 
@@ -39,168 +35,154 @@ import re
 import subprocess
 import sys
 
-GATES = {
-    ".mergify.yml",
-    "lead-read-paths.txt", "weakening.py", "lead-read-gate.sh", "lead-read-guard.sh",
-    "queue-gate.sh", "label-guard.sh", "label-sweep.sh", "records-only.sh", "records-label.sh", "review-rounds.py",
-    "change-route.sh", "change-kind.sh", "tooling-checks.sh", "approvals.yml", "gate-b.mjs", "works-set.mjs",
-    "lead-read.yml", "queue-gate.yml", "label-guard.yml", "records-label.yml", "review-rounds.yml",
-}
 ALLOWLISTS = {"pr-suites-quarantine.txt", "known-failures.tsv", "typecheck-known.txt", "route-has-screen-allow.txt"}
-WF_ADDED = [
-    (re.compile(r"pull_request_target"), "adds pull_request_target"),
-    (re.compile(r"secrets\."), "uses a secret"),
-    (re.compile(r"(:\s*write\b|write-all)"), "widens permissions (write)"),
-    (re.compile(r"\bif:\s*(false\b|\$\{\{\s*false)"), "switches a job or step off (if: false)"),
-    (re.compile(r"\|\|\s*true\b"), "ignores a failure (|| true)"),
-    (re.compile(r"--no-verify"), "skips the git hooks (--no-verify)"),
-    (re.compile(r"\buses:\s*(?!\./|actions/)[\w.-]+/"), "adds or changes a third-party action"),
+WORKFLOW_RISK = [
+    (re.compile(r"pull_request_target"), "pull_request_target"),
+    (re.compile(r"secrets\s*[.\[]"), "a secret"),
+    (re.compile(r"write"), "a write permission"),
+    (re.compile(r"continue-on-error"), "continue-on-error"),
+    (re.compile(r"(^|\s)uses:\s*(?!\./|actions/)\S"), "a third-party action"),
+    (re.compile(r"paths-ignore|branches-ignore"), "an ignore filter"),
+    (re.compile(r"--no-verify"), "--no-verify"),
+    (re.compile(r"^\s*-?\s*(pull_request_target|workflow_run|issue_comment|repository_dispatch|workflow_call)\s*:"), "a privileged trigger"),
 ]
-TRIGGERS = ("pull_request_target|workflow_run|issue_comment|repository_dispatch|schedule|push|pull_request_review|"
-            "pull_request_review_comment|merge_group|workflow_call|check_run|check_suite|issues|discussion_comment|release")
-TRIGGER_KEY = re.compile(r"^\s*-?\s*(%s)\s*:" % TRIGGERS)
-TRIGGER_ON = re.compile(r"^\s*on:\s*\S")
-PRIVILEGED = re.compile(r"^\s*-?\s*(pull_request_target|workflow_run|issue_comment|repository_dispatch|workflow_call)\b")
-SETTINGS_ADDED = re.compile(r'"(allow|ask|defaultMode|additionalDirectories|disableAllHooks|enableAllProjectMcpServers|'
-                            r'enabledMcpjsonServers|bypassPermissions|dangerously\w*)"|\b(Bash|Edit|Write|Read|WebFetch|'
-                            r'WebSearch|NotebookEdit|mcp__[\w-]*)\(|^\s*-?\s*(allow|permissions?)\s*:', re.I)
-# A guard by its name (hooks, gates, checks, the push and merge guards); other pipeline code (reports, the Lead's
-# watch, counters) changes freely: the reviewer reads it.
-GUARD = re.compile(r"(guard|gate|check|hook|preflight|ready|wip|lock|verify|rules|push|merge|label|queue|records|review|"
-                   r"suites|route|flaky|known|conformance|^pre-|^post-|^commit-msg$)", re.I)
-AGENT_FM = re.compile(r"^(model|effort|tools|allowed-tools|disallowedTools|permissionMode)\s*:", re.I)
-ASSERT = re.compile(r"(^|\s)ok\s+[\"']|\bassert|\bt\s+(yes|no)\b|\bPASS\b|\bFAIL\b|\bcase\(|^[^|\s][^|]*\|[^|]+\|.+\|[\w./-]+\.(sh|py)'?$")
-WORDS = re.compile(r"[A-Za-z0-9_]+|[=<>!|&]+")   # words and operators: "= 4" to "-le 4" is not kept
+# A test line that stops the test or hides a failure (as checks-changed.py's OFF, A351 C2)
+OFF = re.compile(r"\.(skip|only|todo|fixme|skipIf)\b|\b(xit|xdescribe|fit|skipTest|skipIf|skipUnless)\(|\bskip:\s*true|"
+                 r"\bif\s*\(\s*(false|0)\s*\)|^\s*if (False|0)\s*:|process\.exit\(\s*0?\s*\)|^\s*(exit(\s+0)?|return)\s*(;|$|[#/])|"
+                 r"\bfalse\s*&&|\|\|\s*(true|:|echo|exit\s+0)\b|:\s*<<|sys\.exit\(\s*0?\s*\)|os\._exit|^\s*[`'\"]{3}\s*$|"
+                 r"\bfunction\s+ok\b|^\s*ok\s*\(\)", re.M)
+ROW = re.compile(r"^[^|\s][^|]*\|[^|]+\|.+\|[\w./-]+\.(sh|py)'?$")   # a check-guards.sh mutation row: its sed text is data
+STEP_START = re.compile(r"^\s*-\s+(name|uses|run|id|if|with|env|shell|working-directory|timeout-minutes)\s*:")
+JOB_START = re.compile(r"^  [A-Za-z0-9_-]+:\s*(#.*)?$")
 COMMENT = re.compile(r"^\s*(#|//|/\*|\*|<!--|$)")
+FRONT_MATTER_LINES = 15   # agents' and skills' front matter sits in their first lines (7 and 4 today); up to line 60 a
+FM_KEY = re.compile(r"^[A-Za-z][\w-]*\s*:")   # changed line in key form ("hooks:", "model:") counts too
+TRIGGER = re.compile(r"^\s*-?\s*(on|pull_request|pull_request_target|push|schedule|workflow_dispatch|workflow_run|workflow_call|"
+                     r"issue_comment|issues|repository_dispatch|merge_group|check_run|check_suite|release|pull_request_review|"
+                     r"pull_request_review_comment|discussion|discussion_comment|label|create|delete|status|types|branches|paths|tags)\s*:")
 
 
 def kind(path):
     base = path.rsplit("/", 1)[-1]
-    if path == ".mergify.yml" or base in GATES:
-        return "gate"
     if base in ALLOWLISTS:
         return "allowlist"
-    if path.startswith(".github/"):
+    if path.startswith(".github/workflows/") and re.search(r"\.ya?ml$", base):
         return "workflow"
-    if path.startswith(".claude/") and re.search(r"\.(json|ya?ml)$", base):
-        return "settings"
     if path.startswith(".claude/agents/") or (path.startswith(".claude/skills/") and base == "SKILL.md"):
         return "agent"
-    if base.endswith(".md") or path in ("AGENTS.md", "CLAUDE.md"):
+    if base.endswith(".md") and path != ".mergify.yml":
         return "prose"
-    if re.match(r"(check-|check_|test_|test-)", base) or "/guards.d/" in path:
+    if re.match(r"(check-|check_|test_|test-)", base) or "/guards.d/" in path or base == "guard-test-lib.sh":
         return "test"
-    if path.startswith((".githooks/", ".claude/hooks/")) or GUARD.search(base):
-        return "guard"
-    return "code"
+    return "code"   # .mergify.yml, .claude/*.json|yml, hooks, guards, gates, CI helpers: any change is read
 
 
-def lines(patch, sign):
-    return [l[1:] for l in (patch or "").split("\n") if l.startswith(sign) and not l.startswith(sign * 3 + " ")]
-
-
-def words(s, numbers=True):
-    w = set(WORDS.findall(s))
-    return w if numbers else {x for x in w if not x.isdigit()}
-
-
-def kept(removed, added, numbers=True):
-    """A removed line is kept when one added line of the file holds all of its words."""
-    need = words(removed, numbers)
-    return not need or any(need <= words(a, numbers) for a in added)
-
-
-def front_matter(patch):
-    """Changed lines of a .md's front matter: the hunk starting at line 1, up to the closing ---."""
-    out, inside = [], False
+def hunks(patch):
+    """-> [(old_no, new_no, sign, text)] for every line of the patch (sign ' ', '+', '-')."""
+    out, o, n = [], 0, 0
     for l in (patch or "").split("\n"):
-        m = re.match(r"^@@ -(\d+)(?:,\d+)? \+(\d+)", l)
+        m = re.match(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", l)
         if m:
-            inside = m.group(1) in ("0", "1") or m.group(2) == "1"
-            seen = 0
+            o, n = int(m.group(1)), int(m.group(2))
+            out.append((o, n, "@", l))
             continue
-        if not inside:
+        if l.startswith("\\"):
             continue
-        if l[1:].strip() == "---":
-            seen += 1
-            if seen == 2:
-                inside = False
-            continue
-        if l[:1] in "+-":
-            out.append(l[1:])
+        s = l[:1] if l[:1] in "+- " else " "
+        out.append((o, n, s, l[1:]))
+        if s in " -":
+            o += 1
+        if s in " +":
+            n += 1
     return out
 
 
+def norm(l):
+    return " ".join(l.strip().rstrip("'").split())
+
+
 def judge(f):
-    """One file of GitHub's answer -> the reason it weakens protection, or ""."""
+    """One file of GitHub's answer -> the reason its change can weaken protection, or ""."""
     path, status, patch = f.get("filename", ""), f.get("status", "modified"), f.get("patch")
     k = kind(path)
     if status == "removed":
-        return "" if k == "prose" else "a %s removed" % ("gate" if k == "gate" else "pipeline file")
-    if status == "renamed" and k != "prose":
+        return "a pipeline file removed"
+    if status == "renamed" or f.get("previous_filename"):
         return "renamed from %s (a workflow, hook or test may no longer find it)" % f.get("previous_filename", "?")
     if not patch:
-        if k == "prose" and status == "added":
-            return ""
-        return "" if (f.get("changes", 1) == 0 and status != "added") else "no patch given (too large or binary): read first (fails closed)"
-    add, rem = lines(patch, "+"), lines(patch, "-")
-    code_add = [l for l in add if not COMMENT.match(l)]
-    code_rem = [l for l in rem if not COMMENT.match(l)]
+        return "" if (k == "prose" and status == "added") else "no patch given (too large, binary or a mode change): read first (fails closed)"
+    rows = hunks(patch)
+    add = [t for _, _, s, t in rows if s == "+" and not COMMENT.match(t)]
+    rem = [t for _, _, s, t in rows if s == "-" and not COMMENT.match(t)]
     if k == "prose":
         return ""
-    if k == "gate":
-        return "a gate (labels, queues, routes or this read): every change is read" if code_add or code_rem else ""
-    if k == "allowlist":
-        return "adds an allow-list entry: %s" % code_add[0].strip()[:80] if code_add else ""
     if k == "agent":
-        fm = [l for l in front_matter(patch) if AGENT_FM.match(l)]
-        return "changes an agent's %s" % fm[0].split(":")[0].strip() if fm else ""
-    if k == "settings":
-        for l in code_add:
-            if SETTINGS_ADDED.search(l):
-                return "adds a permission or mode: %s" % l.strip()[:80]
-        for l in code_rem:
-            if l.strip() in ("", "{", "}", "},", "[", "]", "],") or kept(l, code_add):
+        # Front matter: from line 1 to the second "---". In a hunk that starts at line 1 the closing marker is the second
+        # "---" seen; in one that starts later, the first (or a blank line: the body has begun). A changed line before it (and within the first 15 lines, or in
+        # key form up to line 60) touches the front matter. A new agent or skill: only its tool, hook, model or
+        # permission keys count (it widens access only through them).
+        if status == "added":
+            for o, n, s, t in rows:
+                if s == "+" and n <= 60 and re.match(r"^\s*(allowed-tools|tools|hooks|model|effort|permissionMode|disallowed\w*)\s*:", t, re.I):
+                    return "a new agent or skill sets %s" % t.strip()[:80]
+            return ""
+        seen, need, closed = 0, 2, False
+        for o, n, s, t in rows:
+            if s == "@":
+                seen, need, closed = 0, (2 if min(o, n) <= 1 else 1), False
                 continue
-            return "removes a setting (a hook, a deny rule): %s" % l.strip()[:80]
+            no = n if s == "+" else o
+            if not closed and s in "+-" and t.strip() and (no <= FRONT_MATTER_LINES or (no <= 60 and FM_KEY.match(t))):
+                return "touches an agent's or skill's front matter (model, effort, tools, hooks): %s" % t.strip()[:80]
+            if t.strip() == "---" and s != "+":
+                seen += 1
+                closed = closed or seen >= need
+            elif not t.strip() and s != "+" and seen >= need - 1:
+                closed = True   # a blank line: front matter (YAML keys) holds none, so the body has begun
+        return ""
+    if status == "added":
+        if k == "workflow":
+            for t in add:
+                for rx, why in WORKFLOW_RISK:
+                    if rx.search(t):
+                        return "a new workflow with %s: %s" % (why, t.strip()[:80])
+        return ""   # a new tool, test or file: the reviewer reads it
+    if k == "allowlist":
+        return "adds an allow-list entry: %s" % add[0].strip()[:80] if add else ""
+    back = {norm(t) for t in add}
+    if k == "test":
+        for t in rem:
+            if norm(t) not in back:
+                return "removes or changes a test line (an assertion, a mutation row, its set-up): %s" % t.strip()[:80]
+        for t in add:
+            if OFF.search(t) and not ROW.match(t.strip()):
+                return "adds a line that can stop the test or hide a failure: %s" % t.strip()[:80]
         return ""
     if k == "workflow":
-        new_step = False   # continue-on-error on a step this patch adds is a report-only start (P-717 (b)), not a weakening
-        for l in (patch or "").split("\n"):
-            if l.startswith(" ") and re.match(r"^\s*-\s", l[1:]):
-                new_step = False
-            if not l.startswith("+") or l.startswith("+++ "):
+        for t in rem:
+            if norm(t) not in back:
+                return "removes or changes a workflow line: %s" % t.strip()[:80]
+        for t in add:
+            for rx, why in WORKFLOW_RISK:
+                if rx.search(t):
+                    return "adds %s: %s" % (why, t.strip()[:80])
+        for t in add:
+            if TRIGGER.match(t):
+                return "adds or changes a trigger: %s" % t.strip()[:80]
+        new_block = False   # every added run of lines must start a new step or job
+        for _, _, s, t in rows:
+            if s != "+":
+                new_block = False
                 continue
-            l = l[1:]
-            if re.match(r"^\s*-\s*(name|uses|run|id):", l):
-                new_step = True
-            if re.search(r"continue-on-error:\s*true", l) and not new_step:
-                return "lets an existing step fail (continue-on-error: true): %s" % l.strip()[:80]
-        for l in code_add:
-            for rx, why in WF_ADDED:
-                if rx.search(l):
-                    return "%s: %s" % (why, l.strip()[:80])
-            if status == "added":
-                if PRIVILEGED.search(l):
-                    return "a new workflow with a privileged trigger: %s" % l.strip()[:80]
-            elif TRIGGER_KEY.search(l) or TRIGGER_ON.search(l):
-                return "adds a trigger: %s" % l.strip()[:80]
-        for l in code_rem:
-            if re.match(r"^\s*-?\s*name:", l) or l.strip() in ("run: |", "run: >", "with:", "env:", "steps:"):
+            if COMMENT.match(t):
                 continue
-            if not kept(l, code_add, numbers=False):
-                return "removes a workflow line: %s" % l.strip()[:80]
+            if not new_block and not (STEP_START.match(t) or JOB_START.match(t)):
+                return "changes an existing step, job or trigger (only whole new steps or jobs need no read): %s" % t.strip()[:80]
+            new_block = True
         return ""
-    if k == "test":
-        for l in code_rem:
-            if ASSERT.search(l) and not kept(l, code_add):
-                return "removes or changes a test assertion or mutation row: %s" % l.strip()[:80]
-        return ""
-    if k == "guard":
-        for l in code_rem:
-            if l.strip() and not kept(l, code_add):
-                return "removes or changes a guard's line: %s" % l.strip()[:80]
-    return ""   # other pipeline code (reports, counters, the Lead's watch): the reviewer reads it
+    if add or rem:   # code: .mergify.yml, settings, hooks, guards, gates, CI helpers
+        return "changes existing pipeline code or settings (a script cannot tell stricter from looser): %s" % (rem or add)[0].strip()[:80]
+    return ""
 
 
 def from_git(rng):
@@ -245,7 +227,7 @@ def self_test():
         (True, "a test assertion loosened (= 4 to -le 4)", f(T + "check-x.sh", "@@ -1 +1 @@\n-ok \"four\" \"$([ \"$n\" = 4 ] && echo 1)\"\n+ok \"four\" \"$([ \"$n\" -le 4 ] && echo 1)\"")),
         (True, "a mutation row removed", f(T + "check-guards.sh", "@@ -1 +0,0 @@\n-15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh")),
         (False, "a mutation row added", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh")),
-        (False, "a guard line gains a pipe", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-LANE=$(lane.sh whoami)\n+LANE=$(lane.sh whoami | sed s/x/y/)")),
+        (True, "a guard line gains a pipe (existing code: read)", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-LANE=$(lane.sh whoami)\n+LANE=$(lane.sh whoami | sed s/x/y/)")),
         (True, "a guard's check removed", f(T + "merge-guard.sh", "@@ -1,2 +1 @@\n x\n-[ -z \"$ok\" ] && exit 1")),
         (True, "a guard's threshold lowered", f(T + "wip-guard.py", "@@ -1 +1 @@\n-if n > 3: refuse()\n+if n > 9: refuse()")),
         (False, "comments only", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-# old words\n+# new words")),
@@ -256,7 +238,7 @@ def self_test():
         (False, "an allow-list entry removed", f(T + "pr-suites-quarantine.txt", "@@ -1,2 +1 @@\n x\n-check_a.ts|runtime|2026-12-02|p822")),
         (False, "a workflow gains a step", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: lint\n+        run: bash lint.sh")),
         (True, "a workflow loses a step", f(".github/workflows/ci.yml", "@@ -1,3 +1 @@\n x\n-      - name: lint\n-        run: bash lint.sh")),
-        (False, "a workflow's parts 4 to 6", f(".github/workflows/guards.yml", "@@ -1 +1 @@\n-        part: [1, 2, 3, 4]\n+        part: [1, 2, 3, 4, 5, 6]")),
+        (True, "a workflow's parts 4 to 6 (an existing step changed)", f(".github/workflows/guards.yml", "@@ -1 +1 @@\n-        part: [1, 2, 3, 4]\n+        part: [1, 2, 3, 4, 5, 6]")),
         (True, "a step gated on pull_request_target", f(".github/workflows/x.yml", "@@ -1 +1,2 @@\n x\n+        if: github.event_name == 'pull_request_target'")),
         (True, "pull_request_target added", f(".github/workflows/x.yml", "@@ -1 +1,2 @@\n on:\n+  pull_request_target:")),
         (True, "permissions widened", f(".github/workflows/x.yml", "@@ -1 +1 @@\n-permissions: { contents: read }\n+permissions: { contents: write }")),
@@ -265,17 +247,50 @@ def self_test():
         (False, "a new read-only pull_request workflow", f(".github/workflows/new.yml", "@@ -0,0 +1,6 @@\n+on:\n+  pull_request:\n+permissions: { contents: read }\n+jobs:\n+  t:\n+    steps: [{uses: actions/checkout@v4}]", "added")),
         (True, "a new workflow on workflow_run", f(".github/workflows/new.yml", "@@ -0,0 +1,2 @@\n+on:\n+  workflow_run:", "added")),
         (True, "continue-on-error on an existing step", f(".github/workflows/ci.yml", "@@ -1,2 +1,3 @@\n       - name: lint\n+        continue-on-error: true\n         run: bash lint.sh")),
-        (False, "a new report-only step (P-717 (b))", f(".github/workflows/ci.yml", "@@ -1 +1,4 @@\n x\n+      - name: new check, report-only\n+        continue-on-error: true\n+        run: bash new.sh")),
-        (False, "a report tool loses a line", f(T + "founder-report.py", "@@ -1 +1 @@\n-print(report(a))\n+out = report(a)")),
+        (True, "a new step with continue-on-error (a re-added step could hide behind it)", f(".github/workflows/ci.yml", "@@ -1 +1,4 @@\n x\n+      - name: new check, report-only\n+        continue-on-error: true\n+        run: bash new.sh")),
+        (True, "a report tool loses a line (by name no tool is safe)", f(T + "founder-report.py", "@@ -1 +1 @@\n-print(report(a))\n+out = report(a)")),
         (True, "a git hook loses a line", f(".githooks/pre-push", "@@ -1,2 +1 @@\n x\n-bash push-guard.sh || exit 1")),
         (True, "the approvals policy", f(".claude/approvals.yml", "@@ -1 +1 @@\n-mode: observe\n+mode: enforce")),
         (True, "a third-party action", f(".github/workflows/ci.yml", "@@ -1 +1,2 @@\n x\n+      - uses: someone/tool@v1")),
         (True, "settings: an allow rule", f(".claude/settings.json", "@@ -1 +1,2 @@\n x\n+      \"Bash(git push:*)\",")),
         (True, "settings: a hook removed", f(".claude/settings.json", "@@ -1,2 +1 @@\n x\n-            \"command\": \"bash guard.sh\",")),
-        (False, "settings: a hook added", f(".claude/settings.json", "@@ -1 +1,3 @@\n x\n+          {\n+            \"command\": \"bash guard.sh\",")),
+        (True, "settings: any change, a hook added too", f(".claude/settings.json", "@@ -1 +1,3 @@\n x\n+          {\n+            \"command\": \"bash guard.sh\",")),
         (True, "an agent's effort lowered", f(".claude/agents/screen-reviewer.md", "@@ -1,4 +1,4 @@\n ---\n name: r\n-effort: high\n+effort: medium")),
-        (False, "an agent's body", f(".claude/agents/screen-reviewer.md", "@@ -20 +20 @@\n-old\n+new")),
-        (False, "a skill's prose", f(".claude/skills/next/SKILL.md", "@@ -20 +20 @@\n-old\n+new")),
+        (False, "an agent's body", f(".claude/agents/screen-reviewer.md", "@@ -30 +30 @@\n-old words\n+new words")),
+        (False, "a skill's body in a hunk after its front matter closed (line 8)", f(".claude/skills/lead/SKILL.md", "@@ -3,6 +3,6 @@\n description: x\n ---\n \n-1. old step\n+1. new step\n more")),
+        (False, "a skill's body line 11 after a blank line (#3926's hunk from line 8)", f(".claude/skills/lead/SKILL.md", "@@ -8,4 +8,4 @@\n Home: x\n \n ## Guard\n-1. old\n+1. new")),
+        (True, "a skill's front matter line 3 in a hunk from line 1", f(".claude/skills/lead/SKILL.md", "@@ -1,4 +1,4 @@\n ---\n name: lead\n-description: a\n+description: b\n ---")),
+        (False, "a new skill without tool or model keys", f(".claude/skills/v/SKILL.md", "@@ -0,0 +1,4 @@\n+---\n+name: v\n+description: x\n+---", "added")),
+        (True, "a new agent with tools", f(".claude/agents/x.md", "@@ -0,0 +1,4 @@\n+---\n+name: x\n+tools: Bash\n+---", "added")),
+        (False, "a test sets up with unset (not a skip)", f(T + "check-x.sh", "@@ -1 +1,2 @@\n set -u\n+unset S N G")),
+        (False, "a new mutation row whose sed text says exit", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+A368 take|product/tools/takeover.sh|s/^  exit 1/  true/|check-takeover.sh'")),
+        (True, "a test line gains || exit 0", f(T + "check-x.sh", "@@ -1 +1,2 @@\n x\n+run_case || exit 0")),
+        (False, "a skill's prose", f(".claude/skills/next/SKILL.md", "@@ -30 +30 @@\n-old words\n+new words")),
+        # The breaker on #3942 (B1-B3, M1-M3): each was let through by the first version
+        (True, "B1: an added exit 0 in a guard", f(T + "push-guard.sh", "@@ -18,2 +18,3 @@\n set -uo pipefail\n+exit 0\n ROOT=x")),
+        (True, "B1: an added exit 0 in a git hook", f(".githooks/pre-push", "@@ -1 +1,2 @@\n x\n+exit 0")),
+        (True, "B1: exit 0 first in an existing run block", f(".github/workflows/ci.yml", "@@ -357,2 +357,3 @@\n         run: |\n+          exit 0\n           bash check-docs.sh")),
+        (True, "B1: a step gains if: ${{ 1 == 2 }}", f(".github/workflows/ci.yml", "@@ -1,2 +1,3 @@\n       - name: lint\n+        if: ${{ 1 == 2 }}\n         run: bash lint.sh")),
+        (True, "B1: process.exit(0) added to a test", f("ai-workers/x/prototype/studio/tools/check-port-contracts.mjs", "@@ -1 +1,2 @@\n x\n+process.exit(0)")),
+        (True, "B2: a CI helper (pr-base.sh) returns an empty range", f(T + "pr-base.sh", "@@ -5 +5,2 @@\n x\n+  echo \"$head..$head\"; return 0")),
+        (True, "B2: ci-memory.mjs fakes a verdict", f(T + "ci-memory.mjs", "@@ -5,2 +5,2 @@\n x\n-  if (!match) return '';\n+  return 'green 1';")),
+        (True, "B3: an agent's model and effort in a real hunk (@@ -2,8)", f(".claude/agents/screen-reviewer.md", "@@ -2,8 +2,8 @@\n name: screen-reviewer\n description: x\n-model: opus\n-effort: high\n+model: haiku\n+effort: low\n tools: Read\n ---")),
+        (True, "M1: a guard line kept in words but switched off", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-[ -z \"$ok\" ] && exit 1\n+false && [ -z \"$ok\" ] && exit 1")),
+        (True, "M1: an assertion gains || echo 1", f(T + "check-x.sh", "@@ -1 +1 @@\n-ok \"a\" \"$(f && echo 1)\"\n+ok \"a\" \"$(f && echo 1 || echo 1)\"")),
+        (True, "M1: a test gains an early exit", f(T + "check-x.sh", "@@ -1 +1,2 @@\n set -u\n+exit 0")),
+        (True, "M2: continue-on-error: ${{ true }} on an existing step", f(".github/workflows/ci.yml", "@@ -1,2 +1,3 @@\n       - name: lint\n+        continue-on-error: ${{ true }}\n         run: bash lint.sh")),
+        (True, "M2: contents: 'write'", f(".github/workflows/x.yml", "@@ -1,2 +1,3 @@\n permissions:\n+  contents: 'write'\n jobs:")),
+        (True, "M2: a docker action", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: t\n+        uses: docker://alpine:3")),
+        (True, "M2: secrets['X']", f(".github/workflows/ci.yml", "@@ -1 +1,3 @@\n x\n+      - name: t\n+        env: { T: \"${{ secrets['X'] }}\" }")),
+        (True, "M2: an added paths-ignore", f(".github/workflows/ci.yml", "@@ -1,2 +1,3 @@\n   pull_request:\n+    paths-ignore: ['**.md']\n jobs:")),
+        (True, "M2: parts [1, 2, 3, 4] to [1]", f(".github/workflows/guards.yml", "@@ -1 +1 @@\n-        part: [1, 2, 3, 4]\n+        part: [1]")),
+        (True, "M3: \"Bash\" inside an existing allow array", f(".claude/settings.json", "@@ -3,2 +3,3 @@\n     \"allow\": [\n+      \"Bash\",\n       \"Read\"")),
+        (True, "M3: defaultMode bypassPermissions", f(".claude/settings.json", "@@ -1 +1,2 @@\n {\n+  \"defaultMode\": \"bypassPermissions\",")),
+        (True, "M3: an agent's hooks block removed (line 6)", f(".claude/agents/screen-breaker.md", "@@ -4,4 +4,2 @@\n tools: Read\n-hooks:\n-  Stop: x\n ---")),
+        (True, "minor: AGENTS.md removed", {"filename": "AGENTS.md", "status": "removed", "patch": "", "changes": 9}),
+        (True, "minor: a hook made non-executable (mode only)", {"filename": ".githooks/pre-push", "status": "changed", "changes": 0}),
+        (False, "a test gains a case (moved rows and a closing quote aside)", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n-29 e7ran|product/tools/stop-check.sh|/E7/d|check-stop-check.sh'\n+29 e7ran|product/tools/stop-check.sh|/E7/d|check-stop-check.sh\n+LR1 x|product/tools/x.sh|s/a/b/|check-x.sh'")),
+        (False, "a workflow gains a whole new job", f(".github/workflows/ci.yml", "@@ -1 +1,4 @@\n x\n+  lint:\n+    runs-on: ubuntu-latest\n+    steps: [{run: bash lint.sh}]")),
         (True, "a removed tool", f(T + "push-guard.sh", "", "removed")),
         (True, "no patch given", {"filename": T + "big.sh", "status": "modified", "changes": 900}),
         (True, "a rename", {"filename": T + "x2.sh", "previous_filename": T + "x.sh", "status": "renamed", "patch": "", "changes": 0}),

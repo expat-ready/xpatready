@@ -144,6 +144,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product", checks=F),
     # A438 cut 1 (founder 27 Nov): a records-only PR queues with no reviewer and no review label; a mixed PR does not.
     case("A438: records without the review label: records (no reviewer, no label)", [f"{R}/STATE.md"], True, "records", labels=()),
+    case("A438: an .html record without the review label: no queue (script, breaker M4)", [f"{R}/screens/12/board.html"], True, None, labels=()),
     case("A438: a qa verdict without the review label: verdicts", [f"{R}/qa/CAPABILITIES.md"], True, "verdicts", "qa: after-merge", labels=()),
     case("A438: records plus a tool, no review label: no queue (not records only)", [f"{R}/STATE.md", f"{R}/tools/x.sh"], False, None, labels=()),
     case("A438: records plus app code, no review label: no queue", [f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, None, labels=(), checks=F),
@@ -204,6 +205,8 @@ def problems(cfg, have_script):
             for need in (RECORD_ONLY, NO_TOOLS):
                 if need.replace(" ", "") not in conds:
                     out.append(f"queue {q.get('name')}: queue_conditions lack {need!r} (A438: no review label, so every file must be a record)")
+            if not any(isinstance(x, dict) and "Hh" in str(x) and "review" in str(x) for x in q.get("queue_conditions", [])):
+                out.append(f"queue {q.get('name')}: no 'or: review label, or no .html file' (breaker M4: an .html record can carry script)")
         if "check-success = ci" not in [c.strip() for c in q.get("merge_conditions", []) if isinstance(c, str)]:
             out.append(f"queue {q.get('name')}: merge_conditions lack 'check-success = ci' (the batch is tested)")
         # Each queue carries its own label guard, not only by being listed after the others (defence in depth).
@@ -277,6 +280,12 @@ def mutations(cfg):
                 q["queue_conditions"] = [x.replace("AGENTS", "AGENTZ") if isinstance(x, str) and x.replace(" ", "").startswith("files~=^(?!") else x
                                          for x in q["queue_conditions"]]
         return c
+    def drop_or(qname):   # the or-block "review label, or no .html file" goes
+        c = copy.deepcopy(cfg)
+        for q in c["queue_rules"]:
+            if q["name"] == qname:
+                q["queue_conditions"] = [x for x in q["queue_conditions"] if not (isinstance(x, dict) and "Hh" in str(x))]
+        return c
     def swap01(c):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
     def swap12(c):
@@ -289,6 +298,7 @@ def mutations(cfg):
         ("records skips green ci", drop("records", lambda x: x.startswith("check-success"))),
         ("records drops its records-only file guard (A438)", drop("records", lambda x: x.startswith("-files~=^(?!"))),
         ("records drops its tools file guard (A438)", drop("records", lambda x: "[Tt][Oo]" in x)),
+        ("records drops its .html guard (A438, breaker M4)", drop_or("records")),
         ("verdicts drops its records-only file guard (A438)", drop("verdicts", lambda x: x.startswith("-files~=^(?!"))),
         ("pipeline skips the review label (A438 keeps it)", drop("pipeline", lambda x: x.startswith("label=review"))),
         ("records accepts drafts", drop("records", lambda x: x == "-draft")),

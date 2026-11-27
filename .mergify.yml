@@ -445,6 +445,11 @@ queue_rules:
       # product/tools/ (any case: the Mac's disk). Undo: put back the label line and delete these two -files lines.
       - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
       - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
+      # The breaker on #3942 (M4): an .html record can carry script (cockpit/index.html, the founder's board), so a
+      # records PR touching .html still needs the reviewer's label.
+      - or:
+          - "label = review: approved"
+          - -files ~= \.[Hh][Tt][Mm][Ll]?$
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
     merge_conditions:
@@ -545,6 +550,11 @@ queue_rules:
       # product/tools/ (any case: the Mac's disk). Undo: put back the label line and delete these two -files lines.
       - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
       - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
+      # The breaker on #3942 (M4): an .html record can carry script (cockpit/index.html, the founder's board), so a
+      # records PR touching .html still needs the reviewer's label.
+      - or:
+          - "label = review: approved"
+          - -files ~= \.[Hh][Tt][Mm][Ll]?$
     merge_conditions:
       - check-success = ci
     merge_method: merge

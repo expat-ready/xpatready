@@ -38,6 +38,8 @@ cases = [
     ("a records-only PR with no Approve and no review label queues (records)", pr([R + "/STATE.md", R + "/design/x.md"]), "records"),
     ("a records-only PR, a later records push, still no review: queues (records)", pr([R + "/STATE.md", R + "/BACKLOG.md", R + "/qa/BUGS.md"]), "records"),
     ("a qa verdict records PR with no review label queues first (verdicts)", pr([R + "/qa/CAPABILITIES.md"], title="qa: after-merge"), "verdicts"),
+    ("an .html record (it can carry script) with no review label: no queue (breaker M4)", pr([R + "/screens/12/board.html"]), None),
+    ("an .html record with the review label: records", pr([R + "/screens/12/board.html"], labels=["review: approved"]), "records"),
     ("a records-only PR whose ci is not green: no queue (CI stays required)", pr([R + "/STATE.md"], checks=()), None),
     ("a records-only draft: no queue", pr([R + "/STATE.md"], draft=True), None),
     ("a PR mixing records and code with no review label: no queue (not records only)", pr([R + "/STATE.md", A + "/api/src/core.ts"], checks=("ci", "pr-rules", "queue-fresh")), None),
