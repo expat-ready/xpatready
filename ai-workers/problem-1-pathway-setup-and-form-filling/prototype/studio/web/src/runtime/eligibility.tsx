@@ -199,7 +199,7 @@ export function EligibilityPage() {
       )}
       {person && drawer === "run" ? <RunAgainDrawer caseId={c.id} person={person} close={() => setDrawer(null)} /> : null}
       {latest && result && drawer === "override" ? <OverrideDrawer a={latest} r={result} close={() => setDrawer(null)} /> : null}
-      {latest && drawer === "review" ? <ReviewDrawer a={latest} actor={actor} close={() => setDrawer(null)} /> : null}
+      {latest && drawer === "review" ? <ReviewDrawer a={latest} actor={actor} close={(marked) => { if (marked === true) opener.current = null; setDrawer(null); }} /> : null}
       {person && drawer === "history" ? <HistoryDrawer person={person} runs={runs} close={() => setDrawer(null)} /> : null}
     </div>
   );
@@ -323,15 +323,17 @@ function OverrideDrawer({ a, r, close }: { a: Assessment; r: Result; close: () =
   );
 }
 
-function ReviewDrawer({ a, actor, close }: { a: Assessment; actor: string; close: () => void }) {
+// LR-110: once marked, Mark reviewed… is switched off for good, so focus goes to the result's heading at once (marked):
+// focusing the button before the re-read switched it off left focus on the page when it did (c69's step in CI).
+function ReviewDrawer({ a, actor, close }: { a: Assessment; actor: string; close: (marked?: boolean) => void }) {
   const [note, setNote] = React.useState(""), [error, setError] = React.useState<string | null>(null);
   // The preview only: the server decides the stamp from the firm's record (samples/firms.json, P-229 (2)).
   const me = useFirm().data?.users.find((u) => u.id === actor), licensed = !!(me?.duties.includes("represent") && me.licence?.number);
-  const go = useAction(() => api(`/runtime/assessments/${a.id}/review`, { method: "POST", json: note ? { note } : {} }), { success: (x: { stamp: string }) => `${x.stamp === "Seen" ? "Seen" : "Reviewed"}: stamped on the check`, invalidate: [["runtime", "assessments"]], onDone: close });
+  const go = useAction(() => api(`/runtime/assessments/${a.id}/review`, { method: "POST", json: note ? { note } : {} }), { success: (x: { stamp: string }) => `${x.stamp === "Seen" ? "Seen" : "Reviewed"}: stamped on the check`, invalidate: [["runtime", "assessments"]], onDone: () => close(true) });
   const [other, setOther] = React.useState<string | null>(null);
   const submit = () => { if (!go.isPending) go.mutate(undefined, { onError: (e) => { const f = e instanceof ApiError ? e.field("note") : null; setError(f); setOther(f ? null : e.message); } }); };
   return (
-    <Panel open onOpenChange={(o) => { if (!o) close(); }} title="Mark reviewed" description="Once per check. The stamp names you, your duty and your licence." footer={<><Button variant="ghost" onClick={close}>Cancel</Button><Button busy={go.isPending} onClick={submit}>Mark reviewed</Button></>}>
+    <Panel open onOpenChange={(o) => { if (!o) close(); }} title="Mark reviewed" description="Once per check. The stamp names you, your duty and your licence." footer={<><Button variant="ghost" onClick={() => close()}>Cancel</Button><Button busy={go.isPending} onClick={submit}>Mark reviewed</Button></>}>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         {other ? <Notice tone="danger">{other}</Notice> : null}
         <p className="text-sm">The stamp will read <span className="font-medium">"{licensed ? "Reviewed by" : "Seen by"} {me?.name ?? nameOf(actor)}"</span>{licensed ? " (a licensed representative)" : " (no licence: a case officer's stamp)"}.</p>
