@@ -2,7 +2,7 @@
 
 current_lead: local_1f9a58f1-df90-4564-b226-ec6bdff69a0e Lead 2 (new account) · 27 Nov 09:1x IST (after Lead 1 local_92d34440 at ~495k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-27 09:1x IST (clock): **Lead 1 hands over to Lead 2 (local_1f9a58f1) at ~495k context (P-446). Weekly 3% (baseline 0% at 06:05).** Old updated line and the Lead 6→7 pointer: `history/STATE-2026-11-27-0915-lead1-handover-old-lines.md`.
+updated: 2026-11-27 09:1x IST (clock): **Lead 2 (local_1f9a58f1) took over 09:14 IST: check 8000be95 (3,33, next 09:41) and watch b2m7s1nc2 armed. Batch #3890 (#3888 test-clock fix) still checking; main eb99c211a unchanged since 06:43. Relabels wait for #3888.** Lead 1's line: Lead 1 hands over to Lead 2 at ~495k context (P-446). Weekly 3% (baseline 0% at 06:05). Old updated line and the Lead 6→7 pointer: `history/STATE-2026-11-27-0915-lead1-handover-old-lines.md`.
 
 ## Hand-over Lead 1 → Lead 2, 09:1x IST 27 Nov (new account)
 **Do first:** rename yourself "Lead 2 · 27 Nov <IST>", invoke `lead`, set `current_lead:` (done by Lead 1, check), create your check (cron 3,33; prompt exactly `run lead-watch; read STATE Start here`), re-arm the watch: Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). lead-watch.sh dies on gh TLS/504: use curl + `gh auth token` directly.
