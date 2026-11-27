@@ -201,7 +201,8 @@ flowchart LR
 <li>The long path is written out about 670 times: 26 workflows, the merge queue's rules, 86 tools, hooks, skills, and the app itself.</li>
 <li>The same idea lives in several places: decisions, requirements, tools, tests and rules in three places each, evidence in four. BACKLOG and DECISIONS are about 0.8 MB each, too big for an agent to read whole.</li>
 </ul>
-<h3>Plan: seven phases, each one revertible pull request</h3>
+<div class="rec"><b>The plan already exists and is the one we follow:</b> the clean-up plan of 17 Nov (decisions P-674 to P-677), stages 0–8, which are items 60–70 of the full-power plan. Stage 0 is done (on <code>main</code>). Stages 1, 1b, 2a and 8 were prepared on branches that are now about 5,400 commits behind, so they are refreshed rather than redone. The phases below are the same work seen from today's inventory, not a second plan.</div>
+<h3>The same work, seen from today's inventory</h3>
 <div class="tbl"><table>
 <tr><th>#</th><th>Phase</th><th>Risk</th></tr>
 <tr><td>1</td><td>Delete the 1,150 unreferenced history files (git keeps them)</td><td><span class="pill ok">Low</span></td></tr>
