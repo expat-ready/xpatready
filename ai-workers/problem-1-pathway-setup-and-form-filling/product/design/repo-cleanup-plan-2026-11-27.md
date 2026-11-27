@@ -1,5 +1,7 @@
 # Repository clean-up plan (step 0b before the factory switch) — 27 Nov 2026, Lead 2
 
+**SUPERSEDED 10:4x IST 27 Nov (founder: "don't duplicate the work"):** the clean-up plan already exists: `design/repo-cleanup-plan-2026-11-17.md` (branch `claude/repo-cleanup-plan-05e345`), decisions P-674 to P-677, stages 0-8 = full-power plan items 60-70. Stage 0 is on main (#2123); stage 1, 1b, 2a and 8 branches exist but are ~5,400 commits behind. This file is kept only for its fresh inventory (sizes, path counts, 27 Nov), to refresh that plan's stages; it is not a second plan.
+
 Founder (typed, 10:1x IST 27 Nov): a deep clean so agents, names and structure are clear, with nothing stale, archival or hallucinated left in what agents read, and a production-style layout. Founder 10:3x: "Yes, plan it".
 Facts below come from `origin/main` at 3ae82f28f (git ls-tree, git grep, git log); sources/, code/ and archive/ are not tracked and were not opened. Git keeps everything deleted here (AGENTS.md rule 8: git history is the archive).
 
