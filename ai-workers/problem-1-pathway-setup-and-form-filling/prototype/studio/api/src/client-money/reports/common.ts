@@ -17,14 +17,14 @@ export type Party = { kind: PartyKind; id: string; name: string | null };
 /** The path's kind word: `person` or `company`; anything else is 404 (no such route for it). */
 export const kindOf = (raw: string): PartyKind => raw === "person" ? "PERSON" : raw === "company" ? "COMPANY" : notFound("client");
 
-/** The party of the firm the caller may see, or 404 (a malformed id, another firm's, a merged-away one is read as it is
- *  stored: the survivor is a different id). Its name as stored, never guessed (parties.ts's rule). */
+/** The party of the firm the caller may see, or 404: a malformed id, another firm's, or a merged-away one (its survivor
+ *  holds the money and is the one found, as the party search: break m3 on #3753). Its name as stored, never guessed. */
 export async function partyFor(tx: Tx, firmId: string, kind: PartyKind, rawId: string, scope: MoneyScope): Promise<Party> {
   if (!UUID.test(rawId)) return notFound("client");
   const id = rawId.toLowerCase(), f = firmScope(firmId);
   const name = kind === "PERSON"
-    ? await tx.foPerson.findFirst({ where: { ...f, id }, select: { givenNames: true, familyName: true } }).then((p) => p ? { n: personName(p.givenNames, p.familyName) } : null)
-    : await tx.foCompany.findFirst({ where: { ...f, id }, select: { operatingName: true } }).then((c) => c ? { n: (c.operatingName ?? "").trim() || null } : null);
+    ? await tx.foPerson.findFirst({ where: { ...f, id }, select: { givenNames: true, familyName: true, mergedIntoId: true } }).then((p) => p && !p.mergedIntoId ? { n: personName(p.givenNames, p.familyName) } : null)
+    : await tx.foCompany.findFirst({ where: { ...f, id }, select: { operatingName: true, mergedIntoId: true } }).then((c) => c && !c.mergedIntoId ? { n: (c.operatingName ?? "").trim() || null } : null);
   if (!name || !partyInScope(scope, id)) return notFound("client");
   return { kind, id, name: name.n };
 }

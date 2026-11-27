@@ -1,9 +1,10 @@
 # shellcheck shell=bash
-# The mutation rows of check-guards.sh up to OS-85 (26 Nov), moved here unchanged from check-guards.sh (lines 53-740 at
-# origin/main 2026-11-26). Frozen: a new item adds its own guards.d/OS-<n>.sh, never a block here (check-guards-d.sh).
+# The mutation rows of check-guards.sh up to OS-85, moved here unchanged from check-guards.sh (lines 55-765 at origin/main
+# b1b4c682a, 27 Nov). Frozen: a new item adds its own guards.d/OS-<n>.sh, never a block here (check-guards-d.sh).
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
 # Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
+1 split|product/tools/check-docs.sh|/CURRENT LEAD: CURRENT-LEAD.md has/d|check-records-dir.sh
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
 2 who|product/tools/label-guard.sh|s/^team=.*/team=true/|check-label-guard.sh
@@ -311,6 +312,8 @@ LW speed gh|product/tools/gh.sh|/^\[ -n .*GH_FALLBACK=always$/d|check-lead-watch
 24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh
 24 trig|product/tools/conformance-check.py|s/elif sorted(have or \[\]) != sorted(types):/elif False:/|check-conformance-check.sh
 24 beat|product/tools/conformance-check.py|s/    if per_hour \* hb\["every_min"\] < 60:/    if False:/|check-conformance-check.sh
+24 events|product/tools/conformance-check.py|s/            if not isinstance(on, dict) or e not in on\]/            if False]/|check-conformance-check.sh
+24 allowed|product/tools/conformance-check.py|s/            if ins != sorted(want.get("inputs_exact", \[\])):/            if False:/|check-conformance-check.sh
 24 gate|product/tools/conformance-check.py|s/             if n == cfg\["gate_job"\] and k != cfg\["gate_job"\]\]/             if False]/|check-conformance-check.sh
 25 merge|product/tools/pipeline-heartbeat.py|s/             > hb\["no_merge_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
 25 queue|product/tools/pipeline-heartbeat.py|s/             > hb\["queue_no_progress_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
@@ -456,6 +459,7 @@ MUT="$MUT"'
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
 38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
+38 notes only|product/tools/private-sync.sh|s/^git add -A notes$/git add -A/|check-lead-upkeep.sh
 38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(git ls-files -s -- notes\/side-session-notes\/ .*then$/if false; then/|check-lead-upkeep.sh
 38 origin|product/tools/private-sync.sh|s/^if ! same_repo .*then$/if false; then/|check-lead-upkeep.sh
 38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh
@@ -595,7 +599,12 @@ MUT="$MUT"'
 29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
-29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
+29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
+M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
+M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh
+M788 prose|product/tools/model-rule-check.py|s/^        m = OTHER_MODEL.search(line) or OTHER_EFFORT.search(line)/        m = None/|check-model-rule.sh
+M788 env|product/tools/model-rule-check.py|s/^    if re.fullmatch(/    if False and re.fullmatch(/|check-model-rule.sh
+M788 skillfm|product/tools/model-rule-check.py|s/^    if "model" in fm and/    if False and/|check-model-rule.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
 MUT="$MUT"'
 OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh
@@ -661,6 +670,16 @@ P822 run end|product/tools/queue-gate.sh|s/\[ "\$(jq -r .\.status + " " + (\.con
 P822 verdict|../../.github/workflows/pr-suites.yml|s/"success run success") echo/"success run failure") echo/|check-pr-suites-job.sh
 P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \&\& \[ "\$OUTCOME" = success \]; then exit 0; fi/exit 0/|check-pr-suites-job.sh
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
+# OS-82 (OS-PM 4): a head whose only pr-suites run predates job "pr-suites" counts only when its parts were skipped
+MUT="$MUT"'
+OS82 wired|product/tools/queue-gate.sh|s/\[ "\$suites_state" = missing \] \&\& noparts "\$s"; return 0; }/return 0; }/|check-queue-gate.sh
+OS82 skipped|product/tools/queue-gate.sh|s/length > 0 and all(.conclusion == "skipped")/length > 0/|check-queue-gate.sh
+OS82 warned|product/tools/queue-gate.sh|s/startswith("pr-suites"))/startswith("~"))/|check-queue-gate.sh
+OS82 job|product/tools/queue-gate.sh|s/(\$j . any(.name == "pr-suites"))/(false)/|check-queue-gate.sh
+OS82 green|product/tools/queue-gate.sh|s/select(.status == "completed" and .conclusion == "success" and/select(/|check-queue-gate.sh
+OS82 before|product/tools/queue-gate.sh|s/ and (.created_at .. "9") < .before)/)/|check-queue-gate.sh
+OS82 level|product/tools/queue-gate.sh|s/ or .annotation_level == "warning" or .annotation_level == "failure")/)/|check-queue-gate.sh
+OS82 code|product/tools/queue-gate.sh|s/^  \[ -z "\$(grep -E .\/prototype\/.^packages\/. <<< "\${files:-}"/  [ -z "$(grep -E "^~" <<< "${files:-}"/|check-queue-gate.sh'
 # P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after (money, additive migrations, public routes)
 MUT="$MUT"'
 P823 destructive|product/tools/queue-gate.sh|s/      if \[ "\$k" = migration \] .. destructive "\$f"; then/      if false; then/|check-queue-gate.sh
@@ -681,6 +700,11 @@ P823 public|product/tools/queue-gate.sh|s/\&\& opens "\$f" \&\&/\&\& false \&\&/
 P823 list|product/tools/lead-read-paths.txt|s/^# --- read-after money.*/# moved/|check-queue-gate.sh
 P823 overdue|product/tools/after-read-owed.sh|s/ min overdue"; rc=1/ min overdue"; rc=0/|check-after-read-owed.sh
 P823 read line|product/tools/after-read-owed.sh|s/grep -qx "\$head"; then/grep -q .; then/|check-after-read-owed.sh'
+# OS-17 (P-526c): records PRs open over 24 h; the row switches the age rule off.
+MUT="$MUT"'
+OS17 age|product/tools/known-failures.py|s/(p for p in recs if hours(p) > lim)/(p for p in recs)/|check-known-failures.sh
+OS17 page|product/tools/known-failures.py|s/^    if cap and len(prs) >= int(cap):/    if False:/|check-known-failures.sh
+OS17 wired|product/tools/lead-watch.sh|s/"prs": prs, "prs_all": prs_all,/"prs": prs, "prs_all": None,/|check-known-failures.sh'
 # OS-18 (P-530): the 🔴 Waiting on the founder line; each row switches one of founder-wait.py's rules off.
 MUT="$MUT"'
 OS18 wait|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (since is None or since >= EVERY_MIN):/        if since is None or since >= EVERY_MIN:/|check-founder-wait.sh
@@ -688,4 +712,3 @@ OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (
 OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
 OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
 OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
-

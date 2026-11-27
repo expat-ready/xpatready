@@ -95,3 +95,90 @@ class.
 * The outcome email (SA-11-28): part 3, through MailPort.
 * The console pages: PF-21rs (the R1.86 lane).
 * The case side's eraser: CS-X2.
+
+## Part 2a: done (#3583, merged 25 Nov 07:30Z)
+Items 1-8 above, plus round 1's fixes:
+* the mark table holds the port's rules;
+* an earlier KEPT mark keeps the end PARTIAL;
+* this run's results lead the words.
+
+**Carried from 2a's reviews** (#3583 comments 7154327878 and 7154499740):
+* the unguessable claim id (do it in 2b, below);
+* the words around the emergency stop;
+* 2a's own after-migration, shape and rollback checks;
+* the rollback's warning about the flag;
+* the earlier-KEPT rule, which also reads an earlier cycle that was recorded;
+* room for the earlier KEPT words when this run's words alone reach 2000 characters.
+
+## Part 2b: the front-office eraser (plan; built by the next runtime session)
+**What it is.**
+* Module `front-office`, registered in the front office's feature file. Main's job starts erasing once 2b merges.
+* It erases one person record of one firm, inside the firm transaction the job already opens (SA-11-40 rules 1-3).
+* It is idempotent: a second call answers NOTHING, or KEPT again (port rule 4).
+
+**The column list.** The person-column inventory is `api/src/front-office/duplicates/merge/columns.ts`, and
+`check_fo9b_merge` already fails on an unclassified column.
+* 2b adds its own classification next to it, `erase/columns.ts`: every listed column is ERASE, KEEP-with-class or
+  NOT-PERSON.
+* A test fails on any column in that inventory that 2b does not classify.
+
+**Anonymised in place.** `fo_person` keeps its id, because money rows and evidence point at it (ON DELETE RESTRICT).
+* The names become a fixed placeholder, for example "Erased person".
+* `email`, `phone`, `language` and `time_zone` become null. Check the columns' NOT NULL rules first.
+* The `fo_person_keys` trigger recomputes `phone_e164` and `name_key`.
+
+**Free text cleared:**
+* `fo_lead.interested_in_text`, `close_note`, `source_detail`;
+* `fo_prospect.lost_note`;
+* `fo_call.notes`;
+* `fo_booking.cancel_reason`, `visitor_time_zone` (the update must pass `fo_booking_write`);
+* `fo_consult_record.notes`, `recommended`;
+* `msg_outbox.address`, for this person's messages.
+
+**Insert-only rows, through Q1's exception** (Lead 3's ruling).
+* **The tables and the trigger that refuses each one today:**
+  * `fo_note.text` and `fo_lead_attribution` (`utm_*`, `click_id`, `landing_page`, `referrer_url`): `fo_sales_insert_only`,
+    created in a loop in fo1a's migration;
+  * `fo_dup_merge.loser_snapshot` and `survivor_before`: `fo_dup_merge_write`;
+  * `msg_event.detail`: `msg_write_once`.
+* **One definer,** for example `fo_erasure_blank(p_request uuid, p_claim uuid)`:
+  * it checks that the request is claimed under that claim, and names the session's firm and this person;
+  * it sets `pf21d.erasing = <request id>` for the transaction;
+  * it blanks only the named columns of that person's rows.
+* **Each trigger** lets an update through only while that flag names a claimed request of the row's firm and person, and
+  only the named columns may change. The merge's `fo_dup.merging` flag is the pattern (fo9b migration :88-98).
+* `audit_event` is never touched: it is the `activity_log` floor, answered KEPT.
+
+**Kept, and said so** (SA-11-16 (c), SA-11-28; P-819, the founder's "Sample for now").
+* **Under a Sample class,** marked "Unconfirmed: no counsel", with no period invented:
+  * consent proof: `msg_consent`, `msg_consent_withdrawal`;
+  * signing and retainer evidence: `fo_signer`, `fo_signing_*`, `fo_retainer*`;
+  * identity checks: `fo_identity_check`;
+  * conflict checks: `fo_conflict_check`.
+* `msg_suppression.address` is kept as "do not contact" (Sample).
+* Money rows are kept under AUD-5's `client_financial` floor: ask `KeepPeriodPort.check` (`ports/keep-period.ts`).
+* If anything is kept, the eraser answers KEPT. Its note names classes and counts only (300 characters, no "@").
+
+**The unguessable claim** (2a reviewer m1). `plat_data_request_erasure_claim` sets a `claim_id uuid`, passed to `mark_add`
+and to the blanking definer, so a firm's session cannot guess its own live claim.
+
+**Tests** (`tests/check_pf21d_fo_eraser.ts`, each a pass line and a fail line):
+* the person's rows in that firm are anonymised or cleared;
+* another person, the same person in another firm, and a family member stay untouched;
+* each insert-only table refuses the same update without the flag, and with a flag for another firm, person or claim;
+* the KEPT classes are named;
+* a second run answers NOTHING or KEPT;
+* `eraserCases` (ErasurePort's contract) passes;
+* the end is HELD / partial while anything is kept;
+* the migration right after itself, its rollback, and `migrate diff` empty.
+
+**Size.** With the four triggers it may pass 800 lines. If so, split:
+* **2b-1:** the eraser for the mutable tables and the KEPT classes. The insert-only tables answer KEPT ("not yet
+  erasable"), so nothing reads ERASED falsely.
+* **2b-2:** the exception and those tables.
+
+## Part 2c: the platform eraser (after 2b)
+* **Module `platform`:** our own records that name the person in that firm, that is `plat_complaint` subject rows. The
+  complaint is kept; what happens to its personal fields is the Lead's ruling, which 2c asks for first.
+* **The register itself** (`plat_data_request`) is kept: it is our record of the request, and the outcome email needs it
+  (SA-11-28).

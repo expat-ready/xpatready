@@ -202,9 +202,10 @@ try {
   const src = walk(join(STUDIO, "api", "src")).map((path) => ({ path, text: readFileSync(path, "utf8") }));
   const tests = readdirSync(join(STUDIO, "tests")).filter((f) => f.endsWith(".ts") && f !== "check_pfr1_reports.ts").map((f) => ({ path: f, text: readFileSync(join(STUDIO, "tests", f), "utf8") }));
   ok("PF-R1 DW7 pass (review M2): every module registering metrics on the app's registry has a test running overBudget on them", unbudgeted(src, tests).length === 0, unbudgeted(src, tests));
-  const planted = [{ path: "/x/api/src/front-office/reports/metrics.ts", text: `import { MetricRegistry } from "../../platform/reports/registry.ts"; registry.register({})` }];
-  ok("PF-R1 DW7 fail (review M2): a module that registers a metric with no budget test is named", JSON.stringify(unbudgeted(planted, tests)) === JSON.stringify([planted[0].path]) && unbudgeted(planted, [...tests, { path: "t.ts", text: "front-office/reports/metrics overBudget(" }]).length === 0);
-  const viaPort = [{ path: "/x/api/src/client-money/reports/metrics.ts", text: `import type { MetricsPort } from "../../../../ports/metrics.ts"; export const add = (p: MetricsPort) => p.register({})` }];
+  // the planted paths are names no real module has (R1.79 parts 2 and 3 add front-office/ and client-money/reports/metrics.ts)
+  const planted = [{ path: "/x/api/src/front-office/reports/planted-unbudgeted.ts", text: `import { MetricRegistry } from "../../platform/reports/registry.ts"; registry.register({})` }];
+  ok("PF-R1 DW7 fail (review M2): a module that registers a metric with no budget test is named", JSON.stringify(unbudgeted(planted, tests)) === JSON.stringify([planted[0].path]) && unbudgeted(planted, [...tests, { path: "t.ts", text: "front-office/reports/planted-unbudgeted overBudget(" }]).length === 0);
+  const viaPort = [{ path: "/x/api/src/client-money/reports/planted-unbudgeted.ts", text: `import type { MetricsPort } from "../../../../ports/metrics.ts"; export const add = (p: MetricsPort) => p.register({})` }];
   ok("PF-R1 DW7 fail (review round 2 m5): a module coded to MetricsPort that registers with no budget test is named too", JSON.stringify(unbudgeted(viaPort, tests)) === JSON.stringify([viaPort[0].path]));
 
   // ----------------------------------------------------------------------------------------------- break minors

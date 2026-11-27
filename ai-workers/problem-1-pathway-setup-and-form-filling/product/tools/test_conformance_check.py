@@ -298,8 +298,19 @@ class Conformance(unittest.TestCase):
                    lambda d: d[True]["pull_request"].pop("types"),                 # GitHub's default set
                    lambda d: d[True].update({"pull_request_target": {}}),
                    lambda d: d[True].update({"push": None}),                                   # a second ci run
-                   lambda d: d[True]["pull_request"].update({"branches-ignore": ["main"]})):
+                   lambda d: d[True]["pull_request"].update({"branches-ignore": ["main"]}),
+                   lambda d: d[True].update({"workflow_dispatch": None})):                     # not approved here
             self.assertEqual(status(self.check(edit(C, fn)), "ci.triggers"), "fail")
+
+    def test_an_approved_extra_trigger_needs_its_inputs_exactly(self):   # OS-83: ci.yml's full run (P-731)
+        m = json.loads(json.dumps(MANIFEST)); m["ci"]["triggers_allowed"] = {"workflow_dispatch": {"inputs_exact": ["head", "pr"]}}
+        ok = lambda d: d[True].update({"workflow_dispatch": {"inputs": {"pr": {}, "head": {}}}})
+        self.assertEqual(status(self.check(edit(C, ok), m), "ci.triggers"), "pass")
+        for fn in (lambda d: d[True].update({"workflow_dispatch": None}),                          # no inputs
+                   lambda d: d[True].update({"workflow_dispatch": {"inputs": {"pr": {}}}}),
+                   lambda d: d[True].update({"workflow_dispatch": {"inputs": {"pr": {}, "head": {}, "ref": {}}}}),
+                   lambda d: (ok(d), d[True].update({"push": None}))):                             # still no other
+            self.assertEqual(status(self.check(edit(C, fn), m), "ci.triggers"), "fail")
 
     def test_write_permission_fails(self):
         for fn in (lambda d: d["jobs"]["guard"]["permissions"].update({"contents": "write"}),
@@ -336,6 +347,12 @@ class Conformance(unittest.TestCase):
         self.assertEqual(status(self.check(lambda f: None, hb), "heartbeat.workflow"), "fail")  # file missing
         good["on"]["schedule"] = [{"cron": "*/30 * * * *"}]
         self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
+        # OS-83: events start it too, when the manifest names them
+        hb["heartbeat"]["events_required"] = ["push", "workflow_run"]
+        self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "fail")   # schedule only
+        good["on"].update({"push": {"branches": ["main"]}, "workflow_run": {"workflows": ["ci"]}})
+        self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
+        self.assertEqual(status(self.check(with_wf(lambda d: d["on"].pop("workflow_run")), hb), "heartbeat.workflow"), "fail")
 
     # -- ruleset -----------------------------------------------------------------------------------------------------
     def test_ruleset_states(self):
@@ -436,7 +453,11 @@ class Conformance(unittest.TestCase):
             self.assertIn(k, m)
         self.assertEqual(m["change_log"][-1]["version"], m["version"])  # every version has its change_log row
         self.assertEqual(len(set(m["settings"]["deny_required"])), len(m["settings"]["deny_required"]))
-        self.assertGreater(cc.run(cc.Source(root=root), m)["checked"], 10)  # runs on the real files
+        res = cc.run(cc.Source(root=root), m)
+        self.assertGreater(res["checked"], 10)  # runs on the real files
+        # OS-83: a healthy main passes its own triggers and heartbeat shape (the heartbeat was red 23 runs on ci.triggers)
+        for i in ("ci.triggers", "heartbeat.workflow"):
+            self.assertEqual(status(res, i), "pass", [x for x in res["items"] if x["id"] == i])
 
 
 if __name__ == "__main__":

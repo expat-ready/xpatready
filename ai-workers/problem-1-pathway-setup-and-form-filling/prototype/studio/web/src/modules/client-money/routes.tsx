@@ -5,10 +5,14 @@ import { InvoiceDetailPage } from "./invoices/detail";
 import { InvoiceListPage } from "./invoices/list";
 import { PaymentDetailPage } from "./payments/detail";
 import { PaymentListPage } from "./payments/list";
+import { TrustHomePage } from "./trust/home";
+import { PartyMoneyPage } from "./trust/party";
 
 export const routes: ModuleRoute[] = [
   { path: "/money/invoices", element: <InvoiceListPage /> },
   { path: "/money/invoices/:id", element: <InvoiceDetailPage /> },
   { path: "/money/payments", element: <PaymentListPage /> },   // FO-7s3a part 1
   { path: "/money/payments/:id", element: <PaymentDetailPage /> },
+  { path: "/money/trust", element: <TrustHomePage /> },   // FO-7s3b part 1
+  { path: "/money/parties/:kind/:id", element: <PartyMoneyPage /> },
 ];

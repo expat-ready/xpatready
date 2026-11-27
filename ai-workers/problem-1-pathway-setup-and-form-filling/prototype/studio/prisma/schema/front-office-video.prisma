@@ -1,0 +1,60 @@
+// front-office-video.prisma — video meeting links (FO-3v part 1). Owner: Lead B (front office).
+// One file per area (DB-SPLIT, P-600): its only lines elsewhere are the back-relations on FoBooking and PlatformStaff.
+//
+// AG-4-58 (rules 2-4, §7, §12), AG-4-29 (rules 2, 5-7, 9, §7, §10), AG-16-73. A person's own "My meeting link" and
+// choice (one row per person, own record only, no key), and the link each Video booking got at confirmation. Rules
+// Prisma cannot say are in the migration 20261124100000_fo3v_video: https only and at most 2,048 characters on both
+// links, PF-12's wall, and the trigger that drops a deactivated person's row (AG-4-58 §12). Every value seeded is Sample.
+
+/// "Use for my video bookings" (AG-4-58 §7 `videoSourceChoice`): Meet/Teams from the calendar, Zoom, or My meeting link.
+enum FoVideoSource {
+  CALENDAR
+  ZOOM
+  MY_LINK
+}
+
+/// Where a booking's link came from (AG-4-29 §7 `meetingProvider`).
+enum FoMeetingProvider {
+  GOOGLE_MEET
+  TEAMS
+  ZOOM
+  MY_LINK
+  MANUAL
+}
+
+/// A person's own video settings (AG-4-58 §7, on the staff profile): one per person, read and written only by that person.
+model FoVideoPref {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId        String         @map("firm_id") @db.Uuid
+  staffId       String         @map("staff_id") @db.Uuid
+  /// One https URL, at most 2,048 characters (rule 2); never logged, never in an audit line (§9, §10).
+  myMeetingLink String?        @map("my_meeting_link")
+  /// The person's choice; null: none (no source). Only a source the person has (rule 3).
+  sourceChoice  FoVideoSource? @map("source_choice")
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  staff PlatformStaff @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([firmId, staffId])
+  @@map("fo_video_pref")
+}
+
+/// The link a Video booking got (AG-4-29 §7: meetingLink, meetingProvider, externalMeetingId), written in the booking's
+/// own transaction from saved values (part 1: no network). A cancel voids it (rule 9).
+model FoBookingVideo {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId            String            @map("firm_id") @db.Uuid
+  bookingId         String            @map("booking_id") @db.Uuid
+  meetingLink       String            @map("meeting_link")
+  provider          FoMeetingProvider
+  externalMeetingId String?           @map("external_meeting_id")
+  voidedAt          DateTime?         @map("voided_at") @db.Timestamptz
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  booking FoBooking @relation(fields: [firmId, bookingId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One link per booking (AG-4-29 §7).
+  @@unique([firmId, bookingId])
+  @@map("fo_booking_video")
+}
