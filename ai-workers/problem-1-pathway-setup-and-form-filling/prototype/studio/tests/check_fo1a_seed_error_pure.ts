@@ -11,11 +11,11 @@ const { ok, summary } = recorder();
 const frame = "\nInvalid `tx.foStage.createMany()` invocation in\n/home/runner/work/studio/api/src/front-office/firm-seed.ts:108:35\n\n"
   + Array.from({ length: 8 }, (_, i) => `  ${100 + i} const line${i} = await tx.$queryRaw<{ seeded_at: Date | null }[]>\`select ...\`;`).join("\n")
   + "\n→ 108 await tx.foStage.createMany(\nDatabase error. Code: `P0001`. Message: `test: this firm's seed fails`";
-const prisma710 = Object.assign(new Error(frame), { name: "PrismaClientKnownRequestError", code: "P2039",
+const v710Error = Object.assign(new Error(frame), { name: "PrismaClientKnownRequestError", code: "P2039",
   meta: { modelName: "FoStage", driverAdapterError: { name: "DriverAdapterError", cause: { originalCode: "P0001", originalMessage: "test: this firm's seed fails", kind: "postgres", code: "P0001", message: "test: this firm's seed fails" } } } });
 
-ok("LR-058 fail (the regression): the old cut of the message loses the reason under Prisma 7.10", !/this firm's seed fails/.test(String(prisma710).slice(0, 300)), { len: String(prisma710).length });
-ok("LR-058 pass: a Prisma 7.10 error is named by the database's own words", seedError(prisma710) === "test: this firm's seed fails", { got: seedError(prisma710) });
+ok("LR-058 fail (the regression): the old cut of the message loses the reason under Prisma 7.10", !/this firm's seed fails/.test(String(v710Error).slice(0, 300)), { len: String(v710Error).length });
+ok("LR-058 pass: a Prisma 7.10 error is named by the database's own words", seedError(v710Error) === "test: this firm's seed fails", { got: seedError(v710Error) });
 const noMeta = Object.assign(new Error(frame), { name: "PrismaClientKnownRequestError" });
 ok("LR-058 pass: with no adapter cause, the message's last line (which holds the reason) is kept", /this firm's seed fails/.test(seedError(noMeta)), { got: seedError(noMeta) });
 ok("LR-058 pass: a one-line error is kept as it is, with its name", seedError(new TypeError("boom")) === "TypeError: boom", { got: seedError(new TypeError("boom")) });
