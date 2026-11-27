@@ -13,6 +13,10 @@
 #            matches lead-read-paths.txt (.github/, .mergify.yml, the guards, schema, migrations, money,
 #            permissions; a screenshot, an image or .txt under product/, or a records-only PR sets off only the guard
 #            lines, never money or permissions: B206 part 3).
+#            A438 cut 2 (founder 27 Nov): a pipeline path (.github/, .mergify.yml, the guards, hooks, agent settings: the
+#            "# --- pipeline" section) refuses only when weakening.py finds its diff can weaken protection (a gate changed,
+#            a check, guard, test assertion or mutation row removed or loosened, a workflow widened, a setting removed);
+#            a new test, a stricter check or an added tool is labelled on the reviewer's Approve alone (leadread(), weak()).
 #            P-823 (founder, 25 Nov): only the "read first" paths refuse (workflows, the guards, permissions, and a
 #            destructive migration or schema change, judged on the PR's patch: destructive()); money, additive
 #            migrations and public routes are labelled as any other and owe the Lead's read after (afterlabel() before the label, afterline() after it:
@@ -60,7 +64,7 @@ set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
 HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m" "$H.hard" "$H.soft" "$H.fj" "$H".k.*' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m" "$H.hard" "$H.pipe" "$H.soft" "$H.fj" "$H".k.*' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -163,12 +167,17 @@ leadread() {  # stdin: changed paths → "<kind><TAB><path>" for each that keeps
   local f k all="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}" rec=0   # LEAD_READ_PATHS: the test's stand-in
   local mk; for mk in records-exempt "read-after money" "read-after migration" "read-after public"; do   # every marker, or fail closed (#3661 review m6)
     [ -r "$all" ] && grep -q "^# --- $mk" "$all" || { printf 'first\t%s\n' "lead-read-paths.txt unreadable or without its marker \"$mk\""; return; }; done
-  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$all" > "$H.hard"
+  awk '/^# --- (pipeline|records-exempt)/ {exit} !/^#/ && NF' "$all" > "$H.hard"
+  awk '/^# --- records-exempt/ {exit} f && !/^#/ && NF; /^# --- pipeline/ {f = 1}' "$all" > "$H.pipe"   # A438 cut 2
   awk -v o="$H.k." '/^# --- records-exempt/ {k = "first"} /^# --- read-after money/ {k = "money"} /^# --- read-after migration/ {k = "migration"}
     /^# --- read-after public/ {k = "public"} k && !/^#/ && NF {print > (o k)}' "$all"
   records && rec=1
   while IFS= read -r f; do [ -n "$f" ] || continue
     if grep -qiEf "$H.hard" <<< "$f"; then printf 'first\t%s\n' "$f"; continue; fi
+    # A438 cut 2: a pipeline path is read first only when its diff can weaken protection (weakening.py); else it goes on
+    # to the lines below like any other file (money, permissions), so nothing that kept a read before loses its other rules.
+    if [ -s "$H.pipe" ] && grep -qiEf "$H.pipe" <<< "$f"; then
+      w=$(weak "$f"); [ -n "$w" ] && { printf 'first\t%s (%s)\n' "$f" "$w"; continue; }; fi
     [ "$rec" = 1 ] && continue
     grep -qiE '(^|/)screens/([^/]+/)*[^/]+\.png$' <<< "$f" && continue
     grep -qiE '/product/tools/' <<< "$f" || ! grep -qE '^ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(png|jpe?g|gif|webp|svg|txt)$' <<< "$f" || continue
@@ -177,7 +186,11 @@ leadread() {  # stdin: changed paths → "<kind><TAB><path>" for each that keeps
       if [ "$k" = migration ] && destructive "$f"; then printf 'first\t%s (%s)\n' "$f" "$dwhy"; else printf '%s\t%s\n' "$k" "$f"; fi
     done
     grep -qE "$API_SRC" <<< "$f" && opens "$f" && printf 'public\t%s (OpenRead)\n' "$f"
-  done; rm -f "$H.hard" "$H".k.*; true; }
+  done; rm -f "$H.hard" "$H.pipe" "$H".k.*; true; }
+weak() {  # A438 cut 2: a pipeline path → why its diff weakens protection (weakening.py on the PR's patches), or nothing.
+  # Fails closed: weakening.py missing, crashing or the file list unreadable is a weakening (read first).
+  local o; o=$(python3 -I "${WEAKENING:-$HERE/weakening.py}" --files "$H.fj" "$1" 2>/dev/null) || { echo "weakening.py could not judge it: read first, A438"; return; }
+  [ -n "$o" ] && printf '%s' "${o#*$'\t'}" | tr -d '`\r' | cut -c1-120 | sed 's/$/: weakening, A438/'; true; }
 # P-823: "destructive migrations (drop, rename, delete) still wait for the Lead's read first". Judged on the PR's patch as
 # GitHub gives it with the file list (the PR's code is never fetched), never on the file name. A migration file is
 # additive only when the PR adds it (an edit or removal of a migration main may have applied is not) and every statement

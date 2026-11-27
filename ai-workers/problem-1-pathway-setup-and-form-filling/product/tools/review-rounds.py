@@ -4,7 +4,11 @@ decides between another round and a fresh reviewer"; desk 08 cites it as P-277).
 
 A reviewer round is one PR comment, by someone with write access (OWNER, MEMBER, COLLABORATOR; anyone can comment on
 a public repository), with a line that starts "Reviewer: <verdict>" (Approve, Changes, Changes requested, Request
-changes, Block, Reject; markdown * _ ` ignored). Bots never count. Rounds 1 and 2 pass. Round k > 2 passes only when a
+changes, Block, Reject; markdown * _ ` ignored). Bots never count. A438 cut 3 (founder 27 Nov 14:3x IST, "Yes, all
+three"): only rounds that ask for changes count (Changes, Block, Reject, needs changes); an Approve, the first one or a
+re-review of a later diff, is reported but never counted ("Approve with changes", "Approve after ..." asks for changes:
+it counts, review m3 on #3942) (a records PR needed 4 rounds for STATE line edits, 27 Nov).
+Change-requesting rounds 1 and 2 pass. Round k > 2 passes only when a
 write-access comment has a line starting "Lead allows round N:" with N >= k (so "Lead allows round 3:" allows a third
 round; a fourth needs "Lead allows round 4:"). A PR with the `records` label is exempt (P-385: the Lead's records
 approvals are not review rounds). Limit, stated for the Lead (#2749 review M3): only rounds posted as such a line
@@ -34,7 +38,7 @@ CONTEXT = "review-rounds"
 
 def judge(comments):
     """-> (ok, rounds, allowed, message)"""
-    rounds, allowed, ids = 0, 2, []
+    rounds, approves, allowed, ids = 0, 0, 2, []
     for c in comments:
         user = c.get("user") or {}
         if user.get("type") == "Bot" or user.get("login", "").endswith("[bot]"):
@@ -42,15 +46,23 @@ def judge(comments):
         if c.get("author_association") not in TEAM:
             continue
         body = re.sub(r"[*_`]", "", c.get("body") or "")
-        if VERDICT.search(body):
+        verdicts = [v.lower() for v in VERDICT.findall(body)]
+        # A plain Approve is the verdict alone, with at most a SHA and a full stop; anything else on the line ("with
+        # changes", ", fix X first", "(fix ...)", "- fix") asks for changes and counts (review m3 on #3942, rounds 1-2).
+        tails = re.findall(r"^\s*(?:>\s*)?reviewer:\s*approve[sd]?\b(.*)$", body, re.I | re.M)
+        conditional = any(not re.fullmatch(r"\s*(?:[0-9a-f]{7,40})?\s*\.?\s*", a, re.I) for a in tails)
+        if verdicts and all(v.startswith("approve") for v in verdicts) and not conditional:
+            approves += 1   # A438 cut 3: an Approve round never counts toward the limit
+        elif verdicts:
             rounds += 1
             ids.append(str(c.get("id", "?")))
         for n in ALLOW.findall(body):
             allowed = max(allowed, int(n))
+    seen = " (%d Approve round(s) not counted, A438)" % approves if approves else ""
     if rounds <= allowed:
         extra = " (Lead allowed up to %d)" % allowed if allowed > 2 else ""
-        return True, rounds, allowed, "%d reviewer round(s), limit %d%s" % (rounds, allowed, extra)
-    return False, rounds, allowed, ("%d reviewer rounds, limit %d: round %d needs a PR comment line "
+        return True, rounds, allowed, "%d change-requesting round(s), limit %d%s%s" % (rounds, allowed, extra, seen)
+    return False, rounds, allowed, ("%d change-requesting rounds, limit %d: round %d needs a PR comment line "
                                     "\"Lead allows round %d: <reason>\" from the tech lead, or a fresh reviewer's "
                                     "decision by the Lead (P-293, P-783 (1))" % (rounds, allowed, allowed + 1, allowed + 1))
 

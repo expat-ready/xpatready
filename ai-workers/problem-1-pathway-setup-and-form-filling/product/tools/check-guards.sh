@@ -39,6 +39,7 @@ TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT 
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
+TESTS="$TESTS check-weakening.sh check-review-rounds.sh check-records-queue.sh"   # A438 cuts 2 and 3: the Lead reads weakening diffs only; Approve rounds not counted
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -757,6 +758,27 @@ OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (
 OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
 OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
 OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
+
+# A438 (founder 27 Nov 14:3x IST, "Yes, all three"): each row switches off one protection the three cuts keep.
+MUT="$MUT"'
+A438 weak code|product/tools/weakening.py|s/^    if add or rem:   # tests, workflows/    if False:   # tests, workflows/|check-weakening.sh
+A438 weak inside|product/tools/weakening.py|s/^                if not inside:$/                if False:/|check-weakening.sh
+A438 weak rowshape|product/tools/weakening.py|s/^                return "check-guards.sh gains a line that is not.*/                pass/|check-weakening.sh
+A438 weak front|product/tools/weakening.py|s/^            if not closed and s in "+-" and (no <= FRONT_MATTER_LINES or.*/            if False:/|check-weakening.sh
+A438 weak case|product/tools/weakening.py|s/^    if status == "added" and odd_case(path):$/    if False:/|check-weakening.sh
+A438 weak ascii|product/tools/weakening.py|s/^    if not path.isascii():$/    if False:/|check-weakening.sh
+A438 rounds cond|product/tools/review-rounds.py|s/ and not conditional:$/:/|check-review-rounds.sh
+A438 weak newwf|product/tools/weakening.py|s/^        if path.startswith((".github\/", ".mergify\/"))/        if False and path.startswith((".github\/", ".mergify\/"))/|check-weakening.sh
+A438 weak missing|product/tools/weakening.py|s/why = judge(f) if f else "not in the PR.s file list: read first (fails closed)"/why = judge(f) if f else ""/|check-weakening.sh
+A438 qg pipe|product/tools/queue-gate.sh|s/^      w=\$(weak "\$f"); \[ -n "\$w" \]/      w=""; [ -n "$w" ]/|check-queue-gate.sh
+A438 qg closed|product/tools/queue-gate.sh|s/ { echo "weakening.py could not judge it: read first, A438"; return; }/ return/|check-queue-gate.sh
+A438 lrg pipe|product/tools/lead-read-gate.sh|s/^      if ! o=\$(python3 -I/      if false \&\& o=$(python3 -I/|check-lead-read-gate.sh
+A438 rounds changes|product/tools/review-rounds.py|s/^        elif verdicts:$/        elif False:/|check-review-rounds.sh
+A438 rounds allow|product/tools/review-rounds.py|s/^            allowed = max(allowed, int(n))$/            allowed = 99/|check-review-rounds.sh
+A438 records files|../../.mergify.yml|/^      - -files ~= ^(?!ai-workers.problem-1-pathway-setup-and-form-filling.product.(\[^.\]+.)\*\[^.\]+..(md/d|check-records-queue.sh
+A438 records tools|../../.mergify.yml|/\[Tt\]\[Oo\]\[Oo\]\[Ll\]\[Ss\]/d|check-records-queue.sh
+A438 records html|../../.mergify.yml|s/-files ~= \\.(\[Hh\]\[Tt\]\[Mm\]\[Ll\]?.\[Ss\]\[Vv\]\[Gg\])\$/-files ~= ^never$/|check-records-queue.sh
+A438 product label|../../.mergify.yml|/^  - name: product$/,/^    merge_conditions:/{/label = review: approved/d;}|check-records-queue.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
