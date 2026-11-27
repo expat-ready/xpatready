@@ -155,3 +155,38 @@ Conclusion: the entry is truly firm-scoped. Two independent gates protect it: th
 **Open, unchanged, not blocking:** m-a and m-b (Minor, Should) from rounds 2–3, the breaker's m1 (follow-up, case timeline) and n1 (Nit, above). No Blocker or Major is open.
 
 **Verdict: Approve 4d584155fe34de599c2f77b00b8834f79bc57ed6**
+
+## Round 5 (fresh reviewer, diff only): 57c4dc3b1..ebd91de594b5b85d97eba8a2fa7f2873d93c4c81
+
+**Range.** One commit, one line: `api/src/case-notes/person-timeline.ts:48`. It changes `PersonTimelineQuery.safeParse(q && typeof q === "object" && !Array.isArray(q) ? q : {})` to `PersonTimelineQuery.safeParse(q ?? {})`. The only caller is `PersonTimelineController.read` (`case-notes/routes.ts:87`, `@Query() q`), so nothing else calls the service with a different argument.
+
+**1. Cause confirmed.** I ran CS-V1's tracer (`tests/lib/routes.ts` `routes` + `follows`) on a scratch copy of `api/src` with the base file put back. At 57c4dc3 the result for `GET /api/runtime/clients/:id/timeline query` is `null` (unparsed). At ebd91de it is `PersonTimeline.read`. The old conditional hid `q` from the tracer, and the new line hands it straight to the parse.
+
+**2. Behaviour: the same for every real request, and stricter for the rest.** The parse is `z.strictObject({ cursor: z.string({ message: "Give it once." }).optional() }, { message: "Only cursor." })`. I probed the schema with zod 4.4.3, the pinned version, using the new `q ?? {}`:
+* `undefined`, `null` and `{}` give `{}`, which is the first page (unchanged).
+* `{cursor:"x"}` and a null-prototype `{cursor:"x"}` are accepted.
+* `{cursor:[a,b]}` and `{cursor:{a}}` give "Give it once." (`invalid_type` on cursor).
+* `{foo}` gives "Only cursor." (`unrecognized_keys`).
+* An array, a string, a number, `false` and `""` all give "Only cursor." (`invalid_type`). The old code turned these into `{}`, a silent first page.
+
+Every failure goes through `invalid("cursor", …)`, so it is a 400 INVALID with `fields.cursor`. The only change is for a query that is not an object, and that is now refused instead of reset. Express always gives the handler an object for `req.query`, so the change cannot be reached over HTTP. It is stricter, never looser. The query is still parsed before `subjectFor`, as at base, so the order of 400 and 404 is unchanged.
+
+**3. Live probes**, on an isolated copy on :4434 (`AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`), signed in as firm A's representative, on a firm-A person:
+* no query: 200, 50 lines, `more=true`;
+* `?cursor=` (empty): 200, the first page;
+* `?cursor=a&cursor=b`: 400, `fields.cursor` "Give it once.";
+* `?foo=1`: 400, `fields.cursor` "Only cursor.";
+* `?cursor=x&foo=1`: 400, "Only cursor.";
+* `?cursor=forged`: 400, "This cursor is not one this timeline gave…".
+
+The parser is Express's simple one, so `?cursor[]=a` and `?cursor[a]=1` arrive as literal keys and are refused with "Only cursor.".
+
+**4. Re-run at ebd91de**, on isolated copies on :4434. Both were stopped afterwards (databases dropped). `prisma generate` was not run: no schema file is newer than the client.
+* `check_csv1_inputs.ts 4434 xr_studio_rv5_csv1`: **100 passed, 0 failed**. It reports "160 case-side routes in 32 files; 104 inputs; 0 unparsed". DW3 shows `GET /api/runtime/clients/:id/timeline` refused before the id is read (401), never a 500.
+* `check_csnt1t_person_timeline.ts 4434 xr_studio_rv5_csv1`: **33 passed, 0 failed**. PT1–PT7 all pass, including the PT4 forged cursor → 400 and the PT7 screen walk at 1440 and 375 px, axe clean.
+
+**5. Journey.** This range has no change a user can see: one server line, with the same answers to every HTTP request, and PT7 walks the client page again at head. So I did not run a new journey. The score of record is still the reviewer's round-2 score, **9/10**. The first journey report is `journey-test-reviewer-2026-11-26.md` (8/10).
+
+**Findings in this range:** none. The code comment on the line is accurate. **Open from earlier rounds, unchanged, not blocking:** m-a and m-b (Minor, Should), the breaker's m1 (a follow-up on the case timeline) and n1 (Nit). No Blocker or Major is open.
+
+**Verdict: Approve ebd91de594b5b85d97eba8a2fa7f2873d93c4c81**
