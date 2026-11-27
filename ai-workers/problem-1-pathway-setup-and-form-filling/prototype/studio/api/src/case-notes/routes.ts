@@ -21,6 +21,10 @@ export class CaseNotesController {
   @Get() @PermissionKeys("agent/case:show")
   list(@Req() r: R, @Param("id") id: string) { return this.svc.list(staffOf(r), id); }
 
+  /** CS-NT1 part 4: who may be mentioned on this case (ruling 1 on #3694). */
+  @Get("people") @PermissionKeys("agent/case:show")
+  people(@Req() r: R, @Param("id") id: string) { return this.svc.people(staffOf(r), id); }
+
   @Get(":noteKey/versions") @PermissionKeys("agent/case:show")
   history(@Req() r: R, @Param("id") id: string, @Param("noteKey") k: string) { return this.svc.history(staffOf(r), id, k); }
 

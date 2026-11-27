@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-842**, 25 Nov 22:2x IST; earlier: `history/RULES-2026-11-25-2210-lead10-as-of-P-838.md` + older)
+# Rule register (Lead keeps it; as of **P-846**, 27 Nov 01:1x IST; earlier: `history/RULES-2026-11-27-0115-lead7-as-of-P-842.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -49,7 +49,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-605 | Opus 5.5 is the working model; Fable 5.2 only for the desk and challenges; no model switch mid-session. | hook: agent-model-guard.sh --hook (part; `rules/tokens-money-account.md`) | 15 Nov |
 | P-606 | Finish whole: Done when names its test; no new capability while one has parts missing. Full row: `rules/goal-and-order.md`. | CI: pr-rules (part) | 15 Nov |
 | P-607 | Trust never negative; fail-closed audit; support sessions read-only; no guessing, times only from the clock (A73). | prose | 15 Nov |
-| P-610 | Fix each problem the narrowest way; a row's PR under 800 changed lines; re-review reads only new commits. | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 15 Nov |
+| P-610 | Fix each problem the narrowest way; a row's PR under 800 changed lines (exceptions only by a DECISIONS row: P-843, P-844, P-846); re-review reads only new commits. | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 15 Nov |
 | P-611a | Each Lead rule has a script, hook or CI enforcer where one can be written; this register names it. | script: check-docs.sh (register field; test check-rule-register.sh) | 15 Nov |
 | P-611b | One queue for reports, questions, blockers, approvals (owner, ack, timeout); no hand-over with an un-acked item. Full row: `rules/tech-lead.md`. | script: items.py | 15 Nov |
 | P-609 | Release 1 = all 110 together (P-842), 12 Dec, aim 6-7 Dec (P-815); re-decide 1 Dec if under 72 proven. | prose | 24 Nov |
@@ -176,6 +176,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-295b | Every paid run: usual and worst cost first, worst reserved in the ledger, one attempt, an independent check, one PR per result, qa labels; job cap US$5 (P-232). | script: p2/ledger.ts (part) | P-612 |
 | P-377 | Live runs from a Terminal tab (sandbox network); a paid run on the data Works counts on, never fixture-only. | prose | 9 Nov |
 | P-461 | Use the plan to its limit (P-344; P-431 replaced); the weekly meter is not a stop line; at 98% tell the founder; lanes push after every step (P-458). | prose | 11 Nov |
+| P-845 | Factory v3 approved: Lead machine user approves risky paths; agents capped ~US$1,000 month one, Code Review on risky paths only; keep Mergify, GitHub approval replaces the label; factory moves to expat-ready/private. | prose | 26 Nov |
 | P-458 | On an account switch: get_usage first, then `RESUME-ON-NEW-ACCOUNT.md`. | prose | 11 Nov |
 
 ## The compass (P-312)

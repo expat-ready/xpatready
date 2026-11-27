@@ -17,6 +17,7 @@ import { ReviewPage } from "./review";
 import { AnswerSheetPage } from "./answer-sheet"; // C7.3 (QA-317)
 import { SubmissionPanel } from "./submission"; // C8.2
 import { CaseDecisionPanel, CaseEndLine, CaseStatusPill } from "./case-decision"; // CS-C1s
+import { CaseNotesPanel } from "./case-notes"; // CS-NT1 part 4
 import { DocumentsPanel } from "./checklist"; // C6.4 (a)
 import { CaseTeamChip, OpeningTeam, useFirm } from "./team";
 import { EmployerLinkFor, EmployerLinkLine } from "./employer";
@@ -393,6 +394,8 @@ function CasePage() {
               </div>}
         </div>
       </div>
+      {/* CS-NT1 part 4 (R1.76): notes and the case timeline, directly under the case header (ruling 3 on #3694). */}
+      <CaseNotesPanel caseId={c.id} />
       <StageStrip caseId={c.id} />
       {/* CS-DL3 part 2 (R1.74, QA-591): IRCC's steps with the due date on its letter, under the stage deadline. */}
       <GovernmentSteps caseId={c.id} />
