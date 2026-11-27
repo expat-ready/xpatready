@@ -14,7 +14,7 @@ ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$(cd "
 cd "$ROOT" || exit 0
 PH=ai-workers/problem-1-pathway-setup-and-form-filling/product; APP=ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
 reasons=""; notes=""
-LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null)
+LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null | sed "s/^lead-stale$/lead/")
 # (1) The tech lead's files: a builder proposes changes in its PR; it never edits them.
 base=""; touched=""
 if [ "$LANE" != lead ]; then

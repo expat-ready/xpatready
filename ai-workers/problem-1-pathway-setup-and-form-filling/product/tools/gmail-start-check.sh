@@ -13,7 +13,7 @@ sid=$(printf '%s' "$input" | jq -r '.session_id // "none"' 2>/dev/null)
 tr_=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 if [ "${XR_GMAIL_CHECK:-}" != 1 ]; then
   ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
-  LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)
+  LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null | sed "s/^lead-stale$/lead/")
   [ "$LANE" = lead ] || exit 0
 fi
 [ -f "$tr_" ] || exit 0

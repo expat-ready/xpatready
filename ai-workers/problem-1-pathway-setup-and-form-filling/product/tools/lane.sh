@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lanes (P-64, product/LANES.md): which lane this copy is, binding it, making it runnable, syncing it, and the status of all.
-#   lane.sh whoami            -> lead | screens | forms | evidence | runtime | m3 | qa | scout | unbound
+#   lane.sh whoami            -> lead | lead-stale (LR-156: a lead/* copy over 24 h or 200 commits behind main) | screens | forms | evidence | runtime | m3 | qa | scout | unbound
 #   lane.sh bind <lane>       bind this lane copy (git worktree, or a cloud clone: checks out the lane's newest branch, or
 #                             stays on origin/main when that branch is merged, unrelated or older than 24 h: QA-181) once
 #   lane.sh branch <lane>     the lane's newest branch on origin (<lane>/* or claude/<lane>-*)
@@ -25,7 +25,9 @@ whoami_() {
   { [ "${CLAUDE_CODE_REMOTE:-}" = true ] || [ "$(uname)" != Darwin ]; } && cloud=1
   if [ -z "$cloud" ]; then
     [ "$br" = main ] && { echo lead; return; }
-    case "$br" in lead/*) echo lead; return;; esac
+    # LR-156 (founder A433/A434): a lead/* copy whose base is over 24 h old or over 200 commits behind origin/main is
+    # lead-stale; callers that act for the Lead read it as lead, the lead skill's first step stops with the recut command.
+    case "$br" in lead/*) if (cd "$HERE" && bash "$HERE/$P/product/tools/lead-age.sh" stale 2>/dev/null); then echo lead-stale; else echo lead; fi; return;; esac
   fi
   if [ -f "$HERE/.claude/lane" ]; then
     local ln; ln=$(cat "$HERE/.claude/lane")
@@ -110,7 +112,7 @@ table_() {
 case "$1" in
   whoami) whoami_ ;;
   bind)
-    [ "$(whoami_)" = lead ] && { echo "This is the Lead's main copy; lanes run in their own copies."; exit 2; }
+    case "$(whoami_)" in lead|lead-stale) echo "This is the Lead's main copy; lanes run in their own copies."; exit 2;; esac
     echo " $LANES " | grep -q " $2 " || { echo "Lane must be one of: $LANES"; exit 2; }
     cur=$(whoami_); [ "$cur" != unbound ] && [ "$cur" != "$2" ] && { echo "This copy is already the $cur lane. Type: /next $cur"; exit 3; }
     # A cloud clone on a session branch (P-82): continue on the lane's own branch so its pushes reach the Lead.
@@ -136,7 +138,7 @@ case "$1" in
     fi
     mkdir -p "$HERE/.claude" && echo "$2" > "$HERE/.claude/lane" && echo "bound to $2" ;;
   setup)
-    [ "$(whoami_)" = lead ] && { echo "main copy: nothing to link"; exit 0; }
+    case "$(whoami_)" in lead|lead-stale) echo "main copy: nothing to link"; exit 0;; esac
     # A cloud clone (Linux, not a Mac lane worktree): run the cloud setup every time. It is idempotent (seconds when
     # done) and finishes what an interrupted run left, or restarts a database a container restart stopped (P-82).
     if [ "$HERE" = "$MAIN" ] && [ "$(uname -s)" = Linux ]; then bash "$HERE/$P/product/tools/cloud-setup.sh" || exit 5; fi
@@ -148,7 +150,7 @@ case "$1" in
     [ -d "$HERE/$SN/node_modules" ] || { echo "installing studio packages (npm ci)"; (cd "$HERE/$SN" && npm ci); }
     git config core.hooksPath .githooks && echo "hooks: core.hooksPath=.githooks" ;;
   sync)
-    [ "$(whoami_)" = lead ] && { echo "main copy: nothing to sync"; exit 0; }
+    case "$(whoami_)" in lead|lead-stale) echo "main copy: nothing to sync"; exit 0;; esac
     git -C "$HERE" diff --quiet && git -C "$HERE" diff --cached --quiet || { echo "Commit this lane's work before syncing."; exit 3; }
     git -C "$HERE" fetch -q origin 2>/dev/null || true
     ref=main; git -C "$HERE" rev-parse -q --verify refs/remotes/origin/main >/dev/null 2>&1 && ref=origin/main

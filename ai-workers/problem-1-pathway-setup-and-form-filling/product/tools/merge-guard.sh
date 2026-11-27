@@ -13,6 +13,6 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 # Fails closed: no session folder, or one outside a copy, is never the Lead (the script's own location is not enough,
 # because lane sessions run hooks from the main copy's path).
 ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
-LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)
+LANE=$([ -n "$ROOT" ] && cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null | sed "s/^lead-stale$/lead/")
 [ "$LANE" = lead ] && exit 0
 jq -n --arg l "${LANE:-unknown}" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Only the Lead merges, closes or reviews pull requests (P-87, P-163, P-293); this copy is the " + $l + " copy. Comments are allowed: ask on the PR with a comment beginning \"Question for the tech lead\".")}}'

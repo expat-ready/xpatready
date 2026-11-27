@@ -94,6 +94,19 @@ jobs:
       - name: reviewer and breaker agents on Opus high
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         run: bash "$T/agent-model-guard.sh"
+      # LR-156 (founder A433/A434; P-388): a records PR, or any PR from a lead/* branch, is cut from main under 24 h before
+      # main's tip, so the Lead never writes records on a stale branch. Runs on records-only PRs too (that is its point).
+      # Reads GitHub's compare answer (base_commit, merge_base_commit); the shas reach it only through env. Test:
+      # product/tools/check-lead-age.sh.
+      - name: a records or lead/* branch is under 24 h old against main (LR-156)
+        if: "${{ !cancelled() && (steps.rec.outputs.records == 'yes' || startsWith(github.event.pull_request.head.ref, 'lead/')) }}"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          gh api "repos/${{ github.repository }}/compare/${BASE_SHA}...${HEAD_SHA}" | bash "$T/lead-age.sh" ci-json
       - name: every R1 item of CAPABILITIES.md has one wave in design/waves.tsv (B204; a warning, never a failure)
         if: "${{ !cancelled() }}"
         run: python3 -I "$T/waves.py" ids || echo "::warning title=waves list::a new R1 row needs a wave in design/waves.tsv (P-745)"

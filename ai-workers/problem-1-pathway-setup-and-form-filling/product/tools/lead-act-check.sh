@@ -29,7 +29,7 @@ if [ "${1:-}" = --status ]; then out=$(lines "${2:-$(git rev-parse --show-toplev
 input=$(cat); [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" = true ] && exit 0
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
-[ "$(cd "$ROOT" && bash $P/product/tools/lane.sh whoami 2>/dev/null)" = lead ] || exit 0
+[ "$(cd "$ROOT" && bash $P/product/tools/lane.sh whoami 2>/dev/null | sed "s/^lead-stale$/lead/")" = lead ] || exit 0
 out=$(lines "$ROOT")
 KEY="$( [ -s "$stamp" ] && cat "$stamp" || echo none)|$(printf '%s' "$out" | grep -o 'taken [^)]*' | head -1)"
 [ -z "$out" ] && exit 0
