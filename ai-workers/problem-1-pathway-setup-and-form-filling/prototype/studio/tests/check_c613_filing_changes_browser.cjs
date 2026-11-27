@@ -49,7 +49,7 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-O"); });
   const p = await ctx.newPage();
   // A state the app reaches after a timer (focus moved back): wait for it (up to 5 s, past the app's 2 s), never a fixed sleep.
-  const focusOn = (fn) => p.waitForFunction(fn, null, { timeout: 5000 }).then(() => true, () => false);
+  const focusOn = (fn, arg = null) => p.waitForFunction(fn, arg, { timeout: 5000 }).then(() => true, () => false);
   const shot = async (n) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await p.screenshot({ path: path.join(SHOTS, `${n}.png`), fullPage: false }); } };
   try {
     await p.goto(`${BASE}/cases/${id}`);
@@ -87,7 +87,7 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
     ok("C6.13 walk 6 pass (BR-1, BR-6): the spouse stays on the case with no filing, and the reason shows on their row", /No filing: not travelling/.test(await row.innerText()));
     // The app moves focus once the table re-renders (filing-changes.tsx focusRow: 50 ms, then every 100 ms up to 2 s), so the
     // check waits on that state, never on the row's text alone (nightly 46030957721, 27 Nov: read 0-100 ms too early, on <body>).
-    ok("C6.13 walk 6a pass (review M4): after the change, focus is back on the person's row (its menu button)", await focusOn(() => !!document.activeElement?.closest("[data-person-row]") && document.activeElement?.hasAttribute("data-person-menu")));
+    ok("C6.13 walk 6a pass (review M4): after the change, focus is back on the person's row (its menu button)", await focusOn((s) => document.activeElement === document.querySelector(`[data-person-row="${s}"] [data-person-menu]`), subjects["Sample Spouse A"]));
     await shot("04-removed-with-undo");
 
     await section.locator("[data-undo]").click();
@@ -107,7 +107,9 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
     await dlg.locator("[data-change-reason-input]").fill("Added by mistake (Sample)");
     await dlg.getByRole("button", { name: "Remove filing" }).click();
     await dlg.getByText("Changed since you opened this", { exact: true }).waitFor(T);
-    await p.waitForTimeout(800);
+    // The 409 shows the notice and reloads the preview in one render (the Remove button goes while it loads): wait for the
+    // button to come back, so the check below reads after the new preview, not after a fixed sleep (review Minor, #3974).
+    await dlg.locator("[data-confirm]").waitFor(T);
     ok("C6.13 walk 7a fail (BR-8): a change made meanwhile is refused and the dialog says so, after showing the new preview; the filing is still there",
       await dlg.getByText("Changed since you opened this", { exact: true }).isVisible() && /What changes now is shown below/.test(await dlg.innerText()) && /Own application/.test(await section.locator("tr", { hasText: "Sample Child A2" }).innerText()));
     await shot("04b-changed-since-you-opened");
