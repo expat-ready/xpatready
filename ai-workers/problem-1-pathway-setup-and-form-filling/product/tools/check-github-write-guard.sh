@@ -60,6 +60,13 @@ deny|python3 -Ic "import requests; requests.post('https://api.github.com/x', jso
 deny|gh api repos/o/r/issues/1/comments -f body=hi # don't forget
 deny|gh api repos/o/r/issues/1/comments -f body=$'It\'s done'
 deny|for url in https://api.github.com/repos/o/r/issues/1/labels; do curl -X POST "$url" -d '{}'; done
+deny|API=https://api.github.com/repos/o/r; curl -X POST "$API/issues/1/comments" -d '{"body":"Demo: http://localhost:4400/cases/1"}'
+deny|curl -X POST https://API.GITHUB.COM/repos/o/r/issues -d '{}'
+deny|python3 -E -c "import requests; requests.post('https://api.github.com/x', json={})"
+deny|node --eval "fetch('https://api.github.com/x',{method:'POST'})"
+deny|bash -c -- 'gh api repos/o/r/issues/1/comments -f body=hi'
+allow|echo for '*' in https://api.github.com/x; ls
+allow|curl -s -X POST http://localhost:4400/api/hooks -H "X-Hub: https://api.github.com/hook" -d '{}'
 allow|curl -s -X POST http://localhost:4400/api/programs -d "{\"token\":\"$GH_TOKEN\"}"
 allow|git commit -m "fix" -m "Use \`gh api -X GET\` for reads; \`curl -d\` to api.github.com is refused"
 allow|curl -sSL https://api.github.com/repos/o/r/pulls?state=open
@@ -91,6 +98,9 @@ r=$(guard "git commit -F - <<${Q}EOF${Q}${NL}guard: refuse curl -X POST to api.g
 r=$(guard "gh pr create --title G --body \"\$(cat <<${Q}EOF${Q}${NL}- gh api repos/o/r/issues -f title=x is denied${NL}EOF${NL})\""); ok "allow: a PR body heredoc in \$(cat) that describes a write" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard "gh pr comment 1 --body-file - <<${Q}EOF${Q}${NL}python3 -c \"requests.post(${Q}https://api.github.com/x${Q}, data=1)\" is denied${NL}EOF"); ok "allow: a PR comment heredoc quoting inline code" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard "bash <<${Q}EOF${Q}${NL}curl -X POST https://api.github.com/x -d x${NL}EOF"); ok "deny: a heredoc a shell runs" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard "cat <<${Q}EOF${Q} | bash${NL}gh api repos/o/r/issues/1/comments -f body=hi${NL}EOF"); ok "deny: a heredoc piped to a shell" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard "cat > /tmp/n <<END.x${NL}note${NL}END.x${NL}gh api repos/o/r/issues/1/comments -f body=hi"); ok "deny: a heredoc that never closes hides nothing" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard "gh pr create --title ${Q}python3 tooling${Q} --body-file - <<\\EOF${NL}refuses requests.post(${Q}https://api.github.com/x${Q}, data=1)${NL}EOF"); ok "allow: a PR body heredoc (<<\\EOF, python3 in the title)" "$([ "$r" = allow ] && echo 1)" "got $r"
 msg=$(jq -n '{tool_name:"Bash", tool_input:{command:"gh api repos/o/r/issues/1/comments -f body=x"}}' | python3 -I "$TOOLS/github-write-guard.py" | jq -r '.hookSpecificOutput.permissionDecisionReason')
 ok "the refusal names the door that works in a cloud session (the GitHub connector), not only gh" "$(grep -q 'GitHub connector tools (mcp__github__' <<< "$msg" && echo 1)" "$msg"
 r=$(printf '{"tool_name":"Bash","tool_input":{}}' | bash "$TOOLS/hook-fail-closed.sh" 10 github-write-guard.py 2>/dev/null; echo $?)

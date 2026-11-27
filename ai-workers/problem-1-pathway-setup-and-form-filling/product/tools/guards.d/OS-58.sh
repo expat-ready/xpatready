@@ -8,6 +8,8 @@ TESTS="$TESTS check-github-write-guard.sh check-curl-follows.sh"
 MUT="$MUT"'
 OS58 clients|product/tools/github-write-guard.py|s/        if prog in CLIENTS and any(hosted(a) for a in args) and not elsewhere(args):/        if False:/|check-github-write-guard.sh
 OS58 elsewhere|product/tools/github-write-guard.py|s/ and not elsewhere(args):/:/|check-github-write-guard.sh
+OS58 targets|product/tools/github-write-guard.py|s/            elif a.startswith("-"):/            elif False:/|check-github-write-guard.sh
+OS58 unclosed|product/tools/github-write-guard.py|s/            continue   # no closing line/            end = len(lines)   # no closing line/|check-github-write-guard.sh
 OS58 body|product/tools/github-write-guard.py|s/                if c in "dF" and not get or c == "T":/                if False:/|check-github-write-guard.sh
 OS58 request|product/tools/github-write-guard.py|s/        if a.startswith("--request"):/        if False:/|check-github-write-guard.sh
 OS58 gh field|product/tools/github-write-guard.py|s/ if field and not get else ""/ if False else ""/|check-github-write-guard.sh

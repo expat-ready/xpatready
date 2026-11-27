@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
-# Hooks fail closed (bundle A1, LR-046, LR-060; lab triage 27 Nov §3). Every guard hook in .claude/settings.json runs
-# through this wrapper:
-#   bash product/tools/hook-fail-closed.sh <seconds> <guard script in tools/> [args...]   (hook input on stdin)
-# The guard's own answer passes through (exit 0 with its one JSON object or nothing, or exit 2). Anything else blocks,
-# with exit 2 and the reason on stderr:
-#   * the input cannot be read (stdin closed, not all there within 5 s, empty, not one JSON object), or jq or python3
-#     is missing;
-#   * the guard is missing, exits with any code other than 0 or 2, is killed, or prints output that is not one JSON object;
-#   * the guard runs longer than <seconds>. Keep 5 s (input) + <seconds> + 1 s (kill) under the hook's "timeout" in
-#     settings.json, so this fires first.
-# The work is done by hook-fail-closed.py (select, subprocess, process groups: no shell watchdogs, whose traps raced in
-# round 2 of #3971); this launcher turns any other ending of it into a block.
-# Why a wrapper (docs code.claude.com/docs/en/hooks, read 28 Nov 2026): "Exit code 1 without valid JSON output is a
-# non-blocking error"; "a timed-out command ... hook doesn't block the tool call, except for hooks whose failure blocks
-# the action" (onFailure: "block", v2.1.295 or later), and onFailure has no effect on Stop hooks. Exit 2 blocks on every
-# version and event: PreToolUse "Blocks the tool call"; Stop "Prevents Claude from stopping". A Stop hook that keeps
-# failing is ended by Claude Code's cap of 8 consecutive continuations. Test: check-hook-fail-closed.sh.
+# Hooks fail closed (bundle A1, LR-046): every guard hook in .claude/settings.json runs as
+#   bash product/tools/hook-fail-closed.sh <seconds> <guard in tools/> [args...]   (hook input on stdin)
+# and ends only with the guard's own answer (exit 0 with one JSON object or nothing, or exit 2) or a block (exit 2, one
+# line naming the guard and the fix). The rules and the docs behind them: hook-fail-closed.py, which does the work; this
+# launcher turns a missing jq or python3, or any other ending of the runner, into a block. Keep 5 s (input) + <seconds>
+# + 1 s (kill) under the hook's "timeout". Test: check-hook-fail-closed.sh.
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 refuse() { echo "Blocked (hooks fail closed, LR-046): $1. Fix the hook: bash $TOOLS/hook-fail-closed.sh ${*:2}" >&2; exit 2; }

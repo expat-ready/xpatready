@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 """One door for GitHub writes (LR-060, OS-58, full-power #165; P-384, P-387).
 
-PreToolUse hook on Bash (through hook-fail-closed.sh). The deny lines in .claude/settings.json stop `gh` writes, but a
-raw HTTP call to the GitHub API passed them (docs, permissions: "Rules are evaluated in order: deny, then ask, then
-allow"; a curl line matches no gh rule). This guard refuses a command line that itself writes to the GitHub API:
-  * curl, wget, httpie (http, https) or xh aimed at api.github.com, uploads.github.com or a github.com/api/ path, with a
-    method other than GET or HEAD, or a body (curl -d/--data*/--json/-F/--form*/-T/--upload-file; wget --post-*,
-    --body-*, --method);
-  * `gh api` with a field or input (-f, -F, --field, --raw-field, --input: gh then sends a POST) and no -X GET;
-  * inline python, node, ruby or perl code that names the GitHub API and a write method or body.
-Commands inside `bash -c "..."`, `$(...)` and quotes are read too. The doors: the GitHub connector tools in a cloud
-session (gh's pr commands answer 403 there; P-293b, OS-70), gh's pr commands on the Mac, and the reviewed scripts in product/tools
-(lead-pr.sh, gh.sh and the like), run by name, keep their own writes; a line typed in a session does not.
-Reads (GET) pass. A command line that cannot be split (an open quote) is judged on its whole text.
-Test: check-github-write-guard.sh.
+PreToolUse hook on Bash (through hook-fail-closed.sh). The gh deny lines in settings.json missed raw HTTP calls to the
+API. Refused: a typed command that writes to the GitHub API with curl/wget/httpie/xh (non-GET method or a body), `gh api`
+with a field or input and no -X GET, or inline python/node/ruby/perl code, wherever it sits (bash -c, $(...), heredocs a
+shell or interpreter reads). Reads pass. The doors: the GitHub connector tools in a cloud session (P-293b, OS-70), gh's
+pr commands on the Mac, reviewed scripts in product/tools run by name. Test: check-github-write-guard.sh.
 """
 import json
 import re
@@ -23,11 +15,16 @@ import sys
 HOST = re.compile(r"(?:^|[/@.\s'\"])(?:api|uploads)\.github\.com\b|github\.com/api/|\bGH_TOKEN\b|\bGITHUB_TOKEN\b|gh auth token", re.I)
 CLIENTS = {"curl", "wget", "http", "https", "xh"}
 READ = {"GET", "HEAD"}
+# Options whose next word is a value (a body, a header, a file), never the request's URL (curl, wget, httpie).
+VALUED = {"--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--header", "--form",
+          "--form-string", "--output", "--user", "--user-agent", "--referer", "--upload-file", "--request", "--config",
+          "--cookie", "--cookie-jar", "--write-out", "--max-time", "--proxy", "--method", "--post-data", "--post-file",
+          "--body-data", "--body-file", "--output-document", "--auth"}
+VALUED_SHORT = "dHFouAeTXKbcwmxyYzErUO"
 CURL_BODY_LONG = ("--data", "--json", "--form", "--upload-file")   # --data-raw, --data-binary, --form-string ...
 WGET_BODY = ("--post-data", "--post-file", "--body-data", "--body-file")
 SEP = {";", "&&", "||", "|", "&", "(", ")", "|&", "{", "}", "!"}
 SUB = " __SUB__ ; "   # stands for $( <( >( and backticks: the command inside is judged as a command of its own
-CODE = re.compile(r"\b(?:python3?|node|ruby|perl)\b")
 CODE_WRITE = re.compile(r"method\s*[=:]\s*['\"]?(?:POST|PUT|PATCH|DELETE)|['\"](?:POST|PUT|PATCH|DELETE)['\"]|"
                         r"\.(?:post|put|patch|delete)\s*\(|->(?:post|put|patch|delete)\b|Net::HTTP::(?:Post|Put|Patch|Delete)|"
                         r"\bdata\s*=|\bbody\s*:", re.I)
@@ -110,16 +107,31 @@ def gh_api_write(args):
 def judge_words(words, hostvars, depth):
     """A simple command's words: the HTTP client, gh api, an interpreter or a shell may sit after any prefix
     (sudo -u x, env -i, xargs -I %, watch, time, if, do, then ...), so every word is tried as the program."""
+    def targets(args):   # the request's URL words: not an option, not an option's value (a body, a header, a file)
+        out, skip = [], False
+        for a in args:
+            if skip:
+                skip = False
+            elif a.startswith("-"):
+                skip = "=" not in a and (a in VALUED or re.match(r"^-[A-Za-z]*[" + VALUED_SHORT + r"]$", a) is not None)
+            else:
+                out.append(a)
+        return out
+
     def elsewhere(args):   # a POST to localhost carrying $GH_TOKEN names no GitHub host: not a GitHub write
-        urls = re.findall(r"https?://([^/\s'\"]+)", " ".join(args))
-        return bool(urls) and not any(re.search(r"(^|\.)github\.com$", u.split(":")[0]) for u in urls) \
-            and not any(re.search(r"(?:api|uploads)\.github\.com|github\.com/api/", a) for a in args)
+        t = targets(args)
+        named = [m.group(1).split(":")[0].lower() for a in t for m in [re.match(r"^['\"]?https?://([^/\s'\"]+)", a)] if m]
+        return bool(named) and not any(re.search(r"(^|\.)github\.com$", h) for h in named) \
+            and not any(HOST.search(a) and not re.search(r"GH_TOKEN|GITHUB_TOKEN|gh auth token", a) or
+                        any(re.search(r"\$\{?" + re.escape(v) + r"\b", a) for v in hostvars) for a in t)
 
     def hosted(a):
-        return HOST.search(a) or any(re.search(r"\$\{?" + v + r"\b", a) for v in hostvars)
+        return HOST.search(a) or any(re.search(r"\$\{?" + re.escape(v) + r"\b", a) for v in hostvars)
     for i, w in enumerate(words):
         prog = w.rsplit("/", 1)[-1]
-        args = words[i + 1:]
+        if prog not in CLIENTS and prog not in INTERP and prog not in SHELLS and prog not in ("gh", "eval"):
+            continue   # only a program word costs a slice (long commands stay linear)
+        args = words[i + 1:i + 1 + 400]   # a command's own words; a window keeps a long line linear
         if prog in CLIENTS and any(hosted(a) for a in args) and not elsewhere(args):
             why = {"curl": curl_write, "wget": wget_write}.get(prog, httpie_write)(args)
             if why:
@@ -128,12 +140,15 @@ def judge_words(words, hostvars, depth):
             why = gh_api_write(args[1:])
             if why:
                 return why
-        if prog in INTERP:   # python -Ic, node -e, ruby -e, perl -MLWP -e: the code follows the first flag holding c, e or E
-            k = next((j for j, a in enumerate(args) if re.match(r"^-[A-Za-z]*[ceE][A-Za-z]*$", a)), None)
+        if prog in INTERP:   # python -Ic, python -E -c, node -e/--eval, ruby -e, perl -MLWP -e: the code follows that flag
+            k = next((j for j, a in enumerate(args) if (re.match(r"^-[A-Za-z]*[ceE][A-Za-z]*$", a) or a in ("--eval", "--command"))
+                      and j + 1 < len(args) and not args[j + 1].startswith("-")), None)
             if k is not None and k + 1 < len(args) and hosted(args[k + 1]) and CODE_WRITE.search(args[k + 1]):
                 return "inline code writing to the GitHub API"
         if prog in SHELLS:   # bash -c, bash -lc, sh -ec, bash -euo pipefail -c: the command follows the flag holding c
             k = next((j for j, a in enumerate(args) if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a)), None)
+            if k is not None and k + 1 < len(args) and args[k + 1] == "--":   # bash -c -- 'cmd'
+                k += 1
             if k is not None and k + 1 < len(args):
                 why = judge(args[k + 1], depth + 1, hostvars)
                 if why:
@@ -145,7 +160,8 @@ def judge_words(words, hostvars, depth):
     return ""
 
 
-HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([A-Za-z_][\w-]*)\1")
+HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*\\?(['\"]?)([A-Za-z_][\w-]*)\1")
+INTERP_WORD = re.compile(r"(^|[\s;&|(])(?:\S*/)?(?:python3?|node|ruby|perl)(\s|$)")   # the program word, not "python3" in a title or a path
 
 
 def interp_heredoc_write(text):
@@ -153,7 +169,7 @@ def interp_heredoc_write(text):
     lines = text.split("\n")
     for i, line in enumerate(lines):
         m = HEREDOC.search(line)
-        if m and CODE.search(line[:m.start()]):
+        if m and (INTERP_WORD.search(line[:m.start()]) or re.search(r"\|\s*(?:\S*/)?(?:python3?|node|ruby|perl)\b", line[m.end():])):
             body = []
             for b in lines[i + 1:]:
                 if b.strip() == m.group(2):
@@ -176,16 +192,16 @@ def strip_heredocs(text):
         m = HEREDOC.search(line)
         if not m:
             continue
-        delim, shell = m.group(2), re.search(r"(^|[\s;&|(])(bash|sh|zsh|dash)(\s|$)", line[:m.start()])
-        body = []
-        while i < len(lines) and lines[i].strip() != delim:
-            body.append(lines[i])
-            i += 1
+        delim = m.group(2)
+        shell = re.search(r"(^|[\s;&|(/])(bash|sh|zsh|dash)(\s|$)", line[:m.start()]) \
+            or re.search(r"\|\s*(?:\S*/)?(bash|sh|zsh|dash)\b", line[m.end():]) or re.search(r"\beval\b", line[:m.start()])
+        end = next((j for j in range(i, len(lines)) if lines[j].strip() == delim), None)
+        if end is None:
+            continue   # no closing line (a quoted "<<EOF", a dotted delimiter): the lines stay commands
         if shell:
-            out.extend(body)
-        if i < len(lines):
-            out.append("")   # the delimiter line
-            i += 1
+            out.extend(lines[i:end])
+        out.append("")   # the delimiter line
+        i = end + 1
     return "\n".join(out)
 
 
@@ -213,7 +229,8 @@ def judge(text, depth=0, hostvars=()):
                                 if m and HOST.search(m.group(2))}
     for j, w in enumerate(words[:-2]):   # for url in https://api.github.com/...; do curl -X POST "$url"
         if w == "for" and words[j + 2] == "in" and any(HOST.search(x) for x in words[j + 3:j + 50]):
-            hostvars.add(words[j + 1])
+            if re.fullmatch(r"[A-Za-z_]\w*", words[j + 1]):   # a name; "for '*' in" is not one
+                hostvars.add(words[j + 1])
     seg = []
     for w in words + [";"]:
         if w in SEP or set(w) <= set(";&|()"):

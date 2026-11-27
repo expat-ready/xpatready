@@ -2,10 +2,10 @@
 
   python3 -I hook-fail-closed.py <tools dir> <seconds> <guard> [args...]   (hook input on stdin)
 
-Exit 0 with the guard's one JSON object (or nothing), or exit 2 with the reason on stderr: never anything else. No shell
-background jobs or traps (round 2 of #3971: a watchdog subshell killed early ran the parent's EXIT trap and deleted the
-input; about 2% of denies came back empty): the input is read with select under a 5 s deadline, the guard runs in its own
-session from temporary files, and its whole process group is killed at the limit and again once it has answered.
+Exit 0 with the guard's one JSON object (or nothing), or exit 2 with the reason on stderr: never anything else. Why (docs,
+hooks, read 28 Nov 2026): "Exit code 1 without valid JSON output is a non-blocking error", a timed-out hook "doesn't block
+the tool call" unless onFailure: "block" (no effect on Stop hooks); exit 2 blocks on every event. No shell watchdogs (their
+traps raced in round 2 of #3971): input read with select (5 s), the guard run in its own session, its group killed after.
 """
 import json
 import os
