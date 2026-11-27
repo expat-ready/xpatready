@@ -34,6 +34,10 @@ R = f"{P}/product"
 COND = re.compile(r"^(-)?([a-z][a-z-]*)\s*(?:(~=|=)\s*(.*))?$")
 LISTS = {"files", "label", "check-success", "check-failure"}
 LABEL = "records"   # read from records-only.sh label in main()
+# A438 cut 1: the records and verdicts queues (no review label) read the head's files themselves: records-only.sh's
+# RECORD_FILE and its tools exclusion, written for Mergify.
+RECORD_ONLY = r"-files ~= ^(?!" + P + r"/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)"
+NO_TOOLS = r"-files ~= ^" + P + r"/product/[Tt][Oo][Oo][Ll][Ss]/"
 ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip() or "."
 IS_RECORDS = os.path.join(ROOT, R, "tools", "records-only.sh")
 
@@ -109,7 +113,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("non-qa records touching CAPABILITIES.md: records", [f"{R}/qa/CAPABILITIES.md", f"{R}/STATE.md"], True, "records", "lead: records 17 Nov", head="lead/2026-11-17-records"),
     case("a qa: title on code touching CAPABILITIES.md: product", [f"{R}/qa/CAPABILITIES.md", f"{A}/web/src/App.tsx"], False, "product", "qa: fix and verdict", checks=F),
     case("a qa verdict draft: no queue", [f"{R}/qa/CAPABILITIES.md"], True, None, "qa: capability x", draft=True),
-    case("a qa verdict without the review label: no queue", [f"{R}/qa/CAPABILITIES.md"], True, None, "qa: capability x", labels=()),
+    # (A438 cut 1: "a qa verdict without the review label" now joins verdicts; the case is above, with the A438 cases.)
     case("an M3 title on records only still goes to records", [f"{R}/qa/CAPABILITIES.md"], True, "records", "M3 qa: C7.3 scored"),
     case("records plus one app file: product", [f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product", checks=F),
     case("records plus one app file, M3 title: product (no title routing)", [f"{R}/qa/built/C7.3.md", f"{A}/web/src/App.tsx"], False, "product", "forms: C7.3 — x", checks=F),
@@ -138,7 +142,18 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
     case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product", checks=F),
-    case("records without the review label: no queue", [f"{R}/STATE.md"], True, None, labels=()),
+    # A438 cut 1 (founder 27 Nov): a records-only PR queues with no reviewer and no review label; a mixed PR does not.
+    case("A438: records without the review label: records (no reviewer, no label)", [f"{R}/STATE.md"], True, "records", labels=()),
+    case("A438: a qa verdict without the review label: verdicts", [f"{R}/qa/CAPABILITIES.md"], True, "verdicts", "qa: after-merge", labels=()),
+    case("A438: records plus a tool, no review label: no queue (not records only)", [f"{R}/STATE.md", f"{R}/tools/x.sh"], False, None, labels=()),
+    case("A438: records plus app code, no review label: no queue", [f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, None, labels=(), checks=F),
+    case("A438: a hand-added records label on code with no review label: no queue (Mergify reads the files)", [f"{A}/api/src/core.ts"], None, None,
+         labels=("records",)),
+    case("A438: a hand-added records label on a tool: no queue", [f"{R}/tools/x.md"], None, None, labels=("records",)),
+    case("A438: a hand-added records label on product/Tools/ (the Mac's disk): no queue", [f"{R}/Tools/x.md"], None, None, labels=("records",)),
+    case("A438: a hand-added records label on a JSON under product/: no queue", [f"{R}/screens/12/fixture.json"], None, None, labels=("records",)),
+    case("A438: records labelled, a code file pushed later (the label not yet taken off): no queue", [f"{R}/STATE.md", f"{A}/web/src/App.tsx"], None, None,
+         labels=("records",)),
     case("records with ci not green: no queue", [f"{R}/STATE.md"], True, None, checks=()),
     case("records against another base: no queue", [f"{R}/STATE.md"], True, None, base="lead/x"),
     case("a draft records PR: no queue (a draft runs no check, #875)", [f"{R}/STATE.md"], True, None, draft=True),
@@ -151,7 +166,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("the xfa-engine workflow itself without its check: no queue", [".github/workflows/xfa-engine.yml"], False, None),
     # The label alone routes: a hand-added "records" on code joins records (lowest priority; its batch still runs ci,
     # and change-kind.sh calls it code, so every suite runs), never a product batch.
-    case("a hand-added records label on code: records, behind every product PR", [f"{A}/api/src/core.ts"], None, "records",
+    case("a hand-added records label on code: no queue (A438: records reads the files; product skips the label)", [f"{A}/api/src/core.ts"], None, None,
          labels=("review: approved", "records")),
     case("ENF-782a: app code whose completes-ready failed (a part of its Completes: item missing) waits", [f"{A}/api/src/x.ts"], False, None, checks=F, failed=("completes-ready",)),
 ]
@@ -178,9 +193,17 @@ def problems(cfg, have_script):
                    "priority; qa verdicts first (P-664), pipeline ahead of product while P-827 holds, records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
+        # A438 cut 1: records and verdicts need no review label; every other queue keeps it.
+        reviewed = q.get("name") not in ("records", "verdicts")
         for need in ("base = main", "label = review: approved", "check-success = ci"):
+            if need.startswith("label = review") and not reviewed:
+                continue
             if need.replace(" ", "") not in conds:
                 out.append(f"queue {q.get('name')}: queue_conditions lack {need!r} (no gate removed)")
+        if not reviewed:   # A438 cut 1: with no reviewer, Mergify itself checks every file of the head is a record
+            for need in (RECORD_ONLY, NO_TOOLS):
+                if need.replace(" ", "") not in conds:
+                    out.append(f"queue {q.get('name')}: queue_conditions lack {need!r} (A438: no review label, so every file must be a record)")
         if "check-success = ci" not in [c.strip() for c in q.get("merge_conditions", []) if isinstance(c, str)]:
             out.append(f"queue {q.get('name')}: merge_conditions lack 'check-success = ci' (the batch is tested)")
         # Each queue carries its own label guard, not only by being listed after the others (defence in depth).
@@ -264,7 +287,10 @@ def mutations(cfg):
         ("product lets records in (-label=records removed)", drop("product", lambda x: x == "-label=records")),
         ("records lets unlabelled PRs in (label = records removed)", drop("records", lambda x: x == "label=records")),
         ("records skips green ci", drop("records", lambda x: x.startswith("check-success"))),
-        ("records skips the review label", drop("records", lambda x: x.startswith("label=review"))),
+        ("records drops its records-only file guard (A438)", drop("records", lambda x: x.startswith("-files~=^(?!"))),
+        ("records drops its tools file guard (A438)", drop("records", lambda x: "[Tt][Oo]" in x)),
+        ("verdicts drops its records-only file guard (A438)", drop("verdicts", lambda x: x.startswith("-files~=^(?!"))),
+        ("pipeline skips the review label (A438 keeps it)", drop("pipeline", lambda x: x.startswith("label=review"))),
         ("records accepts drafts", drop("records", lambda x: x == "-draft")),
         ("product accepts drafts", drop("product", lambda x: x == "-draft")),
         ("product drops base = main", drop("product", lambda x: x == "base=main")),
@@ -311,7 +337,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
+        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main and green ci; product and pipeline the review label, records and verdicts every file a record (A438); the label guards; every queue refuses drafts")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

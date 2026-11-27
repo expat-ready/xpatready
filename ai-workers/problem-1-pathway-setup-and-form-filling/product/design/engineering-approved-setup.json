@@ -1,7 +1,7 @@
 {
  "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
- "version": "1.8.0",
- "date": "2026-11-26",
+ "version": "1.9.0",
+ "date": "2026-11-27",
  "owner": "the tech lead",
  "change_log": [
   {
@@ -63,6 +63,12 @@
    "date": "2026-11-26",
    "change": "OS-83: ci.yml may also have workflow_dispatch with inputs exactly pr and head (the CI-PRE full run, \"/run full\", P-731, added 19 Nov in 207619aca; the manifest never allowed it, so ci.triggers failed and the heartbeat was red on all 23 scheduled runs from 18 Nov, e.g. run 45727547952); any other extra trigger still fails. The heartbeat workflow must also start on push and workflow_run (events_required): GitHub ran its 30-minute schedule only every 8-11 hours. Event runs save no state, so only a scheduled run (whose red mails the owner) marks an alarm seen; no issue_comment (anyone can comment; a red run mails its starter).",
    "approval": "the tech lead, 26 Nov (OS-PM 4 brief, founder ask A400: every watcher runs inside the pipeline): fix the expectation where workflow_dispatch on ci.yml is intended, and add event triggers to the heartbeat"
+  },
+  {
+   "version": "1.9.0",
+   "date": "2026-11-27",
+   "change": "A438 cut 1: the queues records and verdicts no longer require the label review: approved (a records-only PR needs no reviewer); in its place each requires every file of the head to be a record under product/ (-files ~= ^(?!...product/...(md|png|jpe?g|gif|webp|svg|txt|html)$)) and none under product/tools/ in any case, so a code file or a hand-put records label never rides them. product and pipeline keep the review label.",
+   "approval": "founder, 27 Nov 14:3x IST (A438, typed: \"Yes, all three\" to the tech lead's three cuts), passed on by the tech lead in the builder's brief"
   }
  ],
  "settings": {
@@ -209,9 +215,10 @@
     "queue_conditions_required": [
      "base = main",
      "-draft",
-     "label = review: approved",
      "check-success = ci",
      "label = records",
+     "-files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\\.(md|png|jpe?g|gif|webp|svg|txt|html)$)",
+     "-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/",
      "title ~= ^qa:",
      "files ~= qa/CAPABILITIES\\.md$"
     ],
@@ -262,7 +269,7 @@
    "records": {
     "batch_size": 2,
     "batch_max_failure_resolution_attempts": 2,
-    "queue_conditions_required": ["base = main", "-draft", "label = review: approved", "check-success = ci", "label = records"],
+    "queue_conditions_required": ["base = main", "-draft", "check-success = ci", "label = records", "-files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\\.(md|png|jpe?g|gif|webp|svg|txt|html)$)", "-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/"],
     "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    }

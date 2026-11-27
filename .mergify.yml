@@ -414,6 +414,8 @@ scopes:
 # so there is one definition of a record. product skips the label. A records PR is checked only when no product
 # PR waits ahead of it, and a product PR that arrives goes ahead of it, so a records merge never restarts a product batch;
 # records also never share a batch with code. Records merge only through this queue, never outside it.
+# A438 cut 1 (founder 27 Nov): records and verdicts need no reviewer and no `review: approved` label (the queues' own
+# comment below); product and pipeline keep both.
 # Exception, P-664 (founder 17 Nov, "Yes, verdicts first (Recommended)"; reverses B119 / P-376 (1) for verdict records
 # only): a queue "verdicts", listed FIRST, takes a qa verdict records PR: labelled "records", title starting "qa:" (the
 # qa skill's commit and PR title form) and changing qa/CAPABILITIES.md (a verdict moves a capability row). Every other
@@ -433,9 +435,16 @@ queue_rules:
     queue_conditions:
       - base = main
       - -draft
-      - "label = review: approved"
       - check-success = ci
       - label = records
+      # A438 cut 1 (founder 27 Nov 14:3x IST, "Yes, all three"): a records-only PR needs no reviewer and no
+      # `review: approved` label: the label "records" (records-label.yml: main's records-only.sh, the one definition)
+      # and a green ci (check-docs.sh and decision-impact.sh on its records) let it queue, and a later records push needs
+      # no new review. Mergify also reads the head's own files, so a code file pushed later, or a "records" label put on
+      # by hand, can never ride this queue: every file is a record under product/ (.md, image, .txt, .html), never under
+      # product/tools/ (any case: the Mac's disk). Undo: put back the label line and delete these two -files lines.
+      - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
+      - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
     merge_conditions:
@@ -526,9 +535,16 @@ queue_rules:
     queue_conditions:
       - base = main
       - -draft
-      - "label = review: approved"
       - check-success = ci
       - label = records
+      # A438 cut 1 (founder 27 Nov 14:3x IST, "Yes, all three"): a records-only PR needs no reviewer and no
+      # `review: approved` label: the label "records" (records-label.yml: main's records-only.sh, the one definition)
+      # and a green ci (check-docs.sh and decision-impact.sh on its records) let it queue, and a later records push needs
+      # no new review. Mergify also reads the head's own files, so a code file pushed later, or a "records" label put on
+      # by hand, can never ride this queue: every file is a record under product/ (.md, image, .txt, .html), never under
+      # product/tools/ (any case: the Mac's disk). Undo: put back the label line and delete these two -files lines.
+      - -files ~= ^(?!ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$)
+      - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/product/[Tt][Oo][Oo][Ll][Ss]/
     merge_conditions:
       - check-success = ci
     merge_method: merge

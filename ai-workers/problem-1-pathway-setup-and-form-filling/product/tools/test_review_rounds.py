@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Tests for review-rounds.py (ENF-783a, P-783 (1), P-293): a test PR with a third reviewer round fails; the same PR
-with the Lead's "Lead allows round 3:" line passes. Runs the tool as `python3 -I` on comment files. US$0, no network.
+"""Tests for review-rounds.py (ENF-783a, P-783 (1), P-293; A438 cut 3): a test PR with a third change-requesting round
+fails; the same PR with the Lead's "Lead allows round 3:" line passes; Approve rounds (a first Approve, an Approve
+re-review of a later diff) are never counted. Runs the tool as `python3 -I` on comment files. US$0, no network.
   python3 -I product/tools/test_review_rounds.py
 """
 import json
@@ -30,21 +31,37 @@ def run(comments):
 
 
 R1 = c("Reviewer: Changes\n\nMajor: the ETA ignores the cycle end.", cid=1)
-R2 = c("**Reviewer: Approve %s**\n\nRe-review read only the diff." % SHA, cid=2)
-R3 = c("Reviewer: Approve %s" % SHA, cid=3)
+R2 = c("**Reviewer: Block %s**\n\nBlocker: the label guard is bypassed." % SHA, cid=2)
+R3 = c("Reviewer: Changes requested %s" % SHA, cid=3)
+A1 = c("**Reviewer: Approve %s**\n\nRe-review read only the diff." % SHA, cid=11)
+A2 = c("Reviewer: Approve %s" % SHA, cid=12)
 
 
 class ReviewRounds(unittest.TestCase):
     def test_two_rounds_pass(self):
-        rc, out = run([R1, c("progress note"), R2])
+        rc, out = run([R1, c("progress note"), R2, A1])
         self.assertEqual(rc, 0, out)
-        self.assertIn("OK: 2 reviewer round(s), limit 2", out)
+        self.assertIn("OK: 2 change-requesting round(s), limit 2 (1 Approve round(s) not counted, A438)", out)
 
     def test_third_round_fails(self):
         rc, out = run([R1, R2, R3])
         self.assertEqual(rc, 1, out)
-        self.assertIn("REFUSED: 3 reviewer rounds, limit 2", out)
+        self.assertIn("REFUSED: 3 change-requesting rounds, limit 2", out)
         self.assertIn('"Lead allows round 3: <reason>"', out)
+
+    def test_approve_rounds_never_count(self):
+        """A438 cut 3: a records PR needed 4 rounds for STATE line edits (27 Nov): Approve, then an Approve re-review of
+        each later diff. Approve-only re-reviews do not count, however many."""
+        rc, out = run([A1, A2, c("Reviewer: Approve %s" % SHA, cid=13), c("Reviewer: Approved", cid=14)])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("0 change-requesting round(s), limit 2 (4 Approve round(s) not counted, A438)", out)
+        rc, out = run([R1, A1, A2, R2, A1, A2])
+        self.assertEqual(rc, 0, out)          # 2 change rounds among 4 Approves: within the limit
+
+    def test_a_changes_round_after_approves_counts(self):
+        rc, out = run([A1, R1, A2, R2, A1, R3])
+        self.assertEqual(rc, 1, out)
+        self.assertIn("3 change-requesting rounds, limit 2", out)
 
     def test_third_round_passes_with_the_leads_line(self):
         rc, out = run([R1, R2, c("Lead allows round 3: the fix after the failed batch is one line; same reviewer.",
@@ -63,16 +80,21 @@ class ReviewRounds(unittest.TestCase):
         self.assertEqual(run([R1, R2] + spam)[0], 0)
         fake = c("Lead allows round 3: me", assoc="NONE", login="stranger")
         self.assertEqual(run([R1, R2, fake, R3])[0], 1)          # an outsider cannot allow a round
+        self.assertEqual(run([R1, R2, c("Reviewer: Block", assoc="NONE", login="stranger")])[0], 0)
 
     def test_mentions_are_not_verdicts(self):
         guard = c('The label came off. To label again: the PR gets a comment line "Reviewer: Approve" followed by the '
                   "new head's SHA.\nNeeds a `Reviewer: Approve <head>` line.", assoc="MEMBER")
         self.assertEqual(run([R1, R2, guard])[0], 0)              # mid-sentence and quoted mentions do not count
-        self.assertEqual(run([R1, R2, c("Reviewer: Approved", cid=9)])[0], 1)
+        self.assertEqual(run([R1, R2, c("Reviewer: Approved", cid=9)])[0], 0)   # an Approve: not counted (A438)
         self.assertEqual(run([R1, R2, c("> Reviewer: changes requested", cid=9)])[0], 1)
+        self.assertEqual(run([R1, R2, c("Reviewer: needs changes", cid=9)])[0], 1)
 
     def test_one_comment_is_one_round(self):
         self.assertEqual(run([c("Reviewer: Changes\nReviewer: Changes\nReviewer: Approve x")])[0], 0)
+        # a comment with a Changes line and an Approve line asked for changes: it counts (fails toward the limit)
+        rc, out = run([R1, R2, c("Reviewer: Approve x\nReviewer: Changes", cid=8)])
+        self.assertEqual(rc, 1, out)
 
     def ci(self, comments, labels=()):
         """--pr N --status against a stand-in curl: returns (exit, output, statuses posted)."""
@@ -105,7 +127,7 @@ class ReviewRounds(unittest.TestCase):
         self.assertIn('"state": "success"', log)
 
     def test_records_prs_are_exempt(self):
-        rc, out, log = self.ci([R1, R2, R3, c("Reviewer: Approve x", cid=5)], labels=["records"])
+        rc, out, log = self.ci([R1, R2, R3, c("Reviewer: Changes x", cid=5)], labels=["records"])
         self.assertEqual(rc, 0, out)
         self.assertIn("records PR: exempt", out)
         self.assertIn('"state": "success"', log)
