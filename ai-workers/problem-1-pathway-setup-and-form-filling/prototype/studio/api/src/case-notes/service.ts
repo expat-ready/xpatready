@@ -135,12 +135,14 @@ export class CaseNotes {
   private async subjectOf(db: Tx | Db, ctx: StaffContext, kind: SubjectKind, id: string): Promise<Subject> {
     if (typeof id !== "string" || !UUID.test(id)) return notFound(kind);
     const s = kind === "case"
-      ? await db.case.findFirst({ where: { AND: [{ id, firmKey: ctx.firmKey }, caseScopeWhere(await caseScope(db, { firmId: ctx.firmId, staffId: ctx.staffId }))] }, select: { id: true, workspaceId: true, firmKey: true } }).then((c) => c && { ...c, label: `case ${c.id.slice(0, 8)}` })
+      ? await db.case.findFirst({ where: { AND: [{ id, firmId: ctx.firmId }, caseScopeWhere(await caseScope(db, { firmId: ctx.firmId, staffId: ctx.staffId }))] }, select: { id: true, workspaceId: true, firmKey: true, firmId: true } }).then((c) => c && { ...c, label: `case ${c.id.slice(0, 8)}` })   // CS-W1 part 2b: a case by its platform firm, within the staff member's case scope
       : await db.caseClient.findFirst({ where: { id, firmKey: ctx.firmKey }, select: { id: true, workspaceId: true, firmKey: true, clientNumber: true } }).then((c) => c && { ...c, label: `client ${clientCode(c.clientNumber)}` });
     if (!s) return notFound(kind);
-    const firm = await db.platformFirm.findUnique({ where: { key: s.firmKey }, select: { id: true } });
-    if (!firm || firm.id !== ctx.firmId) return notFound(kind);
-    return { kind, id: s.id, workspaceId: s.workspaceId, firmId: firm.id, label: s.label };
+    // CS-W1 part 2b: a case carries its platform firm (NOT NULL since part 2a); a case client still by its key (its
+    // firm_id is not required yet).
+    const firmId = "firmId" in s ? s.firmId : (await db.platformFirm.findUnique({ where: { key: s.firmKey }, select: { id: true } }))?.id;
+    if (!firmId || firmId !== ctx.firmId) return notFound(kind);
+    return { kind, id: s.id, workspaceId: s.workspaceId, firmId, label: s.label };
   }
 
   /** The case or client as the session's firm may read it (404 otherwise): the timelines' one gate. */
