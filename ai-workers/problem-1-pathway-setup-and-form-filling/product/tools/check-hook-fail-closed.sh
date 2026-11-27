@@ -40,7 +40,7 @@ plant syn g.sh 'if then fi'
 r=$(printf '%s' "$IN" | run "$T/syn" 5 g.sh); ok "a guard with a syntax error blocks" "$([ "$r" = "exit 2" ] && echo 1)" "$r"
 plant hang g.sh 'sleep 30'
 t0=$(date +%s); r=$(printf '%s' "$IN" | run "$T/hang" 2 g.sh); t1=$(date +%s)
-ok "a guard that hangs past its limit blocks, within the limit" "$([ "$r" = "exit 2" ] && grep -q 'ran over 2 s' "$T/err" && [ $((t1 - t0)) -le 5 ] && echo 1)" "$r in $((t1 - t0)) s"
+ok "a guard that hangs past its limit blocks, within the limit" "$([ "$r" = "exit 2" ] && grep -q 'timed out after 2 s' "$T/err" && [ $((t1 - t0)) -le 5 ] && echo 1)" "$r in $((t1 - t0)) s"
 plant junk g.sh 'cat >/dev/null; echo not json'
 r=$(printf '%s' "$IN" | run "$T/junk" 5 g.sh); ok "a guard that prints junk blocks" "$([ "$r" = "exit 2" ] && grep -q 'not one JSON object' "$T/err" && echo 1)" "$r"
 r=$(printf '%s' "$IN" | run "$T/pass" 5 missing.sh); ok "a missing guard blocks" "$([ "$r" = "exit 2" ] && grep -q 'missing.sh is missing' "$T/err" && echo 1)" "$r"

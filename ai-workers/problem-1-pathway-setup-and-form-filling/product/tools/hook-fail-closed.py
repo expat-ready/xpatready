@@ -93,7 +93,7 @@ def main():
                 pass
             killpg(p.pid, signal.SIGKILL)
             p.wait()
-            refuse(f"guard {guard} ran over {limit} s")
+            refuse(f"guard {guard} timed out after {limit} s (an outage, not a refusal: the guard did not answer)")
         killpg(p.pid, signal.SIGKILL)   # a child the guard left behind writes nothing after the answer is read
         fout.seek(0)
         ferr.seek(0)
