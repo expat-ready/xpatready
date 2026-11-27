@@ -7,7 +7,8 @@
 #   switch.sh baseline <pct>   AS-4: the minute-0 meter (get_usage, typed by the Lead); fills "New meter at minute 0".
 #   switch.sh gate             lane-preflight.sh --hook: exit 1 (refused, with why) while a switch is open with no
 #                              baseline, or within 2 h of the baseline at 4 starts in 15 min or 12 in all; else 0 and the
-#                              start is counted. No switch open: 0, silent.
+#                              start is counted (before lane-preflight's own disk and load checks). No switch open: 0,
+#                              silent. The state is per machine: a fresh cloud container never opens a switch.
 #   switch.sh close-prep <pct> AS-1, the old side (lead-watch at weekly >= 94%): writes the ledger row once (old meter) and
 #                              checks STATE.md and RESUME-ON-NEW-ACCOUNT.md are committed and pushed. Exit 0 "close-prep:
 #                              done", else 1 naming what is left (lead-watch prints it as an ACT). Under 94: "not yet", 0.
@@ -51,7 +52,7 @@ case "${1:-}" in
     last=$(cat "$D/account" 2>/dev/null)
     if [ -z "$last" ]; then echo "$h" > "$D/account"; exit 0; fi
     if [ "$last" != "$h" ]; then
-      echo "$h" > "$D/account"; printf 'opened=%s\n' "$now" > "$D/open"; rm -f "$D/baseline" "$D/starts"
+      echo "$h" > "$D/account"; printf 'opened=%s\n' "$now" > "$D/open"; rm -f "$D/baseline" "$D/starts" "$D/prepped"   # the next close-prep writes the next row
       echo "ACCOUNT SWITCH DETECTED ($(ist "$now") IST): this session runs on a different Claude account than the last one seen on this machine (OS-86, founder A417)."
       echo "Lane starts are refused until the minute-0 meter is recorded: get_usage, then bash product/tools/switch.sh baseline <weekly %> (AS-4)."
       echo "The checklist (product/rules/account-switch.md):"; checklist; exit 0
@@ -86,8 +87,8 @@ case "${1:-}" in
     R=$(git -C "$PH" rev-parse --show-toplevel 2>/dev/null)
     for f in STATE.md RESUME-ON-NEW-ACCOUNT.md; do
       [ -n "$(git -C "$R" status --porcelain -- "$PH/$f" 2>/dev/null)" ] && left="$left $f has uncommitted changes;"; done
-    ahead=$(git -C "$R" rev-list --count @{u}..HEAD 2>/dev/null) || ahead="?"
-    [ "$ahead" = 0 ] || left="$left this branch has ${ahead} commit(s) not pushed;"
+    if ahead=$(git -C "$R" rev-list --count @{u}..HEAD 2>/dev/null); then [ "$ahead" = 0 ] || left="$left this branch has ${ahead} commit(s) not pushed;"
+    else left="$left this branch has no upstream (push it with -u);"; fi
     if [ -n "$left" ]; then echo "close-prep: not done:$left then tell every lane to push and leave a hand-over comment (AS-1)"; exit 1; fi
     echo "close-prep: done (${2}% weekly): STATE and RESUME pushed, ledger row written; lanes: finish the step, push, hand-over comment (AS-1); then AS-2 at \"switching now\""; exit 0;;
   close)

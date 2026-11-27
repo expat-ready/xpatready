@@ -49,6 +49,12 @@ echo changed >> "$P/STATE.md"; cp2 94
 ok "close-prep at a fake 94%: the ledger row is written (old meter 94%), and an unpushed STATE is named, exit 1" "$([ $r = 1 ] && grep -q 'ledger row written' <<< "$out" && grep -q 'STATE.md has uncommitted changes' <<< "$out" && tail -1 "$P/rules/account-switch.md" | grep -q '(prep) | 94% (' && echo 1)" "exit $r: $out"
 git -C "$T/c" -c user.email=t@t -c user.name=t commit -qam records; git -C "$T/c" push -q 2>/dev/null; cp2 95
 ok "... pushed: close-prep done, exit 0, and the row is not written twice" "$([ $r = 0 ] && grep -q 'close-prep: done' <<< "$out" && [ "$(grep -c '(prep)' "$P/rules/account-switch.md")" = 1 ] && echo 1)" "exit $r: $out"
+# Review of #3923 (Major): the guard tests never touch the machine's real switch state.
+FH="$T/home"; mkdir -p "$FH/.claude/xr-switch"; printf 'opened=1\n' > "$FH/.claude/xr-switch/open"
+sd=$(env -u SWITCH_DIR HOME="$FH" bash -c ". '$TOOLS/guard-test-lib.sh'; echo \$SWITCH_DIR")
+hk=$(env -u SWITCH_DIR HOME="$FH" bash -c ". '$TOOLS/guard-test-lib.sh'; bash '$TOOLS/lane-preflight.sh' --hook" < "$T/in.json" 2>&1)
+ok "guard-test-lib.sh gives every test its own switch state: a real open switch in HOME neither refuses a hook test nor counts its start" "$([ -n "$sd" ] && [ "${sd#"$FH"}" = "$sd" ] && ! grep -q 'deny' <<< "$hk" && [ ! -e "$FH/.claude/xr-switch/starts" ] && echo 1)" "SWITCH_DIR=$sd hook=$hk"
+acct cccc-3333; run detect; ok "a new switch clears the old week's close-prep mark (the next row gets written)" "$([ ! -e "$SWITCH_DIR/prepped" ] && echo 1)" "$(ls "$SWITCH_DIR")"
 grep -q 'switch.sh" detect' "$TOOLS/session-start.sh"; ok "session-start.sh runs switch.sh detect" "$([ $? = 0 ] && echo 1)"
 grep -q 'switch.sh" close-prep' "$TOOLS/lead-watch.sh"; ok "lead-watch.sh runs close-prep at LEAD_WEEKLY" "$([ $? = 0 ] && echo 1)"
 finish

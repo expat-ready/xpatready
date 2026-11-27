@@ -26,7 +26,8 @@ if [ "${1:-}" = --hook ]; then
   hot=$(echo "$in" | jq -r '.tool_input.prompt // .tool_input.message // .tool_input.brief // empty' | python3 -I "$DIR/touch-overlap.py" 2>&1) \
     || { jq -n --arg r "Lane brief refused (E10, P-576): ${hot:-touch-overlap.py could not run, so nothing was checked.}" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
   # OS-86 / LR-143 (founder A417): after an account switch, no start until the minute-0 meter is recorded, then at most
-  # 4 starts in 15 min and 12 in the first 2 h (switch.sh gate; here and in the cloud alike). Test: check-switch.sh.
+  # 4 starts in 15 min and 12 in the first 2 h (switch.sh gate; local and cloud starts from the Lead's Mac; a fresh cloud
+  # container has no switch state, so it never refuses there). Test: check-switch.sh.
   sg=$(bash "$DIR/switch.sh" gate 2>&1) \
     || { jq -n --arg r "$sg" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
   case "$(echo "$in" | jq -r '.tool_name // empty')" in *create_session) target=cloud;; esac

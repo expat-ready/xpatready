@@ -5,6 +5,9 @@ pass=0; fail=0
 ok() { if [ "$2" = 1 ]; then pass=$((pass + 1)); echo "PASS  $1"; else fail=$((fail + 1)); echo "FAIL  $1 — ${3:-}"; fi; }
 finish() { echo "$pass passed, $fail failed"; [ "$fail" -eq 0 ]; exit $?; }
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# OS-86 (review of #3923, Major): every test runs with its own empty account-switch state, never the machine's
+# ~/.claude/xr-switch: a hook test must not be refused by a real open switch, nor count starts against the Lead's real caps.
+export SWITCH_DIR; SWITCH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/guard-switch.XXXXXXXX")
 PRODREL="ai-workers/problem-1-pathway-setup-and-form-filling/product"
 docs_copy() {  # $1 dir → a git copy at $1 with product/tools/check-docs.sh and STATE.md (one current_lead line)
   mkdir -p "$1/$PRODREL/tools" && cp "$TOOLS/check-docs.sh" "$TOOLS/current-lead.sh" "$1/$PRODREL/tools/"
