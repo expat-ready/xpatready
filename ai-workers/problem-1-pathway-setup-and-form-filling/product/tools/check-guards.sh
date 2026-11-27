@@ -38,6 +38,7 @@ TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT 
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
 TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night checklist, PR-only proof
+TESTS="$TESTS check-switch.sh"   # OS-86 / LR-143: the account switch (founder A417)
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -646,7 +647,9 @@ MUT="$MUT"'
 29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
 29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh
 29 e7gone|product/tools/stop-check.sh|/E7: the branch deleted or renamed the enforcer/d|check-stop-check.sh
-29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh'
+29 e7ran|product/tools/stop-check.sh|/E7 (#2599) could not run/d|check-stop-check.sh
+OS86 gate|product/tools/switch.sh|s/^    if \[ ! -s "\$D\/baseline" \]; then$/    if false; then/|check-switch.sh
+OS86 wave|product/tools/switch.sh|s/^    \[ "\$n15" -ge 4 \] .*/    true/|check-switch.sh'
 # OMG (Lead 5 on #2915 and #3035, 23 Nov): the own-migration guard; each row switches one of its rules off.
 MUT="$MUT"'
 OMG mark|product/tools/own-migration-guard.py|s/^MARK = re.compile(.*/MARK = re.compile(r"own-migration-never-marked")/|check-own-migration-guard.sh

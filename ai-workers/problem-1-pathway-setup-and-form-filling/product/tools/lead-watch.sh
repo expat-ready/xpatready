@@ -98,6 +98,12 @@ fresh "df / and PostgreSQL 127.0.0.1:54329"
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in this copy and LEAD_CONTEXT from the Lead's get_usage"
 
+# 1c2. OS-86 / LR-143 (founder A417): at 94% weekly the old side of an account switch starts (AS-1). get_usage is the
+# Lead's tool, so the Lead passes it: LEAD_WEEKLY=<pct>. switch.sh close-prep writes the ledger row and checks STATE and
+# RESUME are pushed; an ACT until it says done. An open switch with no baseline is an ACT too.
+if [ -n "${LEAD_WEEKLY:-}" ]; then cp=$(bash "$TOOLS/switch.sh" close-prep "$LEAD_WEEKLY" 2>&1) && say "$cp" || ACT "$cp"; fi
+ss=$(bash "$TOOLS/switch.sh" status 2>&1); case "$ss" in *"baseline none"*) ACT "$ss: get_usage, then switch.sh baseline <pct> (AS-4)";; *open*) say "$ss";; esac
+
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
 pn=$(python3 -I "$TOOLS/proof-number.py" 2>&1); echo "$pn"; act=$((act + $(grep -c '^ACT' <<<"$pn"))); seen "$pn"

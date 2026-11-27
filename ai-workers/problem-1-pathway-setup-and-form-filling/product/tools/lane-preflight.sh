@@ -10,7 +10,8 @@
 #                                                 (it also needs "Item: R1.x" in an open wave, waves.py allow, B204)
 #                                                 and a builder brief naming an R1 item or row that is not on
 #                                                 product/focus-list.md is refused (ENF-733; focus-check.py), and a
-#                                                 "Touches:" file an open PR already changes is refused (E10; touch-overlap.py)
+#                                                 "Touches:" file an open PR already changes is refused (E10; touch-overlap.py),
+#                                                 and after an account switch the start waits for the baseline (switch.sh gate)
 # Test: check-lane-preflight.sh; the focus list: check-focus-list.sh; the touch list: check-touch-overlap.sh.
 DIR="$(cd "$(dirname "$0")" && pwd)"; min=${PREFLIGHT_MIN_GB:-7}; maxload=${PREFLIGHT_MAX_LOAD:-16}; cap=${COPY_CAP:-4}
 if [ "${1:-}" = --hook ]; then
@@ -24,6 +25,10 @@ if [ "${1:-}" = --hook ]; then
   # E10 (P-576, P-526b, P-438b): a "Touches:" file already changed by an open PR is refused, here or in the cloud (touch-overlap.py).
   hot=$(echo "$in" | jq -r '.tool_input.prompt // .tool_input.message // .tool_input.brief // empty' | python3 -I "$DIR/touch-overlap.py" 2>&1) \
     || { jq -n --arg r "Lane brief refused (E10, P-576): ${hot:-touch-overlap.py could not run, so nothing was checked.}" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
+  # OS-86 / LR-143 (founder A417): after an account switch, no start until the minute-0 meter is recorded, then at most
+  # 4 starts in 15 min and 12 in the first 2 h (switch.sh gate; here and in the cloud alike). Test: check-switch.sh.
+  sg=$(bash "$DIR/switch.sh" gate 2>&1) \
+    || { jq -n --arg r "$sg" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
   case "$(echo "$in" | jq -r '.tool_name // empty')" in *create_session) target=cloud;; esac
   [ "$target" = cloud ] && exit 0
   out=$(bash "$0"); [ $? = 0 ] && exit 0
