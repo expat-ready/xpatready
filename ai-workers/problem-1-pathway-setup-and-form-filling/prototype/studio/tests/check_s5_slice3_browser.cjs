@@ -55,11 +55,18 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   // The first find is Start setup's (screens lane): started here through the same API, saved AI answers (US$0).
   const plan0 = (await api(`/combinations/${vv}/forms/find/plan`, { method: "POST", data: { mode: "replay" } })).body;
   await api(`/combinations/${vv}/forms/find`, { method: "POST", data: { mode: "replay", planSha256: plan0.plan_sha256, idempotencyKey: `s5b-first-${Date.now()}` } });
+  // LR-110 (this step's first-try failure in CI, 25-27 Nov): the tab reloaded while the find runs reads its lines before the
+  // attach step and, on a slow machine, its first finder read only after the run ended; the strip then said "AI found 7
+  // forms" over a table without them, for good. The finder read is held here until the run has ended, so every run takes
+  // that order; the lines must still come.
+  const ended = async () => { for (let i = 0; i < 900 && sql("select count(*) from ai_batch where status in ('QUEUED','RUNNING')") !== "0"; i++) await new Promise((r) => setTimeout(r, 100)); };
+  await p.route("**/forms/find/latest", async (r) => { await ended(); await r.continue().catch(() => {}); });
   await p.reload(); await p.getByRole("tablist", { name: "Combination" }).waitFor();
   await p.locator('[data-line="IMM 5257"]').waitFor({ timeout: 90000 }).catch(() => {});
+  await p.unroute("**/forms/find/latest");
   await settle();
   const row = p.locator('[data-line="IMM 5257"]');
-  step("C11.15 pass: the forms AI picked are lines, marked \"Picked by AI · Sample\" with IRCC's words", await row.count() === 1 && /Picked by AI · Sample/.test(await row.innerText()) && /"[^"]{20,}/.test(await row.innerText()));
+  step("C11.15 pass: the forms AI picked are lines, marked \"Picked by AI · Sample\" with IRCC's words, also when the tab first reads the run after it ended (LR-110)", await row.count() === 1 && /Picked by AI · Sample/.test(await row.innerText()) && /"[^"]{20,}/.test(await row.innerText()));
   step("C11.15: the finder line says what the find did, saved answers at US$0, and that it is Sample", /AI found \d+ forms?/.test(await finder.innerText()) && /Saved, US\$0/.test(await finder.innerText()) && /Sample until the immigration expert confirms/.test(await finder.innerText()), (await finder.innerText()).split("\n").slice(0, 2).join(" | "));
   await state("forms-found-by-ai");
 
