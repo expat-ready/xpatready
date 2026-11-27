@@ -161,3 +161,34 @@ Verdict: Approve d8a06230b519a60f86939c7c4c8551481874b189
 **Blockers:** none. **Majors:** none open. Journey: 8/10, as in round 2.
 
 Verdict: Approve daae517f87552fea82c1e5cfa43ea1c5642e46cd
+
+## Round 4: head `206a6a5134baef81319dee3a3ee9702e91482983` (27 Nov 2026)
+
+**What I reviewed:** only `git diff daae517f..206a6a51`: exports.ts (+13 −10), check_fo7r3_exports.ts (+17 −5) and check_csw3_firm_scope.ts (+5 −2). The Lead allowed this round on #3887 (comment 7208626459, ruling (c)).
+* **Suites:**
+  * `check_fo7r3_exports.ts`: **49 passed, 0 failed**.
+  * `check_csw3_firm_scope.ts`: the census pass (60) and fail checks pass. The rest of that suite needs its own isolated server on :4496, which I did not start; this diff touches only the census list.
+
+### What holds
+* **Ruling (c), UTC days.**
+  * `EXPORT_ZONE = "UTC"` is stored in request.json, and the state answer reads `zone: "UTC"`.
+  * With $Z bound to UTC, the day cuts are the statement's `(from::date::timestamp at time zone 'UTC')` cuts exactly (statement.ts:205).
+  * r3-m1 is closed: the 22:30 Toronto invoice is in April in both the export and the statement (E14 checks the statement's April change, CAD 42.00).
+  * r3-m2 is moot, because with UTC both the day and the time of the sort key are UTC.
+  * `readSetting` is gone, so a missing or bad zone setting can no longer give a bare 500 (m11).
+* **The header names the cut.** Every file's header ends with "Period cut in UTC", and each row ends with one empty cell, so the width matches.
+  * E2 compares each header with `HEADERS`, and E14 checks the last cell on all seven files.
+  * Column indexes used by E1, E12 and E13 are unchanged, because the cell is at the end.
+* **Census.** `client-money/reports/exports` joins the list (59 → 60) with a reason line, as the Lead confirmed: it joins on the job's firm, reads names only, and imports nothing from the case side.
+* **Follow-up.** The PR's "Follow-up" section has the row text the Lead asked for: the statement and the export move to `platform.time_zone` together, with a 23:00-local month-end case and the per-period equality at that edge.
+* **REFUNDED credit.** It is in CREDITS at −5.00 with an empty related_document (the invoice coalesce has nothing to find), so E13's filter leaves it out.
+
+### Findings (no Blocker, no Major)
+* **r4-m1 (Minor, test strength). The day-only payment check does not exercise paidDay while the cut is UTC.**
+  * In UTC, `paid()` and `day()` give the same day, so E14's 10 May pass and its 9 May fail would both still pass if the `case when … date_trunc('day', t, 'UTC')` branch were removed.
+  * It does fix the behaviour that matters today. The rule only matters once the follow-up row changes the zone, and that row's Done-when (23:00 local) is the place to test it.
+* **Still open, all Minor:** m2 (DW7 as named), m3 (a retry after a rename), m4 (FAILED while PF-14 retries), m5 (memory), m6 (app clock against the database clock), r3-m3 (the statement's `ca` with an entry that names two invoices, for the tech lead), and the paidDay and non-invoice zone tests, which belong to the follow-up.
+
+**Blockers:** none. **Majors:** none open. Journey: 8/10.
+
+Verdict: Approve 206a6a5134baef81319dee3a3ee9702e91482983
