@@ -248,3 +248,11 @@ Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 ### P-845 line
 Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 | P-845 | Factory v3 approved: Lead machine user approves risky paths; agents capped ~US$1,000 month one, Code Review on risky paths only; keep Mergify, GitHub approval replaces the label; factory moves to expat-ready/private. | prose | 26 Nov |
+
+### P-339 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-339 | Works = pack green on main's head on GitHub's runners on the counted data, run id in qa's row, an independent re-run, a fresh Opus reader's verdict (P-322, P-290, P-303, P-432). | CI: ci.yml gate B (part) | P-612 |
+
+### P-500 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-500 | The right sample for the purpose in every analysis, named beside the number; speed = app-code PRs or qa-confirmed Works. | script: cockpit-data.py (part: board numbers carry source and class, P-596) | 12 Nov |
