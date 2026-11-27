@@ -97,10 +97,12 @@ Q="$TOOLS/pr-suites-quarantine.txt"; ST="$TOOLS/../../prototype/studio/tests"; q
 while IFS='|' read -r qs qo qd qr; do qn=$((qn + 1))
   { [ ! -d "$ST" ] || [ -f "$ST/$qs" ]; } && [[ "$qo" =~ ^(screens|forms|runtime|evidence)$ && "$qd" =~ ^2026-1[12]-[0-9]{2}$ && "$qr" = p822 ]] || qbad="$qbad $qs|$qo|$qd|$qr"
 done < <(grep -vE '^[[:space:]]*(#|$)' "$Q")
-ok "pr-suites-quarantine.txt: the 4 suites, each a real suite with an owner lane and a fix date (P-822)" "$([ "$qn" = 4 ] && [ -z "$qbad" ] && for x in check_s5_slice3_browser.cjs check_c69_page_browser.cjs check_c83_review_browser.cjs check_fo8_prospect_won.ts; do grep -q "^$x|" "$Q" || exit; done && echo 1)" "$qn entries; bad:$qbad"
-qa=$(grep -vE '^[[:space:]]*(#|$)' "$Q" | xargs); qr=$(sed -n '/^AUTOQ=" "$/,/^done$/p' "$TOOLS/run-suites.sh"); qw=$(sed -n '/^qwhy() {/,/^  echo "fails at random/p' "$TOOLS/run-suites.sh")
+# LR-110: an entry leaves the list in its fix PR (5 green runs in a row), so the list holds at most P-822's 4, never another.
+ok "pr-suites-quarantine.txt: at most P-822's 4 suites, each a real suite with an owner lane and a fix date (P-822)" "$([ "$qn" -le 4 ] && [ -z "$qbad" ] && grep -vE '^[[:space:]]*(#|$)' "$Q" | cut -d'|' -f1 | while read -r x; do case " check_s5_slice3_browser.cjs check_c69_page_browser.cjs check_c83_review_browser.cjs check_fo8_prospect_won.ts " in *" $x "*) ;; *) exit 1;; esac; done && echo 1)" "$qn entries; bad:$qbad"
+# run-suites.sh's reading, on the file's entries plus one fixed P-822 entry (the file may be down to none)
+qa="$(grep -vE '^[[:space:]]*(#|$)' "$Q" | grep -v '^check_c83_review_browser.cjs|' | xargs) check_c83_review_browser.cjs|screens|2026-12-02|p822"; qn=$(wc -w <<< "$qa"); qr=$(sed -n '/^AUTOQ=" "$/,/^done$/p' "$TOOLS/run-suites.sh"); qw=$(sed -n '/^qwhy() {/,/^  echo "fails at random/p' "$TOOLS/run-suites.sh")
 qo=$(SUITES_QUARANTINE_AUTO="$qa" QUARANTINE="" bash -c "$qr"$'\n'"$qw"$'\n''for s in check_c83_review_browser.cjs; do qwhy "$s"; done; echo "Q:$QUARANTINE"' 2>&1)
-ok "run-suites.sh takes every entry (none \"ignored\") and its row names the owner and date: nothing skipped silently" "$(! grep -q ignored <<< "$qo" && grep -q 'owner screens, fix by 2026-12-02' <<< "$qo" && [ "$(grep -o 'check_[a-z0-9_]*\.\(cjs\|ts\)' <<< "${qo##*Q:}" | wc -l)" = 4 ] && echo 1)" "$qo"
+ok "run-suites.sh takes every entry (none \"ignored\") and its row names the owner and date: nothing skipped silently" "$(! grep -q ignored <<< "$qo" && grep -q 'owner screens, fix by 2026-12-02' <<< "$qo" && [ "$(grep -o 'check_[a-z0-9_]*\.\(cjs\|ts\)' <<< "${qo##*Q:}" | wc -l)" = "$qn" ] && echo 1)" "$qo"
 ok "the suites step is --changed, time-limited, and runs only after a good set-up" "$(grep -qw changed <<< "$w" && echo 1)" "$w"
 ok "the parts' job limit covers its steps' limits plus 5 min" "$(grep -qw limits <<< "$w" && echo 1)" "$w"
 ok "the plan reads change-kind.sh and pr-suites-plan.sh" "$(grep -qw plan <<< "$w" && echo 1)" "$w"
