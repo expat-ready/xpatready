@@ -115,6 +115,6 @@ ok "pr-rules.yml runs it on every PR that is not records only" "$(grep -qxF "   
 sed -n 's/^ *run: //p' "$T/step.yml" > "$T/step.sh"; step() { o=$(cd "$R" && BODY="$1" GITHUB_STEP_SUMMARY="$T/sum2" T="${2:-$TOOLS}" bash "$STEP" 2>&1; echo "rc=$?"); }; STEP="$T/step.sh"
 start; sub "$A" "rows.length === 3" "true"; g add -A; g commit -qm y; step x; ok "the step warns and exits 0" "$([ "$(has '::warning title=Checks changed (A351 C2)::1 existing test lines')" = 1 ] && has rc=0)" "$o"
 ok "and writes the summary" "$(grep -q 'A1 pass: three rows' "$T/sum2" && echo 1)"
-step x /nowhere; ok "fail: a check that cannot run is a warning" "$([ "$(has 'could not run')" = 1 ] && has rc=0)" "$o"
+step x /nowhere; ok "fail: a check that cannot run fails the step (LR-043, fail closed)" "$([ "$(has 'could not run')" = 1 ] && has rc=1)" "$o"
 ok "the step has a time limit, so a slow read never holds the job" "$(grep -q "timeout 30 python3 -I" "$T/step.yml" && echo 1)"
 finish
