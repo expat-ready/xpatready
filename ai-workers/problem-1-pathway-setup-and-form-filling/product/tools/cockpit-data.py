@@ -189,7 +189,7 @@ class GH:
             raise RuntimeError("offline")
         self.count("graphql")
         body = json.dumps({"query": query, "variables": variables})
-        r = subprocess.run(["curl", "-sS", "--fail-with-body", "-X", "POST", "-H", f"Authorization: token {self.token}",
+        r = subprocess.run(["curl", "-sSL", "--fail-with-body", "-X", "POST", "-H", f"Authorization: token {self.token}",
                             "-d", "@-", "https://api.github.com/graphql"], input=body, capture_output=True, text=True)
         if r.returncode:
             raise RuntimeError(f"GraphQL failed: {r.stdout[:200]} {r.stderr[:200]}")

@@ -11,7 +11,7 @@ input=$(cat); [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/
 # The session's own copy comes from the hook input (in builder sessions $CLAUDE_PROJECT_DIR is the main copy).
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-cd "$ROOT" || exit 0
+cd "$ROOT" || { echo "stop-check: cannot enter $ROOT, so nothing was checked" >&2; exit 1; }   # fail closed (LR-046): the wrapper blocks
 PH=ai-workers/problem-1-pathway-setup-and-form-filling/product; APP=ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
 reasons=""; notes=""
 LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null | sed "s/^lead-stale$/lead/")

@@ -9,7 +9,7 @@ n="${1:?usage: pr-ready.sh <PR number>}"
 [[ "$n" =~ ^[0-9]+$ ]] || { echo "pr-ready: PR number must be digits" >&2; exit 2; }
 R="${PR_READY_REPO:-$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')}"
 T="$(gh auth token)"
-api() { curl -sf -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json" "$@"; }
+api() { curl -sfL -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json" "$@"; }
 pr="$(api "https://api.github.com/repos/$R/pulls/$n")"
 read -r state draft head node < <(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["state"],d["draft"],d["head"]["sha"],d["node_id"])' "$pr")
 [ "$state" = open ] || { echo "pr-ready: #$n is $state" >&2; exit 1; }

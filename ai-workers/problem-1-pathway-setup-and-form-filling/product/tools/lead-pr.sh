@@ -16,7 +16,7 @@
 set -euo pipefail
 REPO=expat-ready/xpatready; API=https://api.github.com/repos/$REPO
 HERE=$(cd "$(dirname "$0")" && pwd)
-T=$(gh auth token); H=(-s -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json")
+T=$(gh auth token); H=(-sL -H "Authorization: Bearer $T" -H "Accept: application/vnd.github+json")
 die() { echo "lead-pr: $*" >&2; exit 1; }
 pr() { curl "${H[@]}" "$API/pulls/$1"; }
 field() { python3 -c "import json,sys;d=json.load(sys.stdin);print($1)"; }

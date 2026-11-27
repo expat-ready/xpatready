@@ -62,7 +62,7 @@ class API:
             self.token = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True).stdout.strip()
 
     def call(self, path, method="GET", data=None):
-        cmd = ["curl", "-sf", "--max-time", "30", "-X", method, "-H", "Authorization: Bearer " + self.token,
+        cmd = ["curl", "-sfL", "--max-time", "30", "-X", method, "-H", "Authorization: Bearer " + self.token,
                "-H", "Accept: application/vnd.github+json", "https://api.github.com/repos/%s/%s" % (REPO, path)]
         if data is not None:
             cmd += ["-d", json.dumps(data)]

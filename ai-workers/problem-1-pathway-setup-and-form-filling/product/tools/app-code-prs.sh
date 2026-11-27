@@ -15,7 +15,7 @@ while IFS= read -r line; do
   [ -z "$n" ] && continue
   files=""; ok=1
   for page in 1 2 3; do
-    out=$(curl -sf -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO/pulls/$n/files?per_page=100&page=$page") || { ok=0; break; }
+    out=$(curl -sfL -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO/pulls/$n/files?per_page=100&page=$page") || { ok=0; break; }
     got=$(printf '%s' "$out" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(f["filename"] for f in d))' 2>/dev/null) || { ok=0; break; }
     files+="$got"$'\n'
     [ "$(printf '%s' "$got" | grep -c .)" -lt 100 ] && break

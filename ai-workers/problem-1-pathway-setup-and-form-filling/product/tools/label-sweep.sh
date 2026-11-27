@@ -17,7 +17,7 @@ for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "label-sweep: $v is not se
 command -v jq >/dev/null || { echo "label-sweep: jq is missing"; exit 2; }
 H=$(mktemp); trap 'rm -f "$H"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
-api() { curl -sS --fail-with-body -H @"$H" "$@"; }
+api() { curl -sSL --fail-with-body -H @"$H" "$@"; }
 pages() {  # every page of a list endpoint ($1, with or without its own query), as one JSON array
   # Events come oldest first, so a list cut short would drop the newest, which decide. More than PAGES_MAX full pages
   # (3000 events; no real PR has them, but a PR's job can pad its own list) returns 3: the label then comes off.

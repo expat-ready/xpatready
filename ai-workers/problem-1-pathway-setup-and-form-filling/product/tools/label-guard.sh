@@ -29,7 +29,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO PR AFTER; do [ -n "${!v:-}" ] || { echo "label-guard: $v is not set"; exit 2; }; done
 H=$(mktemp); trap 'rm -f "$H"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
-api() { curl -sS --fail-with-body -H @"$H" "$@"; }
+api() { curl -sSL --fail-with-body -H @"$H" "$@"; }
 pages() {  # every page of a list endpoint, as one JSON array
   local p=1 all='[]' one; while [ "$p" -le 20 ]; do
     one=$(api "$API/$1?per_page=100&page=$p") || return 1
