@@ -509,6 +509,7 @@ MUT="$MUT"'
 38 source|product/tools/private-sync.sh|s/^if \[ ! -d "\$NOTES" \] .*then$/if false; then/|check-lead-upkeep.sh
 38 rev-parse|product/tools/private-sync.sh|s/^if ! git rev-parse -q --verify HEAD .*then$/if false; then/|check-lead-upkeep.sh
 38 note file|product/tools/private-sync.sh|s/ -type f ! -path / -type f -path /|check-lead-upkeep.sh
+38 notes only|product/tools/private-sync.sh|s/^git add -A notes$/git add -A/|check-lead-upkeep.sh
 38 after copy|product/tools/private-sync.sh|s/^if \[ -z "\$(git ls-files -s -- notes\/side-session-notes\/ .*then$/if false; then/|check-lead-upkeep.sh
 38 origin|product/tools/private-sync.sh|s/^if ! same_repo .*then$/if false; then/|check-lead-upkeep.sh
 38 pull|product/tools/private-sync.sh|s/^if ! git pull -q --ff-only; then$/if ! git pull -q --ff-only \&\& false; then/|check-lead-upkeep.sh

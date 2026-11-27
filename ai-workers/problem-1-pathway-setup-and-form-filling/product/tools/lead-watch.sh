@@ -37,6 +37,10 @@ if [ "${1:-}" = gap ]; then
 fi
 mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
+# Private split (PS-1b, design/private-split-plan-2026-11-27.md): STATE.md is read where the records are (records-dir.sh:
+# the private copy, else this copy's while it is still here). No private copy is an ACT, so the Lead clones it before PS-1c.
+RECS=$(bash "$TOOLS/records-dir.sh" 2>/dev/null) || RECS="$TOOLS/.."
+bash "$TOOLS/records-dir.sh" --private >/dev/null 2>&1 || ACT "records: no private copy of the Lead's records (expat-ready/private at ${PRIVATE_HOME_DIR:-\$TMPDIR/private-home}/xpatready/product): clone or pull it (private split; reading $RECS/STATE.md)"
 SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN" "$GH_TLS_NOTE_ONCE"; type pre_off >/dev/null 2>&1 && pre_off' EXIT   # B202: lines step 12 reuses
 export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"; rm -f "$GH_TLS_NOTE_ONCE"   # ENF-761 part 5: gh.sh's curl notice once per run
 GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN" ]; then export GH_TOKEN; else unset GH_TOKEN; fi   # the token is read once a run, not once a call
@@ -95,8 +99,8 @@ say "disk  ${free} GB free · test databases ${dbs:-?} · idle at two checks: ${
 fresh "df / and PostgreSQL 127.0.0.1:54329"
 # 1c. The Lead's context (E12, P-446 (1)): hand over at the first check after 200k beyond the start read; at 150k the first
 # standby reads RULES+STATE. get_usage is the Lead's tool only, so the Lead passes it: LEAD_CONTEXT=<k> (no value = ACT).
-lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
-fresh "lead-upkeep.py context: STATE.md in this copy and LEAD_CONTEXT from the Lead's get_usage"
+lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$RECS/STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
+fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead's get_usage"
 
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
@@ -354,7 +358,7 @@ else ACT "board: $bc (run the cockpit refresh, then the check)"; BOARD=/dev/null
 # Lines already printed above (questions, approved then red, records off main (step 7), sle-watch, local lanes, the board's
 # idle lanes) are counted, not repeated: say() and ACT() record every line in $SEEN. Keep 12 after every step it reuses.
 kf_subj=$(for b in $alive; do printf '%s\t%s\n' "$b" "$(git log -1 --format=%s "origin/$b" 2>/dev/null)"; done)   # one git call per pushing branch
-P_DIR="${D%/*}" KF_PRS="$prs" KF_PRS_BODY="$STATE_DIR/prs-body.json" KF_ALIVE="$alive" KF_SUBJ="$kf_subj" KF_SEEN="$SEEN" KF_BOARD="$BOARD" \
+P_DIR="${D%/*}" KF_PRS="$prs" KF_PRS_BODY="$STATE_DIR/prs-body.json" KF_ALIVE="$alive" KF_SUBJ="$kf_subj" KF_SEEN="$SEEN" KF_BOARD="$BOARD" KF_STATE="$RECS/STATE.md" \
 python3 -I -c '
 import json, os, time
 from datetime import datetime, timezone
@@ -367,7 +371,7 @@ except (OSError, ValueError): prs_all = None
 try: board = json.load(open(E["KF_BOARD"]))
 except (OSError, ValueError): board = None
 subj = dict(l.split("\t", 1) for l in E["KF_SUBJ"].splitlines() if "\t" in l)
-print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULES.md": size(P + "/RULES.md"), "STATE.md": size(P + "/STATE.md")},
+print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULES.md": size(P + "/RULES.md"), "STATE.md": size(E["KF_STATE"])},
   "prs": prs, "prs_all": prs_all, "prs_all_limit": 200, "prs_limit": 80, "alive_subjects": subj, "board": board,
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
@@ -379,7 +383,7 @@ fresh "queue-depth.py: the last 20 merge-queue batches on GitHub"
 
 # 13. Founder asks that are clicks (ENF-763, P-752/P-763): STATE's "For the founder", "Founder asks open" and "Needs you"
 # entries that are a GitHub or claude.ai step; one ACT each (the Lead does it in the built-in browser and drops the ask).
-fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$TOOLS/../STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
+fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$RECS/STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
 fresh "STATE.md on $(git rev-parse --abbrev-ref HEAD)"
 
 tl=$(python3 -I "$TOOLS/cycle-timeline.py" 2>&1); echo "$tl"; act=$((act + $(grep -c '^ACT' <<<"$tl")))   # 14. Cycle timeline (A244, ENF-783b, P-783 (2)): every check
@@ -391,14 +395,14 @@ lr=$(python3 -I "$TOOLS/owed-watch.py" lanes --board "$BOARD" 2>&1); echo "$lr";
 fresh "owed-watch.py lanes: the board's data.json as step 11 accepted it (over 10 min old: /dev/null, an ACT here)"
 # 13c. Starts owed (E19, founder 21 Nov, P-772): STATE sentences saying a start is owed at the founder's next typed turn
 # (a cron or message turn cannot start sessions). One ACT listing them: raise them in his next turn and the push notification.
-so=$(python3 -I "$TOOLS/owed-watch.py" starts --state "$TOOLS/../STATE.md" 2>&1); echo "$so"; act=$((act + $(grep -c '^ACT' <<<"$so"))); seen "$so"
-fresh "owed-watch.py starts: STATE.md in this copy"
+so=$(python3 -I "$TOOLS/owed-watch.py" starts --state "$RECS/STATE.md" 2>&1); echo "$so"; act=$((act + $(grep -c '^ACT' <<<"$so"))); seen "$so"
+fresh "owed-watch.py starts: STATE.md in $RECS"
 
 # 13d (OS-18, P-530): a red "Waiting on the founder" line atop STATE or in its Start here: one ACT to re-send the push once
 # it has waited 30 min, then at most once an hour (founder-wait.py remembers each line in $STATE_DIR); a plain line between.
-fw=$(python3 -I "$TOOLS/founder-wait.py" --state "$TOOLS/../STATE.md" --memory "$STATE_DIR/founder-wait.json" 2>&1); fwrc=$?; echo "$fw"; seen "$fw"
+fw=$(python3 -I "$TOOLS/founder-wait.py" --state "$RECS/STATE.md" --memory "$STATE_DIR/founder-wait.json" 2>&1); fwrc=$?; echo "$fw"; seen "$fw"
 act=$((act + $(grep -c '^ACT' <<<"$fw"))); [ "$fwrc" = 0 ] && grep -qE '^(ACT   )?founder wait: ' <<<"$fw" || ACT "founder wait: founder-wait.py did not run ($(tail -1 <<<"$fw"))"
-fresh "founder-wait.py: STATE.md in this copy, its memory in $STATE_DIR (13d)"
+fresh "founder-wait.py: STATE.md in $RECS, its memory in $STATE_DIR (13d)"
 
 # 16. The focus list stays true (ENF-733b, founder A261): main's focus-list.md against qa's file on main (step 11's copy).
 git show origin/main:ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md > "$STATE_DIR/focus-main.md" 2>/dev/null; ft=$(python3 -I "$TOOLS/focus-truth.py" --list "$STATE_DIR/focus-main.md" --caps "$STATE_DIR/caps-main.md" 2>&1); ftrc=$?; [ "$ftrc" = 1 ] && ACT "focus list: $(grep -c '^drop:' <<<"$ft") proven lines, $(grep -c '^missing:' <<<"$ft") Partial items missing (focus-truth.py --md)"; [ "$ftrc" -gt 1 ] && ACT "focus list not checked: $(tail -1 <<<"$ft")"

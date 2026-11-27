@@ -79,9 +79,16 @@ def slurp(p):
         return f.read()
 
 
+def private_state():
+    """STATE.md where the Lead's records are (private split PS-1b: records-dir.sh), when it is not in this copy's git."""
+    d = subprocess.run(["bash", os.path.join(HERE, "records-dir.sh")], capture_output=True, text=True).stdout.strip()
+    p = os.path.join(d, "STATE.md") if d else ""
+    return slurp(p) if p and os.path.exists(p) else None
+
+
 def read(rel):
     p = os.path.join(P, rel)
-    return slurp(p) if os.path.exists(p) else None
+    return slurp(p) if os.path.exists(p) else (private_state() if rel == "STATE.md" else None)
 
 
 def sh(cmd, **kw):
@@ -1185,6 +1192,8 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # records files at records_sha (files/<repo path>)
     for rel in SNAP_FILES:
         t = git_out("show", f"{rsha}:{REL}/{rel}")
+        if t is None and rel == "STATE.md":
+            t = private_state()   # private split PS-1b: STATE.md has left this repository
         if t is not None:
             wt(f"files/{REL}/{rel}", t)
     # P-602 (4): MVP-CHECKLIST.md history on the records sha: every commit in the 48 h before taken_at, plus the newest one
@@ -1208,7 +1217,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # extra (not in the shared layout; read only by cockpit-data.py): records lag for the strip and Health item 3
     main_local = msha if sh(["git", "-C", ROOT, "cat-file", "-e", msha + "^{commit}"]).returncode == 0 else None
     main_ref = main_local or (git_out("rev-parse", "origin/main") or "").strip() or None
-    st = git_out("show", f"{rsha}:{REL}/STATE.md") or ""
+    st = git_out("show", f"{rsha}:{REL}/STATE.md") or private_state() or ""
     m = re.search(r"this branch: `([^`]+)`", st)
     state_branch = m.group(1) if m else None
     sref = rsha if state_branch == branch else ((git_out("rev-parse", "--verify", "-q", state_branch) or "").strip() or None) if state_branch else None

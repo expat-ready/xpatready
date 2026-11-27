@@ -15,6 +15,8 @@ LANES="screens forms runtime m3 evidence qa"  # scout retired 29 Oct (P-146)
 P="ai-workers/problem-1-pathway-setup-and-form-filling"
 HERE="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not in the repository"; exit 2; }
 MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+# Private split (PS-1b): lanes/, inbox/ and STATE.md are read where the records are (records-dir.sh), else in main.
+RECS=$(bash "$MAIN/$P/product/tools/records-dir.sh" 2>/dev/null) || RECS="$MAIN/$P/product"
 whoami_() {
   # lead on branch main or lead/* (P-82, P-87: the Mac's main copy, or a cloud clone checked out on main); a lane branch prefix (screens/, forms/, evidence/,
   # runtime/, qa/, or the existing claude/<lane>-* branches and <lane>-* worktree names) maps to that lane;
@@ -75,7 +77,7 @@ field() { grep -m1 "^$1:" "$2" 2>/dev/null | cut -d' ' -f2-; }
 table_() {
   echo "| Lane | Item | Stage | Who acts | Next |"; echo "|---|---|---|---|---|"
   for ln in $LANES; do
-    m="$MAIN/$P/product/lanes/$ln.md"; [ -f "$m" ] || continue
+    m="$MAIN/$P/product/lanes/$ln.md"; [ -f "$m" ] || m="$RECS/lanes/$ln.md"; [ -f "$m" ] || continue
     # Stage, owner and next action come from the lane's own newest copy: main's file is newer whenever the Lead edits
     # its note, but its lane fields are only as fresh as the lane's last merged commit. A candidate (a worktree or a
     # pushed branch) counts only when its newest lane commit on this file (not "lead:") is in neither this copy nor
@@ -174,7 +176,7 @@ case "$1" in
   branch) lane_branch "$2" ;;
   state)
     [ "$HERE" = "$MAIN" ] || { echo "Only the Lead's main copy writes STATE.md."; exit 2; }
-    S="$MAIN/$P/product/STATE.md"; t=$(mktemp); tb=$(mktemp); table_ > "$tb"
+    S="$RECS/STATE.md"; t=$(mktemp); tb=$(mktemp); table_ > "$tb"
     awk -v tf="$tb" '/<!-- lanes:start -->/{print; while ((getline l < tf) > 0) print l; skip=1; next} /<!-- lanes:end -->/{skip=0} !skip' "$S" > "$t" && mv "$t" "$S" && rm -f "$tb" && echo "STATE.md table regenerated" ;;
   leads)
     git -C "$HERE" fetch -q origin 2>/dev/null; me=$(git -C "$HERE" branch --show-current)
@@ -191,6 +193,7 @@ case "$1" in
     # Acknowledged = merged: the Lead merges each checker branch into its own PR, so a handled branch drops out here.
     git -C "$HERE" fetch -q origin || { echo "Cannot refresh the inbox from GitHub: retry before treating it as empty." >&2; exit 3; }
     git -C "$HERE" ls-tree --name-only origin/main "$P/product/inbox/" | grep -v -e '/README.md$' -e '/DEVIN-PROMPTS.md$' | sed 's|^|main |'
+    [ "$RECS" = "$MAIN/$P/product" ] || { ls "$RECS/inbox" 2>/dev/null | grep -v -e '^README.md$' -e '^DEVIN-PROMPTS.md$' | sed 's|^|private inbox/|'; }
     for b in $(git -C "$HERE" for-each-ref --format='%(refname:short)' refs/remotes/origin/devin/); do
       git -C "$HERE" merge-base --is-ancestor "$b" origin/main 2>/dev/null && continue
       echo "$b $(git -C "$HERE" log -1 --format='%h %cr' "$b") · $(git -C "$HERE" diff --name-only "origin/main...$b" | tr '\n' ' ')"
