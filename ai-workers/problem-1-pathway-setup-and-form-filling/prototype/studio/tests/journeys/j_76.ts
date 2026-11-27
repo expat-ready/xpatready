@@ -183,7 +183,9 @@ try {
   if (sawPanel) {
     await notesPanel.getByRole("textbox").first().fill(screenNote);
     await notesPanel.getByRole("button", { name: /add note/i }).click();
-    addedOnScreen = await notesPanel.getByText(screenNote).first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
+    // A list line, not the note box: React mirrors a textarea's value into its text, so the box itself would match before
+    // the save lands (CS-NT1 part 4's walk).
+    addedOnScreen = await notesPanel.getByRole("listitem").filter({ hasText: screenNote }).first().waitFor({ timeout: 15_000 }).then(() => true, () => false);
   }
   ok("J-76 W8 (part missing: CS-NT1 part 4, the notes and timeline panel on the case page): the Owner adds a note on the case page and it shows on the case's timeline, stored in case_note",
     sawPanel && addedOnScreen && table("case_note") && sql(`select count(*) from case_note where case_id = '${A1}' and text = '${screenNote}'`) === "1", { panel: sawPanel, shown: addedOnScreen });
