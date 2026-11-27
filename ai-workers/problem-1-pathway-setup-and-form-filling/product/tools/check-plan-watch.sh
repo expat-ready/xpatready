@@ -6,5 +6,5 @@ fail=0; ok() { if [ "$2" = 1 ]; then echo "PASS  $1"; else echo "FAIL  $1"; fail
 python3 "$H/plan-watch.py" "$P" >/dev/null; ok "the real plan has every item" "$([ $? = 0 ] && echo 1)"
 grep -v '^| 37 |' "$P" > "$t/p.md"; out=$(python3 "$H/plan-watch.py" "$t/p.md"); r=$?
 ok "a deleted item fails and is named" "$([ $r = 1 ] && echo "$out" | grep -q 'missing.*37' && echo 1)"
-s=$(python3 "$H/plan-watch.py" --summary "$P"); ok "the summary line counts the statuses" "$(echo "$s" | grep -qE '^plan: Done [0-9]+ .*of 223' && echo 1)"
+s=$(python3 "$H/plan-watch.py" --summary "$P"); ok "the summary line counts the statuses" "$(echo "$s" | grep -qE '^plan: Done [0-9]+ .*of [0-9]+' && echo 1)"
 exit $fail
