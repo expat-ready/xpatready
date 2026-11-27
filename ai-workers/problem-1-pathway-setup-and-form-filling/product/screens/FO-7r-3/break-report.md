@@ -46,3 +46,35 @@ None.
 * **Speed:** 30,000 payments (19 MB) export in 2.1 s.
 
 Verdict: Changes bd0c92a7560b5ef3a87c4fcf37dc14ea75bf13e3
+
+## Round 2 (head d8a06230b519a60f86939c7c4c8551481874b189)
+
+Breaker, 27 Nov 2026, Opus 5.5, effort high. Read only `git diff bd0c92a7..d8a06230` (exports.ts, the suite).
+How I ran it: the suite at the head (41 passed, 0 failed), then a round-2 harness kept outside the repo (scratchpad `brk/h3.ts`, the same setup as round 1). I ran it twice: on a C-collation scratch database, and on one created with `--locale=en_US.utf8`, because the new keyset keys are text and the official Postgres image defaults to that locale. Both scratch databases are dropped. No :4400, no AI call, US$0.
+
+**Re-runs:**
+* **M1 is fixed.** Same repro (ET-1 CAD 1,500, SEQ-0..5, CAD 50 paid from trust). The rows now read `ET-1 1500.00 1500.00 · SEQ-0 10.00 1510.00 · … · SEQ-5 60.00 1710.00 · INV-0001 -50.00 1660.00`. 0 of 7 steps break, under both collations.
+* **m6 is fixed.** Every other file is in `counted_on` order: 60,000 PAYMENTS rows, each `counted_on` ≥ the one before.
+* **M2 is fixed.** The `date` column is now the fact's own day. Same repro: May's export holds `2024-04-02,EARLY-1,…,INV-0002,2024-05-20` and April's is header-only. The period cuts by `counted_on`, the column is visible, and its header is the 12th.
+* **The reviewer's m7 is fixed.** The download's first bytes are `efbbbf`.
+
+**New probes:**
+* **Keyset paging holds on all six kinds with text keys.**
+  * Setup: 2,100 rows at one timestamp per kind, so every row ties on `k` and only the id breaks the tie. Page edges fall at 1,000 and 2,000. PAYMENTS had 4,200 rows, with trust-request payments added.
+  * The trust entries were split over a person holder and a company holder (Pine Bakery), in CAD and USD, with seq 1-7 and then gaps (seq = 3n + 1000).
+  * Results, files and direct page loops alike: none twice, none missed, counts equal the audit counts. INVOICES 2,100, PAYMENTS 4,200 over 5 pages, REFUNDS, CREDIT_NOTES and WRITE_OFFS 2,100 each, TRUST_LEDGER 2,100 over 3 pages.
+  * In the trust file, each holder and currency is one contiguous run (840 / 210 / 840 / 210 rows) with 0 running-balance breaks across page edges and seq gaps.
+  * `order by k` under en_US.utf8 matched `collate "C"` on every trust key (0 differences), and the same results held under both collations.
+* **Mixed currencies on one holder** each get their own run, never summed. A person holder and a company holder never interleave.
+
+**Round 2 findings:**
+* **Blockers:** none.
+* **Majors:** none new. M3 (UTC days instead of the firm's time zone) stays open, as the coordinator says: it goes to the tech lead as a question, because it is part 2's rule too.
+* **m8 (Minor, new). Each page now re-scans every row of the firm for that kind, not just the period's.** The `keyed` sort (exports.ts:172-173) uses a text key on an expression with no index. So every page scans and sorts the firm's whole table for that kind, and the total cost is the number of pages times the firm's row count. Round 1's id-ordered read made one pass over the table.
+  * *Repro:* a firm with 360,000 payments, 60,000 of them in March 2017. The March PAYMENTS export: READY in 6.7 s (8.0 s under en_US), 61 pages at about 117 ms each (`explain analyze`).
+  * At the 25 MB cap (about 80,000 rows) in a firm of 2 million payments, I extrapolate roughly 80 × 0.65 s ≈ 52 s, against the 120 s transaction timeout (exports.ts:128). That is fine at today's sizing; it is a note for FO-7mv-scale firms.
+* **m9 (Minor, the M2 follow-on). The bookkeeper must use `counted_on`, not `date`, to see which period a row belongs to.** The fix keeps the period cut on `counted_on`, so money received on 2 April for an invoice issued in May is in May's file, not April's. Both dates are now shown truthfully, so this is a note for the screen's help text (FO-7s5), not a data error.
+
+Round 1 Minors m1-m5 and m7 are unchanged at this head (none was in this diff's scope).
+
+Verdict: Approve d8a06230b519a60f86939c7c4c8551481874b189
