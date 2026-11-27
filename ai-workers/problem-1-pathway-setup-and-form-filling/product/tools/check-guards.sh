@@ -43,6 +43,7 @@ TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: t
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
 TESTS="$TESTS check-npm-audit-report.sh"   # P-776 npm audit
 TESTS="$TESTS check-red-on-old.sh"   # A351 C1: red on the old code
+TESTS="$TESTS check-lead-label.sh"   # A435: the Lead's one label command; the auto-queue's cases kept
 bad=0
 if [ "$part" = 1 ]; then
 for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do [ "$list" = 1 ] && { echo "TEST $t"; continue; }; bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
@@ -754,6 +755,13 @@ OS18 hourly|product/tools/founder-wait.py|s/^        if waited >= WAIT_MIN and (
 OS18 scope|product/tools/founder-wait.py|s/^            scope = ln\[3:\].strip().startswith("Start here")/            scope = True/|check-founder-wait.sh
 OS18 memory|product/tools/founder-wait.py|s/^            push = now$/            pass/|check-founder-wait.sh
 OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$fw")))/act=$act/|check-founder-wait.sh'
+# A435 (LR-157): the Lead's one label command; each row switches one of lead-label.sh's refusals off.
+MUT="$MUT"'
+A435 head|product/tools/lead-label.sh|s/^last=""$/last="Reviewer: Approve $head"/|check-lead-label.sh
+A435 who|product/tools/lead-label.sh|s/(.author_association == "OWNER" or /(true or .author_association == "OWNER" or /|check-lead-label.sh
+A435 draft|product/tools/lead-label.sh|s/^\[ "\$(jq -r .draft <<< "\$pr")" = false \]/true/|check-lead-label.sh
+A435 moved|product/tools/lead-label.sh|s/^if \[ "\$now" != "\$head" \]; then/if false; then/|check-lead-label.sh
+A435 main|product/tools/lead-label.sh|s/^  git -C "\$top" show "origin\/main:\$rel" 2>\/dev\/null .*/  true \\/|check-lead-label.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1
