@@ -11,7 +11,7 @@
 # model ID such as `claude-opus-5-5`, or `inherit`"; "`effort` ... Overrides the session effort level".
 # Env: AGENTS_DIR. Tests: check-g4-rules.sh (2), check-model-rule.sh.
 set -u
-ok_model() { case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in ""|inherit|opus|claude-opus-5-5) return 0;; esac; return 1; }
+ok_model() { case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in ""|inherit|opus|opus\[*\]|claude-opus-5-5|claude-opus-5-5\[*\]) return 0;; esac; return 1; }   # a context suffix such as [1m] is the same model
 if [ "${1:-}" = --hook ]; then
   in=$(cat)
   m=$(echo "$in" | jq -r '.tool_input.model // empty'); e=$(echo "$in" | jq -r '.tool_input.effort // empty')
