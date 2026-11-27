@@ -1,6 +1,7 @@
 # Dependabot (LR-058, bundle A8): security updates plus one grouped weekly update per ecosystem.
 # Every folder with a committed npm lockfile is listed; no pip manifest is tracked (add it here when one is).
-# Dependabot PRs follow the normal route: suites, the reviewer's Approve and the label; nothing merges by itself.
+# Nothing merges by itself. Dependabot writes its own PR body, so pr-rules (brief-check.sh) is red on its PRs until a
+# lane adds the Duplicate check and Done when lines; an exemption in pr-rules.yml is a question for the tech lead (#3970).
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -45,6 +46,11 @@ updates:
     commit-message:
       prefix: "ci"
     groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       actions:
+        applies-to: version-updates
         patterns:
           - "*"
