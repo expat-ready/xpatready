@@ -27,7 +27,7 @@
 # from the origin remote), LEAD_LABEL_REVIEWERS (default: the repository variable REVIEWERS, read with the token;
 # unreadable → the owner alone), LEAD_LABEL_LEAD_LOGINS (default: the repository variable LEAD_LOGINS; unreadable or
 # unset → any writer, as the gate), LEAD_LABEL_API (default https://api.github.com), LEAD_LABEL_MAIN_CHECK (default 1:
-# refuse when this file differs from main's copy as just fetched; the test sets 0).
+# refuse when this file differs from main's copy as just fetched into refs/lead-label/main; the test sets 0).
 # Exit 0 labelled (or already labelled); 1 refused or could not judge. Test: check-lead-label.sh. US$0.
 set -uo pipefail
 export LC_ALL=C   # [0-9] means the ten ASCII digits, whatever the session's locale (break r1 m2)
@@ -42,8 +42,9 @@ HERE=$(cd "$(dirname "$0")" && pwd -P)   # physical, as git's --show-toplevel (r
 if [ "${LEAD_LABEL_MAIN_CHECK:-1}" != 0 ]; then
   top=$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null) || no "not inside a git copy"
   rel=${HERE#"$top"/}/lead-label.sh
-  git -C "$top" fetch -q --no-tags origin main 2>/dev/null || no "cannot fetch origin/main to compare this script with main's"
-  git -C "$top" show "FETCH_HEAD:$rel" 2>/dev/null | cmp -s - "$HERE/lead-label.sh" \
+  # into a ref of its own, so another fetch in this copy cannot change what is compared (review r2 n4)
+  git -C "$top" fetch -q --no-tags origin "+refs/heads/main:refs/lead-label/main" 2>/dev/null || no "cannot fetch origin/main to compare this script with main's"
+  git -C "$top" show "refs/lead-label/main:$rel" 2>/dev/null | cmp -s - "$HERE/lead-label.sh" \
     || no "this copy's lead-label.sh is not origin/main's (run it from a copy on main)"
 fi
 

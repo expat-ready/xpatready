@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A435 (founder 27 Nov; LR-157): routine PRs queue by themselves on the reviewer's Approve, a Lead-read PR through one
-# narrow command. Part 1 runs lead-label.sh with GitHub answered by a stand-in curl (the PR, its comments, the label
+# narrow command. It runs lead-label.sh with GitHub answered by a stand-in curl (the PR, its comments, the label
 # POST/DELETE written to a log): it labels only an open, ready, main-based, same-repository PR whose last reviewer line
 # about the head is "Reviewer: Approve <full head SHA>", and refuses (exit 1, nothing changed) a stale head, a short SHA,
 # a later Changes line, a forged or unknown commenter, a draft, a closed PR, a fork, a batch, a bad argument, unreadable
@@ -77,7 +77,7 @@ REV="other helper" run 7
 ok "a known reviewer (REVIEWERS) with write access: labelled" "$(labelled)" "exit $r: $out / $log"
 cmt helper NONE "Reviewer: Approve $HEAD1"; REV=helper run 7
 ok "forged: a known reviewer's login without write access is refused" "$(refused)" "exit $r: $out / $log"
-cmt helper MEMBER "Reviewer: Approve $HEAD1"; echo "helper" > "$T/fx/reviewers"; unset REV; LEAD_LABEL_REVIEWERS=leak; unset LEAD_LABEL_REVIEWERS; run 7
+cmt helper MEMBER "Reviewer: Approve $HEAD1"; echo "helper" > "$T/fx/reviewers"; unset REV; run 7
 ok "REVIEWERS unset: the repository variable is read (a known reviewer labels)" "$(labelled)" "exit $r: $out / $log"
 rm -f "$T/fx/reviewers"; run 7
 ok "REVIEWERS unset and the variable unreadable: the owner alone counts (refused)" "$(refused)" "exit $r: $out / $log"
@@ -92,6 +92,8 @@ prj $HEAD1 open false main claude/x someone/r; REV="" run 7; ok "a fork's head i
 prj $HEAD1 open false main claude/x o/r "review: approved,queued"; REV="" run 7
 ok "already labelled: exit 0, nothing posted" "$([ $r = 0 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 prj $HEAD1; rm -f "$T/fx/pr.json"; REV="" run 7; ok "the PR cannot be read: refused" "$(refused)" "exit $r: $out / $log"
+prj $HEAD1; { cat "$T/fx/pr.json"; echo '{"state": "closed"}'; } > "$T/fx/p2"; mv "$T/fx/p2" "$T/fx/pr.json"; REV="" run 7
+ok "the PR's answer is two JSON documents: refused (review r2 m2; the head check refuses it too, so no mutation row)" "$(refused)" "exit $r: $out / $log"; prj $HEAD1
 prj $HEAD1; FAIL_COMMENTS=1 REV="" run 7; ok "the comments cannot be read: refused (fails closed)" "$(refused)" "exit $r: $out / $log"
 # review r1 M1: the Lead's read of this head, recorded, before the label
 cmt o OWNER "Reviewer: Approve $HEAD1"
@@ -137,7 +139,7 @@ REV="" run 7; ok "a page with a value that is not a comment: refused (a jq error
 cmt o OWNER "Reviewer: Changes needed"; mv "$T/fx/comments.json" "$T/fx/c2"; cmt o OWNER "Reviewer: Approve $HEAD1
 Lead read the diff: $HEAD1"; cat "$T/fx/c2" >> "$T/fx/comments.json"; rm -f "$T/fx/c2"   # [Approve + read] then [Changes]
 rd; REV="" run 7; rd o OWNER "Lead read the diff: $HEAD1"; ok "a page of two JSON documents: refused" "$(refused)" "exit $r: $out / $log"
-cmt helper MEMBER "Reviewer: Approve $HEAD1"; mkdir -p "$T/cwd" && : > "$T/cwd/helper"
+cmt helper MEMBER "Reviewer: Approve $HEAD1"; mkdir -p "$T/cwd" && : > "$T/cwd/helper"; : > "$T/fx/log"; rm -f "$T/fx/labelled"
 out=$(cd "$T/cwd" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS='*' bash "$L" 7 2>&1); r=$?; log=$(cat "$T/fx/log")
 ok "REVIEWERS '*' is not globbed into the folder's file names: refused" "$(refused)" "exit $r: $out / $log"
 cmt o OWNER "Reviewer: Approve $HEAD1"; : > "$T/fx/log"
@@ -163,6 +165,8 @@ echo "# changed" >> "$C/tools/lead-label.sh"; mc
 ok "the copy's script differs from origin/main's: refused before any API call" "$([ $r = 1 ] && [ -z "$log" ] && grep -q "not origin/main's" <<< "$out" && echo 1)" "exit $r: $out / $log"
 git -C "$C" commit -qam "changed copy"; git -C "$C" update-ref refs/remotes/origin/main HEAD; git -C "$C" config --unset-all remote.origin.fetch; mc
 ok "a stale local origin/main that matches the changed copy does not pass: main as just fetched decides (break r1 m4)" "$([ $r = 1 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
+git -C "$C" update-ref refs/lead-label/main HEAD; git -C "$C" config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'; mc
+ok "... nor a planted refs/lead-label/main: the fetch overwrites it" "$([ $r = 1 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 git -C "$C" remote set-url origin "$T/nowhere.git"; mc
 ok "main cannot be fetched: refused before any API call" "$([ $r = 1 ] && [ -z "$log" ] && grep -q "cannot fetch" <<< "$out" && echo 1)" "exit $r: $out / $log"
 # review r1 M2: a copy reached through a symlinked path (macOS /tmp) still finds itself on main

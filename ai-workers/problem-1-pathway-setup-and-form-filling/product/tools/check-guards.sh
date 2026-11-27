@@ -761,7 +761,7 @@ A435 head|product/tools/lead-label.sh|s/^last=""$/last="Reviewer: Approve $head"
 A435 who|product/tools/lead-label.sh|s/(.author_association == "OWNER" or /(true or .author_association == "OWNER" or /|check-lead-label.sh
 A435 draft|product/tools/lead-label.sh|s/^\[ "\$(jq -r .draft <<< "\$pr")" = false \]/true/|check-lead-label.sh
 A435 moved|product/tools/lead-label.sh|s/^if \[ "\$now" != "\$head" \]; then/if false; then/|check-lead-label.sh
-A435 main|product/tools/lead-label.sh|s/^  git -C "\$top" show "FETCH_HEAD:\$rel" 2>\/dev\/null .*/  true \\/|check-lead-label.sh
+A435 main|product/tools/lead-label.sh|s/^  git -C "\$top" show "refs\/lead-label\/main:\$rel" 2>\/dev\/null .*/  true \\/|check-lead-label.sh
 A435 pages|product/tools/lead-label.sh|s/^while \[ "\$p" -le 30 \]; do/while [ "$p" -le 1 ]; do/|check-lead-label.sh
 A435 shape|product/tools/lead-label.sh|s/length == 1 and (.\[0\] . type == "array" and all(.\[\]; type == "object"))/true/|check-lead-label.sh
 A435 locale|product/tools/lead-label.sh|s/^export LC_ALL=C /: /|check-lead-label.sh
