@@ -448,6 +448,10 @@ queue_rules:
   # is listed just after verdicts, ahead of product, so enforcement lands first until P-822, P-823 and the Lead-tool
   # fixes are on main. No allow_checks_interruption: Mergify's default puts a higher-priority PR just after the batches
   # whose checks already run, so a pipeline PR never restarts a running product batch.
+  # Fast route (lab lane, 27 Nov; DECISIONS P-847, product paused to finish the lab): this is the tooling queue. It stays
+  # ahead of product while the lab runs, and a pipeline PR may also carry records (product/ .md, images, .txt, .html, the
+  # records-only.sh definition), so a tool fix with its STATE or design note no longer falls into the product queue and
+  # its batches. Still: the review label, green ci, the XFA rule, capacity 1 (scope "pipeline"), never with app code.
   # Undo: move pipeline back after product when P-827 ends (this block below product's; check-queue-rules.py's order
   # and engineering-approved-setup.json's queue_order with it).
   - name: pipeline
@@ -460,7 +464,7 @@ queue_rules:
       - "label = review: approved"
       - check-success = ci
       - -label=records
-      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$))
       - or:
           - check-success = xfa-engine
           - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
@@ -487,8 +491,8 @@ queue_rules:
       - check-success = pr-rules
       - -label=records
       # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" (listed above product while P-827
-      # holds), never a product batch.
-      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      # holds), never a product batch. Fast route (P-847): pipeline work plus records counts as pipeline work.
+      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$))
       # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
       # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
       - or:
