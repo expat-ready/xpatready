@@ -12,6 +12,10 @@
 # with a warning, never a failure (fixes still merge, P-214). It holds the only write token here, so it runs main's
 # waves.py from the base commit in a folder of its own, reads the PR's title and body as data only, and keeps no
 # token in .git/config (tools/write-token.py, ALLOW).
+# LR-043 (lab bundle A3, fail closed): a rule that cannot read its input, errors or times out fails the check, never
+# passes it; a rule whose verdict is a warning by design still only warns. The body and title are read from GitHub at the
+# run (pr-rules-read.sh), so a re-run sees the body as it is now. LR-141: a money, schema, permission or pipeline PR
+# carries a short explainer (explainer-check.py). Test of these: product/tools/check-pr-rules-closed.sh.
 # Test: product/tools/check-g4-rules.sh. E5 (P-674 to P-677): cleanup-pr-check.sh proves a "Clean-up:" PR is a pure
 # move or deletion and runs the stale-path check on every PR (test: product/tools/check-cleanup-pr.sh).
 name: pr-rules
@@ -36,11 +40,17 @@ jobs:
     timeout-minutes: 3
     env:
       T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
-      BODY: "${{ github.event.pull_request.body }}"
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2   # the merge commit and its first parent (main), for cleanup-pr-check.sh
+      # LR-043: BODY and TITLE for every later step, read now (a re-run replays the old event's body: #2282's false
+      # failure); a failed read fails here and sets nothing.
+      - name: read the PR's body and title as they are now (fails closed)
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          N: "${{ github.event.pull_request.number }}"
+        run: bash "$T/pr-rules-read.sh"
       - name: records only? (records-only.sh on the PR's file list; then the rule steps are skipped and the check passes)
         id: rec
         env:
@@ -58,8 +68,6 @@ jobs:
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs detect
       - name: a runtime/screens PR whose title names an R1 row has a "Completes:" line (A274; a warning until the Lead adds --strict on)
         if: "${{ !cancelled() }}"
-        env:
-          TITLE: "${{ github.event.pull_request.title }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs claim --title "$TITLE"
       - name: a money, permission or migration PR names the decision or requirement of each rule, "Rules settled:" (A348; a warning, never a failure)
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
@@ -68,15 +76,15 @@ jobs:
         run: |
           set -o pipefail   # test: product/tools/check-rules-settled.sh
           if gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/rs-files"; then
-            printf '%s\n' "$BODY" | python3 -I "$T/rules-settled.py" --files "$RUNNER_TEMP/rs-files" || echo "::warning title=Rules settled (A348)::the check could not run"
-          else echo "::warning title=Rules settled (A348)::the PR's file list could not be read, so the rules were not checked"; fi
+            printf '%s\n' "$BODY" | python3 -I "$T/rules-settled.py" --files "$RUNNER_TEMP/rs-files" || { echo "::error title=Rules settled (A348)::the check could not run, so this step fails (LR-043, fail closed)"; exit 1; }
+          else echo "::warning title=Rules settled (A348)::the PR's file list could not be read, so the rules were not checked and this step fails (LR-043, fail closed)"; exit 1; fi
       - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
         if: "${{ !cancelled() }}"
         run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1
       - name: existing checks this PR removes or changes, listed for the reviewer, "Checks changed:" says why (A351 C2; a warning, never a failure)
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         # Test: product/tools/check-checks-changed.sh.
-        run: printf '%s\n' "$BODY" | timeout 30 python3 -I "$T/checks-changed.py" --base HEAD^1 --summary "$GITHUB_STEP_SUMMARY" || echo "::warning title=Checks changed (A351 C2)::the check could not run"
+        run: printf '%s\n' "$BODY" | timeout 30 python3 -I "$T/checks-changed.py" --base HEAD^1 --summary "$GITHUB_STEP_SUMMARY" || { r=$?; echo "::error title=Checks changed (A351 C2)::the check could not run or ran out of time (exit $r), so this step fails (LR-043, fail closed)"; exit 1; }
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         env:
@@ -119,7 +127,22 @@ jobs:
           gh api "repos/${{ github.repository }}/compare/${BASE_SHA}...${HEAD_SHA}" | bash "$T/lead-age.sh" ci-json
       - name: every R1 item of CAPABILITIES.md has one wave in design/waves.tsv (B204; a warning, never a failure)
         if: "${{ !cancelled() }}"
-        run: python3 -I "$T/waves.py" ids || echo "::warning title=waves list::a new R1 row needs a wave in design/waves.tsv (P-745)"
+        # A missing wave (exit 1, "WAVES LIST:") warns; waves.py crashing or unable to read its files fails (LR-043).
+        run: |
+          r=0; out=$(python3 -I "$T/waves.py" ids 2>&1) || r=$?
+          printf '%s\n' "$out"
+          if [ "$r" = 1 ] && [ "${out#WAVES LIST:}" != "$out" ]; then echo "::warning title=waves list::a new R1 row needs a wave in design/waves.tsv (P-745)"
+          elif [ "$r" != 0 ]; then echo "::error title=waves list::waves.py could not check the list (exit $r), so this step fails (LR-043, fail closed)"; exit 1; fi
+      # LR-141 (founder 27 Nov): a money, schema, permission or pipeline PR has an "Explainer" with what changed, why and
+      # what could break. A file list that cannot be read fails (bash -e). Test: product/tools/check-pr-rules-closed.sh.
+      - name: a money, schema, permission or pipeline PR carries a plain-words explainer (LR-141)
+        if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          set -o pipefail
+          gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/ex-files"
+          printf '%s\n' "$BODY" | python3 -I "$T/explainer-check.py" --files "$RUNNER_TEMP/ex-files"
       # E16 (STANDARDS §1, P-553, P-587): a package added to any package.json needs a "STANDARDS §1:" line (the technology gate).
       # Test: product/tools/check-deps-line.sh.
       - name: a new package in any package.json carries a "STANDARDS §1:" line (E16)
@@ -132,8 +155,11 @@ jobs:
   # "-check-failure = completes-ready" (.mergify.yml), so a failed run keeps the PR out and a missing run stalls nobody.
   # Kill switch: repository variable READY_GATE=report. A part merging later does not re-run it: edit the body or push.
   # Reads only, US$0; the body and title reach the script only through env. Test: product/tools/check-ready-gate.sh.
+  # LR-043: no label in its condition. A skipped job counts as a pass for "-check-failure", and a "records" label read
+  # from the event can be stale (records-label.yml drops it on the push that adds code, E6), so a product PR could skip
+  # the gate; a records PR has no "Completes:" line, so the gate passes it anyway.
   completes-ready:
-    if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') && !contains(github.event.pull_request.labels.*.name, 'records') }}"
+    if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -142,10 +168,13 @@ jobs:
           fetch-depth: 0   # main's PR merge commits: which parts have merged, and when the gate reached main
           filter: blob:none
           persist-credentials: false
+      - name: read the PR's body and title as they are now (fails closed, LR-043)
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          N: "${{ github.event.pull_request.number }}"
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/pr-rules-read.sh
       - name: every part of a "Completes:" item is on main or this PR, and its journey exists (P-782 (2))
         env:
-          BODY: "${{ github.event.pull_request.body }}"
-          TITLE: "${{ github.event.pull_request.title }}"
           READY_GATE: "${{ vars.READY_GATE }}"
         run: printf '%s\n' "$BODY" | python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/ready-gate.py
   outside-wave:
