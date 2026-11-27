@@ -1,0 +1,192 @@
+# Review: CS-NT1t, a person's own timeline (R1.76), round 1
+
+PR #3829 at **3069120aee22938a2c5b3d7ff8b0ae52c9c1e163**. Its own diff is `ece71d926..3069120ae` (ece71d926 is #3822's approved head, reviewed separately; merge 4ea14d870 brings only #3822's review records). Reviewer: a fresh context that did not build this. There is no concept for this item, so the bar is the BACKLOG row CS-NT1t (origin/main:1093) and its five named tests. Isolated copy on :4434 (never :4400), stopped afterwards. Journey test: `journey-test-reviewer-2026-11-26.md` (**8/10, pass**).
+
+## Verdict: Ship after fixes
+The server half is sound. One keyset cursor covers three sources, and the case lines come through `CaseTimeline.pageAfter` (one firm rule, one caseScope, not a copy). Another firm's person answers 404, and a planted line is never shown. My own runs: `check_csnt1t_person_timeline.ts` **24/24**, `check_csnt1d_panel_browser.cjs` **53/53** on this head, j_76 **W5 PASS** (W8 fails only for FO-4 part 2b, another row). Two Majors stop it on the screen: the row's "each line says what" for prospect lines, and person notes that cannot be read in full.
+
+## The three departures and the carried Minors
+1. **Path `/api/runtime/clients/:id/timeline`: accept.** `core.ts:99` admits key routes only under `/api/runtime/`, and `:100` refuses any other bearer path with 403 "Not for a link session". The row's path could not answer a staff token unless the guard were widened. The new path sits beside part 3's client notes.
+2. **File `case-notes/person-timeline.ts`: accept.** The `api/tsconfig.json` include list has `src/case-notes/**` and no `src/case-clients/**`, so a decorated service there would not compile with decorators.
+3. **A section, not a tab: accept.** The client page has no tab row (h1 → Identity check · Cases · Timeline, screenshot `j1-client-1440`). EXPERIENCE §2.2 allows one row of tabs at most and points deeper structure to sections, so one tab alone would be an invented pattern.
+4. Carried #3822 Minors: the region is now "Note list" (`case-notes.tsx:74`), and a 404 title reads "Not available to you" (`:69`). Both are done.
+
+## Issues (ranked)
+1. **Major (Must; row "each line says what"; EXPERIENCE §5 [M] plain words): every prospect line except a note reads "Other change".** The FO kinds CALL, AUDIT and EVENT map to ACTIVITY (`person-timeline.ts:35`), and `lineWords` (`case-notes.tsx:24`) knows no FO type. So "lead engaged", "won", stage moves and calls all show "Other change". A call's own words ("Incoming call: connected (3 min). …", written by staff) sit only behind Details (`:268`). API evidence: `prospect ACTIVITY lead.engaged` renders "Other change" (screenshot `j1-client-1440`, line 2). *Fix:* give prospect lines words from their type: add the FO types to `LINE_WORDS` (for example "Lead engaged", "Prospect won", "Moved to {stage}") and show a CALL line's summary as its words, as a note's is. Do not show raw FO audit summaries: they carry staff UUIDs ("Staff cf506866-… engaged lead L-00001"). Add a PT7 assertion that no prospect line reads "Other change".
+2. **Major (Must; EXPERIENCE §1 [M] "long text … with full text on hover"): a person's own note longer than two lines cannot be read in full anywhere.** Timeline notes are `line-clamp-2` with no title, expander or link (`case-notes.tsx:266`). On the case page the full text is in the Note list, but the client page has no note list (`clients.tsx:186-191`), so this timeline is the only reader of part 3's person notes and of the prospect's notes. A 4,990-character note shows two lines and an ellipsis (screenshot `b-rtl-375`). *Fix:* for note lines on a person's timeline, add a keyboard-reachable "Show all" or put the full words in a `<details>`, kept to the timeline component.
+3. Minor (Should): **case lines do not name their case.** For a person on two cases, "Document uploaded · Someone at the firm · 26 Nov" (120 such lines in J1) does not say which case it belongs to. The API sends `caseId` and the screen drops it, and prospect lines carry no "From the prospect" mark either (D18). *Fix:* put the case number on case lines (the page already has the id → number list from Cases), and mark prospect lines.
+4. Minor (Should): **the 404 words on the client timeline name a case.** The text reads "This case is not in the firm you are signed in to, or your role cannot open it." (`errWords`, `case-notes.tsx:33`; J7). *Fix:* pass the subject noun.
+5. Minor (Should, D16): **removing the `older()` filter for notes or prospect lines fails no test.** If it is removed (`person-timeline.ts:57`, `:74`), those lines repeat on every page. PT4 only checks lines matching `^Paged upload` (`check_csnt1t_person_timeline.ts:104`), and PT7 does not watch console duplicate-key warnings. *Fix:* in PT4, assert that no `source:refId` repeats across pages, whatever its source.
+6. Minor (Should): **the prospect read hides every failure.** `.catch(() => null)` (`person-timeline.ts:71`) turns a 500 or a database error into "no prospect lines" without a word. *Fix:* catch only 404, as the case loop does at `:62`.
+7. Minor (Should; server authorisation): **prospect lines are read without `agent/prospect:show`**, the key that the prospect timeline's own route requires (`front-office/sales/routes.ts:141`, with `@OwnOrAll`). Every seeded role holds both keys today (checked in `platform_role_permission`), so nothing leaks now. A role edited to lack the key would still see the prospect's calls and notes here. *Fix:* skip source 3 unless `ctx.keys` holds `agent/prospect:show`.
+8. Minor (Should; BIC-18): **the empty words do not teach.** "Nothing has happened for this client yet." (J4) could say what will appear: notes, case changes, the prospect's history.
+9. Note, not a finding: prospect lines past the front office's 500-line cap (`sales/timeline.ts:17`) are never reached, the same cap as the prospect's own timeline. Each case costs about 5 queries per page (bounded by the person's cases, not by rows).
+
+## D1-D20 (1-5)
+D1 3: three sources merged, newest first, paged, firm and caseScope rules kept; "what" not met for prospect lines (#1) · D2 4: read-only; forged, repeated or unknown query → 400 on `cursor` · D3 5: `pageAfter` and the `Timeline` component reused, no second firm rule · D4 N/A · D5 4: keyset paging never skips (120 lines over 3 pages, PT4 and my J1); failures swallowed (#6) · D6 4: who and when on every line · D7 N/A · D8 3: under Cases with an h2 and breadcrumbs; lines do not say which case (#3) · D9 4: read-only; Show older, then "That is everything for this client." · D10 3: "Other change" (#1), the case 404 words (#4) · D11 4: skeleton, empty, error, busy Show older, end line · D12 3: grey kind tiles (inherited) and walls of "Other change" · D13 4: axe 0 (whole page at 1024; timeline at 1440 and 375), keyboard path, 200 % and 375 px with no sideways scroll · D14 4: team components and tokens · D15 4: read 94 ms, first lines 197 ms after the click · D16 4: 24/24, each case with a pass and a fail; gap #5 · D17 simulated only · D18 3: the origin of a line (case, prospect, person) is not shown · D19 4: j_76 W5 passes · D20 simulated only.
+
+## BIC (EXPERIENCE §6)
+| Id | Score | Evidence |
+|---|---|---|
+| 01-10, 12, 13, 15-17 | N/A | read-only list: no questions, input, AI, applications, tasks, filing or review step |
+| 11 | Met | no filled button; Show older is secondary (`j1-client-1440`, `j2-client-1024`) |
+| 14 | Partly | kind pills have no tooltip; the exact time is a `title` (hover only, not keyboard) |
+| 18 | Partly | skeleton (J5), error (J6), end line; the empty words do not say what will appear (#8) |
+| 19 | Partly | one heading, no internal ids on the main path; repeated "Other change" lines and grey tiles (#1) |
+| 20 | Met | keyboard reaches the region (visible ring, `j2-region-focus-1024`) and Show older (Enter loads 10→50, focus kept); h1→h2; 200 % and 1024 px with no sideways scroll |
+
+UXL (375 px): 09 Show older is 32 px (secondary, ≥24 met) · 10 no sideways scroll · 12 loading, empty and error drawn.
+
+## Graph (P-86)
+`graph.mjs`: G1 0 · G2 0. G6 lists `features/case-client-timeline.ts` as imported by nothing. That is a false positive: features load by `readdirSync` (`features.ts:18`), and 26 other feature files are listed the same way. The graph's route list has no `GET /runtime/clients/:id/timeline`, so its testedBy cannot be read there. The new test calls it directly.
+
+## Could not check
+A real screen reader; an intended user's unaided walk (D17, D20); the breaker's personal-data pass (the row says breaker: yes). There is no screen in the product to write a person's note (part 3 is API only, outside this row). So the person notes in the demo come from the API or tests, and that belongs to the Lead to place, not to this PR (P-26). Screenshots are in the reviewer's scratch folder and not committed. The builder's `client-timeline-{1440,375}.png` match what I saw.
+
+**Verdict: Changes 3069120aee22938a2c5b3d7ff8b0ae52c9c1e163.** Fix Majors #1 and #2. Fix Minors #3-#8 or give each a follow-up row.
+
+## Round 2 (diff only): 3069120ae..79676e3ccb7897639c094b711ad4f25b8bf15166
+Scope: `person-timeline.ts`, `case-notes.tsx`, `contracts/runtime.ts` (additive: `caseNumber`, `prospectOlderHidden`), and the check. The breaker's round-1 Majors (`break-report.md`) are checked here too, so one verdict covers both. Copy `rv_csnt1t` on :4434 only, stopped afterwards; no `prisma generate`. My runs at 79676e3cc: `check_csnt1t_person_timeline.ts` **33/33**; `check_csnt1d_panel_browser.cjs` **53/53** (the case panel shares the changed `Timeline`); plus my own browser walk at 1440 and 375 px, and API probes.
+
+**Closed**
+* **Review M1, prospect lines in words: closed.** Audit and event lines keep their type and are sent with an empty summary, so no staff id leaves the server (`person-timeline.ts:85`). Calls and notes are sent as types "call" and "note" with their words. `LINE_WORDS` gains the front-office names, and unknown ones read "Prospect updated" or "Contact details changed". Walk: "Engaged as a prospect · Prospect" (`r2-first-1440`); across all 628 lines no prospect line reads "Other change". The "Other change" lines that remain are case audit lines, part 4's words (its review, D10), not this PR's. PT3 fails if summaries are sent again.
+* **Review M2, long notes: closed.** A note or call over 2 lines or 200 characters folds, with a real button "Show all of it" / "Show less" that has `aria-expanded` and a 2 px focus outline. Enter unfolds it, at 1440 and 375 px (`r2-showall-375`). A shorter note is never clamped, so no text is hidden without a button. PT7 checks folded, then unfolded.
+* **Breaker M1, prospect key: closed.** Source 3 is read only when `ctx.keys` holds `agent/prospect:show`. The route's `@OwnOrAll` is metadata only (`keys.ts:32-38`), and `Prospects.read` applies it, so the person timeline now matches the front-office route. PT3 removes the key from Case manager: 200, the person's note, no prospect line.
+* **Breaker M2, more than 500 prospect lines lost silently: closed as a Major.** Walk with 600 extra prospect notes: 14 Show older clicks, 628 lines, 498 bulk notes. The last page carries `prospectOlderHidden`, and the end line no longer claims "everything" (`r2-end-1440`). PT4 covers it. The wording is not exact: see m-b.
+* **Minors closed:**
+  * #3 / breaker m4: lines carry the case number, or "Prospect" for prospect lines.
+  * #4 / breaker m5: the 404 now reads "This client is not in the firm…". With no connection it reads "Could not reach the server. Try again." Try again recovers after a 500 (walk).
+  * #5: PT4 now checks that no `source:refId` repeats.
+  * #6 / breaker m1: only a 404 or 403 skips the prospect source; anything else throws.
+  * #7: the key check above.
+  * #8: the empty words now say what will appear.
+  * Breaker m3: 40 cases on one person read in 160-218 ms.
+  * Breaker m2, at the API: an empty page now returns the floor as its cursor. The repro (600 planted firm-B lines naming the case) gives page 1: 0 lines, more, a cursor; page 2: the real note. Firm B's lines are never shown.
+
+**Open (both Minor, Should; neither blocks)**
+* **m-a, breaker m2 on the screen: still a false empty.** The `Timeline` component shows "Nothing has happened for this client yet." whenever the lines shown are empty, and Show older needs at least one line (`case-notes.tsx:268`, `:280`). So an empty first page that has more lines still shows nothing, and the real note cannot be reached from the screen (same repro; `r2-m2-false-empty.png`). It is rare: it needs over 500 hidden rows newer than everything else. *Fix:* when the shown lines are empty and `hasNextPage`, fetch the next page, or show Show older. Add a PT case.
+* **m-b, the cap words promise a page that does not show those lines.** The end line says "Older lines of the prospect are on the prospect's own page". The prospect page has no timeline yet (FO-4 part 2b, j_76 W8), and the front office's own read keeps the same newest 500 (`sales/timeline.ts:17`), so even that page would not show them. *Fix:* "Only the prospect's newest 500 lines are shown here."
+
+Graph and kill checks: removing the key check, sending the summaries again, or removing the fold each makes a named PT fail. Journey score this round: 9/10 (plain words ½ for m-b and the inherited case words, visual quality ½ for the inherited grey tiles; the rest 1). Screenshots are in the reviewer's scratch folder and not committed.
+
+**Verdict: Approve 79676e3ccb7897639c094b711ad4f25b8bf15166.** No Blocker or Major is open from the review or the break report. m-a and m-b are Minors to fix or give a follow-up row.
+
+## Round 3 (diff only): 65b6c5f69..a51c9763b703525aa81d997518c249ffb5d8473f
+Scope (Lead 5's diff-only round): 919c84fab (merges #3822's BK-2 fold-out fix 8bab60324; adds FoldArrow to "Show all of it") and 53af9ede6 + a51c9763b (merge #3822's head 139a34847, and the check's usage line).
+
+**The merges.** I compared this PR's own code diff at round 2 (`ece71d926..79676e3cc`) with its diff now (`139a34847..a51c9763b`). Only two lines differ: `<FoldArrow open={long.has(id)} />` inside the `data-timeline-show-more` button (`case-notes.tsx:275`), and the usage line of `check_csnt1t_person_timeline.ts` (no `--ttl`, plain `tsx`). `person-timeline.ts`, `timeline.ts`, `routes.ts`, the contract, `clients.tsx`, j_76 and the rest of the test are byte-for-byte what I approved in round 2.
+
+`git show --remerge-diff` findings:
+* **919c84fab** hit one conflict, in this PR's `case-notes.tsx`. The resolution is right: it keeps this PR's lines (`ownWords`, the fold, the case and prospect label), adds FoldArrow, and takes #3822's `FoldOut` for the audit Details, dropping #3822's older clamped note line. Nothing else was changed by hand.
+* **53af9ede6**: its add/add conflicts are all outside this PR's files (`.github/workflows/pipeline-heartbeat.yml`, `.mergify.yml` and others). Each was resolved to #3822's side: `git diff 139a34847 53af9ede6` lists only this PR's 16 files. None of this PR's files conflicted there.
+
+**Re-run at a51c9763b** on :4434 only (copy stopped afterwards, no `prisma generate`). I ran each suite by hand on 4434 rather than through `run-suites.sh`, whose usage lines start copies on 4432 and 4438:
+* `check_bk2_fold_outs.ts` 16/16;
+* `check_csnt1t_person_timeline.ts` 33/33;
+* `check_csnt1d_panel_browser.cjs` 53/53 (the same count as in my earlier rounds; the builder reports 54);
+* my round-2 browser walk.
+
+The walk at 1440 and 375 px:
+* "Show all of it" now shows a FoldArrow; Enter unfolds it, `aria-expanded` turns true and the 2 px focus outline is kept.
+* Details is the shared fold-out with its arrow (`r3b/r2-first-1440.png`).
+* axe 0 on the whole page, no sideways scroll, no console error.
+* 628 lines to the end; the capped end line shows.
+* Try again recovers; the client 404 and offline words are right.
+
+**Still open, unchanged (Minor, Should; not blocking):** m-a (an empty first page with more lines shows the false empty on screen) and m-b (the cap words point to a prospect page that has no timeline). Both need a fix or a follow-up row.
+
+**Verdict: Approve a51c9763b703525aa81d997518c249ffb5d8473f.** No Blocker or Major is open.
+
+## Round 4 (diff only): 47b0210ce..4d584155fe34de599c2f77b00b8834f79bc57ed6
+Scope: 46fa048e0 (merge of origin/main, with #3822 merged) and 4d584155f (CS-W3 census entry).
+
+**The merge.** `git show --cc 46fa048e0` is empty: nothing was resolved by hand. `git diff origin/main...4d584155f` lists only CS-NT1t's 17 files (+582 / -34, including these records).
+
+Outside `check_csw3_firm_scope.ts`, this PR's studio diff against main is line for line the diff I approved in round 3 (`139a34847..a51c9763b`). I checked by comparing the two diffs: they are the same.
+
+**The census entry (4d584155f).** The commit adds `case-notes/person-timeline` to the allow-list, with a comment, and moves the count from 59 to 60. The claim in the comment holds; I checked it in the code:
+* **The client is firm-scoped first.** `PersonTimeline.read` calls `CaseNotes.subjectFor(ctx, "client", id)` before any case read. `subjectOf` (`case-notes/service.ts:135-145`) finds the `case_client` by `{ id, firmKey: ctx.firmKey }`, then checks the firm's id against `ctx.firmId`, and answers 404 otherwise.
+* **The case read cannot cross firms.** `db.case.findMany({ where: { clientId: s.id } })` reads only cases of that firm's client. `runtime_case`'s composite foreign key `(client_id, workspace_id, firm_key)` → `case_client(id, workspace_id, firm_key)` (`prisma/schema/cases.prisma:84`) keeps every such case in the same firm and workspace. The breaker's round-1 attempt to move a case across firms was refused by that key.
+* **Each case then passes caseScope.** Each case is read only through `CaseTimeline.pageAfter` → `keyed` → `subjectFor(ctx, "case", id)`, which applies `{ id, firmKey }` plus `caseScopeWhere(caseScope(...))`. A 404 there skips the case.
+* **Nothing about an out-of-scope case leaks.** Its `caseNumber` is selected but never sent: lines are pushed only for a case whose page came back (PT6: a Case manager without `view.all` sees no case line).
+
+**Re-run at 4d584155f**, on :4434 only (copy stopped afterwards, no `prisma generate`; suites run one after another on one copy, by hand rather than through `run-suites.sh`, whose usage lines use other ports):
+* `check_csw3_firm_scope.ts` 48/48, including the census pass at 60;
+* `check_csnt1t_person_timeline.ts` 32/32. The builder's 33rd assertion is the conditional "configured checkpoint loads" setup step, which does not run once an earlier suite has loaded the checkpoint. I confirmed this by running it again.
+* `check_csnt1d_panel_browser.cjs` 55/55, against the builder's 56. The extra step looks like the same kind of conditional setup step; I did not confirm that.
+* `check_bk2_fold_outs.ts` 16/16.
+
+I did not re-run c95 and A24-3: this range does not touch their files.
+
+**Still open, unchanged (Minor, Should; not blocking):** m-a (an empty first page with more lines shows the false empty) and m-b (the cap words point to a prospect page with no timeline).
+
+**Verdict: Approve 4d584155fe34de599c2f77b00b8834f79bc57ed6.** No Blocker or Major is open.
+
+## Round 4 (fresh reviewer, diff only): 47b0210ce..4d584155fe34de599c2f77b00b8834f79bc57ed6
+Reviewer: a fresh context that had not seen this PR before. The Lead allowed it at 23:01Z: diff only, with a breaker on the census entry. I reviewed the code range only, not records commit fa957ddfc. Copy `rv4f_csnt1t` ran on :4434 only (never :4400, no `prisma generate`, Postgres :54329) and was stopped afterwards: database and files removed, :4434 free.
+
+**1. The merge, 46fa048e0.** `git show --cc 46fa048e0` prints only the header, with no diff hunks, so nothing was resolved by hand. I also checked independently that the studio diff of `main...46fa048e0` matches the studio diff of `139a34847...47b0210ce` line for line, ignoring `index` lines. So the merge changed none of the code reviewed in round 3. `46fa048e0..4d584155f` touches one file, `tests/check_csw3_firm_scope.ts` (+5 / -2).
+
+**2. The census entry, 4d584155f.** The commit adds `case-notes/person-timeline` to the allow-list with a three-line comment and moves the count from 59 to 60. I checked whether the entry is truly firm-scoped, in this order:
+* **The client gate comes first.** `PersonTimeline.read` (`person-timeline.ts:51`) runs `this.notes.subjectFor(ctx, "client", clientId)` before any case read. The `db.case.findMany({ where: { clientId: s.id } })` is at :65 and uses `s.id`, the id the gate returned, not the raw path value. `subjectOf` (`service.ts:135-144`):
+  * rejects an id that is not a UUID;
+  * finds `case_client` by `{ id, firmKey: ctx.firmKey }`;
+  * resolves the firm by key and requires `firm.id === ctx.firmId`.
+
+  Anything else gets a 404 before any case is touched.
+* **The case read is bounded by the database.** `runtime_case` has two composite foreign keys to `case_client`, both `ON UPDATE RESTRICT` (`20261118230000_csk1_case_client/migration.sql:177,180`): `(client_id, workspace_id, firm_key)` and `(client_id, firm_id)`. With the ALWAYS trigger `case_firm_fixed` on top, every case whose `client_id` is a firm-A client is itself a firm-A case, in both firm columns.
+* **Each case passes the caseScope gate.** Cases are read only through `CaseTimeline.pageAfter` → `keyed` (`timeline.ts:134-141`), whose first statement is `subjectFor(ctx, "case", caseId)`. That calls `subjectOf` with `{ id, firmKey: ctx.firmKey }` AND `caseScopeWhere(caseScope(db, { firmId: ctx.firmId, staffId: ctx.staffId }))`, plus the same firm-id check. The 404 handling (`person-timeline.ts:67`) works like this:
+  * a 404 drops the case: no line, no `caseId`, no `caseNumber`;
+  * any other error is thrown, so a failure is never hidden as an empty result.
+
+  `caseNumber` is selected at :65 but used only for cases whose page came back.
+* **The comment's claim matches the code.** The census line for the file is `person-timeline.ts 0 0 0` (no `$transaction`, no raw SQL, no firm set). That fits: it reads only through Prisma and the two gated services.
+
+Conclusion: the entry is truly firm-scoped. Two independent gates protect it: the client gate before the query, and the per-case firm + caseScope gate after it. Database constraints bound the query between them.
+
+**3. The breaker's n1, weighed.** Adding `firmId: s.firmId` to the `where` at :65 would make the query scoped on its face. Today it relies on the composite foreign key for that, and on `pageAfter` to drop anything the key did not stop. The breaker's 1a and 3d show the second gate holds even with the keys turned off. So this is defence in depth only, with no reachable leak. I rate it a **Nit (Could)**: worth one line the next time this file is touched, because the CS-W3 allow-list is per file and a self-scoped query makes the file's entry easier to defend. It is not a condition of this commit. The breaker's m1 (the `timeline.ts:112` audit source does not check `r.firm_id`) is outside this range and unreachable without turning off an ALWAYS trigger. I agree it is a Minor for a follow-up row on the case timeline. It is not this PR's.
+
+**4. Re-run at 4d584155f** (worktree at fa957ddfc, whose only difference is the records commit):
+* `check_csw3_firm_scope.ts 4434 xr_studio_rv4f_csnt1t`: **48/48**. This includes "census pass … 60 with CS-NT1t" and "census fail: a new case-side file with an unscoped case query, not on the list, fails the census". `csw3-spike.sh census` reports `files: 60`.
+* `check_csnt1t_person_timeline.ts 4434 xr_studio_rv4f_csnt1t`: **32 passed, 0 failed**, on the same copy after CS-W3. The builder's 33rd is the conditional checkpoint-load setup step, as the earlier round-4 reviewer explained.
+
+**5. Journey.** This range has no user-facing change: one test file, plus a merge that changes no PR code. So I did not run a new journey. The score of record is still the reviewer's round-2 score, **9/10**. The first journey report is `journey-test-reviewer-2026-11-26.md` (8/10 at round 1).
+
+**Open, unchanged, not blocking:** m-a and m-b (Minor, Should) from rounds 2–3, the breaker's m1 (follow-up, case timeline) and n1 (Nit, above). No Blocker or Major is open.
+
+**Verdict: Approve 4d584155fe34de599c2f77b00b8834f79bc57ed6**
+
+## Round 5 (fresh reviewer, diff only): 57c4dc3b1..ebd91de594b5b85d97eba8a2fa7f2873d93c4c81
+
+**Range.** One commit, one line: `api/src/case-notes/person-timeline.ts:48`. It changes `PersonTimelineQuery.safeParse(q && typeof q === "object" && !Array.isArray(q) ? q : {})` to `PersonTimelineQuery.safeParse(q ?? {})`. The only caller is `PersonTimelineController.read` (`case-notes/routes.ts:87`, `@Query() q`), so nothing else calls the service with a different argument.
+
+**1. Cause confirmed.** I ran CS-V1's tracer (`tests/lib/routes.ts` `routes` + `follows`) on a scratch copy of `api/src` with the base file put back. At 57c4dc3 the result for `GET /api/runtime/clients/:id/timeline query` is `null` (unparsed). At ebd91de it is `PersonTimeline.read`. The old conditional hid `q` from the tracer, and the new line hands it straight to the parse.
+
+**2. Behaviour: the same for every real request, and stricter for the rest.** The parse is `z.strictObject({ cursor: z.string({ message: "Give it once." }).optional() }, { message: "Only cursor." })`. I probed the schema with zod 4.4.3, the pinned version, using the new `q ?? {}`:
+* `undefined`, `null` and `{}` give `{}`, which is the first page (unchanged).
+* `{cursor:"x"}` and a null-prototype `{cursor:"x"}` are accepted.
+* `{cursor:[a,b]}` and `{cursor:{a}}` give "Give it once." (`invalid_type` on cursor).
+* `{foo}` gives "Only cursor." (`unrecognized_keys`).
+* An array, a string, a number, `false` and `""` all give "Only cursor." (`invalid_type`). The old code turned these into `{}`, a silent first page.
+
+Every failure goes through `invalid("cursor", …)`, so it is a 400 INVALID with `fields.cursor`. The only change is for a query that is not an object, and that is now refused instead of reset. Express always gives the handler an object for `req.query`, so the change cannot be reached over HTTP. It is stricter, never looser. The query is still parsed before `subjectFor`, as at base, so the order of 400 and 404 is unchanged.
+
+**3. Live probes**, on an isolated copy on :4434 (`AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`), signed in as firm A's representative, on a firm-A person:
+* no query: 200, 50 lines, `more=true`;
+* `?cursor=` (empty): 200, the first page;
+* `?cursor=a&cursor=b`: 400, `fields.cursor` "Give it once.";
+* `?foo=1`: 400, `fields.cursor` "Only cursor.";
+* `?cursor=x&foo=1`: 400, "Only cursor.";
+* `?cursor=forged`: 400, "This cursor is not one this timeline gave…".
+
+The parser is Express's simple one, so `?cursor[]=a` and `?cursor[a]=1` arrive as literal keys and are refused with "Only cursor.".
+
+**4. Re-run at ebd91de**, on isolated copies on :4434. Both were stopped afterwards (databases dropped). `prisma generate` was not run: no schema file is newer than the client.
+* `check_csv1_inputs.ts 4434 xr_studio_rv5_csv1`: **100 passed, 0 failed**. It reports "160 case-side routes in 32 files; 104 inputs; 0 unparsed". DW3 shows `GET /api/runtime/clients/:id/timeline` refused before the id is read (401), never a 500.
+* `check_csnt1t_person_timeline.ts 4434 xr_studio_rv5_csv1`: **33 passed, 0 failed**. PT1–PT7 all pass, including the PT4 forged cursor → 400 and the PT7 screen walk at 1440 and 375 px, axe clean.
+
+**5. Journey.** This range has no change a user can see: one server line, with the same answers to every HTTP request, and PT7 walks the client page again at head. So I did not run a new journey. The score of record is still the reviewer's round-2 score, **9/10**. The first journey report is `journey-test-reviewer-2026-11-26.md` (8/10).
+
+**Findings in this range:** none. The code comment on the line is accurate. **Open from earlier rounds, unchanged, not blocking:** m-a and m-b (Minor, Should), the breaker's m1 (a follow-up on the case timeline) and n1 (Nit). No Blocker or Major is open.
+
+**Verdict: Approve ebd91de594b5b85d97eba8a2fa7f2873d93c4c81**

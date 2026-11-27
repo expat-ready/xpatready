@@ -24,6 +24,7 @@ import { SignedInElsewhere } from "@/modules/platform/signed-in-elsewhere";
 import type { Me } from "@/modules/front-office/sales/contract";
 import { ClientOfferView } from "../../../contracts/runtime";
 import { IdentityCheckPanel } from "@/modules/front-office/compliance/identity/identity-panel";
+import { Timeline } from "./case-notes"; // CS-NT1t
 
 const SHOW = "agent/case:show", CREATE = "agent/case:create";
 /** The simulated client login that answers the questionnaire (the opening asks for one; the case dialog's default). */
@@ -186,6 +187,8 @@ function ClientPage() {
           <li key={k.id}><Link className="inline-flex min-h-6 items-center font-semibold tabular-nums text-text-link hover:underline" to={`/cases/${k.id}`} onClick={() => actAs(c.viewer_actor_id)} data-client-case={k.case_number}>{k.case_number}</Link></li>))}</ul>
           : <p className="text-sm text-text-muted" data-no-cases>{o && !o.offer && o.reason === "NO_OFFER" ? "This client has no cases yet, and no case waiting to be opened from a won prospect." : "No cases yet."}</p>}
       </section>
+      {/* CS-NT1t (R1.76): the person's own timeline: their notes, their cases' lines, their won prospect's. */}
+      <section aria-labelledby="client-timeline" className="rounded-xl border border-border bg-surface-raised" data-client-timeline><Timeline path={`/runtime/clients/${c.id}/timeline`} heading={2} /></section>
     </div>
   );
 }
