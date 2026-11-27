@@ -5,6 +5,10 @@
 # in the product or problem folder, or at the root. Prints problems; exit 1 if any. Used by the Stop hook and the tech lead.
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"; PH="$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product"
 out=$(mktemp "${TMPDIR:-/tmp}/check-docs.XXXXXXXX"); trap 'rm -f "$out"' EXIT
+# Private split (PS-1b, design/private-split-plan-2026-11-27.md): the Lead's records (STATE.md, history/, lanes/, inbox/,
+# reports/, ops/, two Lead pages) move to the private repository. RD is where they are now (records-dir.sh: the Lead's
+# private copy, else this copy's product/ while they are still here); empty in CI and builder copies once they have left.
+RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null) || RD=""; [ -f "$PH/tools/records-dir.sh" ] || RD="$PH"
 check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue; n=$(wc -l < "$f"); b=$(wc -c < "$f")
   [ "$n" -gt "$max" ] && echo "TOO LONG ($n lines > $max): ${f#$ROOT/}"
   [ "$kb" -gt 0 ] && [ "$b" -gt $((kb * 1024)) ] && echo "TOO BIG ($((b / 1024)) KB > $kb KB): ${f#$ROOT/}"; done; }
@@ -13,8 +17,17 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
   check 60 0 "$ROOT/CLAUDE.md" "$ROOT/AGENTS.md"
   # STATE.md (or else the newest origin/lead/* branch's) names the current Lead on exactly one line, so every lane can
   # find whom to report to (founder, 6 Nov ~03:00 IST: "a hard rule and it never messes up"; tools/current-lead.sh reads it; test: check-current-lead.sh).
-  S="$PH/STATE.md"
-  if [ -f "$S" ]; then
+  # Since PS-1b the line lives in CURRENT-LEAD.md (public: lanes read it when STATE.md is private); when that file is
+  # here it alone is judged, and STATE.md's own line, if any, is ignored.
+  C="$PH/CURRENT-LEAD.md"
+  if [ -f "$C" ]; then
+    n=$(grep -c '^current_lead: ' "$C")
+    [ "$n" -eq 1 ] || echo "CURRENT LEAD: CURRENT-LEAD.md has $n current_lead lines, needs exactly one (current_lead: <session id> <title>)"
+    [ "$n" -eq 1 ] && ! grep -qE '^current_lead: [A-Za-z]+_[A-Za-z0-9_-]{8,} .*Lead [0-9]+' "$C" && echo "CURRENT LEAD: CURRENT-LEAD.md's current_lead line needs a session id, then a title naming \"Lead N\""
+  elif [ ! -f "$PH/STATE.md" ]; then echo "CURRENT LEAD: no CURRENT-LEAD.md (and no STATE.md): lanes cannot find the Lead; add CURRENT-LEAD.md with one current_lead: line"
+  fi
+  S="$RD/STATE.md"
+  if [ -n "$RD" ] && [ -f "$S" ] && [ ! -f "$C" ]; then
     n=$(grep -c '^current_lead: ' "$S")
     # The tech lead keeps STATE on its lead/* branch (P-336), so main's STATE.md may carry no line: then the line must be
     # on an origin/lead/* branch, read by current-lead.sh (no fetch here; a copy without those refs: git fetch origin
@@ -28,6 +41,8 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
     fi
     [ "$n" -gt 1 ] && echo "CURRENT LEAD: STATE.md has $n current_lead lines, needs exactly one (current_lead: <session id> <title>)"
     [ "$n" -eq 1 ] && ! grep -qE '^current_lead: [A-Za-z]+_[A-Za-z0-9_-]{8,} .*Lead [0-9]+' "$S" && echo "CURRENT LEAD: STATE.md's current_lead line needs a session id, then a title naming \"Lead N\""
+  fi
+  if [ -n "$RD" ] && [ -f "$S" ]; then
     # One page (6 Nov: it reached 34 KB and every Lead re-read it; test: check-state-page.sh).
     b=$(wc -c < "$S"); [ "$b" -gt 12288 ] && echo "STATE TOO BIG ($((b / 1024)) KB > 12 KB): move the earlier page to product/history/STATE-<date>-<time>-<lead>.md and keep one page"
   fi
@@ -181,7 +196,12 @@ PY
       # Retired files (P-188, P-189) live in git history; old decision rows and records may still name them.
       case "$ref" in WORKFLOW.md|LANES.md|CHARTER.md|LEAD.md|RETRO.md|WAVE-1.md|SCREENS.md|REQUESTS.md|PLAN.md|WAY-OF-WORKING-draft.md|TEAM.md) continue;; esac
       case "$ref" in */NN*|*NN-*|*"<"*|concept.md|challenge.md|build-notes.md|review.md|break-report.md|lead-check.md|plan.md|journey-test.md|concept-draft.md) continue;; esac
-      [ -f "$PH/$ref" ] || [ -f "$ROOT/$ref" ] || [ -f "$(dirname "$f")/$ref" ] || [ -f "$PH/domain/$ref" ] || [ -f "$PH/../$ref" ] || echo "MISSING LINK in ${f#$ROOT/}: $ref"
+      [ -f "$PH/$ref" ] || [ -f "$ROOT/$ref" ] || [ -f "$(dirname "$f")/$ref" ] || [ -f "$PH/domain/$ref" ] || [ -f "$PH/../$ref" ] && continue
+      # A moved record (PS-1b) is looked up where the records are; with none here (CI, builders) it is taken as moved.
+      m=${ref#product/}
+      case "$m" in history/*|lanes/*|inbox/*|reports/*|ops/*|STATE.md|RESUME-ON-NEW-ACCOUNT.md|SECOND-MAC.md)
+        { [ -z "$RD" ] || [ -f "$RD/$m" ]; } && continue;; esac
+      echo "MISSING LINK in ${f#$ROOT/}: $ref"
     done
   done
 } | sort -u > "$out"
@@ -190,18 +210,18 @@ PY
 # STATE.md has uncommitted changes); an "updated:" line in neither form fails too. It fails when this branch wrote the
 # time: STATE.md uncommitted, or changed by a commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
 # A time already on main only warns, so one bad merge never stops every lane. Test: check-state-page.sh.
-if [ -f "$PH/STATE.md" ] && grep -q '^updated:' "$PH/STATE.md"; then
-  ul=$(grep -m1 '^updated:' "$PH/STATE.md")
+if [ -n "$RD" ] && [ -f "$RD/STATE.md" ] && grep -q '^updated:' "$RD/STATE.md"; then
+  ul=$(grep -m1 '^updated:' "$RD/STATE.md")
   u=$(printf '%s\n' "$ul" | sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-5][0-9x]) IST.*/\1/p')
   mine=1; c=""
   # The time is judged against this branch's newest STATE commit not yet on the base, merges left out: CI's test merge,
   # or a merge of main, is never taken for it (it is dated when it is made). None: the time came from the base (warn).
-  if (cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null); then
+  if (cd "$RD" && git diff --quiet HEAD -- STATE.md 2>/dev/null); then
     b="${STATE_TIME_BASE:-origin/main}"
-    if (cd "$PH" && git rev-parse -q --verify "$b^{commit}" >/dev/null); then
-      c=$(cd "$PH" && git log -1 --no-merges --format=%ct "$b..HEAD" -- STATE.md 2>/dev/null)
-      [ -n "$c" ] || { mine=0; c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); }
-    else c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); fi
+    if (cd "$RD" && git rev-parse -q --verify "$b^{commit}" >/dev/null); then
+      c=$(cd "$RD" && git log -1 --no-merges --format=%ct "$b..HEAD" -- STATE.md 2>/dev/null)
+      [ -n "$c" ] || { mine=0; c=$(cd "$RD" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); }
+    else c=$(cd "$RD" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); fi
   fi
   [ -n "$c" ] || c=$(date +%s)
   if [ -z "$u" ]; then msg="STATE TIME: STATE.md's first updated: line cannot be read: write 'updated: YYYY-MM-DD HH:MM IST' (or HH:Mx) from TZ=Asia/Kolkata date"
