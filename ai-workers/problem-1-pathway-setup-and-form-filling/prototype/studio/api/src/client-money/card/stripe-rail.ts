@@ -43,12 +43,33 @@ export class StripeCardRail implements CardRail {
 
   async createHostedPayment(input: HostedPaymentInput) {
     const i = HostedPaymentInput.parse(input);
-    const s = await this.stripe.checkout.sessions.create({
-      mode: "payment", success_url: i.successUrl, cancel_url: i.cancelUrl, metadata: i.metadata, payment_intent_data: { metadata: i.metadata },
-      line_items: [{ quantity: 1, price_data: { currency: i.currency.toLowerCase(), unit_amount: i.amountMinor, product_data: { name: i.description } } }],
-    }, { stripeAccount: i.account, idempotencyKey: i.idempotencyKey });
+    let s: Stripe.Checkout.Session;
+    try {
+      s = await this.stripe.checkout.sessions.create({
+        mode: "payment", success_url: i.successUrl, cancel_url: i.cancelUrl, metadata: i.metadata, payment_intent_data: { metadata: i.metadata },
+        ...(i.expiresAtSec ? { expires_at: i.expiresAtSec } : {}),
+        line_items: [{ quantity: 1, price_data: { currency: i.currency.toLowerCase(), unit_amount: i.amountMinor, product_data: { name: i.description } } }],
+      }, { stripeAccount: i.account, idempotencyKey: i.idempotencyKey });
+    } catch (e) {
+      // Break m1 (#3633): the account revoked or invalid → gone; any other refusal (a reused key, live charges not
+      // possible, a bad request) → refused. Either way the client gets the offline details, never a 500.
+      if (e instanceof Stripe.errors.StripePermissionError || (e as { code?: string }).code === "account_invalid") throw new RailAccountGone();
+      // Break n2: Stripe down, rate-limited or refusing our key is still "card not offered now" for the client (offline
+      // details, never a 500); the reason, with Stripe's type and code (never a key), goes to the log by the caller.
+      if (e instanceof Stripe.errors.StripeError) { const kind = `stripe ${e.type}${e.code ? `/${e.code}` : ""}${e.statusCode ? ` (${e.statusCode})` : ""}`; throw new RailRefused("the processor refused this hosted payment", kind.replace(/[^\w ./()-]/g, "").slice(0, 80)); }
+      throw e;
+    }
     if (!s.url) throw new Error("Stripe answered a Checkout session without a url");
     return { id: s.id, url: s.url };
+  }
+
+  async expireOtherHostedPayments(account: string, invoiceId: string, keepId: string) {
+    const acct = AccountId.parse(account); let n = 0;
+    for await (const s of this.stripe.checkout.sessions.list({ status: "open", created: { gte: Math.floor(Date.now() / 1000) - 25 * 3600 }, limit: 100 }, { stripeAccount: acct })) {
+      if (s.id === keepId || s.metadata?.invoice_id !== invoiceId) continue;
+      try { await this.stripe.checkout.sessions.expire(s.id, {}, { stripeAccount: acct }); n++; } catch (e) { if (!(e instanceof Stripe.errors.StripeInvalidRequestError)) throw e; }   // completed meanwhile: not ours to expire
+    }
+    return n;
   }
 
   async readPaymentIntent(account: string, intentId: string) { return intentOf(await this.stripe.paymentIntents.retrieve(intentId, {}, { stripeAccount: AccountId.parse(account) })); }
