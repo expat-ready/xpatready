@@ -2,7 +2,7 @@
 
 current_lead: local_b84bbd6e-4fa5-4b33-a0bc-323c20b897b1 Lead 7 · 27 Nov 16:04 IST (after Lead 6 local_51ad7aaa past 200k beyond start, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-27 16:08 IST (clock): **Lead 7 took over 16:05 (check 9c9c63c8, watch re-armed); first check 16:08: lab 🔴 Built 21/136 (15%), Proven 6/136, 0.0 rows/h; #3926 #3902 labelled; #3918 #3920 fast red = guard 6 on main, wait #3944 (queued), lanes told to merge main after it.** 16:04: Lead 6 handed over to Lead 7 (P-446). Earlier block: `history/STATE-2026-11-27-1604-lead6-handover-old-block.md`.
+updated: 2026-11-27 16:46 IST (clock): **Lead 7 check 16:44: lab 🔴 Built 21/136 (15%), Proven 6/136, 0.0 rows/h; #3926 #3902 relabelled after main-merge conflicts (Lead reads on full heads, rounds allowed); #3910 relabelled + Lead read 901aa51ab; #3944 labelled 622f7b507; #3937 merged; #3918 #3920 still red on guard 6 → wait #3944. Standbys: 1 (Lead 8).** 16:05: Lead 7 took over from Lead 6 (P-446). Earlier block: `history/STATE-2026-11-27-1604-lead6-handover-old-block.md`.
 
 ## Hand-over Lead 6 → Lead 7, 16:04 IST 27 Nov (reason: Lead 6 past 200k beyond its start read, P-446)
 **Do first:** rename "Lead 7 · 27 Nov <IST>", invoke `lead`, check `current_lead:` names you, create your check (cron 3,33; prompt exactly `run lead-watch; read STATE Start here`), CronDelete your gap check, send Lead 6 your CronList, re-arm the watch (Monitor `bash /tmp/claude-501/lane-watch.sh`, allowed_domains api.github.com, github.com). **Branch:** keep writing records on `lead/2026-11-27-lead5` (#3939 on lead4 still queued: never push there). Every check report STARTS with `python3 product/tools/lab-progress.py` (A440).
