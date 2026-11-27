@@ -45,7 +45,7 @@ ok "(2) settings.json runs the hook on Agent and Task" "$([ $? = 0 ] && echo 1)"
 grep -q 'model-rule-check.py"' "$W"; ok "(2) pr-rules.yml runs the model-rule check" "$([ $? = 0 ] && echo 1)"
 
 # (3) "Done when" naming its test, and "Duplicate check:", in every PR body and brief.
-GOOD=$'## What\nRow X-1.\nDuplicate check: searched BACKLOG, open PRs; none\n\nDone when: check-x.sh exits 0 with a pass and a fail'
+GOOD=$'## What\nRow X-1.\nDuplicate check: searched BACKLOG, open PRs; none\n\nDone when: check-x.sh exits 0 with a pass and a fail; stop after 3 tries'
 bc() { out=$(printf '%s' "$1" | bash "$TOOLS/brief-check.sh" ${2:-}); r=$?; }
 bc "$GOOD"; ok "(3) a body with a testable Done when and a Duplicate check passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 bc "${GOOD/Duplicate check:/Duplicates}"; ok "(3) a body with no Duplicate check line fails" "$([ $r = 1 ] && echo "$out" | grep -q 'no "Duplicate check:"' && echo 1)" "exit $r: $out"
@@ -91,6 +91,7 @@ printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"
 lp() { out=$(jq -n --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" bash "$TOOLS/lane-preflight.sh" --hook); }
 lp mcp__claude-code-remote__create_session "$GOOD"; ok "(7) a brief with no model and effort line is refused" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "${GOOD/Duplicate check: /Duplicate check: $FRESH_DUP }"$'\nModel: Opus 5.5, effort: medium\nItem: R1.2'; ok "(7) a brief naming model and effort starts (R1.2 is Proven: wave 0, always open)" "$([ -z "$out" ] && echo 1)" "$out"
+lp mcp__claude-code-remote__create_session "$(printf '%s' "${GOOD/Duplicate check: /Duplicate check: $FRESH_DUP }" | sed 's/; stop after 3 tries//')"$'\nModel: Opus 5.5, effort: medium\nItem: R1.2'; ok "(7) ... and is refused with no stop rule next to its Done when (LR-121)" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a start naming no row (qa, standby) needs only the model and effort line" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session $'/next screens B124\nModel: Opus 5.5, effort: medium'; ok "(7) a /next brief naming a row (B124) still needs Done when and Duplicate check" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"
