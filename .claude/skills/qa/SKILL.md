@@ -16,7 +16,7 @@ Home: `ai-workers/problem-1-pathway-setup-and-form-filling/product/` (P). The wa
 ## 1. Modes
 | Mode | Trigger | Scope |
 |---|---|---|
-| `after-merge` | By itself: the scheduled task in P/`ops/qa-after-merge-task.md` starts it when `tools/qa-due.sh` says DUE (an app-code merge newer than the last qa merge); the Lead only by exception | Smoke of every Works capability + full test of the capabilities the merge touched (`git diff --stat <last tested commit>..main`); re-score in the same round every row the merged PRs name in their titles or mark in `qa/built/` (P-219, P-221); delete each `qa/built/<ID>.md` you re-score |
+| `after-merge` | Itself: P/`ops/qa-after-merge-task.md` (qa-due.sh DUE) | Smoke of every Works capability + full test of the capabilities the merge touched (`git diff --stat <last tested commit>..main`); re-score in the same round every row the merged PRs name in their titles or mark in `qa/built/` (P-219, P-221); delete each `qa/built/<ID>.md` you re-score |
 | `milestone` | Lead, before a milestone gate | Every capability in P/`qa/CAPABILITIES.md` for the milestone, every role, coverage report, all suites rerun |
 | `capability <name>` | Lead or founder | One capability or screen, in depth |
 | `explore <area>` | Founder, Lead, or when time allows | Charter-based exploration (60 min): what a real author, RCIC, officer or client would try |
