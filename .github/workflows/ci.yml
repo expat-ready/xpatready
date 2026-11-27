@@ -447,6 +447,20 @@ jobs:
           name: suite-logs-shard-${{ matrix.shard }}-a${{ github.run_attempt }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
           retention-days: 14
+      - name: test output (screenshots and images the suites wrote; git-ignored since the clean-up, kept here instead)
+        if: always() && env.KIND == 'code'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-shots-shard-${{ matrix.shard }}-a${{ github.run_attempt }}
+          path: |
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.png
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpg
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.png
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.jpg
+            ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.png
+          if-no-files-found: ignore
+          retention-days: 30
       - name: retry records (B122; only when a suite was retried; tools/flaky.mjs reads them)
         if: always() && env.KIND == 'code'
         uses: actions/upload-artifact@v4

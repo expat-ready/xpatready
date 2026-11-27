@@ -147,6 +147,20 @@ jobs:
           name: nightly-suite-logs-part-${{ matrix.shard }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
           retention-days: 14
+      - name: test output (screenshots and images the suites wrote; git-ignored since the clean-up, kept here instead)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-suite-shots-part-${{ matrix.shard }}
+          path: |
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.png
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpg
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.png
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.jpg
+            ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.png
+          if-no-files-found: ignore
+          retention-days: 30
   restore-drill:
     # PF-8r (NFR5-04 "quarterly restore drill … with recorded evidence"; P-586, map row 14): every night, the restore drill
     # on compose.test.yml's pinned PostgreSQL: dump, restore into a fresh database, check, time (tools/restore-drill.sh),

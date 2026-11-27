@@ -62,3 +62,27 @@ packages/xfa-engine/dist/
 ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/private/
 # B197: the Lead's latest app view (claude.ai/code session list), one per copy, rewritten every check
 ai-workers/problem-1-pathway-setup-and-form-filling/product/state/app-view-latest.txt
+
+# Clean-up (test output out of git, P-674 stages; lab lane "cleanup", 27 Nov): screenshots, recordings and other images the
+# studio tests, walks and qa runs write into product/screens, product/qa and studio/evidence stay on the copy that made
+# them and in CI's run artifacts (pr-suites, ci parts, nightly); git history keeps every one committed before. Design
+# boards (screens/<item>/design/) are records, not test output, and stay tracked.
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.png
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpg
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpeg
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.gif
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.webp
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.webm
+ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.mp4
+!ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/*/design/**
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.png
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.jpg
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.jpeg
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.gif
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.webp
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.webm
+ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.mp4
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.png
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.jpg
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.jpeg
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.webm

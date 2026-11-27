@@ -124,6 +124,20 @@ jobs:
           name: pr-suite-logs-part-${{ matrix.shard }}-a${{ github.run_attempt }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
           retention-days: 7
+      - name: test output (screenshots and images the suites wrote; git-ignored since the clean-up, kept here instead)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-suite-shots-part-${{ matrix.shard }}-a${{ github.run_attempt }}
+          path: |
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.png
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpg
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.png
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.jpg
+            ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.png
+          if-no-files-found: ignore
+          retention-days: 30
       - name: verdict (P-822; the one step that can turn this part red)
         if: always()
         env: { SETUP: "${{ steps.setup.outcome }}", OUTCOME: "${{ steps.s.outcome }}" }
