@@ -142,6 +142,10 @@ const tsx = (f) => spawnSync(path.join(STUDIO, "node_modules", ".bin", "tsx"), [
     // shard 20: scrollY 9 → 460 on focus, the scroll event after the Tab, the tooltip closed; 2 of 17 local runs).
     await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     await p.keyboard.press("Tab");
+    // LR-110 (this step's first-try failure in CI, 22-25 Nov: the tooltip never shown, or gone before it was read): a focus
+    // still scrolls the page now and then; that scroll, just after the tooltip opened, closed it. One is made here every
+    // run; the chip's tooltip must stay open for the keyboard user (as status.tsx's Tip does).
+    await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => { window.scrollBy(0, window.scrollY > 40 ? -40 : 40); requestAnimationFrame(r); })));
     await p.getByRole("tooltip").waitFor(T);
     ok("C8.3 walk 10 pass (m5, BIC-14): the chip's tooltip opens on keyboard focus and says how it differs from \"Changed since review\"", /Approved earlier; a fact on it changed since, so the representative checks it again\./.test(await p.getByRole("tooltip").innerText()));
     await shot("10-withdrawn-tooltip");
