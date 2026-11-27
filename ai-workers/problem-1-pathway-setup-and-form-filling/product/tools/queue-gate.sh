@@ -7,11 +7,16 @@
 #            line naming that head (a later "Changes needed" on it wins); (b) the check "ci" on that head is green; (b2) the
 #            check "pr-suites" (pr-suites.yml's job, the PR's affected suites; P-822) is "success" on that exact head, from
 #            pr-suites.yml's own pull_request run: missing, pending, skipped, neutral, cancelled or red all refuse (a PR
-#            whose plan picks no suite gets "success" from that job, so "skipped" is never needed; SUITES_GATE below
+#            whose plan picks no suite gets "success" from that job, so "skipped" is never needed; a head whose only run
+#            predates that job counts when its job "parts" was skipped, noparts below, OS-82; SUITES_GATE below
 #            blocks on landing: the founder's ruling of 25 Nov 11:3x IST waives P-717 (b)'s 24 h warn for it); (c) no changed path
 #            matches lead-read-paths.txt (.github/, .mergify.yml, the guards, schema, migrations, money,
 #            permissions; a screenshot, an image or .txt under product/, or a records-only PR sets off only the guard
 #            lines, never money or permissions: B206 part 3).
+#            P-823 (founder, 25 Nov): only the "read first" paths refuse (workflows, the guards, permissions, and a
+#            destructive migration or schema change, judged on the PR's patch: destructive()); money, additive
+#            migrations and public routes are labelled as any other and owe the Lead's read after (afterlabel() before the label, afterline() after it:
+#            "Lead after-read owed: ..." and the label after-read: money / other; after-read-owed.sh lists them).
 #            No more waiting for a sleeping lane to wake and label. A refusal is commented only when the Approve comment
 #            itself started the run. label-sweep.sh keeps a github-actions[bot] label only when `eligible` passes.
 #   fresh  — the commit status "queue-fresh" that Mergify's product queue needs for a PR touching prototype/
@@ -55,7 +60,7 @@ set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
 HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m" "$H.hard" "$H.soft"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m" "$H.hard" "$H.soft" "$H.fj" "$H".k.*' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -69,7 +74,7 @@ load() {  # PR → pr, head, files, labels
   pr=$(api "$API/repos/$REPO/pulls/$PR") || { echo "#$PR: cannot read the PR"; return 2; }
   head=$(echo "$pr" | jq -r .head.sha); labels=$(echo "$pr" | jq -r '[.labels[].name] | join("\n")')
   # A renamed file counts under both names (Devin on #1861): a later main change to the old path still overlaps.
-  files=$(pages "repos/$REPO/pulls/$PR/files" | jq -r '.[] | .filename, (.previous_filename // empty)') || { echo "#$PR: cannot read its files"; return 2; }; }
+  pages "repos/$REPO/pulls/$PR/files" > "$H.fj" && files=$(jq -r '.[] | .filename, (.previous_filename // empty)' "$H.fj") || { echo "#$PR: cannot read its files"; return 2; }; }
 has() { grep -qxF "$1" <<< "$labels"; }
 ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id, run_started, run_attempt, run_status
   local c; c=$(api "$API/repos/$REPO/commits/$head/check-runs?check_name=ci&per_page=100") || { ci_state=failure; return; }
@@ -102,7 +107,33 @@ suites() {  # a commit → suites_state (success | missing | pending | <the conc
       [ "$(jq -r '.status + " " + (.conclusion // "")' <<< "$r")" = "completed success" ] && { suites_state=success; suites_why="green on ${s:0:9}"; return; }
       suites_state=pending; suites_why="its run $rid has not ended green ($url)"; return; fi
     [ "$st" = completed ] && suites_state=$co || suites_state=pending; suites_why="$suites_state on ${s:0:9} ($url)"; return   # the newest decides (breaker m2)
-  done < <(jq -r '[.check_runs[]? | select(.app.slug == "github-actions")] | sort_by(.started_at) | reverse | .[] | [.status, (.conclusion // "none"), (.details_url // ""), (.check_suite.id // "" | tostring)] | @tsv' <<< "$c"); }
+  done < <(jq -r '[.check_runs[]? | select(.app.slug == "github-actions")] | sort_by(.started_at) | reverse | .[] | [.status, (.conclusion // "none"), (.details_url // ""), (.check_suite.id // "" | tostring)] | @tsv' <<< "$c")
+  [ "$suites_state" = missing ] && noparts "$s"; return 0; }
+NOPARTS_BEFORE="2026-11-25T19:16:45Z"   # #3632 (the job "pr-suites" in pr-suites.yml) merged into main
+noparts() {  # OS-82 (OS-PM 4, 26 Nov; #3693 lost its label at 05:43 UTC): a commit with no "pr-suites" check run → success
+  # when its newest pr-suites.yml run is this PR's own pull_request run into main on this very commit, ended success, and
+  # holds no job "pr-suites" (the run predates #3632, which added that job), its job "plan" succeeded with no "pr-suites"
+  # warning (the old plan's only way to say it failed), and every job "parts" was skipped: the change reaches no suite.
+  # A run with a job "pr-suites", parts that ran, a red or unfinished run, another PR or head: stays missing (fails closed).
+  # Review round 1 (#3810): the old plan could also end green with parts skipped when change-kind.sh crashed (it read
+  # "unknown" as no suite) or the step died before its warning, so: no changed app file (under prototype/ or packages/,
+  # not a doc), no warning or failure annotation of any title on plan, and only a run created before #3632 merged
+  # (NOPARTS_BEFORE): every later run has the job "pr-suites", so this fallback retires itself.
+  local s=$1 rs rid j pid a
+  [ -z "$(grep -E '/prototype/|^packages/' <<< "${files:-}" | grep -viE "$DOCS"; true)" ] || return 0
+  rs=$(api "$API/repos/$REPO/actions/workflows/pr-suites.yml/runs?event=pull_request&head_sha=$s&per_page=100") || { suites_state=unread; suites_why="its pr-suites runs cannot be read"; return; }
+  rid=$(jq -r --arg s "$s" --argjson n "$PR" '[.workflow_runs[]? | select(((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml" and .event == "pull_request"
+    and .head_sha == $s and any(.pull_requests[]?; .number == $n and .base.ref == "main"))] | sort_by(.run_started_at // .created_at // "") | last
+    | select(.status == "completed" and .conclusion == "success" and (.created_at // "9") < $before) | .id // empty' --arg before "$NOPARTS_BEFORE" <<< "$rs" 2>/dev/null)
+  [[ "$rid" =~ ^[0-9]+$ ]] || return 0
+  j=$(api "$API/repos/$REPO/actions/runs/$rid/jobs?filter=latest&per_page=100") || { suites_state=unread; suites_why="the jobs of pr-suites run $rid cannot be read"; return; }
+  pid=$(jq -r '[.jobs[]?] as $j | if ($j | any(.name == "pr-suites")) then empty
+    elif ([$j[] | select(.name | test("^parts( |$)"))] | length > 0 and all(.conclusion == "skipped")) | not then empty
+    else ([$j[] | select(.name == "plan" and .conclusion == "success")] | first | .id // empty) end' <<< "$j" 2>/dev/null)
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  a=$(api "$API/repos/$REPO/check-runs/$pid/annotations?per_page=100") || { suites_state=unread; suites_why="the plan of pr-suites run $rid cannot be read"; return; }
+  jq -e 'type == "array" and (any(.[]; ((.title // "") | startswith("pr-suites")) or .annotation_level == "warning" or .annotation_level == "failure") | not)' <<< "$a" >/dev/null 2>&1 || return 0
+  suites_state=success; suites_why="green on ${s:0:9}: its pr-suites run $rid picked no suite (job parts skipped, OS-82)"; }
 suitesok() {  # a commit → 0 when pr-suites is green on it, or SUITES_GATE=warn (suites_warn says why); 1 with why.
   # suites_retry=1 (eligible exits 3: the sweep keeps the label, tries again) only when this refusal is an unreadable or
   # unfinished pr-suites (review m2, m3: a re-run in progress never strips a good label; warn never leaks into exit 3).
@@ -121,22 +152,55 @@ san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_\n-'; }; sanl() { LC_ALL=C tr -cd 'A-Za-
 # Records-only: main's one definition on the PR's file names AND the label "records" that records-label.yml sets from a
 # full checkout (this job's checkout holds the tools only, where no suite is seen reading a product/ .md; breaker M1).
 records() { has records && [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
-leadread() {  # stdin: changed paths → those that keep the Lead's read (P-423, lead-read-paths.txt). Lines after its
-  # "--- records-exempt" marker (money, permissions) are not set off by a screenshot (*.png under screens/), an image or
-  # .txt under product/ (never product/tools/; select-suites.mjs reads none as data), or any file of a records-only PR
-  # (records(): main's records-only.sh AND the "records" label set from a full checkout, as this job's checkout holds
-  # the tools only and would call a suite-read .md a record; part 3 review M1). B206 part 3. Fails closed.
-  local f all="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}" rec=0   # LEAD_READ_PATHS: the test's stand-in
-  [ -r "$all" ] && grep -q '^# --- records-exempt' "$all" || { echo "lead-read-paths.txt unreadable or without its marker"; return; }
-  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$all" > "$H.hard"; awk 'f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$all" > "$H.soft"
+leadread() {  # stdin: changed paths → "<kind><TAB><path>" for each that keeps the Lead's read (P-423, lead-read-paths.txt):
+  # kind "first" (before the label) for the lines before "# --- read-after money" and for a destructive migration or schema
+  # change (destructive(), P-823); "money", "migration" or "public" (after the label, P-823) for its read-after sections,
+  # and "public" for an API file whose patch changes a line with OpenRead( (a door opened or closed without sign-in).
+  # Lines after "# --- records-exempt" are not set off by a screenshot (*.png under screens/), an image or .txt under
+  # product/ (never product/tools/; select-suites.mjs reads none as data), or any file of a records-only PR (records():
+  # main's records-only.sh AND the "records" label set from a full checkout, as this job's checkout holds the tools only
+  # and would call a suite-read .md a record; part 3 review M1). B206 part 3. Fails closed: an unreadable list is "first".
+  local f k all="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}" rec=0   # LEAD_READ_PATHS: the test's stand-in
+  local mk; for mk in records-exempt "read-after money" "read-after migration" "read-after public"; do   # every marker, or fail closed (#3661 review m6)
+    [ -r "$all" ] && grep -q "^# --- $mk" "$all" || { printf 'first\t%s\n' "lead-read-paths.txt unreadable or without its marker \"$mk\""; return; }; done
+  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$all" > "$H.hard"
+  awk -v o="$H.k." '/^# --- records-exempt/ {k = "first"} /^# --- read-after money/ {k = "money"} /^# --- read-after migration/ {k = "migration"}
+    /^# --- read-after public/ {k = "public"} k && !/^#/ && NF {print > (o k)}' "$all"
   records && rec=1
   while IFS= read -r f; do [ -n "$f" ] || continue
-    if grep -qiEf "$H.hard" <<< "$f"; then printf '%s\n' "$f"; continue; fi
-    grep -qiEf "$H.soft" <<< "$f" || continue
+    if grep -qiEf "$H.hard" <<< "$f"; then printf 'first\t%s\n' "$f"; continue; fi
     [ "$rec" = 1 ] && continue
     grep -qiE '(^|/)screens/([^/]+/)*[^/]+\.png$' <<< "$f" && continue
     grep -qiE '/product/tools/' <<< "$f" || ! grep -qE '^ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(png|jpe?g|gif|webp|svg|txt)$' <<< "$f" || continue
-    printf '%s\n' "$f"; done; rm -f "$H.hard" "$H.soft"; }
+    for k in first money migration public; do
+      [ -s "$H.k.$k" ] && grep -qiEf "$H.k.$k" <<< "$f" || continue
+      if [ "$k" = migration ] && destructive "$f"; then printf 'first\t%s (%s)\n' "$f" "$dwhy"; else printf '%s\t%s\n' "$k" "$f"; fi
+    done
+    grep -qE "$API_SRC" <<< "$f" && opens "$f" && printf 'public\t%s (OpenRead)\n' "$f"
+  done; rm -f "$H.hard" "$H".k.*; true; }
+# P-823: "destructive migrations (drop, rename, delete) still wait for the Lead's read first". Judged on the PR's patch as
+# GitHub gives it with the file list (the PR's code is never fetched), never on the file name. A migration file is
+# additive only when the PR adds it (an edit or removal of a migration main may have applied is not) and every statement
+# of its added lines is on migration-additive.py's allowlist (CREATE TABLE / INDEX / SEQUENCE / TYPE AS ENUM / TRIGGER,
+# ALTER TABLE ... ADD, ALTER TYPE ... ADD VALUE, COMMENT ON, INSERT INTO; review of #3661, Blocker 1-2: a word list let a
+# DROP inside a block comment or a DO $$ body, GRANT, DISABLE TRIGGER, UPDATE ... SET through). A schema file is additive
+# only when its patch removes no line. A file whose patch GitHub does not give (too large) is destructive (fails closed).
+API_SRC='/prototype/studio/api/src/.*\.[cm]?[jt]sx?$'
+destructive() {  # a changed path → 0 (and dwhy) when its change is destructive
+  local v; v=$(jq -r --arg f "$1" 'first(.[] | select(.filename == $f or .previous_filename == $f)) // {} | . as $x
+    | (($x.patch // "") | split("\n")) as $l
+    | if ($x.patch // "") == "" then "its patch is not given (too large, or a removal)"
+      elif ($f | test("/prisma/schema/"; "i")) then (if any($l[]; startswith("-")) then "a schema change that removes or changes a line" else "" end)
+      elif $x.status != "added" then "an edit, rename or removal of a migration main may have applied"
+      else "SQL" end' "$H.fj" 2>/dev/null) || v="its patch cannot be read"
+  if [ "$v" = SQL ]; then   # a new migration file: additive only by the allowlist (migration-additive.py; review of #3661, Blocker 1-2)
+    v=$(jq -r --arg f "$1" 'first(.[] | select(.filename == $f or .previous_filename == $f)) | .patch' "$H.fj" | python3 -I "$HERE/migration-additive.py" 2>/dev/null) || v="no: the allowlist could not run"
+    case "$v" in yes) v="";; no:*) v="a migration that is not additive (${v#no: })";; *) v="the allowlist gave no answer";; esac
+  fi
+  dwhy="$v: read first, P-823"; [ -n "$v" ]; }
+opens() {  # an API path → 0 when its patch changes a line with OpenRead( (or GitHub gives no patch for it)
+  [ "$(jq -r --arg f "$1" 'first(.[] | select(.filename == $f or .previous_filename == $f)) // {} | if (.patch // "") == "" then (if (.changes // 0) > 0 or .status == "added" or .status == "removed" then "yes" else "no" end)
+    elif any(.patch | split("\n")[]; test("^[+-]") and test("OpenRead\\s*\\(")) then "yes" else "no" end' "$H.fj" 2>/dev/null)" != no ]; }
 failing() {  # a run's id [all] → its failed jobs' names, one a line (the summary job "ci" only when nothing else failed); nothing when unreadable. all: in any attempt
   api "$API/repos/$REPO/actions/runs/$1/jobs?filter=${2:-latest}&per_page=100" 2>/dev/null \
     | jq -r '[.jobs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "retry-comment")] | (map(select(. != "ci")) | if length > 0 then . else empty end) // . | .[]' 2>/dev/null | san | cut -c1-120 | grep .; true; }
@@ -243,8 +307,10 @@ judge() {  # eligibility for the label; reason in $why
   case "$(echo "$pr" | jq -r .head.ref)" in mergify/*) why="a merge-queue batch"; return 1;; esac
   approved || return 1
   local bad
-  bad=$(leadread <<< "$files" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
-  [ -z "$bad" ] || { why="it touches a path that keeps the Lead's read (P-423): $bad"; return 1; }
+  local kinds; kinds=$(leadread <<< "$files")
+  bad=$(awk -F'\t' '$1 == "first" {print $2}' <<< "$kinds" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
+  [ -z "$bad" ] || { why="it touches a path that keeps the Lead's read first (P-423, P-823): $bad"; return 1; }
+  after=$(awk -F'\t' 'NF == 2 {print $1}' <<< "$kinds" | sort -u | paste -sd ' ' -)   # P-823: read after the label
   ci; [ "$ci_state" = success ] || { why="ci on ${head:0:9} is $ci_state"; return 1; }
   suitesok "$head" || return 1   # P-822: the PR's affected suites green on this exact head
   fullproof "$head" || return 1   # CI-PRE (P-731, P-743): after a failed merge batch, one green full run on this exact head
@@ -317,9 +383,30 @@ label() {
 _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null
     return $src; fi
   LABELLING=1 fresh || return 2; did_fresh=1   # review M2: queue-fresh is decided before the label goes on
+  afterlabel || return 2   # P-823: the after-read label first, so a PR owing a read never carries review: approved without it
   api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || { echo "#$PR: could not label"; return 2; }
   labels="$labels"$'\n'"$LABEL"; [ -z "${suites_warn:-}" ] || echo "#$PR: warning: $suites_warn"; echo "#$PR: labelled ($head has the reviewer's Approve, a green ci, and a green full run when a failed merge batch held it (P-743); no Lead-read path)"
-  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, no failed merge batch held it or the full run (P-731, P-743) is green on it (or the PR is records only), and no path keeps the Lead's read (P-423).${suites_warn:+ **Warning:** $suites_warn: warn-only for its first 24 h (P-717 (2)); then this refuses the label.}" '{body: $b}')" >/dev/null || true; }
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, no failed merge batch held it or the full run (P-731, P-743) is green on it (or the PR is records only), and no path keeps the Lead's read first (P-423, P-823)${after:+; read after: ${after// /, }}.${suites_warn:+ **Warning:** $suites_warn: warn-only for its first 24 h (P-717 (2)); then this refuses the label.}" '{body: $b}')" >/dev/null || true
+  afterline; }
+# P-823: a read-after PR (money, an additive migration, a public route) is labelled as any other; the Lead reads it after:
+# every money PR within the hour of its merge, the others 1 in 3, chosen by the PR's number (number mod 3 = 0). One
+# comment line says which, and the label "after-read: money" or "after-read: other" marks those owed: after-read-owed.sh
+# lists them for the Lead until a "Lead read the diff: <head>" line (lead-read-gate.sh's form) is on the PR.
+AFTER_MONEY="after-read: money"; AFTER_OTHER="after-read: other"
+afterlabel() {  # before review: approved: the after-read label, or no label at all (review of #3661, Major 3)
+  aline=""; alabel=""; [ -n "${after:-}" ] || return 0
+  if grep -qw money <<< "$after"; then alabel=$AFTER_MONEY; aline="Lead after-read owed: ${after// /, } #$PR $head (money: within the hour of its merge)"
+  elif [ $((PR % 3)) = 0 ]; then alabel=$AFTER_OTHER; aline="Lead after-read owed: ${after// /, } #$PR $head (1 in 3: its number mod 3 is 0)"
+  else return 0; fi
+  api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$alabel" '{labels: [$l]}')" >/dev/null \
+    || { echo "#$PR: could not put $alabel on, so review: approved is not put on either (the read would be lost)"; return 1; }; }
+afterline() {  # after the label: the one comment line
+  [ -n "${after:-}" ] || return 0
+  if [ -z "$alabel" ]; then echo "#$PR: read after (${after// /, }): not drawn (1 in 3, its number mod 3 is $((PR % 3)))"
+    api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (P-823):** read after the label (${after// /, }), not drawn for the Lead's after-read (1 in 3: its number mod 3 is $((PR % 3)), not 0)." '{body: $b}')" >/dev/null || true
+    return 0; fi
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (P-823):** $aline. The Lead reads the diff after the label and comments \"Lead read the diff: $head\" (after-read-owed.sh lists it until then)." '{body: $b}')" >/dev/null || echo "#$PR: the after-read line could not be posted (the label $alabel still marks it)"
+  echo "#$PR: $aline"; }
 
 start() {  # the full run (comment-run.yml's "/run full": main's ci.yml by workflow_dispatch) on $head; held_rid is the failed batch run
   [ "$(echo "$pr" | jq -r '.head.repo.full_name // ""')" = "$REPO" ] || { echo "#$PR: a fork's head: no full run (comment-run.yml refuses one too)"; return 0; }

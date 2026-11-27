@@ -52,7 +52,7 @@ export class CaseClose {
   /** The case locked for this transaction, if it is the session's firm's; 404 otherwise (never 403: BR-20). */
   private async locked(tx: Tx, ctx: StaffContext, id: string) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
-    const hit = await tx.$queryRaw<{ id: string }[]>`select id::text from runtime_case where id = ${id}::uuid and firm_key = ${ctx.firmKey} for update`;
+    const hit = await tx.$queryRaw<{ id: string }[]>`select id::text from runtime_case where id = ${id}::uuid and firm_id = ${ctx.firmId}::uuid for update`;
     if (!hit.length) return notFound();
     const c = await tx.case.findUniqueOrThrow({
       where: { id },
@@ -62,15 +62,14 @@ export class CaseClose {
         decisions: { where: { kind: "DECISION" }, select: { id: true } },   // any filing's, active or not (review m2)
       },
     });
-    const firm = await tx.platformFirm.findUnique({ where: { key: c.firmKey }, select: { id: true } });
-    if (!firm || firm.id !== ctx.firmId) return notFound();   // the case's firm key names another platform firm
+    if (c.firmId !== ctx.firmId) return notFound();   // CS-W1 part 2b: the case's platform firm (NOT NULL since part 2a), not a lookup by key
     // The case's group (SA-3-4): the client type of the Pathway its combination sits under (the PATHWAY node of program_def).
     const up = await tx.$queryRaw<{ client_type: string | null }[]>`
       with recursive up as (select p.* from program_def p join combination x on x.program_def_id = p.id where x.id = ${c.combinationId}::uuid
         union all select p.* from program_def p join up on p.workspace_id = up.workspace_id and p.program_node_key = up.parent_node_key)
       select client_type from up where node_kind = 'PATHWAY' limit 1`;
     const t = up[0]?.client_type, clientType: "INDIVIDUAL" | "CORPORATE" | null = t === "INDIVIDUAL" || t === "CORPORATE" ? t : null;
-    return { c, firmId: firm.id, clientType };
+    return { c, firmId: c.firmId, clientType };
   }
 
   private async run<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
@@ -98,7 +97,7 @@ export class CaseClose {
   async view(ctx: StaffContext, id: string): Promise<CaseDecisionsView> {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
     const c = await this.db.case.findFirst({
-      where: { id, firmKey: ctx.firmKey },
+      where: { id, firmId: ctx.firmId },   // CS-W1 part 2b: by the case's platform firm (breaker m1)
       include: {
         filings: { where: { active: true }, orderBy: { createdAt: "asc" }, select: { id: true, subjectId: true, stage: { select: { id: true, staffName: true, ord: true } }, record: { select: { submittedOn: true } } } },
         stages: { select: { id: true, staffName: true, state: true } },
@@ -106,11 +105,10 @@ export class CaseClose {
       },
     });
     if (!c) return notFound();
-    const firm = await this.db.platformFirm.findUnique({ where: { key: c.firmKey }, select: { id: true } });
-    if (!firm || firm.id !== ctx.firmId) return notFound();
+    if (c.firmId !== ctx.firmId) return notFound();   // CS-W1 part 2b: by the case's platform firm
     const subjects = new Map((await this.db.answerSubject.findMany({ where: { id: { in: c.filings.map((f) => f.subjectId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
     const staffIds = [...new Set(c.decisions.map((d) => d.recordedBy.replace(/^staff:/, "")).filter((x) => UUID.test(x)))];
-    const names = new Map((await this.db.platformStaff.findMany({ where: { id: { in: staffIds }, firmId: firm.id }, select: { id: true, displayName: true } })).map((s) => [s.id, s.displayName]));
+    const names = new Map((await this.db.platformStaff.findMany({ where: { id: { in: staffIds }, firmId: c.firmId }, select: { id: true, displayName: true } })).map((s) => [s.id, s.displayName]));
     const day = (d: Date) => d.toISOString().slice(0, 10);
     const decision = (d: (typeof c.decisions)[number]) => ({ id: d.id, outcome: d.outcome, decidedOn: day(d.decidedOn), note: d.note, recordedAt: d.recordedAt.toISOString(), recordedBy: { staffId: d.recordedBy.replace(/^staff:/, ""), name: names.get(d.recordedBy.replace(/^staff:/, "")) ?? null } });
     const ruled = c.decisions.filter((d) => d.kind === "DECISION");

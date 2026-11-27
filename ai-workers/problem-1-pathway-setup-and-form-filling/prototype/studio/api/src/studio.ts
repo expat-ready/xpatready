@@ -41,6 +41,7 @@ import { isIdentityName } from "../../engine/identity-documents.ts";
 import { firmMayRead } from "./case-feed.ts";
 import { placementRefusal } from "../../engine/field-scope.ts"; // C3.16: a field asked once for the household or employer stays single and unconditioned
 import { fillTrialsOf, releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
+import { firmIdByKey } from "./firms.ts"; // CS-W1 part 2b: the activity feed finds a firm's cases by its platform id
 /** G2 (C5.5, BR-8; shared with G1 BR-8): a refusal carries every blocking problem in `errors[]`, each in words; `detail`
  *  (and `message`, read by older callers) keeps the sentence the screens and checks already show. */
 /** G2 BR-9: the keys a release rests on, frozen in its summary (only when the gate judged it). */
@@ -1257,11 +1258,13 @@ export class Studio {
    *  checklist lines, eligibility checks) are left out, and a line of an entity on neither list is read by no firm's
    *  staff (case-feed.ts). Configuration people read every line, as before. */
   async activity(limit = 200, firmKey: string | null = null) {
+    // CS-W1 part 2b: the firm's cases are found by its platform id (none for a key with no platform firm: no case).
+    const firmId = firmKey === null ? null : (await firmIdByKey(this.db, firmKey)) ?? "00000000-0000-0000-0000-000000000000";
     const workspaceId = await this.ws.id();
-    const rows = await this.db.auditEvent.findMany({ where: { workspaceId }, orderBy: { at: "desc" }, take: firmKey ? limit * 5 : limit });
+    const rows = await this.db.auditEvent.findMany({ where: { workspaceId }, orderBy: { at: "desc" }, take: firmId ? limit * 5 : limit });
     let kept = rows;
-    if (firmKey) {
-      const own = new Set((await this.db.case.findMany({ where: { workspaceId, firmKey }, select: { id: true } })).map((c) => c.id.slice(0, 8)));
+    if (firmId) {
+      const own = new Set((await this.db.case.findMany({ where: { workspaceId, firmId }, select: { id: true } })).map((c) => c.id.slice(0, 8)));
       kept = rows.filter((e) => firmMayRead(e, own)).slice(0, limit);   // case-feed.ts: any line naming a case is a case line
     }
     // C8.2 (breaker M1 on #553): government identifiers never travel in the feed; the audit row keeps them (AG-7-95).
