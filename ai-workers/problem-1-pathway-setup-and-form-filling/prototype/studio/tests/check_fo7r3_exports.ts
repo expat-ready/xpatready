@@ -73,7 +73,8 @@ const inner = fakeFiles(); let failPut: RegExp | null = null;
 const files: FilesPort = { ...inner, put: async (f, k, b, t) => { if (failPut?.test(k)) throw new Error("store refused (the check)"); return inner.put(f, k, b, t); } };
 type Res = { status: number; body: any; text: string; headers: Headers };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 /** RFC 4180 rows (quotes, commas, CRLF), as a spreadsheet reads them. */
-const parseCsv = (t: string): string[][] => {
+const parseCsv = (raw: string): string[][] => {
+  const t = raw.replace(/^\uFEFF/, "");
   const rows: string[][] = []; let row: string[] = [], c = "", q = false;
   for (let i = 0; i < t.length; i++) {
     const ch = t[i]!;
@@ -227,6 +228,28 @@ try {
   const late = await call(tA, "GET", `${X}/${all.q.body.id}`), lateFile = await call(tA, "GET", `${X}/${all.q.body.id}/invoices.csv`); skew = 0;
   ok(`FO-7r3 E8 pass: within ${EXPORT_DAYS} days the link works; after them the export reads EXPIRED, no links`, fresh.status === 200 && late.body.state === "EXPIRED" && late.body.files.length === 0, late.body);
   ok("FO-7r3 E8 fail: an expired link → 410 \"Make a new export\"", lateFile.status === 410 && JSON.stringify(lateFile.body).includes("Make a new export"), lateFile.body);
+
+  // ---------------------------------------------------------------------------------------------------- E11 (review M1)
+  // the rows read in order: eight deposits of one holder on one day → the trust ledger lists them in the ledger's seq, the
+  // running balance rising by each amount to the statement's closing; every other file is in date order
+  const PT = person(A, "trust"), amounts = [1000, 4000, 9000, 2000, 7000, 3000, 8000, 5000];
+  for (const [k, a] of amounts.entries()) await call(tA, "POST", "/front-office/money/trust/deposits", { personId: PT, method: "E_TRANSFER", amountMinor: a, currency: "CAD", reference: `ET-T${k}`, idempotencyKey: `fo7r3-dep-t${k}` });
+  const ord = await exportOf(tA, "2020-03-01", today), tRows = ord.out.TRUST_LEDGER!.slice(1).filter((r) => r[4] === "Client trust Sample");
+  const tClose = (await call(tA, "GET", `/front-office/money/parties/person/${PT}/statement?pageSize=200`)).body.accounts.find((a: any) => a.account === "TRUST" && a.currency === "CAD")?.closingMinor;   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  let run = 0; const rising = tRows.length === 8 && tRows.every((r, k) => minor(r[7]!) === (run += amounts[k]!) && minor(r[5]!) === amounts[k]);
+  ok("FO-7r3 E11 pass: one holder's eight same-day deposits list in the ledger's order, each running balance the sum so far, the last the statement's trust closing", rising && minor(tRows.at(-1)![7]!) === tClose, { tRows: tRows.map((r) => r[7]), tClose });
+  const firstPT = ord.out.TRUST_LEDGER!.findIndex((r) => r[4] === "Client trust Sample");
+  ok("FO-7r3 E11 fail: no other holder's row falls inside that holder's run (a running balance never jumps to another client's)", ord.out.TRUST_LEDGER!.slice(firstPT, firstPT + 8).every((r) => r[4] === "Client trust Sample"), ord.out.TRUST_LEDGER!.map((r) => r[4]));
+  const dated = ["INVOICES", "PAYMENTS", "REFUNDS", "CREDIT_NOTES", "WRITE_OFFS"].every((k) => ord.out[k]!.slice(1).every((r, i, a) => i === 0 || a[i - 1]![0]! <= r[0]!));
+  ok("FO-7r3 E11 pass: every other file is in date order", dated, ord.out.PAYMENTS!.map((r) => r[0]));
+  // a holder with more entries than a page: 1,200 entries over two keyset pages, each once, in seq order
+  const PT2 = person(A, "trust-bulk");
+  sql(`set session_replication_role = replica; with p as (insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, created_at)
+      select gen_random_uuid(), '${A}', 'E_TRANSFER', 100, 'CAD', 'TRUST', '2020-05-05 10:00:00+00', 'fo7r3-bulk-' || g, 'seed:FO-7r-3', '2020-05-05 10:00:00+00' from generate_series(1, 1200) g returning id, idempotency_key)
+    insert into money_trust_entry (id, firm_id, person_id, kind, amount_minor, currency, seq, balance_after_minor, payment_id, created_by, created_at)
+    select gen_random_uuid(), '${A}', '${PT2}', 'DEPOSIT', 100, 'CAD', g, 100 * g, (select p.id from p where p.idempotency_key = 'fo7r3-bulk-' || g), 'seed:FO-7r-3', '2020-05-05 10:00:00+00' from generate_series(1, 1200) g`);
+  const tb = await exportOf(tA, "2020-05-05", "2020-05-05", ["TRUST_LEDGER"]), tbRows = tb.out.TRUST_LEDGER!.slice(1);
+  ok(`FO-7r3 E11 pass: 1,200 entries of one holder at one time export over two pages (${PAGE} a page), each once, in seq order`, tbRows.length === 1200 && tbRows.every((r, k) => minor(r[7]!) === 100 * (k + 1)), { n: tbRows.length, first: tbRows[0], last: tbRows.at(-1) });
 
   // ---------------------------------------------------------------------------------------------------- E10
   const BULK = 2500;
