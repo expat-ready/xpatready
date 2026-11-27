@@ -326,6 +326,20 @@ jobs:
         # Before tooling-checks.sh (review of #3908, minor 2): a changed tool's own test may read node_modules.
         if: env.ROUTE == 'tooling'
         run: npm ci --prefix "$S" --ignore-scripts --no-audit --no-fund
+      - name: tooling route, zsh (check-isolated-ttl.sh and isolated.sh need it; guards.yml's step)
+        # Lab lane, 27 Nov (Lead 7 on #3918): the tooling route (#3908) runs a changed tool's tests without cloud-setup.sh,
+        # so the runner had no zsh; check-guards.sh's test then failed on check-isolated-ttl.sh ("zsh is missing") on every
+        # PR that changes check-guards.sh. Same step as guards.yml (P-214: Homebrew when apt cannot reach Ubuntu).
+        if: env.ROUTE == 'tooling'
+        run: |
+          if ! command -v zsh; then
+            sudo apt-get update -qq || true
+            if ! sudo apt-get install -y -qq zsh; then
+              HOMEBREW_NO_AUTO_UPDATE=1 /home/linuxbrew/.linuxbrew/bin/brew install --quiet zsh
+              sudo ln -sf "$(/home/linuxbrew/.linuxbrew/bin/brew --prefix)/bin/zsh" /usr/bin/zsh
+            fi
+          fi
+          zsh --version
       - name: tooling route, lint and the tests of the changed tool files (tooling-checks.sh; fast route, P-847)
         # Every changed path is pipeline or tooling (or a record) and no product suite depends on it (change-route.sh), so
         # no app set-up, no type check, no suite: each changed file is linted and the tests that cover it run (its
