@@ -13,6 +13,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { call, sql as copySql } from "../acceptance/lib/m3.ts";
 import { recorder } from "./runtime/api.ts";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
@@ -54,7 +55,9 @@ try {
   const before = new Set(procs());
   file(join(MIG, NEW, "migration.sql"));
   const added = procs().filter((p) => !before.has(p));
-  for (const d of all.filter((x) => x > NEW)) file(join(MIG, d, "migration.sql"));
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks run on the migrations before it;
+  // part 2 has its own suite check_csw1_part2.ts.
+  for (const d of all.filter((x) => x > NEW && x < CSW1_PART2)) file(join(MIG, d, "migration.sql"));
 
   // ---------------------------------------------------------------- DW1: the backfill
   const firmOf = (t: string) => sql(`select string_agg(firm_key || '=' || coalesce(firm_id::text, 'null'), ',' order by firm_key) from ${t}`);
@@ -186,11 +189,16 @@ const demoWs = copySql(`select id from workspace where key = 'demo'`);
 ok("CS-W1 DW5 pass: the demo reset deletes the demo workspace's cases of both firms, and both Sample firms are still there",
   reset.status < 300 && copySql(`select count(*) from runtime_case where workspace_id = '${demoWs}'`) === "0" && firmsOn() === "sample-firm,sample-solo", [reset.status, reset.body?.detail]);
 ok("CS-W1 DW5 fail: the reset never deletes a case of another workspace", copySql(`select firm_key from runtime_case where id = '${OTHER_CASE}'`) === "sample-firm");
+// The copy has every migration: since CS-W1 part 2 the fill fires also under the replica role, so this case had its firm
+// from its insert (a case can no longer be left without one); the check still holds after the reset.
 ok("CS-W1 DW5 pass (breaker M1): a case left without its firm (made before the seed) gets it when the demo seeds (reset)",
   copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
-copySql(`update runtime_case set firm_id = null where id = '${OTHER_CASE}'`);
+// CS-W1 part 2 refuses emptying a case's firm (case_firm_fixed, NOT NULL), so the case can no longer be put back without
+// its firm for the start-up fill to fill: the check is now that the emptying is refused (copySql gives null on an error),
+// and that the start-up fill still runs and leaves the case's firm as it is.
+const emptied = copySql(`update runtime_case set firm_id = null where id = '${OTHER_CASE}' returning id`);
 await (await import("../api/src/firms.ts")).fillCaseFirmIdsOnStart(`postgresql://xr_studio@127.0.0.1:54329/${process.argv[3] ?? "xr_studio_accept"}`);
-ok("CS-W1 DW5 pass (breaker M1): the start-up fill (main.ts, after the start-up seed) fills it too",
-  copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
+ok("CS-W1 DW5 pass (breaker M1): a case's firm cannot be emptied (CS-W1 part 2), and after the start-up fill (main.ts) it is still its key's firm",
+  emptied === null && copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
 copySql(`set session_replication_role = replica; delete from runtime_case where id = '${OTHER_CASE}'; delete from combination where id = '${u(79)}'; delete from workspace where id = '${OTHER}'`);
 process.exit(summary() ? 1 : 0);

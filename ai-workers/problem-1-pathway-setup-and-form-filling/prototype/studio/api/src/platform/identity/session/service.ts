@@ -115,7 +115,8 @@ export class PlatformSession {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
       if (pre) await lockFirm(tx, pre.firm_id);   // as inFirm (J-5 B1); PF-4bc: a bounded wait
       // PF-11c (break M3): a firm closed on day 90 takes no new staff member; read under the firm's lock the close also takes.
-      if (pre && (await tx.platformFirm.findFirst({ where: { id: pre.firm_id }, select: { status: true } }))?.status === "DELETED")
+      // PF-27 (review M5): nor does a firm under a security lock (an invitation sent before the lock stays unused).
+      if (pre && ["DELETED", "SECURITY_LOCK"].includes((await tx.platformFirm.findFirst({ where: { id: pre.firm_id }, select: { status: true } }))?.status ?? ""))
         problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
       if (state === "EXPIRED") problem(410, "Invitation expired", INVITE_WORDS.expired(i!.firm_name), { code: "INVITATION_EXPIRED", state });

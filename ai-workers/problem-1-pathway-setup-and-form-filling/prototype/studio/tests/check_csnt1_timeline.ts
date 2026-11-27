@@ -24,6 +24,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SAMPLE_FIRM_ID, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const NEW = "20261126100000_shared__csnt1c_case_client_note", PART1 = "20261122110000_csnt1a_case_note";
@@ -57,7 +58,8 @@ ok(`CS-NT1 DW17 pass: the migration has its own stamp, later than part 1's and e
 for (const d of all.filter((x) => x < NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
 {
   const W0 = randomUUID(), K0 = randomUUID();
-  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id) values ('${K0}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001', '${randomUUID()}');
+  // CS-W1 part 2 needs the case's firm; it is written with it, as its client row is not (no later backfill update to check it).
+  sql(`${SAMPLE_FIRMS_SQL} set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id, firm_id) values ('${K0}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001', '${randomUUID()}', '${SAMPLE_FIRM_ID["sample-firm"]}');
        insert into case_note (firm_id, workspace_id, case_id, note_key, version, text, author, by_actor) values ('${randomUUID()}', '${W0}', '${K0}', '${randomUUID()}', 1, 'An existing note', 'staff:x', 'staff:x')`, DEMO);
 }
 psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]);
@@ -124,7 +126,7 @@ try {
   /** A case of the firm (its client made by case_client_for_case, ENABLE ALWAYS); its id and its client's. */
   const newCase = (firmKey = "sample-firm") => {
     const id = randomUUID();
-    sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', '${firmKey}')`);
+    sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_id, firm_key) values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-${String(++n).padStart(5, "0")}', (select id from platform_firm where key = '${firmKey}'), '${firmKey}')`);
     return { id, client: sql(`select client_id from runtime_case where id = '${id}'`) };
   };
   /** An audit line written straight to the table (its trigger off), at a time given, as a case's code would write it. */
@@ -266,7 +268,7 @@ try {
   ok("break F2 pass: 300 lines the prefilter reads but case-feed.ts drops never leave an empty page: page 1 holds the case's 10 lines and says no more",
     dp.status === 200 && dp.body.lines.length === 10 && dp.body.more === false && dp.body.lines.every((l: { summary: string }) => l.summary.includes(`saved on case ${d8}`)), { n: dp.body?.lines?.length, more: dp.body?.more });
   const bc = randomUUID().replace(/^.{8}/, s8);
-  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key) values ('${bc}', '${W}', '${randomUUID()}', 'user-Q', 'user-S', 'C-2026-09999', 'sample-solo')`);
+  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_id, firm_key) values ('${bc}', '${W}', '${randomUUID()}', 'user-Q', 'user-S', 'C-2026-09999', (select id from platform_firm where key = 'sample-solo'), 'sample-solo')`);
   const leak = line({ at: tA(3_000), actor: "user-S", action: "stage moved", entity: "case", key: bc, summary: `FIRMB-LEAK moved case ${s8} to Submitted`, caseId: null, firmId: null });
   const tlF3 = await call(BASE, "GET", TL(c.id), { token: T.OWNER });
   ok("break F3 fail: a 'case' line keyed by another case's full id (the same first 8 characters, no firm id) never shows on this case's timeline",

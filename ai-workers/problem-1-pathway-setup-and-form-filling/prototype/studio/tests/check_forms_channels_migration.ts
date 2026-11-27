@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261030090000_w110_channels", GUARDS = "20261030140000_w110_channel_guards";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", DB = "xr_studio_fx_migration", URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
@@ -75,7 +76,8 @@ try {
     && sql(`update combination_form set channel='ONLINE', signature='TYPED_NAME' where lineage_key='IMM 5645' returning signature`) === "TYPED_NAME"
     && sql(`update combination_form set channel='NOT_NEEDED', signature='NONE' where lineage_key='IMM 5645' returning signature`) === "NONE");
   const K = "00000000-0000-4000-8000-0000000000c1", I = "00000000-0000-4000-8000-0000000000f1";
-  sql(`set session_replication_role = replica;
+  sql(`${SAMPLE_FIRMS_SQL}   -- the case's firm (CS-W1 part 2)
+    set session_replication_role = replica;
     insert into runtime_case (id, workspace_id, combination_id, reference, client_actor_id, created_by, case_number) values ('${K}', '${W}', '${C}', 'T-1', 'client', 'test', 'C-2026-90001');
     insert into form_instance (id, workspace_id, case_id, subject_id, form_number, config_release_id, snapshot_id, status, created_by) values ('${I}', '${W}', '${K}', '${W}', 'IMM 5257', '${W}', '${W}', 'GENERATED', 'test');
     insert into validated_copy (workspace_id, form_instance_id, path, sha256, facts_hash, read_back, read_by) values ('${W}', '${I}', 'v.pdf', repeat('a', 64), repeat('b', 64), '{}', 'user-O');`);
