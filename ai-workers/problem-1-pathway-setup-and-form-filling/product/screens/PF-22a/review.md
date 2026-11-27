@@ -231,3 +231,33 @@ Reviewer: Approve 560e9b8200488d76d6560afa5a9c24c726ac9e29
 
 **Verdict: Approve**
 * Blockers: none. Majors: none. Minors: none.
+
+## Round 7 (diff-only, 27 Nov 2026): head `93aadf0e1ba77eca9160f160c9d768190d99a5a7`
+Scope (P-277): `60989a80f..93aadf0e1`, three commits:
+* 915fad930 merges origin/main eb99c211a.
+* c8e93b07d renames the folder `20261126155300_shared__pf22a_custom_fields` to `20261127014900_shared__pf22a_custom_fields`. Main now has 20261126160000 (CS-W1 part 2), and #3831 may land 20261127005100.
+* 93aadf0e1 updates the references to the new name.
+
+Not re-run: the screen walk and the journey test, because nothing on screen changed. Journey score: N/A. PostgreSQL 18 is not in this container, so (d) was checked by reading, and CI's suites are the run proof.
+* **The merge is pure.** `git merge-tree --write-tree 60989a80f eb99c211a` gives tree `3bdbd5991`, the same tree as 915fad930. No conflict resolution was done by hand. After the merge, `git diff -M --stat 915fad930 93aadf0e1` shows only the 5 re-stamp files (5+/5-, migration.sql 0).
+* **(a) migration.sql is byte-identical.** It is blob `8e399d712267` at 60989a80f (old folder) and at 93aadf0e1 (new folder). c8e93b07d is a pure `R100` rename of migration.sql and rollback.sql.
+* **c8e93b07d alone would have failed.** It renamed only the folder: `NEW` in check_pf22a_custom_schema.ts still named the old folder, which no longer existed. `all.includes(NEW)` at line 47 would be false and `psqlFile(… NEW …)` at line 56 would have no file to read. rollback.sql's `_prisma_migrations` delete would also have targeted the old name. 93aadf0e1 fixes this. I did not approve c8e93b07d on its own.
+* **(b) Every reference has moved at 93aadf0e1.** The diff `c8e93b07d..93aadf0e1` changes exactly five lines, each from `20261126155300` to `20261127014900`, and nothing else:
+  - rollback.sql line 3 (the `psql -f` path) and line 14 (the `_prisma_migrations` delete)
+  - the platform-custom.prisma header (line 8)
+  - MODULE.rows/PF-22a.md (line 1)
+  - `NEW` in tests/check_pf22a_custom_schema.ts (line 21)
+  `git grep 20261126155300 93aadf0e1` in the studio finds nothing.
+* **(c) Migration slots:** after `git fetch origin main`, `migration-slots.py check origin/main..93aadf0e1` gives PASS (1 new migration against main's newest 20261126160000). origin/main is still eb99c211a.
+* **(d) Applying after CS-W1 part 2 is safe.** PF-22a's migration.sql never names runtime_case, case_stage, firm_case_counter, any `case_firm_*` function or `case_lookup`. Its only writes are the `agent/custom-field:manage` rows in platform_permission_key and platform_role_permission, which CS-W1 part 2 does not touch. CS-W1 part 2 only locks, checks and alters the three case tables and adds triggers to them, and it does not depend on PF-22a either. In the test:
+  - The EMPTY and DEMO copies now also run CS-W1 part 2 before NEW. They have no case rows at that point, so its stop finds nothing and NOT NULL applies.
+  - `seedSampleFirms` writes firms, subscriptions, staff, grants and credentials. It only reads runtime_case (line 129), so the NOT NULL columns cannot affect it.
+  - The working DB still runs every migration and then seeds, as in round 6. Only the place of NEW in the list changed.
+  - The test never writes a case row.
+  - The `before.length === all.indexOf(NEW)` stamp check holds with the new name.
+  Nothing in PF-22a's SQL or test depends on running before CS-W1 part 2.
+
+Reviewer: Approve 93aadf0e1ba77eca9160f160c9d768190d99a5a7
+
+**Verdict: Approve**
+* Blockers: none. Majors: none. Minors: none.
