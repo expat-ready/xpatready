@@ -28,6 +28,7 @@ TESTS="$TESTS check-branch-sweep.sh check-queue-red.sh"   # ENF-761 parts 5+3, #
 TESTS="$TESTS check-checks-changed.sh"   # A351 C2: checks weakened or removed
 TESTS="$TESTS check-stop-check.sh"   # P-756 tune 1 stop-check, #2444
 TESTS="$TESTS check-capacity-watch.sh"   # A348: capacity
+TESTS="$TESTS check-records-dir.sh"   # private split PS-1b: records-dir.sh, CURRENT-LEAD.md
 TESTS="$TESTS check-own-migration-guard.sh"   # own-migration guard (#3254)
 TESTS="$TESTS check-same-cause.sh"   # A351 B1: same cause twice
 TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
@@ -53,6 +54,7 @@ rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
 # Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
+1 split|product/tools/check-docs.sh|/CURRENT LEAD: CURRENT-LEAD.md has/d|check-records-dir.sh
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
 2 who|product/tools/label-guard.sh|s/^team=.*/team=true/|check-label-guard.sh
