@@ -12,6 +12,11 @@ while read -r lref lsha rref rsha; do
   case "$lsha" in *[!0]*) ;; *) continue;; esac          # local delete: nothing to check
   # P-87: every change reaches main by PR (GitHub cannot lock main on this plan, so the rule is held here too).
   [ "$rref" = refs/heads/main ] && [ -z "$XR_ALLOW_MAIN_PUSH" ] && { echo "Push to main refused (P-87): push your branch and open a PR."; rc=1; continue; }
+  # G-4 (1) (P-611): the branch's PR is still open; a push to a branch whose PR merged or closed reaches no PR and is
+  # lost. pr-open-guard.sh passes a new branch (no PR yet), the tech lead's lead/* branches, and GitHub unreadable (a
+  # warning); a branch restarted from main under its old name needs XR_ALLOW_CLOSED_PR_PUSH=1, on the Lead's word.
+  # Wired 27 Nov (#3921): the guard and its test came on 15 Nov (b5578da3e) without this call.
+  case "$rref" in refs/heads/*) bash "$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/pr-open-guard.sh" "${rref#refs/heads/}" "$1" || { rc=1; continue; };; esac
   # P-91: the scout lane (Goose) pushes only its own files and small fixes.
   case "$lref" in refs/heads/scout/*) bash "$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/scout.sh" scope "$lsha" || { rc=1; continue; };; esac
   # New or existing branch alike: check every commit on the pushed head that is not yet on a branch of the remote being

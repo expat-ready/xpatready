@@ -98,10 +98,16 @@ cond = lambda pre: next((st.get("if") for n, st in f.items() if n.startswith(pre
 if cond("set up like a cloud session") != "env.ROUTE == 'full'": out.append("fast: the app set-up is not full-only")
 if cond("tooling route, lint") != "env.ROUTE == 'tooling'": out.append("fast: tooling-checks.sh is not on the tooling route")
 if cond("graph, official PDFs") is not None: out.append("fast: the tools' read-only list does not run on every route of job fast")
+if cond("every route a pack's set-up calls has a screen") is not None: out.append("fast: route-has-screen does not run on every route of job fast")
+if cond("every port's fake and real adapters") is not None: out.append("fast: the port contracts do not run on every route of job fast")
+names = list(f)
+ni = next((i for i, n in enumerate(names) if n.startswith("tooling route, the packages")), -1)
+ti = next((i for i, n in enumerate(names) if n.startswith("tooling route, lint")), -1)
+if ni < 0 or ti < 0 or ni > ti: out.append("fast: the tooling route's npm ci does not come before tooling-checks.sh")
 print("\n".join(out))
 PY
 )
-  if [ -z "$c" ]; then echo "PASS  ci.yml: code and full runs are full, notes is docs, tooling keeps the tools' list, types and app set-up full only"
+  if [ -z "$c" ]; then echo "PASS  ci.yml: code and full runs are full, notes is docs, tooling keeps the tools' list, route-has-screen and port contracts (packages first), types and app set-up full only"
   else printf 'FAIL  ci.yml: %s\n' "$c"; bad=1; fi
   [ "$bad" = 0 ] && echo "all passed"; return $bad
 }
