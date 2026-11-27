@@ -13,7 +13,8 @@ import { Check, RotateCcw } from "lucide-react";
 import { api, ApiError, useActorId, useApi, useToast } from "@/lib/api";
 import { Button, Dialog, Field, Notice, Pill, Select, Textarea } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tip } from "@/components/status";
 import { cn } from "@/lib/utils";
 import type { FormStamp, ReviewRound, ReviewRoundFiling } from "../../../contracts/runtime";
 import { noRetryOnRefusal, useCaseWhere } from "./questionnaire";
@@ -33,14 +34,10 @@ const value = (v: unknown): string => v === null || v === undefined || v === "" 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const focusLater = (el: () => HTMLElement | null | undefined) => requestAnimationFrame(() => el()?.focus());
 
-/** A status chip with its tooltip, reached by keyboard too (BIC-14). */
+/** A status chip with its tooltip, reached by keyboard too (BIC-14). The shared Tip (LR-110): a plain Radix tooltip was
+ *  closed by the page scroll a keyboard focus can cause just after it opened (c83's walk 10 in CI). */
 function Chip({ tone, words, tip, data }: { tone: string; words: string; tip: string; data?: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild><span tabIndex={0} className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary" data-state-chip={data}><Pill tone={tone}>{words}</Pill></span></TooltipTrigger>
-      <TooltipContent>{tip}</TooltipContent>
-    </Tooltip>
-  );
+  return <Tip tip={tip} focusable><span className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary" data-state-chip={data}><Pill tone={tone}>{words}</Pill></span></Tip>;
 }
 
 /** /cases/:id/representative-review: the newest round, or the empty state that teaches "Send for review". */
