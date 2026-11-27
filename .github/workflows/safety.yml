@@ -1,0 +1,54 @@
+# Bundle A5, product safety checks (lab register LR-045, LR-074), REPORT ONLY at first: every step after checkout is
+# continue-on-error, no Mergify condition and no ruleset names it, so a finding is a warning on the PR, never a red check.
+# LR-045: a migration this PR adds is read for destructive or non-additive statements, a stamp not later than the base's
+# newest, and a change to a migration the base has (studio/tools/safety/migration-check.py). LR-074: every route that
+# changes something must be refused to nobody and to a wrong role by a guard, a declared permission or its handler's own
+# check, or be on the reviewed list (studio/tools/safety/route-sweep.ts). Each tool runs its planted self-test first.
+# Read-only token, no secrets, package scripts off. US$0, no model call. Turning it into a refusal is a later Lead call.
+name: safety
+on:
+  pull_request:
+    paths:
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/lib/routes.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/safety/**"
+      - ".github/workflows/safety.yml"
+concurrency:
+  group: safety-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+permissions: {}
+jobs:
+  safety:
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read }
+    defaults: { run: { shell: bash } }   # -eo pipefail: a step with findings shows as failed (and continues), not green
+    env:
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 2, persist-credentials: false }   # the test merge and its first parent, the base
+      - name: migration check, self-test (planted good and bad migrations)
+        continue-on-error: true
+        run: python3 -I "$S/tools/safety/migration-check.py" --self-test
+      - name: migration check, this PR against its base (warning only)
+        continue-on-error: true
+        run: |
+          python3 -I "$S/tools/safety/migration-check.py" --base HEAD^1 | tee "$RUNNER_TEMP/mig.txt"
+          echo "### Migration check (LR-045, report only)" >> "$GITHUB_STEP_SUMMARY"; sed 's/^::warning:://' "$RUNNER_TEMP/mig.txt" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v4
+        continue-on-error: true
+        with: { node-version-file: .nvmrc }
+      - name: npm ci (package scripts off)
+        continue-on-error: true
+        run: cd "$S" && npm ci --ignore-scripts --no-audit --no-fund
+      - name: route sweep, self-test (planted guarded and unguarded writes)
+        continue-on-error: true
+        run: cd "$S" && npx tsx tools/safety/route-sweep.ts --self-test
+      - name: route sweep, the app (warning only)
+        continue-on-error: true
+        run: |
+          cd "$S" && npx tsx tools/safety/route-sweep.ts | tee "$RUNNER_TEMP/routes.txt"
+          echo "### Route sweep (LR-074, report only)" >> "$GITHUB_STEP_SUMMARY"; sed 's/^::warning:://' "$RUNNER_TEMP/routes.txt" >> "$GITHUB_STEP_SUMMARY"
