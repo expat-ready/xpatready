@@ -21,6 +21,12 @@ const A = "11111111-1111-4111-8111-111111111111", B = "33333333-3333-4333-8333-3
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Prisma 7.10 (ship-security deps, #3904) no longer sends the late BEGIN after maxWait, so the timing below may leave no
+// leak to catch. When it does not leak, the same leak is made by hand, the way adapter-pg's PgTransaction.rollback() makes
+// it (unchanged in 7.10.1: release() alone, no ROLLBACK): a checkout, BEGIN, release. The guard is then tested either way.
+const leakByHand = async (p: { connect: () => Promise<{ query: (t: string) => Promise<unknown>; release: () => void }> }, firm?: string) => {
+  const c = firm ? await withFirm(firm, () => p.connect()) : await p.connect(); await c.query("begin"); c.release(); await sleep(300);
+};
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 const { WalledPool, withFirm } = await import("../api/src/platform/firm-scope.ts");
@@ -42,6 +48,9 @@ try {
   await sleep(100);
   const gaveUp = await withFirm(A, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 })).then(() => "ran", (e: Error) => e.message);
   await long; await sleep(300);
+  const prismaLeaked = fired("destroyed") === 1;
+  if (!prismaLeaked) await leakByHand(pool, A);
+  console.log(`note: the leak came from ${prismaLeaked ? "Prisma's late BEGIN (maxWait)" : "a hand-made checkout, BEGIN, release (this Prisma sends no late BEGIN)"}`);
   ok("set-up: the second transaction gave up waiting for the connection (Prisma's maxWait)", gaveUp !== "ran" && /transaction|timeout|wait/i.test(gaveUp), gaveUp);
   ok("pass (review m2): the guard fired on that leak (one warn line, \"destroyed\"), so the cases below test the guard, not luck", fired("destroyed") === 1, { destroyed: fired("destroyed") });
 
@@ -70,6 +79,7 @@ try {
       await sleep(100);
       const late = await db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 }).then(() => "ran", (e: Error) => e.message);
       await hold; await sleep(300);
+      if (fired("destroyed") === 1) await leakByHand(pool2);   // unscoped checkout: the bypass-role default, as the late transaction's
       await withFirm(B, who);
       await withFirm(B, () => db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); throw new Error("a refused change"); })).catch(() => undefined);
       const b = await withFirm(B, who);
