@@ -425,6 +425,20 @@ scopes:
 # Lead-tool fixes are on main (the pipeline queue's comment below; undo: move pipeline back after product).
 # product/screens/B119/check-queue-rules.py reads this file and fails when the queues stop routing that way. The daily
 # records PR (P-336) stays.
+# OS-50 (P-733, P-820; full-power #129; OS-PM 4, 26 Nov): a PR that completes a Release 1 item goes first among the PRs
+# waiting in its queue, so the next proof lands sooner. Its body has a "Completes: R1.<n>" line, read as CI's item-proof.mjs
+# and proof-read-watch.py read it (optionally a list item, quote or bold); a records PR never. Top level, as Mergify reads
+# priority rules (inside a queue rule it refused the file: "Extra inputs are not permitted", #3825). No
+# allow_checks_interruption: it goes ahead of waiting PRs only, never restarting a running batch. Checked by
+# product/screens/B119/check-queue-rules.py.
+priority_rules:
+  - name: near-proven
+    conditions:
+      - body ~= (?m)^[\s>*-]*(\*\*|__)?Completes(\*\*|__)?\s*:(\*\*|__)?\s*R1\.\d+
+      - -label = records
+    priority: high
+    allow_checks_interruption: false
+
 queue_rules:
   - name: verdicts
     batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR

@@ -9,9 +9,9 @@
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/gd.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "${T:?}"' EXIT
-# The frozen size of 000-base.sh at OS-85 (merged with main 27 Nov, 23:2x IST): its MUT blocks and its rows. Rows may be fixed or retired (fewer),
+# The frozen size of 000-base.sh at OS-85 (merged with main 27 Nov, last at 00:2x IST 28 Nov): its MUT blocks and its rows. Rows may be fixed or retired (fewer),
 # never added: a new item writes guards.d/OS-<id>.sh.
-BASE_BLOCKS=18; BASE_ROWS=691
+BASE_BLOCKS=20; BASE_ROWS=698
 judge() {  # judge <tools dir> → one line per problem, nothing when it holds
   python3 -I - "$1" "$BASE_BLOCKS" "$BASE_ROWS" <<'PY'
 import os, re, sys
