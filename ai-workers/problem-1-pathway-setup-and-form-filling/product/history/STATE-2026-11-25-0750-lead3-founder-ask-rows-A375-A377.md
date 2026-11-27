@@ -1,0 +1,6 @@
+# Founder ask rows A376-A377, moved word for word from STATE.md by Lead 3 (25 Nov 07:50 IST) to keep STATE under 12 KB
+
+| # | Ask (IST) | Status |
+|---|---|---|
+| A377 | 24 Nov ~22:2x (typed, spoken) | approvals or standbys if needed; **Lead numbering from one**; everything discussed done when he wakes in 7-8 h; fresh perspective, full responsibility; signed in to claude.ai and GitHub in the browser; computer use approved; AWS sign-in tonight if needed | Lead 1; standbys Lead 2, 3 started; AWS: yes, he signs in now (read-only reads, US$0) |
+| A376 | 24 Nov ~22:0x (typed, paste) | Lead on the new account; goal proven up from 55; qa first (2 fresh), then Partials R1.93, R1.69, R1.87, R1.104, R1.10, R1.85, R1.68, R1.58, R1.29, R1.86, one session each; queue full, reds explained, shared-area waiting measured with one recommendation; outside steps one at a time; 30-min reports. Approvals: cloud canary then 2 qa + up to 8 builders (Opus 5.5 medium, waves.py allow, R1.10 A2 A3 A5 included); 2 standbys; labels after Approve and read, ready, retarget, re-run, requeue, dispatch, answers in briefs; end the 24-h pause only when no Partial can use a session. Still his: money, new accounts, terms, security or permission settings, merges outside the queue, deleting, a lower bar, refusals | in force; word for word in the Lead 1 transcript and RESUME block |

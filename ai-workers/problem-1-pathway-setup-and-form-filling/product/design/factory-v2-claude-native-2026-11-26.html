@@ -1,0 +1,212 @@
+<title>Factory v2</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one column; before/after factory lanes as the centrepiece, then changes, safety, power, steps, cost, decision. */
+:root{
+  --bg:#f5f7f8; --panel:#ffffff; --fg:#17212b; --muted:#59667a; --line:#d8dee6;
+  --accent:#1f6f8b; --accent-soft:#e0f0f5;
+  --yes:#12805c; --yes-soft:#dcf2e8; --part:#a56300; --part-soft:#fbeed6; --no:#8a93a3; --no-soft:#eceff3; --risk:#b3261e; --risk-soft:#fbe4e2;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10161c; --panel:#17202a; --fg:#e6ebf0; --muted:#98a5b6; --line:#2a3542;
+  --accent:#6cc3de; --accent-soft:#183440;
+  --yes:#4fd1a1; --yes-soft:#123a2c; --part:#f0ad4e; --part-soft:#3b2c14; --no:#7d8798; --no-soft:#222a35; --risk:#ff8a80; --risk-soft:#3d1c1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161c; --panel:#17202a; --fg:#e6ebf0; --muted:#98a5b6; --line:#2a3542;
+  --accent:#6cc3de; --accent-soft:#183440;
+  --yes:#4fd1a1; --yes-soft:#123a2c; --part:#f0ad4e; --part-soft:#3b2c14; --no:#7d8798; --no-soft:#222a35; --risk:#ff8a80; --risk-soft:#3d1c1a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1040px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:clamp(28px,4.4vw,42px)} h2{font-size:24px} h3{font-size:17px}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section,.hero{display:grid;gap:16px}
+.thesis{font-size:19px;max-width:64ch} .thesis b{color:var(--accent)}
+.acct{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:8px;min-width:0;align-content:start}
+.box.ok{border-top:4px solid var(--yes)} .box.warn{border-top:4px solid var(--part)}
+.tag{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.04em}
+.tag.ok{color:var(--yes)} .tag.warn{color:var(--part)}
+.lanes{display:grid;gap:14px}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px}
+.lane h3{font-size:15px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.s{flex:1 1 100px;min-width:96px;border-radius:8px;padding:8px 9px;font-size:12.5px;font-weight:600;display:grid;gap:3px}
+.s span{font-weight:400;font-size:11.5px;opacity:.85}
+.s.old{background:var(--no-soft);color:var(--fg)}
+.s.oldbad{background:var(--risk-soft);color:var(--fg)}
+.s.claude{background:var(--accent-soft);color:var(--fg)}
+.s.gh{background:var(--part-soft);color:var(--fg)}
+.s.ours{background:var(--yes-soft);color:var(--fg)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.board{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td .sub{color:var(--muted);font-size:13px;display:block;margin-top:2px}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.chip.claude{background:var(--accent-soft);color:var(--accent)} .chip.gh{background:var(--part-soft);color:var(--part)} .chip.ours{background:var(--yes-soft);color:var(--yes)} .chip.gone{background:var(--risk-soft);color:var(--risk)}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.lock{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;gap:6px}
+.lock b{font-family:var(--display)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{font-family:var(--display);font-size:26px;display:block;font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--muted)}
+ol.steps{list-style:none;margin:0;padding:0;display:grid;gap:12px;counter-reset:st}
+ol.steps>li{counter-increment:st;display:grid;grid-template-columns:44px 1fr;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+ol.steps>li::before{content:counter(st);font-family:var(--display);font-size:22px;font-weight:700;color:var(--accent);width:40px;height:40px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center}
+.who{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.you{color:var(--risk);font-weight:600}
+ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.note{background:var(--part-soft);border-radius:10px;padding:12px 14px;font-size:14px}
+.src{font-size:13px;color:var(--muted)} .src a{color:var(--accent)} .src ol{padding-left:18px;display:grid;gap:3px}
+code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+@media (max-width:560px){ol.steps>li{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Plan for the founder · Lead 3 · 26 Nov 2026, 15:0x IST</div>
+  <h1>Factory v2: use what Claude Code and GitHub already give us</h1>
+  <p class="thesis">My recommendation: <b>stop building our own machinery around merging</b>. Hand reviewing, fixing and approving to Claude's agents, and merging to GitHub's own queue. Keep the parts that are ours and work: our tests, our qa proof, our product rules. About <b>three quarters</b> of our tooling code then goes. Account switching ends too, because the agents belong to an organisation, not to one login.</p>
+</header>
+
+<section>
+  <div class="eyebrow">I checked your accounts</div>
+  <div class="acct">
+    <div class="box ok"><span class="tag ok">GITHUB · ENTERPRISE ✔</span><h3>Your GitHub is Enterprise</h3><p>The <code>expat-ready</code> organisation's plan reads "enterprise". So GitHub's own merge queue, branch rules and auto-merge are all available to us.</p></div>
+    <div class="box warn"><span class="tag warn">CLAUDE · ULTRA (INDIVIDUAL)</span><h3>Your Claude account is not a business plan</h3><p>Claude reports this account as "Ultra", an individual plan, at 62% of this week. GitHub Enterprise and Claude Enterprise are different subscriptions from different companies. Claude Ship's agents need a <b>Claude Team or Enterprise</b> plan.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Before and after</div>
+  <h2>The same factory, with fewer moving parts</h2>
+  <div class="legend"><span><i class="dot" style="background:var(--accent-soft)"></i>Claude provides</span><span><i class="dot" style="background:var(--part-soft)"></i>GitHub provides</span><span><i class="dot" style="background:var(--yes-soft)"></i>Ours, kept</span><span><i class="dot" style="background:var(--risk-soft)"></i>Ours, removed</span></div>
+  <div class="lanes">
+    <div class="lane"><h3>Today</h3>
+      <div class="row">
+        <div class="s ours">Lead shapes row<span>founder decisions</span></div>
+        <div class="s ours">Cloud builders<span>/next, ~12 lanes</span></div>
+        <div class="s oldbad">Own reviewer + rounds<span>up to 7 rounds</span></div>
+        <div class="s oldbad">Labels + label guards<span>approve, remove, re-add</span></div>
+        <div class="s oldbad">Lead chases red PRs<span>30-min checks, watch</span></div>
+        <div class="s oldbad">Mergify, 2 queues<span>batches of 6</span></div>
+        <div class="s ours">qa proof<span>Works</span></div>
+        <div class="s oldbad">Account switch<span>everything restarts</span></div>
+      </div>
+    </div>
+    <div class="lane"><h3>Factory v2</h3>
+      <div class="row">
+        <div class="s ours">Lead shapes row<span>founder decisions</span></div>
+        <div class="s claude">Cloud builders<span>on the organisation's seats</span></div>
+        <div class="s claude">Code Review<span>with our review checklist</span></div>
+        <div class="s claude">PR Steward<span>fixes red CI, conflicts, comments</span></div>
+        <div class="s claude">Claude Approvals<span>who must approve which files</span></div>
+        <div class="s gh">GitHub merge queue<span>+ auto-merge, branch rules</span></div>
+        <div class="s ours">qa proof<span>Works, unchanged</span></div>
+        <div class="s claude">No switching<span>org seats + spend cap</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">What changes</div>
+  <h2>Each job goes to whoever already does it best</h2>
+  <div class="board"><table>
+    <thead><tr><th>Job</th><th>Today (ours)</th><th>Factory v2</th><th>Removed from our code</th></tr></thead>
+    <tbody>
+      <tr><td>Review a change</td><td>Reviewer agent, review rounds, round limits</td><td><span class="chip claude">Code Review</span><span class="sub">It is given our review checklist. The breaker agent stays for money, permissions, schema and new screens.</span></td><td>Review-round tooling</td></tr>
+      <tr><td>Fix red checks, conflicts, comments</td><td>Builders and the Lead chase them; a 3-minute watch</td><td><span class="chip claude">PR Steward</span><span class="sub">One agent per pull request, every time</span></td><td>Watch scripts, requeue nudges, about 1,100 lines</td></tr>
+      <tr><td>Approve</td><td><code>review: approved</code> label, label guard every 10 min, Lead labels</td><td><span class="chip claude">Claude Approvals</span> + <span class="chip gh">branch rules</span><span class="sub">The rules live in one file. Risky paths (money, schema, migrations, workflows) still need the Lead's read.</span></td><td>Label guard family, about 500 lines plus a cron</td></tr>
+      <tr><td>Merge</td><td>Mergify: product and records queues, batches, relabel after failures</td><td><span class="chip gh">GitHub merge queue</span> + auto-merge<span class="sub">One queue that tests the merged result itself</span></td><td>Mergify file, records label, test-merge rebuild</td></tr>
+      <tr><td>Keep work going past the weekly limit</td><td>Switch accounts at 95%; restart every lane and watch</td><td><span class="chip claude">Organisation seats + usage credits</span><span class="sub">With a monthly spend cap you set</span></td><td>Most of the account-switch playbook</td></tr>
+      <tr><td>Status for you</td><td>A 6,700-line board script and its tests</td><td><span class="chip claude">Claude analytics</span> + one small page<span class="sub">The page reads STATE and GitHub</span></td><td>Board family, 6,700 lines</td></tr>
+      <tr><td>Flaky tests</td><td>Auto-quarantine ledger and retry comments</td><td><span class="chip ours">Fix or delete the flaky test</span></td><td>About 650 lines</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Kept, because they are ours and they work</h3>
+  <p>The product and screen skills, immigration rules and official-source citations. The breaker agent and the journey tests. The qa lanes, walks and the "Works" proof. Nightly full runs. Our CI suites (slimmed: what to run, shards, type checks). The demo update. The push guard (no names, PDFs or source files). STATE, BACKLOG and DECISIONS in the repository. Claude doesn't do any of these for us.</p>
+</section>
+
+<section>
+  <div class="eyebrow">By the numbers (audit today)</div>
+  <div class="stats">
+    <div class="stat"><b>~15,100</b><span>lines in our tools folder, plus 8 workflows</span></div>
+    <div class="stat"><b>~75%</b><span>duplicate a Claude or GitHub feature, or are obsolete</span></div>
+    <div class="stat"><b>&lt;3,000</b><span>lines are truly ours (product and proof)</span></div>
+    <div class="stat"><b>155 → ~40</b><span>rules, keeping only what the tools don't enforce (my estimate)</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">How safe is it?</div>
+  <h2>Seven locks, all set by you or by GitHub, not by our scripts</h2>
+  <div class="grid3">
+    <div class="lock"><b>1 · Main is locked</b><span>A GitHub branch rule: no direct pushes, the <code>ci</code> check must pass, and a new push wipes old approvals.</span></div>
+    <div class="lock"><b>2 · Claude can't merge</b><span>PR Steward is built never to approve or merge. Anthropic's service refuses it. Only GitHub's queue merges.</span></div>
+    <div class="lock"><b>3 · Risky files need the Lead</b><span>The approvals policy keeps the Lead's read for money, schema, migrations and workflow files.</span></div>
+    <div class="lock"><b>4 · CI stays the gate</b><span>Claude Approvals can't read CI results, so <code>ci</code> stays its own required check.</span></div>
+    <div class="lock"><b>5 · Spend has a ceiling</b><span>A monthly cap on the organisation, on PR Steward and on Code Review. PR Steward has no limit until we set one, so we set it first.</span></div>
+    <div class="lock"><b>6 · Our guards still run</b><span>The push guard and GitHub's secret blocking run in CI, because the watch skips local git hooks.</span></div>
+    <div class="lock"><b>7 · Easy way back</b><span>Mergify and the old scripts stay in git history. If the first 48 hours go badly, the old flow returns in about an hour.</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">How we get more power</div>
+  <ul>
+    <li><b>No more account switches.</b> Builders, checks and agents keep running past the weekly limit, up to your cap. Today all of them die every few days.</li>
+    <li><b>An agent on every pull request, all the time.</b> Fixing a red check no longer waits for the Lead's next check. Today 81–85% of a pull request's life is waiting.</li>
+    <li><b>The Lead does Lead work.</b> Shaping rows, reading risky changes, proof. No more labelling, relabelling and chasing.</li>
+    <li><b>Less to break.</b> About 11,000 fewer lines of process code to keep working. The guards that removed labels caused the jams of 5 and 7 Nov.</li>
+    <li><b>Future-proof.</b> As Anthropic improves these agents, we get the improvements for free instead of rebuilding them.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">The switch-over</div>
+  <h2>About two days, product building continues</h2>
+  <ol class="steps">
+    <li><div><h3>Sign up for Claude Team and set the caps</h3><p class="who"><span class="you">You, ~20 min</span> (payment and admin clicks are yours)</p><p>A small Team organisation (2 standard seats), used only to switch on the agents. Builders stay on your Ultra accounts. Set a monthly cap on agent spend. Install the Claude GitHub App on <code>xpatready</code>. Turn on Code Review, PR Steward (with a cap) and Approvals in watch-only mode. I'll give you each link and the exact button.</p></div></li>
+    <li><div><h3>Empty the current queue</h3><p class="who">Lead, ~2–3 h</p><p>Let the green product pull requests merge through Mergify as they do now. Builders keep building; nothing new joins the old queue.</p></div></li>
+    <li><div><h3>One switch, then GitHub's queue goes live</h3><p class="who">Lead, ~half a day</p><p>Set up the branch rule and merge queue on <code>main</code>, add the approvals policy and our review checklist for Code Review, and switch off Mergify and the label scripts, all in the same switch. This is a tooling change, merged first.</p></div></li>
+    <li><div><h3>Delete what is replaced</h3><p class="who">Lead + 2 builders, ~1 day</p><p>Remove the guard tests, the board, flaky quarantine, the fallbacks and the watch scripts. Cut the lead, lead-watch and next skills and RULES down to one page each of what is ours.</p></div></li>
+    <li><div><h3>Product merging resumes, measured</h3><p class="who">Everyone, first 48 h</p><p>Compare against the last week: time from approval to merge, failed merges, Lead clicks per day, spend. If it is worse, we roll back (lock 7).</p></div></li>
+  </ol>
+</section>
+
+<section>
+  <div class="eyebrow">Cost, and what I don't know yet</div>
+  <div class="note" style="background:var(--yes-soft)">
+    <p><b>Your worry, answered (26 Nov 15:1x IST): don't move the builders to Team.</b> Per dollar, a Team premium seat gives less usage than Ultra ("5x" a standard seat, at $125 a month, against Ultra's $200). But Claude's agents aren't paid from seat usage. They are billed by use from organisation credits. So the best mix is a <b>small Team organisation (2 standard seats, about $50 a month) only to switch the agents on, with builders staying on Ultra</b>. Account switching for builders then hurts much less, because the agents keep fixing their pull requests after a switch. To stop switching entirely, turn on Ultra usage credits with a cap.</p>
+  </div>
+  <div class="note">
+    <p><b>Known (claude.com/pricing, today):</b> Team premium seat $125 a month ($100 if paid yearly), so two seats are about $250 a month. Code Review, PR Steward and extra usage are billed by use against organisation credits, with no flat price published.</p>
+    <p style="margin-top:8px"><b>Unknown:</b> what 12 builders cost past the seat allowance. I recommend a first-week cap (you pick the number), then I report the real daily spend so we can size it. Team has no "Projects" feature yet; we don't use it today. Your Ultra accounts can stay active as a fallback during the first week.</p>
+    <p style="margin-top:8px"><b>Cheaper alternative:</b> keep one Ultra account with usage credits and a cap. That also ends switching, but without Code Review, PR Steward or Approvals.</p>
+  </div>
+</section>
+
+<section class="src">
+  <div class="eyebrow">Sources (read 26 Nov 2026)</div>
+  <ol>
+    <li><a href="https://code.claude.com/docs/en/claude-ship">Claude Ship</a>, <a href="https://code.claude.com/docs/en/pr-steward">PR Steward</a>, <a href="https://code.claude.com/docs/en/code-review-costs">Code Review costs</a>: Team and Enterprise only; billed to organisation credits</li>
+    <li><a href="https://code.claude.com/docs/en/routines">Scheduled tasks</a>, <a href="https://code.claude.com/docs/en/claude-code-on-the-web">cloud sessions</a>, <a href="https://code.claude.com/docs/en/claude-projects">Projects</a>: tied to one claude.ai account</li>
+    <li><a href="https://code.claude.com/docs/en/costs">Costs</a> and <a href="https://claude.com/pricing">pricing</a>: usage credits, spend caps, seat prices</li>
+    <li><a href="https://code.claude.com/docs/en/desktop">Desktop "Merge when ready"</a>: GitHub auto-merge, works with a merge queue</li>
+    <li><a href="https://code.claude.com/docs/en/github-actions">Claude GitHub Action</a>: can run on an organisation API key</li>
+    <li>Our side: an audit of <code>product/tools</code> (98 files), 8 workflows, <code>.mergify.yml</code>, skills and agents, today; GitHub organisation plan read through the API today</li>
+  </ol>
+  <p>Not checked yet: the current branch rules on <code>main</code> (the sandbox refused that read; I'll check them at step 3). A rumoured new Claude Code desktop app ("Epitaxy") is unconfirmed, so nothing here depends on it.</p>
+</section>
+
+</div>
