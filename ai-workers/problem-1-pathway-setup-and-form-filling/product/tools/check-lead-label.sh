@@ -24,7 +24,7 @@ case "$m $p" in
   "GET pulls/"*) [ -f "$FX/pr.json" ] || { echo '{"message":"Not Found"}'; exit 22; }
     if [ -f "$FX/labelled" ] && [ -f "$FX/pr-after.json" ]; then cat "$FX/pr-after.json"; else cat "$FX/pr.json"; fi;;
   "GET issues/"*/comments*) [ -n "${FAIL_COMMENTS:-}" ] && { echo '{"message":"Server Error"}'; exit 22; }
-    [ "${pg:-1}" = 1 ] && cat "$FX/comments.json" || echo '[]';;
+    if [ "${pg:-1}" = 1 ]; then cat "$FX/comments.json"; elif [ -f "$FX/comments-p$pg.json" ]; then cat "$FX/comments-p$pg.json"; else echo '[]'; fi;;
   "GET actions/variables/REVIEWERS") [ -f "$FX/reviewers" ] && jq -n --arg v "$(cat "$FX/reviewers")" '{name: "REVIEWERS", value: $v}' || { echo '{"message":"Not Found"}'; exit 22; };;
   "POST issues/"*/labels) echo "LABEL $(echo "$d" | jq -r '.labels[0]')" >> "$FX/log"; : > "$FX/labelled"; echo '[]';;
   "DELETE issues/"*/labels/*) echo "UNLABEL" >> "$FX/log"; echo '[]';;
@@ -43,8 +43,8 @@ cmt() {  # cmt <login> <association> <body> [<login> <association> <body>]... â†
   echo "$a" > "$T/fx/comments.json"; }
 run() {  # run [args...] â†’ $out $log $r (REVIEWERS from $REV when set; the variable's file otherwise)
   : > "$T/fx/log"; rm -f "$T/fx/labelled"
-  if [ -n "${REV+x}" ]; then out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test LEAD_LABEL_MAIN_CHECK=0 REVIEWERS="$REV" FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?
-  else out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test LEAD_LABEL_MAIN_CHECK=0 FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?; fi
+  if [ -n "${REV+x}" ]; then out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS="$REV" FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?
+  else out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?; fi
   log=$(cat "$T/fx/log"); }
 labelled() { [ $r = 0 ] && [ "$log" = "LABEL review: approved" ] && echo 1; }
 refused() { [ $r = 1 ] && [ -z "$log" ] && grep -q '^lead-label: refused: ' <<< "$out" && echo 1; }
@@ -88,6 +88,24 @@ prj $HEAD1 open false main claude/x o/r "review: approved,queued"; REV="" run 7
 ok "already labelled: exit 0, nothing posted" "$([ $r = 0 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 prj $HEAD1; rm -f "$T/fx/pr.json"; REV="" run 7; ok "the PR cannot be read: refused" "$(refused)" "exit $r: $out / $log"
 prj $HEAD1; FAIL_COMMENTS=1 REV="" run 7; ok "the comments cannot be read: refused (fails closed)" "$(refused)" "exit $r: $out / $log"
+# break r1: every page counts, a malformed page fails closed, the locale and the session's env cannot widen it
+p100=$(jq -n --arg h "$HEAD1" '[range(100) | {user: {login: "o"}, author_association: "OWNER", body: "note"}] | .[0].body = ("Reviewer: Approve " + $h)')
+echo "$p100" > "$T/fx/comments.json"; cmt o OWNER "Reviewer: Changes needed $HEAD1"; mv "$T/fx/comments.json" "$T/fx/comments-p2.json"; echo "$p100" > "$T/fx/comments.json"
+REV="" run 7; ok "a Changes line on page 2 wins over an Approve on page 1: refused" "$(refused)" "exit $r: $out / $log"
+cmt o OWNER "Reviewer: Approve $HEAD1"; REV="" run 7; ok "... and page 2 alone is not the last page read: with page 1 a full 100, page 2 holding an Approve labels" "$(labelled)" "exit $r: $out / $log"
+rm -f "$T/fx/comments-p2.json"
+jq -c --arg h "$HEAD1" '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, 5, {user: {login: "o"}, author_association: "OWNER", body: "Reviewer: Changes needed"}]' -n > "$T/fx/comments.json"
+REV="" run 7; ok "a page with a value that is not a comment: refused (a jq error never drops a later verdict)" "$(refused)" "exit $r: $out / $log"
+cmt o OWNER "Reviewer: Changes needed"; mv "$T/fx/comments.json" "$T/fx/c2"; cmt o OWNER "Reviewer: Approve $HEAD1"; cat "$T/fx/c2" >> "$T/fx/comments.json"; rm -f "$T/fx/c2"   # [Approve] then [Changes]
+REV="" run 7; ok "a page of two JSON documents: refused" "$(refused)" "exit $r: $out / $log"
+cmt helper MEMBER "Reviewer: Approve $HEAD1"; mkdir -p "$T/cwd" && : > "$T/cwd/helper"
+out=$(cd "$T/cwd" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS='*' bash "$L" 7 2>&1); r=$?; log=$(cat "$T/fx/log")
+ok "REVIEWERS '*' is not globbed into the folder's file names: refused" "$(refused)" "exit $r: $out / $log"
+cmt o OWNER "Reviewer: Approve $HEAD1"; : > "$T/fx/log"
+out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS="" LC_ALL=en_US.UTF-8 bash "$L" "$(printf '\xd9\xa7')" 2>&1); r=$?; log=$(cat "$T/fx/log")
+ok "a non-ASCII digit (Arabic-Indic seven) under a UTF-8 locale: refused with the usage" "$(refused)" "exit $r: $out / $log"
+: > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x API=https://elsewhere.test REPO=x/y REVIEWERS=someone LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 LEAD_LABEL_REVIEWERS="" bash "$L" 7 2>&1); r=$?; log=$(cat "$T/fx/log")
+ok "the session's own API, REPO and REVIEWERS are not read (only LEAD_LABEL_*)" "$(labelled)" "exit $r: $out / $log"
 for a in "" "7x" "07" "7 8" "--force"; do
   # shellcheck disable=SC2086
   REV="" run $a; ok "argument '${a}': refused with the usage, nothing posted" "$(refused)" "exit $r: $out / $log"
@@ -100,10 +118,12 @@ UNLABEL" ] && grep -q "head moved" <<< "$out" && echo 1)" "exit $r: $out / $log"
 O="$T/origin.git"; C="$T/copy"; git init -q --bare -b main "$O"; git clone -q "$O" "$C" 2>/dev/null
 git -C "$C" config user.email t@t; git -C "$C" config user.name t; git -C "$C" config commit.gpgsign false
 mkdir -p "$C/tools" && cp "$L" "$C/tools/lead-label.sh" && git -C "$C" add -A && git -C "$C" commit -qm main && git -C "$C" push -q origin HEAD:main 2>/dev/null
-mc() { : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test REVIEWERS="" bash "$C/tools/lead-label.sh" 7 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+mc() { : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_REVIEWERS="" bash "$C/tools/lead-label.sh" 7 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 mc; ok "the copy's script is origin/main's: the check passes and the PR is labelled" "$(labelled)" "exit $r: $out / $log"
 echo "# changed" >> "$C/tools/lead-label.sh"; mc
 ok "the copy's script differs from origin/main's: refused before any API call" "$([ $r = 1 ] && [ -z "$log" ] && grep -q "not origin/main's" <<< "$out" && echo 1)" "exit $r: $out / $log"
+git -C "$C" commit -qam "changed copy"; git -C "$C" update-ref refs/remotes/origin/main HEAD; git -C "$C" config --unset-all remote.origin.fetch; mc
+ok "a stale local origin/main that matches the changed copy does not pass: main as just fetched decides (break r1 m4)" "$([ $r = 1 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 
 # --- part 2: the auto-queue's own cases stay (A435 (1)): run their tests, and each named case must pass
 need() {  # need <test> <grep -F line>...: the test is green and prints PASS for each

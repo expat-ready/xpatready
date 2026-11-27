@@ -16,12 +16,15 @@
 # Anything else: exit 1 and the reason, nothing changed. The label is then judged again on GitHub's side by main's
 # label-guard.yml (pull_request_target; an Approve on the head, pr-suites green) and label-sweep.sh: this script narrows
 # what the Lead can do, the server-side guards stay the boundary.
-# Env: GH_TOKEN (default: `gh auth token`), REPO (default: from the origin remote), REVIEWERS (default: the repository
-# variable, read with the token; unreadable → the owner alone), API (default https://api.github.com),
-# LEAD_LABEL_MAIN_CHECK (default 1: refuse when this file differs from origin/main's copy; the test sets 0).
+# Env: GH_TOKEN (default: `gh auth token`). Only names starting LEAD_LABEL_ are read, so nothing a session happens to
+# carry (API, REPO, REVIEWERS) can point the token elsewhere or widen who counts (break r1 m3): LEAD_LABEL_REPO (default:
+# from the origin remote), LEAD_LABEL_REVIEWERS (default: the repository variable REVIEWERS, read with the token;
+# unreadable → the owner alone), LEAD_LABEL_API (default https://api.github.com), LEAD_LABEL_MAIN_CHECK (default 1:
+# refuse when this file differs from main's copy as just fetched; the test sets 0).
 # Exit 0 labelled (or already labelled); 1 refused or could not judge. Test: check-lead-label.sh. US$0.
 set -uo pipefail
-LABEL="review: approved"; API="${API:-https://api.github.com}"
+export LC_ALL=C   # [0-9] means the ten ASCII digits, whatever the session's locale (break r1 m2)
+LABEL="review: approved"; API="${LEAD_LABEL_API:-https://api.github.com}"; REPO="${LEAD_LABEL_REPO:-}"
 no() { echo "lead-label: refused: $*"; exit 1; }
 PR="${1:-}"
 [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] && [ $# = 1 ] || no "usage: lead-label.sh <pr number> (one argument, a number)"
@@ -33,13 +36,13 @@ if [ "${LEAD_LABEL_MAIN_CHECK:-1}" != 0 ]; then
   top=$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null) || no "not inside a git copy"
   rel=${HERE#"$top"/}/lead-label.sh
   git -C "$top" fetch -q --no-tags origin main 2>/dev/null || no "cannot fetch origin/main to compare this script with main's"
-  git -C "$top" show "origin/main:$rel" 2>/dev/null | cmp -s - "$HERE/lead-label.sh" \
+  git -C "$top" show "FETCH_HEAD:$rel" 2>/dev/null | cmp -s - "$HERE/lead-label.sh" \
     || no "this copy's lead-label.sh is not origin/main's (run it from a copy on main)"
 fi
 
-if [ -z "${REPO:-}" ]; then
+if [ -z "$REPO" ]; then
   REPO=$(git -C "$HERE" remote get-url origin 2>/dev/null | sed -nE 's#^(https://[^/]+/|git@[^:]+:)([^/]+/[^/.]+)(\.git)?/?$#\2#p')
-  [ -n "$REPO" ] || no "REPO is not set and the origin remote names no owner/name"
+  [ -n "$REPO" ] || no "LEAD_LABEL_REPO is not set and the origin remote names no owner/name"
 fi
 [ -n "${GH_TOKEN:-}" ] || GH_TOKEN=$(gh auth token 2>/dev/null) || true
 [ -n "${GH_TOKEN:-}" ] || no "no GitHub token (GH_TOKEN, or gh auth login)"
@@ -50,6 +53,7 @@ OWNER="${REPO%%/*}"
 
 # (a) the PR
 pr=$(api "$API/repos/$REPO/pulls/$PR") || no "#$PR cannot be read"
+jq -se 'length == 1 and (.[0] | type == "object")' <<< "$pr" >/dev/null 2>&1 || no "#$PR: GitHub's answer is not one JSON object"
 head=$(jq -r '.head.sha // ""' <<< "$pr")
 [[ "$head" =~ ^[0-9a-f]{40}$ ]] || no "#$PR has no readable head"
 [ "$(jq -r .state <<< "$pr")" = open ] || no "#$PR is not open"
@@ -60,17 +64,20 @@ case "$(jq -r .head.ref <<< "$pr")" in mergify/*) no "#$PR is a merge-queue batc
 jq -e --arg l "$LABEL" 'any(.labels[]?; .name == $l)' <<< "$pr" >/dev/null && { echo "lead-label: #$PR already carries '$LABEL'"; exit 0; }
 
 # (b) the reviewer's Approve on the head (queue-gate.sh approved(), same reading)
-if [ -z "${REVIEWERS+x}" ]; then REVIEWERS=$(api "$API/repos/$REPO/actions/variables/REVIEWERS" 2>/dev/null | jq -r '.value // ""' 2>/dev/null) || REVIEWERS=""; fi
+if [ -n "${LEAD_LABEL_REVIEWERS+x}" ]; then REVIEWERS=$LEAD_LABEL_REVIEWERS
+else REVIEWERS=$(api "$API/repos/$REPO/actions/variables/REVIEWERS" 2>/dev/null | jq -r '.value // ""' 2>/dev/null) || REVIEWERS=""; fi
 cs='[]'; p=1
 while [ "$p" -le 30 ]; do
   one=$(api "$API/repos/$REPO/issues/$PR/comments?per_page=100&page=$p") || no "#$PR's comments cannot be read"
-  jq -e 'type == "array"' <<< "$one" >/dev/null || no "#$PR's comments cannot be read"
+  # one JSON array of objects, nothing else: a second document or a stray value would drop later verdicts (break r1 m1)
+  jq -se 'length == 1 and (.[0] | type == "array" and all(.[]; type == "object"))' <<< "$one" >/dev/null 2>&1 || no "#$PR's comments cannot be read"
   cs=$(jq -s '.[0] + .[1]' <(echo "$cs") <(echo "$one")); [ "$(jq length <<< "$one")" -lt 100 ] && break; p=$((p + 1))
 done
 [ "$p" -le 30 ] || no "#$PR has more than 3000 comments (fails closed)"
-who=$(printf '%s\n' "$OWNER" ${REVIEWERS:-} | jq -Rn '[inputs | select(length > 0)]')
-lines=$(jq -r --argjson who "$who" '.[] | select((.user.login as $l | $who | index($l)) and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")) | .body // ""' <<< "$cs" \
-  | tr -d '*_`' | grep -iE '^[[:space:]]*reviewer:'; true)
+who=$( { printf '%s\n' "$OWNER"; tr -s ' \t' '\n\n' <<< "$REVIEWERS"; } | jq -Rn '[inputs | select(length > 0)]')   # split, never globbed (break r1 m5)
+bodies=$(jq -r --argjson who "$who" '.[] | select((.user.login? as $l | $who | index($l)) and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")) | (.body // "" | tostring)' <<< "$cs") \
+  || no "#$PR's comments cannot be judged (jq failed: fails closed)"
+lines=$(tr -d '*_`' <<< "$bodies" | grep -iE '^[[:space:]]*reviewer:'; true)
 last=""
 while IFS= read -r l; do [ -n "$l" ] || continue; keep=1
   for x in $(grep -oiE '\b[0-9a-f]{7,40}\b' <<< "$l" | tr A-F a-f | grep '[0-9]' | grep '[a-f]'; true); do keep=0; case "$head" in "$x"*) keep=1; break;; esac; done
