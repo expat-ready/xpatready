@@ -1,6 +1,13 @@
-# Paths that keep the Lead's read (P-423): queue-gate.sh never puts `review: approved` on a PR touching one of them
-# (money, permissions, schema, migrations, .github/, product/tools/ and the other guards; records and screenshots are
-# exempt from the money and permissions lines only, B206 part 3).
+# Paths that keep the Lead's read (P-423), in two kinds (P-823, founder 25 Nov ~08:1x IST: "Additive migrations, money and
+# public-route changes are labelled automatically after the fresh Opus reviewer's Approve on the exact head and green ci;
+# the Lead reads afterwards: every money PR within the hour, others 1 in 3 ... Workflows, permissions and destructive
+# migrations (drop, rename, delete) still wait for the Lead's read first"):
+#   read first — every line before "# --- read-after money": queue-gate.sh never puts `review: approved` on such a PR;
+#   read after — the lines after it, by section (money, migration, public): queue-gate.sh labels it as any other PR and
+#     posts "Lead after-read owed: <kinds> #<n> <sha>" (after-read-owed.sh lists them for the Lead). A migration or schema
+#     file is read first after all when its change drops, renames or deletes (queue-gate.sh destructive(): the PR's added
+#     lines, not the file name).
+# Records and screenshots are exempt from every line after "# --- records-exempt" (B206 part 3).
 # One extended regex per line, matched against each changed path, case-insensitive; # starts a comment.
 # Workflows and the merge queue (P-214, P-423)
 ^\.github/
@@ -15,6 +22,9 @@
 ^(CLAUDE|AGENTS)\.md$
 # CI's gates that ci.yml runs from the PR's own copy (gate-b.mjs, works-set.mjs, check-port-contracts.mjs)
 /prototype/studio/tools/
+# Prisma's own configuration: it names the migrations path and the schema (review of #3661, Major 5: a moved migrations
+# path would take every migration off the list)
+/prisma\.config\.[cm]?[jt]s$
 # The permission machinery itself (P-785 (2) step 1, break B2): the guard, the keys and their catalogue, the start-up
 # guard in core.ts, the firm wall and the terms gate. A change here needs no key or decorator to widen access.
 /api/src/platform/identity/
@@ -23,16 +33,13 @@
 /api/src/features/platform-terms\.ts$
 # Who sees which notification group: an access rule kept as data (break round 2 m1)
 /studio/samples/notification-groups\.json$
-# The schema and its migrations (P-423)
-/prisma/migrations/
-/prisma/schema/
 # --- records-exempt: the lines below (money and permissions) are not set off by a screenshot (*.png under screens/), an
 # image or .txt under product/, or any file of a records-only PR (records-only.sh and the "records" label): B206 part 3, P-751.
 # Every line above holds for any file. queue-gate.sh leadread() reads this marker line.
 # Permissions: roles and identity (as lead-read-guard.sh)
 permission
 platform/identity/
-# Money paths: fees, prices, client money, invoices, paid model runs and their ledger (P-277, P-295)
+# --- read-after money: within the hour of the merge (P-823). Money paths: fees, prices, client money, invoices, paid model runs and their ledger (P-277, P-295)
 money
 (^|[^a-z])fees?([^a-z]|$)
 pric
@@ -42,3 +49,10 @@ stripe
 invoice
 ledger
 /api/src/(ai|rounds|review-runs|review-run-shapes|finder-cost|people-ai)\.ts$
+# --- read-after migration: 1 in 3 (P-823). The schema and its migrations; destructive ones are read first (destructive())
+/prisma/migrations/
+/prisma/schema/
+# --- read-after public: 1 in 3 (P-823). Public routes: the unauthenticated doors (api/public/..., booking's public site);
+# a changed line with OpenRead( in any API file counts too (queue-gate.sh)
+/prototype/studio/api/src/(.*/)?[^/]*public[^/]*\.[cm]?[jt]sx?$
+/prototype/studio/web/src/(.*/)?[^/]*-public/

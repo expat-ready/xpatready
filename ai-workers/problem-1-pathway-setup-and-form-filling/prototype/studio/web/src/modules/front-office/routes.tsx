@@ -20,12 +20,14 @@ import { RetainerTemplatesPage } from "./retainers/templates-page";
 import { ConflictConfirmPage } from "./compliance/conflict/confirm-page";
 import { WebFormSettingsPage } from "./sales/web-form-settings-page";
 import { WebFormPage } from "./sales/web-form-page";
+import { PeopleToMergePage } from "./duplicates/people-to-merge-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/front-office/web-form/:token", element: <WebFormPage /> },
   { path: "/front-office/leads", element: <LeadsPage /> },
   { path: "/front-office/leads/:id", element: <LeadPage /> },
   { path: "/front-office/pipeline", element: <PipelinePage /> },
+  { path: "/front-office/duplicates", element: <PeopleToMergePage /> },   // FO-9s part 2: Sales › People to merge (R1.29)
   { path: "/front-office/prospects/:id", element: <ProspectPage /> },
   { path: "/front-office/retainers/:id", element: <RetainerPage /> },   // FO-5s part 1: one retainer (S3, S4, S5)
   { path: "/front-office/conflict-checks/:id", element: <ConflictConfirmPage /> },   // FO-13s part 2 PR B: a manager confirms a check with hidden matches

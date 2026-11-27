@@ -1,0 +1,110 @@
+// platform-automation.prisma — the automation engine's tables (PF-20, from FO-12a by P-584 (2)). Owner: Lead B (platform, P-559).
+// Code api/src/platform/automation/; FO-12c adds message many's tables in its own migration. Each
+// module registers its recipes (registry.ts); a firm's row keeps its on/off and its steps' wording, timing and mode
+// (AG-2-31 rule 2). Firm-scoped behind PF-12; checks in the migration (<stamp>_platform-automation__pf20_automation_tables).
+
+/// What a step does when its time comes (AG-12-52's three choices on the Automatic messages page).
+enum AutoStepMode {
+  AUTO
+  ASK
+  OFF
+}
+
+/// A run's state (AG-11): running until its last step or an exit (AG-2-31 rule 8), then ended with the reason.
+enum AutoRunState {
+  RUNNING
+  ENDED
+}
+
+/// A step run's state (AG-2-31 §6: Queued → Success, Skipped, Awaiting approval, Failed; Cancelled when the recipe is switched off or the run ends before its time).
+enum AutoStepState {
+  QUEUED
+  SUCCESS
+  SKIPPED
+  AWAITING_APPROVAL
+  FAILED
+  CANCELLED
+}
+
+/// A firm's copy of one registered recipe (module + key): on or off (AG-2-31 rule 1). Made from the registry the first time the firm's recipes are read; a recipe whose module no longer registers it is never run.
+model AutoRecipe {
+  id        String   @id @default(uuid()) @db.Uuid
+  firmId    String   @map("firm_id") @db.Uuid
+  module    String
+  key       String
+  on        Boolean
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  updatedBy String   @map("updated_by")
+
+  firm  PlatformFirm     @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  steps AutoRecipeStep[]
+  runs  AutoRun[]
+
+  @@unique([firmId, key])
+  @@unique([firmId, id])
+  @@map("auto_recipe")
+}
+
+/// One step of a firm's recipe: its place, its wait after the run starts (minutes), its message class (SERVICE or MARKETING: the gate's purpose) and its wording and mode, editable per firm (AG-2-31 rule 2).
+model AutoRecipeStep {
+  id           String       @id @default(uuid()) @db.Uuid
+  firmId       String       @map("firm_id") @db.Uuid
+  recipeId     String       @map("recipe_id") @db.Uuid
+  position     Int
+  delayMinutes Int          @map("delay_minutes")
+  class        String
+  mode         AutoStepMode @default(AUTO)
+  subject      String
+  body         String
+
+  recipe AutoRecipe @relation(fields: [firmId, recipeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, recipeId, position])
+  @@unique([firmId, id])
+  @@map("auto_recipe_step")
+}
+
+/// One person in one recipe (AG-2-31 rule 4): the person (subject kind and id), the address the steps go to, the context (a lead or prospect), who enrolled them, and how it ended (rule 8). At most one RUNNING run per firm, recipe and person (two triggers never make two runs; a partial unique index in the migration).
+model AutoRun {
+  id          String       @id @default(uuid()) @db.Uuid
+  firmId      String       @map("firm_id") @db.Uuid
+  recipeId    String       @map("recipe_id") @db.Uuid
+  subjectKind String       @map("subject_kind")
+  subjectId   String       @map("subject_id") @db.Uuid
+  channel     String
+  address     String
+  contextKind String?      @map("context_kind")
+  contextId   String?      @map("context_id") @db.Uuid
+  state       AutoRunState @default(RUNNING)
+  exitReason  String?      @map("exit_reason")
+  enrolledBy  String       @map("enrolled_by")
+  startedAt   DateTime     @default(now()) @map("started_at") @db.Timestamptz
+  endedAt     DateTime?    @map("ended_at") @db.Timestamptz
+
+  recipe AutoRecipe    @relation(fields: [firmId, recipeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  steps  AutoStepRun[]
+
+  @@unique([firmId, id])
+  @@index([firmId, subjectKind, subjectId])
+  @@index([firmId, recipeId, state])
+  @@map("auto_run")
+}
+
+/// One step of one run, due at its time (the run's start plus the step's wait). Written QUEUED at enrolment; the step's job moves it once (Success with the outbox row, Skipped with the gate's reason, Awaiting approval, Failed, Cancelled).
+model AutoStepRun {
+  id       String        @id @default(uuid()) @db.Uuid
+  firmId   String        @map("firm_id") @db.Uuid
+  runId    String        @map("run_id") @db.Uuid
+  position Int
+  dueAt    DateTime      @map("due_at") @db.Timestamptz
+  state    AutoStepState @default(QUEUED)
+  reason   String?
+  outboxId String?       @map("outbox_id") @db.Uuid
+  doneAt   DateTime?     @map("done_at") @db.Timestamptz
+
+  run AutoRun @relation(fields: [firmId, runId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, runId, position])
+  @@index([firmId, state, dueAt])
+  @@map("auto_step_run")
+}

@@ -297,6 +297,9 @@ model MoneyInvoice {
   /// FO-7g part 3 (P-797): the province the tax follows, one of the 13 codes (a CHECK); filled on a new draft from the
   /// client's Canadian address, else the firm's province; editable on a draft; fixed at issue. Null = the firm's province.
   billToProvince              String?            @map("bill_to_province")
+  /// FO-7w1: the invoice bills a retainer's "On signing" row, a deposit (Code s. 32; AG-6-61): never a card pay link
+  /// (P-567 (3)). Set when the draft is made, fixed after.
+  deposit                     Boolean            @default(false)
 
   settings     MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   lines        MoneyInvoiceLine[]
@@ -306,6 +309,7 @@ model MoneyInvoice {
   writeOff     MoneyWriteOff?
   moveLines    MoneyMoveLine[]
   creditEntries MoneyCreditEntry[]
+  paymentPlans MoneyPaymentPlan[]
 
   @@unique([firmId, id])
   @@unique([firmId, number])
@@ -335,10 +339,14 @@ model MoneyInvoiceLine {
   taxMinor        Int           @default(0) @map("tax_minor")
   currency        MoneyCurrency
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  /// FO-7w1: the retainer fee row this line bills (fo_retainer_fee_row's id; no foreign key across the module wall).
+  /// Unique per firm: a row is billed once; null on a line typed by hand; fixed once written.
+  sourceFeeRowId  String?       @map("source_fee_row_id") @db.Uuid
 
   invoice MoneyInvoice @relation(fields: [firmId, invoiceId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([firmId, invoiceId, position])
+  @@unique([firmId, sourceFeeRowId])
   @@map("money_invoice_line")
 }
 
@@ -694,4 +702,52 @@ model MoneyMoveLine {
   @@index([firmId, batchId])
   @@index([firmId, invoiceId])
   @@map("money_move_line")
+}
+
+enum MoneyPlanStatus {
+  ACTIVE
+  CANCELLED
+}
+
+/// A payment plan of one issued invoice (R1.96 part 2; FO-7p ledger rules; P-574 (5), P-578): the amount it covers is
+/// the database's (what was due when it was made); at most one ACTIVE per invoice (a partial index, in SQL); its only
+/// change is ACTIVE → CANCELLED by a person with a reason. Never deleted. What is paid is derived, never stored.
+model MoneyPaymentPlan {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId       String          @map("firm_id") @db.Uuid
+  invoiceId    String          @map("invoice_id") @db.Uuid
+  currency     MoneyCurrency
+  /// Always the database's (a value the caller gives is replaced).
+  amountMinor  Int             @default(0) @map("amount_minor")
+  status       MoneyPlanStatus @default(ACTIVE)
+  createdBy    String          @map("created_by")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  cancelledBy  String?         @map("cancelled_by")
+  cancelledAt  DateTime?       @map("cancelled_at") @db.Timestamptz
+  cancelReason String?         @map("cancel_reason")
+
+  invoice      MoneyInvoice      @relation(fields: [firmId, invoiceId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  instalments  MoneyInstalment[]
+
+  @@unique([firmId, id])
+  @@index([firmId, invoiceId])
+  @@map("money_payment_plan")
+}
+
+/// One instalment of a plan: position 1..12 (Sample), due date, a whole positive amount in the plan's currency. Written
+/// only with its plan; at commit the plan's instalments sum exactly to its amount, dates strictly rising. Insert-only.
+model MoneyInstalment {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId      String        @map("firm_id") @db.Uuid
+  planId      String        @map("plan_id") @db.Uuid
+  position    Int
+  dueDate     DateTime      @map("due_date") @db.Date
+  amountMinor Int           @map("amount_minor")
+  currency    MoneyCurrency
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  plan MoneyPaymentPlan @relation(fields: [firmId, planId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, planId, position])
+  @@map("money_instalment")
 }

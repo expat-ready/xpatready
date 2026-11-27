@@ -25,8 +25,10 @@ export interface TemplateRecords {
 }
 export const TEMPLATE_RECORDS = Symbol.for("platform.TemplateRecords");
 
-export const PublishBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(2 * LIMITS.body), baseVersion: z.number().int().min(0) });
-export const PreviewBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(2 * LIMITS.body), leadId: z.string().max(100).optional() });
+// PF-28 A2 (R1.10): the message's own limit (refusals': its length in UTF-16 units, LIMITS.body) is read here, so an over-long
+// body is named on its field before the subject's rule; the subject keeps an outer bound, refusals() the rest.
+export const PublishBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(LIMITS.body), baseVersion: z.number().int().min(0) });
+export const PreviewBody = strict({ subject: z.string().max(LIMITS.subject + 1000), body: z.string().max(LIMITS.body), leadId: z.string().max(100).optional() });
 export const RecordsQuery = strict({ q: z.string().max(100).optional() });
 
 /** Half of a UTF-16 pair with no other half: a broken character the database would store as U+FFFD. */
