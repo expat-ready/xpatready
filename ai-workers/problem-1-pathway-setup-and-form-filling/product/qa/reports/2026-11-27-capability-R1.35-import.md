@@ -2,10 +2,10 @@
 
 **Run:** cloud qa (new account, first hour), Opus 5.5 medium (P-608, P-788), main **0c90a3cf6** (head at start, 06:2x IST). Live AI off, no model call, no live mail, US$0 (P-175). Isolated copies only (:4471, :4472, :4473); :4400 not touched.
 
-## Verdict: **Works** (was Not built)
-Every part on the checklist row has merged, and the Done-when holds by screens and underneath, on GitHub's runners on main's head and locally on fresh isolated copies.
+## Verdict: **Partial** (was Not built), parts missing: **PF-10b part 2** (run report and undo); no Works verdict (P-606)
+**Amended 27 Nov ~11:3x IST on the Lead's ruling** (Lead 1 on #3884 at 06:5x IST, restated by Lead 2 ~11:2x IST; settled from sources, P-797): MVP-CHECKLIST row 35 names PF-10b; PF-10b's row is 2 PRs (dry run; run, report and undo); AG-18-1 asks for a mandatory dry run and an undo. PF-10b part 2 is not merged. Everything that has merged holds by screens and underneath, on GitHub's runners on main's head and locally on fresh isolated copies (evidence below, kept); R1.35 is re-scored when PF-10b part 2 merges. First draft of this report said Works on the Done-when's words alone (Question 1, now answered).
 
-## Parts (MVP-CHECKLIST row 35: PF-10a, PF-10b, PF-10t, PF-10s): all merged
+## Parts (MVP-CHECKLIST row 35: PF-10a, PF-10b, PF-10t, PF-10s): PF-10b part 2 missing
 | Part | PR | On main |
 |---|---|---|
 | PF-10a import tables | #3276 | 14e6d3783 |
@@ -14,7 +14,7 @@ Every part on the checklist row has merged, and the Done-when holds by screens a
 | PF-10s concept (records) | #3707 | 5dc399b78 |
 | PF-10s screens (My account → Import, j_35) | #3824 | e0c16e907 |
 
-PF-10b's backlog row is sized "2 PRs (dry run; run, report and undo)". Part 2 (undo, result report) is **not** merged, but nothing in R1.35's Done-when needs it (it needs preview, mapping, reasons, import once, source, consent). The builder's `qa/built/R1.35.md` names undo, the report, .xlsx, companies and leads, value mapping and the AG-18-13 warning as follow-up rows. Scored on the Done-when as written (P-606); see Question 1.
+PF-10b's backlog row is sized "2 PRs (dry run; run, report and undo)". Part 2 (undo, result report) is **not** merged, but nothing in R1.35's Done-when needs it (it needs preview, mapping, reasons, import once, source, consent). The builder's `qa/built/R1.35.md` names undo, the report, .xlsx, companies and leads, value mapping and the AG-18-13 warning as follow-up rows. The Lead ruled PF-10b part 2 a part of R1.35 (Question 1, answered): parts missing: PF-10b part 2.
 
 ## Done-when, item by item (j_35 step → evidence)
 | Done-when | Step | Seen |
@@ -48,7 +48,7 @@ PF-10b's backlog row is sized "2 PRs (dry run; run, report and undo)". Part 2 (u
 * Undo, the result report, .xlsx, companies and leads: not built (follow-up rows), not in the Done-when.
 
 ## Questions for the Lead
-1. **PF-10b part 2 (undo, result report) is not merged.** R1.35's Done-when does not name undo, and the checklist row names PF-10b as one part. qa scored Works on the Done-when as written. If undo is part of R1.35's proof (AG-18-1 "mandatory dry run and an undo"), say so and the row goes back to "parts missing: PF-10b part 2".
+1. **Answered (Lead 1 on #3884, 06:5x IST; Lead 2 ~11:2x IST): PF-10b part 2 is part of R1.35; Partial, parts missing.** The question was: **PF-10b part 2 (undo, result report) is not merged.** R1.35's Done-when does not name undo, and the checklist row names PF-10b as one part. qa scored Works on the Done-when as written. If undo is part of R1.35's proof (AG-18-1 "mandatory dry run and an undo"), say so and the row goes back to "parts missing: PF-10b part 2".
 
 ## Suggestions
 * j_35: make W1 and W3 accept a copy that already holds a batch and an attestation, or drop "Re-runnable on one copy" from its header (QA-799). *Later* · *Scaffolding*.
