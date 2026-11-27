@@ -240,3 +240,11 @@ Added 24 Nov (Lead 13; full rows in DECISIONS): P-814 case rows RQ-02 to RQ-08 f
 | P-674 | Clean-up plan (with P-675 to P-677): row in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
 | P-680 | Spend master kept private; board card parked (P-681); architecture sized for ~500 capabilities with an AI layer. | prose | 17 Nov |
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
+
+### P-610 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-610 | Fix each problem the narrowest way; a row's PR under 800 changed lines (exceptions only by a DECISIONS row: P-843, P-844, P-846); re-review reads only new commits. | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 15 Nov |
+
+### P-845 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-845 | Factory v3 approved: Lead machine user approves risky paths; agents capped ~US$1,000 month one, Code Review on risky paths only; keep Mergify, GitHub approval replaces the label; factory moves to expat-ready/private. | prose | 26 Nov |
