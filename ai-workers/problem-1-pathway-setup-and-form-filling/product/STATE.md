@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_a579023a Lead 7 · 27 Nov 00:1x IST (after Lead 6 local_33c127af at about 225k, ~185k past its start read, P-446; Opus 5.5 medium, P-788)
+current_lead: local_92d34440-0b5c-4dea-b822-a841ad8da9cf Lead 1 (new account) · 27 Nov 06:05 IST (after Lead 7 local_a579023a stopped for the account switch; Opus 5.5 medium, P-788)
 
 updated: 2026-11-27 06:0x IST (clock): **ACCOUNT SWITCH NOW (founder typed "Switching now" 06:0x). Lead 7 has stopped: timers deleted, watch stopped. New Lead: follow the runbook https://claude.ai/artifact/UTetUeiDVMuSQd4HiB6rbH and the RESUME 27 Nov block, step 4 first (get_usage before anything).** Weekly 95% at 05:58 on the old account. In flight: #3829 (R1.76 last part; Approve + Lead read on e94d9db2e; label on green pr-suites); #3869 R1.85 proof (founder's Approve); #3831, #3633 (reviewer Approve owed); #3878 (conflict + Duplicate check + module card lines); #3639 (re-stamp after 20261126160000); #3872 (Checks changed line). 66/110 Works on main.
 
