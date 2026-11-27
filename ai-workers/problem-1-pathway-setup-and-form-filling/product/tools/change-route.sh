@@ -69,7 +69,7 @@ self_test() {
   t full    "a JSON file under screens/ (not a record, not tooling)" "$R/screens/12/fixture.json"
   t full    "a checker under screens/ (not product/tools/)" "$R/screens/B119/check-queue-rules.py"
   t full    "a look-alike: tools/ under studio/" "$S/tools/gate-b.mjs"
-  t full    "nothing changed" ""
+  t full    "nothing changed (here; ci.yml then sees change-kind.sh's notes and takes docs)" ""
   # Fails closed: change-kind.sh failing is "full".
   local d got; d=$(mktemp -d)
   printf '#!/usr/bin/env bash\nexit 2\n' > "$d/change-kind.sh"; cp "$T/records-only.sh" "$d/"
@@ -81,6 +81,28 @@ self_test() {
     grep -qF -- "$p" <<< "$m" || { echo "FAIL  .mergify.yml's pipeline queue does not name $p"; bad=1; }
   done
   [ "$bad" = 0 ] && echo "PASS  .mergify.yml's pipeline queue names every tooling path"
+  # ci.yml keeps the backstops (review of #3908, minor 1): code is always full, a full run by hand is full, notes is docs;
+  # the tooling route runs tooling-checks.sh and keeps the tools' read-only list; only full runs the type check and the
+  # app set-up.
+  local ci=.github/workflows/ci.yml c
+  c=$(python3 -I - "$ci" <<'PY'
+import sys, yaml
+ci = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); j = ci["jobs"]; out = []
+k = next(st["run"] for st in j["kind"]["steps"] if st.get("id") == "k")
+if 'if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$kind" = code ]; then route=full; fi' not in k: out.append("kind: code or a full run by hand is not forced to route full")
+if 'if [ "$kind" = notes ]; then route=docs; fi' not in k: out.append("kind: notes is not forced to route docs")
+if 'change-route.sh" "$RANGE") || route=full' not in k: out.append("kind: change-route.sh failing is not route full")
+if "route == 'full'" not in j["types"]["if"]: out.append("types: runs on a route other than full")
+f = {st.get("name", ""): st for st in j["fast"]["steps"]}
+cond = lambda pre: next((st.get("if") for n, st in f.items() if n.startswith(pre)), "missing")
+if cond("set up like a cloud session") != "env.ROUTE == 'full'": out.append("fast: the app set-up is not full-only")
+if cond("tooling route, lint") != "env.ROUTE == 'tooling'": out.append("fast: tooling-checks.sh is not on the tooling route")
+if cond("graph, official PDFs") is not None: out.append("fast: the tools' read-only list does not run on every route of job fast")
+print("\n".join(out))
+PY
+)
+  if [ -z "$c" ]; then echo "PASS  ci.yml: code and full runs are full, notes is docs, tooling keeps the tools' list, types and app set-up full only"
+  else printf 'FAIL  ci.yml: %s\n' "$c"; bad=1; fi
   [ "$bad" = 0 ] && echo "all passed"; return $bad
 }
 

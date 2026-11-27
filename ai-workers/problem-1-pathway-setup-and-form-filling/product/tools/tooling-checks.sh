@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The checks of the "tooling" route (change-route.sh; fast route, lab lane, 27 Nov): for a change whose every path is
-# pipeline or tooling (or a record), ci.yml's job "fast" runs this instead of the app set-up, the type check and the
-# tools' full list. For each changed file that still exists:
+# pipeline or tooling (or a record), ci.yml's job "fast" runs this beside the tools' read-only list, instead of the
+# app set-up (database, build) and the type check (review of #3908: the list's checks read tool and workflow files). For each changed file that still exists:
 #   lint   .sh: bash -n · .py: parses (ast) · .mjs/.js/.cjs: node --check · .yml/.yaml: YAML loads · .json: JSON loads
 #   tests  the tests that cover it, by the folder's naming: product/tools/X.sh is covered by check-X.sh, test-X.sh and
 #          test_X.py beside it (when they exist); a changed check-*, test-* or test_* file runs itself; a changed script

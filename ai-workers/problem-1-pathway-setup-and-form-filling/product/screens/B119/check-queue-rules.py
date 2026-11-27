@@ -131,6 +131,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a skill plus a design note and a screenshot: pipeline (P-847)", [".claude/skills/next/SKILL.md", f"{R}/design/lab-register-2026-11-27.md", f"{R}/design/x.png"], False, "pipeline"),
     case("a tool, a record and app code: product (app code never in pipeline)", [f"{R}/tools/x.sh", f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product", checks=F),
     case("a workflow plus a JSON file under screens/: product (not a record)", [".github/workflows/guards.yml", f"{R}/screens/12/fixture.json"], False, "product"),
+    case("records only, label missing (records-label.yml not run yet): pipeline, never product (P-847)", [f"{R}/STATE.md"], None, "pipeline"),
     case("records only, labelled: still records, not pipeline (P-847)", [f"{R}/STATE.md", f"{R}/design/x.md"], True, "records"),
     case("a look-alike pipeline path: tools/ outside product/", [f"{A}/tools/gate-b.mjs"], False, "product", checks=F),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),

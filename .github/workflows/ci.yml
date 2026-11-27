@@ -71,8 +71,9 @@
 #   (tools/change-route.sh): docs (records only: change-kind.sh notes, or records-only.sh yes) runs the doc checks in job
 #   "ci" alone (push guard, Mergify scopes, check-docs.sh, decision-impact.sh, graph.mjs --check for a graph input);
 #   tooling (every path pipeline or tooling, .github/ .githooks/ .mergify.yml .claude/ AGENTS.md CLAUDE.md
-#   product/tools/, or a record, and no suite depends on it) runs job "fast" without the app set-up and the tools' full
-#   list, with tools/tooling-checks.sh (lint of each changed file and the tests that cover it), and no type check; full
+#   product/tools/, or a record, and no suite depends on it) runs job "fast" without the app set-up
+#   (database, build) or the database check, with tools/tooling-checks.sh (lint of each changed file and the tests
+#   that cover it) and every read-only check of the tools' list (npm ci --ignore-scripts), and no type check (review of #3908); full
 #   is everything above, unchanged (product code, and the tools that decide how the suites run: 24 parts on a batch).
 #   The required check "ci" ends green or red on every route: each skipped job must be skipped on purpose.
 #   Test: change-route.sh --self-test and tooling-checks.sh --self-test (in the tools' list below and in the tooling route).
@@ -306,7 +307,6 @@ jobs:
         # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has
         # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in
         # tools/route-has-screen-allow.txt. The self-test first proves a new route with neither fails.
-        if: env.ROUTE == 'full'
         run: node "$P/tools/route-has-screen.mjs" --self-test && node "$P/tools/route-has-screen.mjs"
       - uses: actions/setup-node@v4
         with:
@@ -328,6 +328,12 @@ jobs:
         run: |
           bash "$P/tools/tooling-checks.sh" "$RANGE"
           bash "$P/tools/change-route.sh" --self-test
+      - name: tooling route, the packages the tools' checks read (npm ci --ignore-scripts; no database, no app build)
+        # Review of #3908 (blocking): the repository-wide checks below read tool and workflow files (check-skeleton-scope,
+        # ci-and-lists, graph.mjs --check, test-spd-2, check-queue-rules), so the tooling route keeps every one of them;
+        # it skips only what the app needs (cloud-setup.sh's database and build, check-test-dbs.sh) and the type check.
+        if: env.ROUTE == 'tooling'
+        run: npm ci --prefix "$S" --ignore-scripts --no-audit --no-fund
       - name: static sweeps on the PR merged onto main, before the label (static-sweeps.mjs; ENF-782a part 2, P-782 (2))
         # Measured 20-21 Nov (merge-queue-causes.py): check_aud_values.ts, a sweep of every audit write that starts nothing,
         # broke 4 merge batches by a member's own code (#1959's was the 10:55 IST wave) and 7 more by cascade, because a
@@ -354,7 +360,6 @@ jobs:
           bash "$P/tools/check-docs.sh"
           bash "$P/tools/decision-impact.sh"
       - name: graph, official PDFs, explicit-any count, the tools' own checks, && lists, queue-run scope
-        if: env.ROUTE == 'full'
         run: |
           # One command per line: bash -e passes over a failed command before the last && of a list (P-376 (3), ci-and-lists.mjs).
           bash "$P/tools/check-queue-run-scope.sh"   # ENF-746c: records rules skipped in a batch, every code step still runs
@@ -381,7 +386,6 @@ jobs:
           node "$S/tools/check-gate-b.mjs"
           node "$S/tools/check-works-set.mjs"
       - name: every port's fake and real adapters run one shared contract (studio/tools/check-port-contracts.mjs, timed)
-        if: env.ROUTE == 'full'
         # PF-0c (P-606 (8)): a port in studio/ports/ (or identity/port.ts) with a real adapter has
         # ports/contracts/<port>.contract.ts, and every adapter of it, fakes included, calls it in its own test file. The
         # self-test first proves a port with a real adapter and no contract fails (DW1); the guard fails over 10 s (DW4).
