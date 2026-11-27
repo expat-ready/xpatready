@@ -29,17 +29,17 @@ jobs:
       SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       # main's code (a workflow_run checks out the default branch); the token is not kept.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { persist-credentials: false }
       - name: walks' plan (kept on every push)
         id: plan
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: walk-plan, path: "${{ runner.temp }}/walk-data/plan", run-id: "${{ github.event.workflow_run.id }}", github-token: "${{ github.token }}" }
       - name: each journey's walk.json
         id: results
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { pattern: "walk-result-*", path: "${{ runner.temp }}/walk-data/results", run-id: "${{ github.event.workflow_run.id }}", github-token: "${{ github.token }}" }
       - name: one comment on the merged PR
         env: { GH_TOKEN: "${{ github.token }}", PLAN_DL: "${{ steps.plan.outcome }}", RESULTS_DL: "${{ steps.results.outcome }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" }

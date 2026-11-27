@@ -30,7 +30,7 @@ jobs:
     env:
       T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: ENF-803 self-test, twice
         run: bash "$T/test-enf-803.sh" && bash "$T/test-enf-803.sh"
       - name: each guard switched off turns the test red

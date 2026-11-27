@@ -1,6 +1,6 @@
 # Demo update (P-189, founder 31 Oct): after every merge to main the demo app (:4400) on the founder's Mac moves to the
 # new main by itself, data kept (migrations applied, no reset), and the job summary lists what is new. Runs on the
-# Mac's runner (xr-mac); the demo copy is .claude/worktrees/demo-main, detached on origin/main. No AI call, US$0.
+# Mac's light runner (xr-mac-light; xr-mac serves queue-gate.yml only, check-workflow-security.sh S2); the demo copy is .claude/worktrees/demo-main, detached on origin/main. No AI call, US$0.
 # M1 + M4 (A19 (j), founder: detect problems as soon as they happen): after the restart, the copy's health
 # (GET /api/health) and a smoke walk by screens (studio/tools/demo-smoke.mjs: sign in by role, the finished-story case,
 # its forms, the client's questionnaire; read-only, no button pressed). A broken screen turns this run red and its
@@ -16,7 +16,7 @@ jobs:
     runs-on: [self-hosted, macOS, xr-mac-light]   # P-199: its own slot, never behind a test run
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         # Full history (31 Oct): fetching a commit from a depth-1 checkout gave the Mac's main copy a commit without its
         # parent (git log and merges failed until a refetch). The workspace stays on the Mac, so later fetches are small.
         with: { fetch-depth: 0 }
@@ -51,5 +51,5 @@ jobs:
           node "$D/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/demo-smoke.mjs" --base http://localhost:4400 --shots "$RUNNER_TEMP/demo-smoke"
       - name: the broken screen's screenshot
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: demo-smoke, path: "${{ runner.temp }}/demo-smoke", if-no-files-found: ignore, retention-days: 7 }

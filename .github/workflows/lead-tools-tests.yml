@@ -41,7 +41,7 @@ jobs:
     env:
       T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: review-round limit
         run: python3 -I "$T/test_review_rounds.py"
       - name: lead-pr.sh label and requeue

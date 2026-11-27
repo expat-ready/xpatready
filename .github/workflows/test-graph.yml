@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 5
     permissions: { contents: read }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { persist-credentials: false }
       - name: the join on fixtures (check-test-graph.sh; no suite runs)
         run: bash "$P/tools/check-test-graph.sh"
@@ -46,9 +46,9 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { fetch-depth: 0, persist-credentials: false }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -74,7 +74,7 @@ jobs:
           zsh "$S/stop.sh" >/dev/null 2>&1 || true   # the demo API (check_studio_browser.cjs under --demo) writes its coverage on stop
           for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:4400/api/session || break; sleep 1; done; sleep 2   # stop.sh does not wait
           python3 -I "$P/tools/test-graph.py" collect "$RUNNER_TEMP/cov" --out "suites-${{ matrix.shard }}.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: test-graph-part-${{ matrix.shard }}
@@ -87,9 +87,9 @@ jobs:
     timeout-minutes: 10
     permissions: { contents: read }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { persist-credentials: false }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { pattern: test-graph-part-*, merge-multiple: true, path: parts }
       - name: join and render (a missing part leaves its suites out; the summary says how many parts came)
         run: |
@@ -98,7 +98,7 @@ jobs:
           jq -e .boot_baseline graph.json >/dev/null || echo "::warning::no boot baseline (part 1 missing): server start-up counts as exercised"
           python3 -I "$P/tools/test-graph.py" render graph.json --html graph.html --mermaid graph.mmd
           { echo "Test graph on ${GITHUB_SHA:0:9}: $n of $N parts; $(cat line.txt)"; echo; echo '```mermaid'; cat graph.mmd; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-graph
           path: |

@@ -74,9 +74,9 @@ jobs:
       # A dispatch walks the ref it was started on (plain checkout); only a pull_request run, which holds no write
       # token and no cache, checks out the PR's head (CodeQL cache poisoning, #2133).
       - if: github.event_name != 'pull_request'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - if: github.event_name == 'pull_request'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { ref: "${{ github.event.pull_request.head.sha }}" }
       - id: p
         name: which journeys (walk-plan.mjs; a PR walks only what it touches), plus the failing fixtures
@@ -128,7 +128,7 @@ jobs:
           { echo "walks at $SHA: $reason"; echo; echo "matrix: $m"; } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: keep the plan for walk-report.yml (every push, so a missing plan is a fault, never "nothing to walk")
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: { name: walk-plan, path: "${{ runner.temp }}/plan.json", retention-days: 30 }
   walk:
     needs: plan
@@ -146,13 +146,13 @@ jobs:
       SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - if: github.event_name != 'pull_request'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - if: github.event_name == 'pull_request'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { ref: "${{ github.event.pull_request.head.sha }}" }
       # No npm cache (CodeQL cache poisoning, #2133): a dispatch runs in the default branch's cache scope on any ref's
       # code, so it neither reads nor writes a cache; cloud-setup.sh installs from the lockfile.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
       - name: set up like a cloud session (cloud-setup.sh, as the packs job; it also builds the web app the walk needs)
@@ -171,7 +171,7 @@ jobs:
       - id: up
         name: upload the recording, whatever the verdict
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: walk-${{ matrix.j.name }}-${{ needs.plan.outputs.sha }}
           path: ${{ runner.temp }}/walk
@@ -186,7 +186,7 @@ jobs:
           node -e 'const v=require(process.argv[1]); console.log(`### ${v.journey} at ${v.sha.slice(0,9)}: exit ${v.exit}, ${v.pass} PASS, ${v.fail} FAIL, ${v.held} HELD\n${v.video.length} video, ${v.traces.length} trace, ${v.steps} step screenshots, ${v.journeyShots} journey screenshots (artifact walk-${process.env.NAME}-${v.sha})\n${v.failed.map((l)=>"* "+l).join("\n")}`)' "$f" >> "$GITHUB_STEP_SUMMARY"
       - name: keep walk.json for walk-report.yml's comment (push to main only; none when the walk ended before it)
         if: always() && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: walk-result-${{ matrix.j.name }}
           path: ${{ runner.temp }}/walk/walk.json

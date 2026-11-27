@@ -58,7 +58,7 @@ jobs:
       COMPOSE: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml
       SKELETON_PORT: "4480"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { persist-credentials: false }   # one commit: step "changes" fetches the two it compares itself
 
       - name: changes (did this push touch what goes into the image?)

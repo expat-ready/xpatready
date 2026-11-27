@@ -1,0 +1,129 @@
+# Claude Approvals policy (lab lane ship-security, 27 Nov 2026). Design, sources and the switch plan:
+# ai-workers/problem-1-pathway-setup-and-form-filling/product/design/ship-security-2026-11-27.md
+# Schema: https://code.claude.com/docs/en/approvals-policy (read 27 Nov 2026).
+#
+# observe (billed): the Claude Approvals check only shows what these rules would decide, ends neutral and Claude posts
+# no approving review. The Code Reviews a rule starts (claude/code_review, billed as Code Review) still run and bill in
+# observe mode, so only the Lead-read rules below name it; the routine rule starts no review and costs nothing.
+# Delete the `mode: observe` line in the switch PR, together with the GitHub rule "1 approval + dismiss stale approvals"
+# and Mergify's new queue conditions (design file, part 2), never alone.
+version: 1
+mode: observe
+locals:
+  # The Lead's read: one approval from the GitHub team expat-ready/leads (the Lead creates it; design file step 2).
+  lead: { count: 1, from: [expat-ready/leads] }
+rules:
+  - purpose: "Routine product and records work: the reviewer agent's approval fills the seat, then Claude approves."
+    paths:
+      - "**"
+      # Pipeline: workflows, the merge queue, hooks, agent rules, the guard tools and Prisma's configuration
+      - "!.github/**"
+      - "!.mergify.yml"
+      - "!.githooks/**"
+      - "!**/.claude/**"
+      - "!CLAUDE.md"
+      - "!AGENTS.md"
+      - "!ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
+      - "!ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/B119/**"
+      - "!ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
+      - "!**/prisma.config.*"
+      # Schema and migrations
+      - "!**/prisma/schema/**"
+      - "!**/prisma/migrations/**"
+      # Permissions and the unauthenticated doors
+      - "!**/api/src/platform/identity/**"
+      - "!**/api/src/core.ts"
+      - "!**/api/src/platform/firm-scope.ts"
+      - "!**/api/src/platform/terms/gate.ts"
+      - "!**/api/src/features/platform-terms.ts"
+      - "!**/studio/samples/notification-groups.json"
+      - "!**/*[Pp]ermission*"
+      - "!**/*[Pp]ermission*/**"
+      - "!**/api/src/**/*[Pp]ublic*"
+      - "!**/web/src/**/*-public/**"
+      # Money: fees, prices, client money, invoices, payments, paid model runs and their ledger
+      - "!**/*[Mm]oney*"
+      - "!**/*[Mm]oney*/**"
+      - "!**/*[Ff]ee.*"
+      - "!**/*[Ff]ees.*"
+      - "!**/[Ff]ee-*"
+      - "!**/[Ff]ees-*"
+      - "!**/*-fee-*"
+      - "!**/*-fees-*"
+      - "!**/*[Pp]ric*"
+      - "!**/*[Pp]ric*/**"
+      - "!**/*[Bb]illing*"
+      - "!**/*[Pp]ayment*"
+      - "!**/*[Ss]tripe*"
+      - "!**/*[Ii]nvoice*"
+      - "!**/*[Ll]edger*"
+      - "!**/api/src/{ai,rounds,review-runs,review-run-shapes,finder-cost,people-ai}.ts"
+    verdict: { claude: approves, seats: 1 }
+
+  - purpose: "Pipeline files need the Lead's read and Claude's review; Claude approves only after both."
+    paths:
+      - ".github/**"
+      - ".mergify.yml"
+      - ".githooks/**"
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/B119/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
+      - "**/prisma.config.*"
+    verdict: { claude: comments, seats: ["@lead"] }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
+
+  - purpose: "The review rules and agent settings need the Lead's read and Claude's review, in every folder."
+    paths: ["**/.claude/**"]
+    nested: inherit
+    verdict: { claude: comments, seats: ["@lead"] }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
+
+  - purpose: "Schema and migrations need the Lead's read and Claude's review."
+    paths:
+      - "**/prisma/schema/**"
+      - "**/prisma/migrations/**"
+    verdict: { claude: comments, seats: ["@lead"] }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
+
+  - purpose: "Permissions and public routes need the Lead's read and Claude's review."
+    paths:
+      - "**/api/src/platform/identity/**"
+      - "**/api/src/core.ts"
+      - "**/api/src/platform/firm-scope.ts"
+      - "**/api/src/platform/terms/gate.ts"
+      - "**/api/src/features/platform-terms.ts"
+      - "**/studio/samples/notification-groups.json"
+      - "**/*[Pp]ermission*"
+      - "**/*[Pp]ermission*/**"
+      - "**/api/src/**/*[Pp]ublic*"
+      - "**/web/src/**/*-public/**"
+    verdict: { claude: comments, seats: ["@lead"] }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
+
+  - purpose: "Money (fees, prices, client money, invoices, payments, paid model runs) needs the Lead's read and Claude's review."
+    paths:
+      - "**/*[Mm]oney*"
+      - "**/*[Mm]oney*/**"
+      - "**/*[Ff]ee.*"
+      - "**/*[Ff]ees.*"
+      - "**/[Ff]ee-*"
+      - "**/[Ff]ees-*"
+      - "**/*-fee-*"
+      - "**/*-fees-*"
+      - "**/*[Pp]ric*"
+      - "**/*[Pp]ric*/**"
+      - "**/*[Bb]illing*"
+      - "**/*[Pp]ayment*"
+      - "**/*[Ss]tripe*"
+      - "**/*[Ii]nvoice*"
+      - "**/*[Ll]edger*"
+      - "**/api/src/{ai,rounds,review-runs,review-run-shapes,finder-cost,people-ai}.ts"
+    verdict: { claude: comments, seats: ["@lead"] }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: ["@lead"] } }
