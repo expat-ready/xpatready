@@ -19,6 +19,7 @@ Rows A242-A418 word for word in `history/STATE-2026-11-27-0915-lead1-founder-ask
 | A440 | 27 Nov 14:5x | lab % every check, red for founder needs, why lab rules not enforced on the Lead | In force (Start here line); word for word in `history/STATE-2026-11-27-1545-lead6-A440-row.md` |
 | A441-A443 | 27 Nov 15:3x-16:2x | public/private split; tech-lead Write grant; factory org templates | A442 done; A441 in force; A443 decided, ships in #3913. Word for word: `history/STATE-2026-11-27-1840-lead8-asks-A441-A443-rows.md` |
 | A444-A446 | 27 Nov 18:0x-19:1x | why slow; replan; restart line by 80% impact, 7 nights | Decided: P-852, P-853, P-854 (nightlies on demand ~3/day from #3918; qa routine repository set). Word for word: `history/STATE-2026-11-27-2040-lead8-asks-A444-A446-rows.md` |
+| A447 | 27 Nov 20:4x (Remote Control) | audit again (planning, resource use, lab lines of code, frameworks, why slow, will product be slow too, on track?) + ONE detailed diagram of the whole engineering machinery, lab impact, product start, parallel work | In progress (Lead 8). Word for word: `history/STATE-2026-11-27-2045-lead8-A447-row.md` |
 
 ## Start here (next Lead)
 📊🔴 **A440 + A427 (founder, in force): EVERY check report STARTS with the line from `python3 product/tools/lab-progress.py` (🟢/🔴, Built % and Proven % of the lab register on main, need vs measured rows/h, ETA vs plan Built 27 Nov 23:00 / Proven 28 Nov 10:00 IST). Anything that needs the founder is a separate line starting 🔴. Never skip, even in a short report.**
