@@ -766,7 +766,10 @@ A435 pages|product/tools/lead-label.sh|s/^while \[ "\$p" -le 30 \]; do/while [ "
 A435 shape|product/tools/lead-label.sh|s/length == 1 and (.\[0\] . type == "array" and all(.\[\]; type == "object"))/true/|check-lead-label.sh
 A435 locale|product/tools/lead-label.sh|s/^export LC_ALL=C /: /|check-lead-label.sh
 A435 read|product/tools/lead-label.sh|s/^\[ -n "\$read_ok" \] .. no/true .. no/|check-lead-label.sh
-A435 cap|product/tools/lead-label.sh|s/^\[ "\$p" -le 30 \] .. no/true .. no/|check-lead-label.sh'
+A435 cap|product/tools/lead-label.sh|s/^\[ "\$p" -le 30 \] .. no/true .. no/|check-lead-label.sh
+A435 edited|product/tools/lead-label.sh|s/^ *. select(.created_at != null and .*$/      /|check-lead-label.sh
+A435 fence|product/tools/lead-label.sh|s/gsub("```\[\\\\s\\\\S\]\*?(```.\$)"; "")/./|check-lead-label.sh
+A435 leads|product/tools/lead-label.sh|s/(\$leads . length) == 0 or/true or/|check-lead-label.sh'
 
 [ "$list" = 1 ] || echo "--- each test without its guard (must FAIL)${parts:+ (part $part of $parts)}"
 k=-1

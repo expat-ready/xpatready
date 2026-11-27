@@ -27,6 +27,7 @@ case "$m $p" in
     elif [ "${pg:-1}" = 1 ]; then if [ -f "$FX/read.json" ]; then jq -s add "$FX/comments.json" "$FX/read.json"; else cat "$FX/comments.json"; fi   # the Lead's read line, added to page 1
     elif [ -f "$FX/comments-p$pg.json" ]; then cat "$FX/comments-p$pg.json"; else echo '[]'; fi;;
   "GET actions/variables/REVIEWERS") [ -f "$FX/reviewers" ] && jq -n --arg v "$(cat "$FX/reviewers")" '{name: "REVIEWERS", value: $v}' || { echo '{"message":"Not Found"}'; exit 22; };;
+  "GET actions/variables/LEAD_LOGINS") [ -f "$FX/leadlogins" ] && jq -n --arg v "$(cat "$FX/leadlogins")" '{name: "LEAD_LOGINS", value: $v}' || { echo '{"message":"Not Found"}'; exit 22; };;
   "POST issues/"*/labels) echo "LABEL $(echo "$d" | jq -r '.labels[0]')" >> "$FX/log"; : > "$FX/labelled"; echo '[]';;
   "DELETE issues/"*/labels/*) echo "UNLABEL" >> "$FX/log"; echo '[]';;
   *) echo "unexpected $m $p" >> "$FX/log"; exit 22;;
@@ -38,9 +39,9 @@ if [ ! -f "$L" ]; then ok "lead-label.sh exists (A435)" 0 "no $L"; finish; fi
 HEAD1=a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5; OLD=b2c3d4e5f6b2c3d4e5f6b2c3d4e5f6b2c3d4e5f6; HEAD2=c3d4e5f6a7c3d4e5f6a7c3d4e5f6a7c3d4e5f6a7   # a SHA has a digit and a letter (queue-gate.sh)
 prj() {  # prj <head> [state] [draft] [base] [head ref] [head repo] [labels csv] → pr.json
   jq -n --arg h "$1" --arg s "${2:-open}" --argjson d "${3:-false}" --arg b "${4:-main}" --arg r "${5:-claude/x}" --arg rp "${6:-o/r}" --arg l "${7:-}" \
-    '{number: 7, state: $s, draft: $d, base: {ref: $b}, head: {sha: $h, ref: $r, repo: {full_name: $rp}}, labels: ($l | split(",") | map(select(length > 0)) | map({name: .}))}' > "$T/fx/pr.json"; }
+    '{number: 7, user: {login: "builder"}, state: $s, draft: $d, base: {ref: $b}, head: {sha: $h, ref: $r, repo: {full_name: $rp}}, labels: ($l | split(",") | map(select(length > 0)) | map({name: .}))}' > "$T/fx/pr.json"; }
 cmt() {  # cmt <login> <association> <body> [<login> <association> <body>]... → comments.json, in order
-  local a='[]'; while [ $# -ge 3 ]; do a=$(jq -c --arg l "$1" --arg s "$2" --arg b "$3" '. + [{user: {login: $l}, author_association: $s, body: $b}]' <<< "$a"); shift 3; done
+  local a='[]'; while [ $# -ge 3 ]; do a=$(jq -c --arg l "$1" --arg s "$2" --arg b "$3" '. + [{user: {login: $l}, author_association: $s, body: $b, created_at: "2026-11-27T08:00:00Z", updated_at: "2026-11-27T08:00:00Z"}]' <<< "$a"); shift 3; done
   echo "$a" > "$T/fx/comments.json"; }
 run() {  # run [args...] → $out $log $r (REVIEWERS from $REV when set; the variable's file otherwise)
   : > "$T/fx/log"; rm -f "$T/fx/labelled"
@@ -48,7 +49,7 @@ run() {  # run [args...] → $out $log $r (REVIEWERS from $REV when set; the var
   else out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x LEAD_LABEL_REPO=o/r LEAD_LABEL_API=https://api.test LEAD_LABEL_MAIN_CHECK=0 FAIL_COMMENTS="${FAIL_COMMENTS:-}" bash "$L" "$@" 2>&1); r=$?; fi
   log=$(cat "$T/fx/log"); }
 rd() {  # rd <login> <association> <body> → read.json, the comment appended to page 1 (no argument: none)
-  if [ $# = 0 ]; then rm -f "$T/fx/read.json"; else jq -n --arg l "$1" --arg a "$2" --arg b "$3" '[{user: {login: $l}, author_association: $a, body: $b}]' > "$T/fx/read.json"; fi; }
+  if [ $# = 0 ]; then rm -f "$T/fx/read.json"; else jq -n --arg l "$1" --arg a "$2" --arg b "$3" --arg u "${UPD:-2026-11-27T09:00:00Z}" '[{user: {login: $l}, author_association: $a, body: $b, created_at: "2026-11-27T09:00:00Z", updated_at: $u}]' > "$T/fx/read.json"; fi; }
 labelled() { [ $r = 0 ] && [ "$log" = "LABEL review: approved" ] && echo 1; }
 refused() { [ $r = 1 ] && [ -z "$log" ] && grep -q '^lead-label: refused: ' <<< "$out" && echo 1; }
 
@@ -101,8 +102,28 @@ rd someone NONE "Lead read the diff: $HEAD1"; REV="" run 7; ok "a read line by a
 rd o OWNER "    Lead read the diff: $HEAD1"; REV="" run 7; ok "a read line inside a code block (4 spaces): refused" "$(refused)" "exit $r: $out / $log"
 rd o OWNER "I will post Lead read the diff: $HEAD1 later"; REV="" run 7; ok "a read named inside a sentence: refused (alone on its line)" "$(refused)" "exit $r: $out / $log"
 rd o OWNER "Lead read: OK $HEAD1."; REV="" run 7; ok "\"Lead read: OK <head>.\" counts as the read (lead-read-gate.sh's form)" "$(labelled)" "exit $r: $out / $log"
+# break r2 M1: read exactly as lead-read-gate.sh reads it
+F3='```'
+rd o OWNER "$F3
+Lead read the diff: $HEAD1
+$F3"; REV="" run 7; ok "a read line inside a \`\`\` fence: refused (the gate drops fences)" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "~~~
+Lead read the diff: $HEAD1
+~~~"; REV="" run 7; ok "a read line inside a ~~~ fence: refused" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "<!--
+Lead read the diff: $HEAD1
+-->"; REV="" run 7; ok "a read line inside an HTML comment: refused" "$(refused)" "exit $r: $out / $log"
+rd o OWNER "$F3
+Lead read the diff: $HEAD1"; REV="" run 7; ok "a read line after an unclosed fence: refused" "$(refused)" "exit $r: $out / $log"
+UPD=2026-11-27T10:00:00Z rd o OWNER "Lead read the diff: $HEAD1"; REV="" run 7; ok "an edited comment's read line: refused (anyone with write access can edit a comment)" "$(refused)" "exit $r: $out / $log"
+echo "lead1" > "$T/fx/leadlogins"; rd helper COLLABORATOR "Lead read the diff: $HEAD1"; REV="" run 7
+ok "LEAD_LOGINS set: a writer not in it does not count" "$(refused)" "exit $r: $out / $log"
+rd LEAD1 MEMBER "Lead read the diff: $HEAD1"; REV="" run 7; ok "LEAD_LOGINS set: a listed login counts (any case)" "$(labelled)" "exit $r: $out / $log"
+echo "builder" > "$T/fx/leadlogins"; rd builder MEMBER "Lead read the diff: $HEAD1"; REV="" run 7
+ok "LEAD_LOGINS set: the PR's own author never frees it" "$(refused)" "exit $r: $out / $log"
+rm -f "$T/fx/leadlogins"
 rd o OWNER "Lead read the diff: $HEAD1"
-jq -n --arg h "$HEAD1" '[range(100) | {user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h + "\nLead read the diff: " + $h)}]' > "$T/fx/comments.json"
+jq -n --arg h "$HEAD1" '[range(100) | {user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h + "\nLead read the diff: " + $h), created_at: "2026-11-27T08:00:00Z"}]' > "$T/fx/comments.json"
 ALLPAGES=1 REV="" run 7; ok "more than 3000 comments: refused (fails closed)" "$(refused)" "exit $r: $out / $log"
 cmt o OWNER "Reviewer: Approve $HEAD1"
 # break r1: every page counts, a malformed page fails closed, the locale and the session's env cannot widen it

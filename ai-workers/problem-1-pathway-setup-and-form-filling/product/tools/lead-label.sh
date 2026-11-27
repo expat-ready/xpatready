@@ -14,9 +14,10 @@
 #   (b) the last "Reviewer:" line about the head, by the repository owner's account or a login in REVIEWERS with write
 #       access (OWNER, MEMBER, COLLABORATOR), is "Reviewer: Approve <the head's full 40-hex SHA>" — the same rule as
 #       queue-gate.sh approved(): a later "Reviewer: Changes" on the head wins, a short SHA or an older head refuses;
-#   (c) a comment by someone with write access holds the Lead's read of that head, alone on its line, in
-#       lead-read-gate.sh's form: "Lead read the diff: <full head SHA>" (or "Lead read: OK <full head SHA>"; P-423, P-637),
-#       so the label never goes on without a recorded read (review r1 M1);
+#   (c) a comment holds the Lead's read of that head, alone on its line: "Lead read the diff: <full head SHA>" (or
+#       "Lead read: OK <full head SHA>"; P-423, P-637), read exactly as lead-read-gate.sh reads it: a writer's comment,
+#       never edited, only from LEAD_LOGINS (the repository variable) and never the PR's author when that is set, with
+#       code fences and HTML comments dropped; so the label never goes on without a recorded read (review r1 M1, break r2 M1);
 #   (d) the head is still the same after the label went on (else the label comes off again).
 # Anything else: exit 1 and the reason, nothing changed. The label is then judged again on GitHub's side by main's
 # label-guard.yml (pull_request_target; an Approve on the head, pr-suites green) and label-sweep.sh: this script narrows
@@ -24,7 +25,8 @@
 # Env: GH_TOKEN (default: `gh auth token`). Only names starting LEAD_LABEL_ are read, so nothing a session happens to
 # carry (API, REPO, REVIEWERS) can point the token elsewhere or widen who counts (break r1 m3): LEAD_LABEL_REPO (default:
 # from the origin remote), LEAD_LABEL_REVIEWERS (default: the repository variable REVIEWERS, read with the token;
-# unreadable → the owner alone), LEAD_LABEL_API (default https://api.github.com), LEAD_LABEL_MAIN_CHECK (default 1:
+# unreadable → the owner alone), LEAD_LABEL_LEAD_LOGINS (default: the repository variable LEAD_LOGINS; unreadable or
+# unset → any writer, as the gate), LEAD_LABEL_API (default https://api.github.com), LEAD_LABEL_MAIN_CHECK (default 1:
 # refuse when this file differs from main's copy as just fetched; the test sets 0).
 # Exit 0 labelled (or already labelled); 1 refused or could not judge. Test: check-lead-label.sh. US$0.
 set -uo pipefail
@@ -53,7 +55,7 @@ fi
 [ -n "${GH_TOKEN:-}" ] || no "no GitHub token (GH_TOKEN, or gh auth login)"
 H=$(mktemp); trap 'rm -f "$H"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
-api() { curl -sS --fail-with-body -H @"$H" "$@"; }
+api() { curl -q -sS --fail-with-body -H @"$H" "$@"; }   # -q: no .curlrc from the session's HOME or CURL_HOME (break r2 m2)
 OWNER="${REPO%%/*}"
 
 # (a) the PR
@@ -91,8 +93,16 @@ done <<< "$lines"
 grep -qiE "^[[:space:]]*reviewer:[[:space:]]*approve[sd]?[[:space:]]+$head\b" <<< "$last" \
   || no "#$PR: the last \"Reviewer:\" line about the head $head from the owner's account or a known reviewer is not \"Reviewer: Approve $head\"${last:+ (it is: $(cut -c1-120 <<< "$last"))}"
 
-# (c) the Lead's read of this head, by someone with write access (lead-read-gate.sh's reading)
-read_ok=$(jq -r '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR") | (.body // "" | tostring)' <<< "$cs" \
+# (c) the Lead's read of this head: lead-read-gate.sh's filter, word for word (who counts, never edited, fences and HTML
+# comments dropped), then its line grep
+if [ -n "${LEAD_LABEL_LEAD_LOGINS+x}" ]; then LEAD_LOGINS=$LEAD_LABEL_LEAD_LOGINS
+else LEAD_LOGINS=$(api "$API/repos/$REPO/actions/variables/LEAD_LOGINS" 2>/dev/null | jq -r '.value // ""' 2>/dev/null) || LEAD_LOGINS=""; fi
+author=$(jq -r '.user.login // ""' <<< "$pr")
+read_ok=$(jq -r --arg who "$LEAD_LOGINS" --arg author "$author" '($who | ascii_downcase | [splits("[\\s,]+")] | map(select(length > 0))) as $leads | ($author | ascii_downcase) as $author | .[]
+      | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+      | select(($leads | length) == 0 or ((.user.login // "" | ascii_downcase) as $l | ($leads | index($l)) != null and $l != $author))
+      | select(.created_at != null and (.updated_at // .created_at) == .created_at)
+      | (.body // "" | tostring) | gsub("<!--[\\s\\S]*?(-->|$)"; "") | gsub("```[\\s\\S]*?(```|$)"; "") | gsub("~~~[\\s\\S]*?(~~~|$)"; "")' <<< "$cs" \
   | tr -d '*_`\r' | grep -v -e '^    ' -e "^$(printf '\t')" \
   | grep -iE '^[[:space:]]*Lead read(: *OK| the diff:?)[[:space:]]+[0-9a-f]{40}[[:space:]]*\.?[[:space:]]*$' | grep -oiE '[0-9a-f]{40}' | tr 'A-F' 'a-f' | grep -x "$head")
 [ -n "$read_ok" ] || no "#$PR: no line \"Lead read the diff: $head\" by someone with write access (P-423: the read first, then the label)"
