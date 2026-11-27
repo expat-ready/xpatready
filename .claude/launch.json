@@ -14,16 +14,6 @@
         "ai-workers"
       ],
       "port": 8765
-    },
-    {
-      "name": "p3-review",
-      "runtimeExecutable": "${workspaceFolder}/.tools/node-v24.21.0/bin/node",
-      "runtimeArgs": [
-        "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p3/server.ts",
-        "--port",
-        "4317"
-      ],
-      "port": 4317
     }
   ]
 }
