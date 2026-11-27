@@ -759,7 +759,8 @@ OS18 wired|product/tools/lead-watch.sh|s/^act=\$((act + \$(grep -c .^ACT. <<<"\$
 # A438 (founder 27 Nov 14:3x IST, "Yes, all three"): each row switches off one protection the three cuts keep.
 MUT="$MUT"'
 A438 weak code|product/tools/weakening.py|s/^    if add or rem:   # tests, workflows/    if False:   # tests, workflows/|check-weakening.sh
-A438 weak rows|product/tools/weakening.py|s/^        if rem or closing:$/        if False:/|check-weakening.sh
+A438 weak rows|product/tools/weakening.py|s/^        if rem and not (len(rem) == 1/        if False and not (len(rem) == 1/|check-weakening.sh
+A438 weak inside|product/tools/weakening.py|s/^                if not inside:$/                if False:/|check-weakening.sh
 A438 weak rowshape|product/tools/weakening.py|s/^            if not (GUARDS_ROW.match(t) or GUARDS_TESTS.match(t)/            if False and (GUARDS_ROW.match(t) or GUARDS_TESTS.match(t)/|check-weakening.sh
 A438 weak front|product/tools/weakening.py|s/^            if not closed and s in "+-" and (no <= FRONT_MATTER_LINES or.*/            if False:/|check-weakening.sh
 A438 weak case|product/tools/weakening.py|s/^    if status == "added" and odd_case(path):$/    if False:/|check-weakening.sh

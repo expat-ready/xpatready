@@ -118,17 +118,36 @@ def guards_rows_only(rows):
             continue
         add = [t for _, _, s, t in hunk if s == "+"]
         rem = [t for _, _, s, t in hunk if s == "-"]
-        for t in add:
-            if not (GUARDS_ROW.match(t) or GUARDS_TESTS.match(t) or GUARDS_OPEN.match(t) or re.match(r"^#[^'\n]*$", t)):
+        # inside MUT='...' or not: from the line before the first change (a row without its closing quote, or the
+        # opener, means inside), then each added opener opens and a row ending in ' closes. A comment holding a quote
+        # is allowed only outside the string (inside, its quote would end the string).
+        first = next((i for i, (_, _, s, _t) in enumerate(hunk) if s in "+-"), 0)
+        prev = next((t for _, _, s, t in reversed(hunk[:first]) if s == " "), "")
+        inside = bool(GUARDS_OPEN.match(prev) or (GUARDS_ROW.match(prev) and not prev.endswith("'"))
+                      or (hunk and hunk[first][2] == "-" and GUARDS_ROW.match(hunk[first][3])))   # the old last row was inside
+        for _, _, s, t in hunk:
+            if s != "+":
+                continue
+            if GUARDS_OPEN.match(t):
+                inside = True
+            elif GUARDS_ROW.match(t):
+                if not inside:
+                    return "check-guards.sh gains a mutation row outside MUT='...' (it would run as code): %s" % t.strip()[:80]
+                inside = not t.endswith("'")
+            elif not inside and not t.strip():
+                pass   # a blank line outside the string
+            elif GUARDS_TESTS.match(t) or re.match(r"^#[^'\n]*$", t) or (not inside and re.match(r"^#[^\n]*$", t)):
+                if inside and not t.startswith("#"):
+                    return "check-guards.sh gains a TESTS line inside MUT='...': %s" % t.strip()[:80]
+            else:
                 return "check-guards.sh gains a line that is not a test name, a mutation row or a comment: %s" % t.strip()[:80]
         for t in rem:
             if not (t.endswith("'") and t[:-1] in add):
                 return "check-guards.sh removes or changes a line (a test name or mutation row): %s" % (t.strip() or "a blank line")[:80]
-        closing = [t for t in add if t.endswith("'")]
-        if rem or closing:
-            if not (len(rem) == 1 and len(closing) == 1 and add and add[-1] == closing[0] and GUARDS_ROW.match(rem[0])
-                    and rem[0].endswith("'") and rem[0][:-1] in add):
-                return "check-guards.sh: a row loses or moves its closing quote in a way that could end the string early"
+        closing = [t for t in add if t.endswith("'") and GUARDS_ROW.match(t)]
+        if rem and not (len(rem) == 1 and len(closing) >= 1 and GUARDS_ROW.match(rem[0]) and rem[0].endswith("'")
+                        and rem[0][:-1] in add):
+            return "check-guards.sh: a row loses or moves its closing quote in a way that could end the string early"
         hunk = []
     return ""
 
@@ -230,7 +249,7 @@ def self_test():
         (True, "a test loses a case", f(T + "check-x.sh", "@@ -1,2 +1 @@\n ok \"a\" 1\n-ok \"b\" 1")),
         (True, "a test assertion loosened (= 4 to -le 4)", f(T + "check-x.sh", "@@ -1 +1 @@\n-ok \"four\" \"$([ \"$n\" = 4 ] && echo 1)\"\n+ok \"four\" \"$([ \"$n\" -le 4 ] && echo 1)\"")),
         (True, "a mutation row removed", f(T + "check-guards.sh", "@@ -1 +0,0 @@\n-15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh")),
-        (False, "a mutation row added", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh")),
+        (False, "a mutation row added", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n 14 x|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh\n+15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh")),
         (True, "a guard line gains a pipe (existing code: read)", f(T + "merge-guard.sh", "@@ -1 +1 @@\n-LANE=$(lane.sh whoami)\n+LANE=$(lane.sh whoami | sed s/x/y/)")),
         (True, "a guard's check removed", f(T + "merge-guard.sh", "@@ -1,2 +1 @@\n x\n-[ -z \"$ok\" ] && exit 1")),
         (True, "a guard's threshold lowered", f(T + "wip-guard.py", "@@ -1 +1 @@\n-if n > 3: refuse()\n+if n > 9: refuse()")),
@@ -311,6 +330,9 @@ def self_test():
         (True, "R2-B1: a // line in a test (bash runs it)", f(T + "check-records-queue.sh", "@@ -1 +1,2 @@\n set -u\n+//usr/bin/false || exit 0")),
         (True, "R2-B1: a row-shaped exit 0 in a test other than check-guards.sh", f(T + "check-x.sh", "@@ -1 +1,2 @@\n set -u\n+exit 0 #|a|b|c.sh")),
         (True, "R2-B1: Python exit(0) in a test", f(T + "test_review_rounds.py", "@@ -1 +1,2 @@\n import os\n+exit(0)")),
+        (False, "check-guards.sh gains a TESTS line, a comment with a quote, an opener and rows (#3715's shape)", f(T + "check-guards.sh", "@@ -40,2 +40,7 @@\n x\n+TESTS=\"$TESTS check-v.sh\"   # OS-72: plan\n+# OS-72: the skill's plan; each row switches one rule off.\n+MUT=\"$MUT\"'\n+OS72 cap|prototype/studio/tools/v.sh|s/a/b/|check-v.sh\n+OS72 data|prototype/studio/tools/v.sh|/x/s/exit 2/true/|check-v.sh'\n y")),
+        (True, "check-guards.sh: a comment with a quote inside MUT='...'", f(T + "check-guards.sh", "@@ -1,2 +1,3 @@\n MUT=\"$MUT\"'\n+# don't\n A1 a|product/tools/a.sh|s/x/y/|check-a.sh'")),
+        (True, "check-guards.sh: a row outside MUT='...' (it runs as code)", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n TESTS=\"$TESTS x.sh\"\n+fail=0;:|product/tools/a.sh|s/x/y/|check-a.sh")),
         (True, "R2-B1: check-guards.sh gains a non-row line", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+bad=0")),
         (True, "R2-B1: check-guards.sh closes the quote early, code after", f(T + "check-guards.sh", "@@ -1,2 +1,4 @@\n-A1 a|product/tools/a.sh|s/x/y/|check-a.sh'\n+A1 a|product/tools/a.sh|s/x/y/|check-a.sh\n+A2 b|product/tools/b.sh|s/x/y/|check-b.sh'\n+A3 fail=0;:|product/tools/c.sh|s/x/y/|check-c.sh\n x")),
         (True, "R2-B1: check-guards.sh row with a quote inside", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+A9 x'; exit 0; '|product/tools/a.sh|s/x/y/|check-a.sh")),
