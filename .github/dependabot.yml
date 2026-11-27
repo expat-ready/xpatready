@@ -1,0 +1,50 @@
+# Dependabot (LR-058, bundle A8): security updates plus one grouped weekly update per ecosystem.
+# Every folder with a committed npm lockfile is listed; no pip manifest is tracked (add it here when one is).
+# Dependabot PRs follow the normal route: suites, the reviewer's Approve and the label; nothing merges by itself.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directories:
+      - "/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio"
+      - "/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk"
+      - "/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/env/node"
+      - "/packages/xfa-engine"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
