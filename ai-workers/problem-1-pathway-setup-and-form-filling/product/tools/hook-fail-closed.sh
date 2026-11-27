@@ -24,15 +24,18 @@ case "$GUARD" in */*|..*) refuse "guard '$GUARD' must be a file name in $TOOLS";
 command -v jq >/dev/null 2>&1 || refuse "jq is missing, so the input cannot be read"
 T=$(mktemp -d "${TMPDIR:-/tmp}/hook-fc.XXXXXXXX") || refuse "no temporary folder"
 trap 'rm -rf "$T"' EXIT
-# The input is copied by cat (fast for megabytes, same on bash 3.2 and 5), stopped after 5 s if it never ends.
-exec 3<&0
-set -m
+# The input is copied by cat (fast for megabytes, same on bash 3.2 and 5), stopped after 5 s if it never ends. No job
+# control here: a cat in its own process group is stopped (SIGTTIN), not run, when the input is a terminal.
+exec 3<&0 || refuse "no hook input (stdin is closed)"
 cat <&3 >"$T/in" & cpid=$!
-( sleep 5; touch "$T/slow"; kill -KILL "$cpid" ) >/dev/null 2>&1 & cdog=$!
-set +m
-wait "$cpid"; kill -- "-$cdog" 2>/dev/null; wait "$cdog" 2>/dev/null; exec 3<&-
+( sleep 5 & s=$!; trap 'kill "$s" 2>/dev/null; exit 0' TERM; wait "$s"; touch "$T/slow"; kill -KILL "$cpid" ) >/dev/null 2>&1 & cdog=$!
+wait "$cpid"; crc=$?; kill -TERM "$cdog" 2>/dev/null; wait "$cdog" 2>/dev/null; exec 3<&-
 [ -e "$T/slow" ] && refuse "no hook input within 5 s"
-jq -s -e 'length == 1 and (.[0] | type) == "object"' "$T/in" >/dev/null 2>&1 || refuse "the hook input is empty or not one JSON object"
+[ "$crc" = 0 ] || refuse "the hook input could not be read (cat exit $crc)"
+if ! jq -s -e 'length == 1 and (.[0] | type) == "object"' "$T/in" >/dev/null 2>&1; then
+  keep="${TMPDIR:-/tmp}/hook-fail-closed.last-input"; cp "$T/in" "$keep" 2>/dev/null   # local only, for the diagnosis
+  refuse "the hook input is empty or not one JSON object ($(wc -c < "$T/in" | tr -d ' ') bytes read, kept in $keep)"
+fi
 [ -f "$TOOLS/$GUARD" ] || refuse "guard $GUARD is missing"
 case "$GUARD" in *.py) run=(python3 -I "$TOOLS/$GUARD");; *) run=(bash "$TOOLS/$GUARD");; esac
 set -m   # the guard gets its own process group, so a timeout stops its children too
