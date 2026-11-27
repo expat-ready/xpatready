@@ -261,7 +261,7 @@ A348 cap wired|product/tools/lead-watch.sh|s/^cp=/# cp=/|check-capacity-watch.sh
 15 lead label|product/tools/queue-gate.sh|s/^  records \&\& rec=1$/  rec=1/|check-queue-gate.sh
 15 lead img|product/tools/queue-gate.sh|/^    grep -qiE .\/product\/tools\/. <<< "\$f" .. ! grep/d|check-queue-gate.sh
 15 lead list|product/tools/queue-gate.sh|s/^    \[ -r "\$all" \] \&\& grep -q "^# --- \$mk" "\$all" .. {.*}; done$/    true; done/|check-queue-gate.sh
-15 start rid|product/tools/queue-gate.sh|s/ \&\& held \&\& \[ "\$held_state" = failed \]; then start/ \&\& held; then start/|check-queue-gate.sh
+15 start rid|product/tools/queue-gate.sh|s/^  if held \&\& \[ "\$held_state" = failed \]; then start/  if held; then start/|check-queue-gate.sh
 15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
 15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
 15 start red|product/tools/queue-gate.sh|s/\[ "\$ci_state" = failure \] \&\& { echo "#\$PR: ci is red/false \&\& { echo "#$PR: ci is red/|check-queue-gate.sh
@@ -672,7 +672,7 @@ P822 part|../../.github/workflows/pr-suites.yml|s/if \[ "\$SETUP" = success \] \
 P822 wake|../../.github/workflows/queue-gate.yml|s/workflows: \[ci, pr-suites\]/workflows: [ci]/|check-queue-gate.sh'
 # OS-82 (OS-PM 4): a head whose only pr-suites run predates job "pr-suites" counts only when its parts were skipped
 MUT="$MUT"'
-OS82 wired|product/tools/queue-gate.sh|s/\[ "\$suites_state" = missing \] \&\& noparts "\$s"; return 0; }/return 0; }/|check-queue-gate.sh
+OS82 wired|product/tools/queue-gate.sh|s/^  \[ "\$suites_state" = missing \] \&\& noparts "\$s"$/  true/|check-queue-gate.sh
 OS82 skipped|product/tools/queue-gate.sh|s/length > 0 and all(.conclusion == "skipped")/length > 0/|check-queue-gate.sh
 OS82 warned|product/tools/queue-gate.sh|s/startswith("pr-suites"))/startswith("~"))/|check-queue-gate.sh
 OS82 job|product/tools/queue-gate.sh|s/(\$j . any(.name == "pr-suites"))/(false)/|check-queue-gate.sh
