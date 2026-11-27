@@ -7,9 +7,11 @@ set -uo pipefail
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; cd "$TOOLS/.." || exit 99
 br=$(git rev-parse --abbrev-ref HEAD)
 git fetch -q origin "$br" 2>/dev/null && [ "$(git rev-list --count "HEAD..origin/${br}" 2>/dev/null || echo 0)" -gt 0 ] && echo "warn  this copy is behind origin/$br: git pull --ff-only, then run this again"
-echo "lead  $(grep '^current_lead: ' STATE.md | sed 's/^current_lead: //')"
+# The line: CURRENT-LEAD.md (public since the private split, PS-1b), else STATE.md while it is still here.
+lf=CURRENT-LEAD.md; [ -f "$lf" ] || lf=STATE.md
+echo "lead  $(grep '^current_lead: ' "$lf" | sed 's/^current_lead: //')"
 # Hand-over commits only (subject names "hand-over"): a Lead's own "took over" edits to its line are not hand-overs.
-ho() { git log -1 --format=%H -i --grep='hand-over' -G'^current_lead: ' "$1" -- STATE.md 2>/dev/null; }
+ho() { git log -1 --format=%H -i --grep='hand-over' -G'^current_lead: ' "$1" -- STATE.md CURRENT-LEAD.md 2>/dev/null; }
 h=$(ho HEAD); p=$([ -n "$h" ] && ho "${h}~1")
 range="${p:+${p}..}HEAD"
 echo "log   $(git rev-list --count "$range") commit(s) since the previous hand-over (${p:0:9}); newest 30:"
