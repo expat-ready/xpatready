@@ -5,7 +5,9 @@
 # #2897 added @PermissionKeys routes in platform/settings/offices/routes.ts, was labelled and queued, and the Lead's
 # read came 14 minutes before the merge (design/open-contribution-gate-2026-11-22.md).
 # A PR keeps the Lead's read when
-#   (a) a changed path (either side of a rename) matches lead-read-paths.txt, the one list (.github/, .mergify.yml, the
+#   (a) a changed path (either side of a rename) matches lead-read-paths.txt, the one list; a path of its "# --- pipeline"
+#       section (.github/, .mergify.yml, the guards, hooks, agent settings) only when weakening.py finds its diff can
+#       weaken protection (A438 cut 2, founder 27 Nov: a new test, a stricter check or an added tool needs no read) (.github/, .mergify.yml, the
 #       guards, the schema, migrations, money, and the permission machinery itself: platform/identity/, core.ts, the firm
 #       wall, the terms gate). When the list carries the line "# --- records-exempt" (#2428), the lines after it (money,
 #       permissions) are not set off by a screenshot (*.png under screens/) or by an image or .txt under product/
@@ -49,7 +51,7 @@ API="${API:-https://api.github.com}"; CTX="lead-read"
 MODE=$(printf '%s' "${LEAD_READ_GATE:-report}" | tr 'A-Z' 'a-z'); case "$MODE" in report|block) ;; *) MODE=block;; esac   # an unknown value fails closed
 HERE=$(cd "$(dirname "$0")" && pwd); LIST="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}"
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "lead-read-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H" "$H.hard" "$H.soft"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.hard" "$H.pipe" "$H.soft" "$H.fj"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -65,9 +67,15 @@ tick() { awk 'NR <= 3' | sed 's/.*/`&`/' | paste -sd ' ' -; }
 
 paths() {  # stdin: changed paths → those that keep the Lead's read by the list (a)
   local f
-  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$LIST" > "$H.hard"; awk '/^# --- read-after public/ {exit} f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$LIST" > "$H.soft"   # P-823's public-route lines are queue-gate.sh's after-read only
+  awk '/^# --- (pipeline|records-exempt)/ {exit} !/^#/ && NF' "$LIST" > "$H.hard"
+  awk '/^# --- records-exempt/ {exit} f && !/^#/ && NF; /^# --- pipeline/ {f = 1}' "$LIST" > "$H.pipe"   # A438 cut 2
+  awk '/^# --- read-after public/ {exit} f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$LIST" > "$H.soft"   # P-823's public-route lines are queue-gate.sh's after-read only
   while IFS= read -r f; do [ -n "$f" ] || continue
     if grep -qiEf "$H.hard" <<< "$f"; then printf '%s\n' "$f"; continue; fi
+    # A438 cut 2: a pipeline path keeps the read only when its diff can weaken protection (weakening.py, as queue-gate.sh);
+    # weakening.py failing is a weakening (fails closed). Not weakening: it goes on to the lines below like any file.
+    if [ -s "$H.pipe" ] && grep -qiEf "$H.pipe" <<< "$f"; then
+      if ! o=$(python3 -I "${WEAKENING:-$HERE/weakening.py}" --files "$H.fj" "$f" 2>/dev/null) || [ -n "$o" ]; then printf '%s\n' "$f"; continue; fi; fi
     [ -s "$H.soft" ] && grep -qiEf "$H.soft" <<< "$f" || continue
     grep -qiE '(^|/)screens/([^/]+/)*[^/]+\.png$' <<< "$f" && continue
     if ! grep -qiE '/product/tools/' <<< "$f" && grep -qE '^ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(png|jpe?g|gif|webp|svg|txt)$' <<< "$f"; then continue; fi
@@ -85,7 +93,7 @@ judge() {  # PR → verdict (OK|HOLD|SKIP), why, head; returns 0, 1, 0; 2 with w
   [ -r "$LIST" ] && grep -qv '^#' "$LIST" || { why="lead-read-paths.txt cannot be read"; return 2; }
   files=$(pages "repos/$REPO/pulls/$PR/files") && jq -e 'type == "array"' <<< "$files" >/dev/null || { why="its files cannot be read"; return 2; }
   if [ "$(jq length <<< "$files")" -ge 3000 ]; then hit="3000 files or more (GitHub lists no more)"; else
-    names=$(jq -r '.[] | .filename, (.previous_filename // empty)' <<< "$files")
+    names=$(jq -r '.[] | .filename, (.previous_filename // empty)' <<< "$files"); printf '%s' "$files" > "$H.fj"   # weakening.py reads the patches
     hit=$(paths <<< "$names" | tick)
     # (b) the lines that declare access, from each API source or data file's patch (either name); a missing patch counts
     lines=$(jq -r --arg src "$SRC" --arg walled "$WALLED" --arg whole "$WHOLE" --arg access "$ACCESS" --arg route "$ROUTE" '.[]

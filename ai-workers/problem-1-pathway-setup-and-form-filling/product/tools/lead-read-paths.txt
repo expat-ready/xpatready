@@ -2,13 +2,31 @@
 # public-route changes are labelled automatically after the fresh Opus reviewer's Approve on the exact head and green ci;
 # the Lead reads afterwards: every money PR within the hour, others 1 in 3 ... Workflows, permissions and destructive
 # migrations (drop, rename, delete) still wait for the Lead's read first"):
-#   read first — every line before "# --- read-after money": queue-gate.sh never puts `review: approved` on such a PR;
+#   read first — every line before "# --- pipeline": queue-gate.sh never puts `review: approved` on such a PR;
+#   pipeline (A438 cut 2, founder 27 Nov 14:3x IST, "Yes, all three": the Lead reads only where a change can weaken
+#     protection) — the lines between "# --- pipeline" and "# --- records-exempt": read first only when weakening.py
+#     finds the file's diff can weaken protection (a gate changed, a check, guard, test assertion or mutation row removed
+#     or loosened, a workflow widened, a hook or setting removed); else the reviewer's Approve alone. Without the
+#     "# --- pipeline" line every line before "# --- records-exempt" is read first (the old rule: fails closed);
+#   read first, money and permissions — the lines from "# --- records-exempt" to "# --- read-after money";
 #   read after — the lines after it, by section (money, migration, public): queue-gate.sh labels it as any other PR and
 #     posts "Lead after-read owed: <kinds> #<n> <sha>" (after-read-owed.sh lists them for the Lead). A migration or schema
 #     file is read first after all when its change drops, renames or deletes (queue-gate.sh destructive(): the PR's added
 #     lines, not the file name).
 # Records and screenshots are exempt from every line after "# --- records-exempt" (B206 part 3).
 # One extended regex per line, matched against each changed path, case-insensitive; # starts a comment.
+# Prisma's own configuration: it names the migrations path and the schema (review of #3661, Major 5: a moved migrations
+# path would take every migration off the list)
+/prisma\.config\.[cm]?[jt]s$
+# The permission machinery itself (P-785 (2) step 1, break B2): the guard, the keys and their catalogue, the start-up
+# guard in core.ts, the firm wall and the terms gate. A change here needs no key or decorator to widen access.
+/api/src/platform/identity/
+/api/src/core\.ts$
+/api/src/platform/(firm-scope|terms/gate)\.ts$
+/api/src/features/platform-terms\.ts$
+# Who sees which notification group: an access rule kept as data (break round 2 m1)
+/studio/samples/notification-groups\.json$
+# --- pipeline: read first only when weakening.py finds a weakening diff (A438 cut 2). Each line still holds for any file.
 # Workflows and the merge queue (P-214, P-423)
 ^\.github/
 ^\.mergify\.yml$
@@ -22,17 +40,6 @@
 ^(CLAUDE|AGENTS)\.md$
 # CI's gates that ci.yml runs from the PR's own copy (gate-b.mjs, works-set.mjs, check-port-contracts.mjs)
 /prototype/studio/tools/
-# Prisma's own configuration: it names the migrations path and the schema (review of #3661, Major 5: a moved migrations
-# path would take every migration off the list)
-/prisma\.config\.[cm]?[jt]s$
-# The permission machinery itself (P-785 (2) step 1, break B2): the guard, the keys and their catalogue, the start-up
-# guard in core.ts, the firm wall and the terms gate. A change here needs no key or decorator to widen access.
-/api/src/platform/identity/
-/api/src/core\.ts$
-/api/src/platform/(firm-scope|terms/gate)\.ts$
-/api/src/features/platform-terms\.ts$
-# Who sees which notification group: an access rule kept as data (break round 2 m1)
-/studio/samples/notification-groups\.json$
 # --- records-exempt: the lines below (money and permissions) are not set off by a screenshot (*.png under screens/), an
 # image or .txt under product/, or any file of a records-only PR (records-only.sh and the "records" label): B206 part 3, P-751.
 # Every line above holds for any file. queue-gate.sh leadread() reads this marker line.

@@ -651,9 +651,32 @@ ok "P-823: a schema change that only adds lines, with its additive migration: la
 fp 9 "$S/prisma/schema/cases.prisma" modified $'@@ -1,3 +1,2 @@\n model Case {\n-  notes String?\n }'; run label 9
 ok "P-823 plant: a schema change that removes a line: refused, read first" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'a schema change that removes' <<< "$out" && echo 1)" "$out / $log"
 for f in ".github/workflows/ci.yml" "$S/api/src/platform/identity/keys.ts" "$S/api/src/permissions.ts"; do
-  fp 9 "$f" modified $'@@ -1 +1,2 @@\n x\n+y' "$MG" added "$ADD"; run label 9
-  ok "P-823 plant: $f beside an additive migration: refused, read first (workflows and permissions)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+  fp 9 "$f" modified $'@@ -1,2 +1 @@\n x\n-      - run: bash lint.sh' "$MG" added "$ADD"; run label 9
+  ok "P-823 plant: $f beside an additive migration: refused, read first (a workflow line removed (A438), permissions)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
 done
+# --- A438 cut 2 (founder 27 Nov): a pipeline path is read first only when its diff can weaken protection (weakening.py)
+for f in ".github/workflows/ci.yml" "$PR3/tools/check-new.sh" "$PR3/tools/new-tool.sh" ".claude/skills/next/SKILL.md" "AGENTS.md"; do
+  fp 7 "$f" modified $'@@ -1 +1,2 @@\n x\n+      - run: bash new-check.sh'; run label 7
+  ok "A438: $f that only adds lines (a new step, test or tool): labelled on the reviewer's Approve alone" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+done
+for c in "$PR3/tools/push-guard.sh|"$'@@ -1,2 +1 @@\n x\n-[ -z "$ok" ] \&\& exit 1'"|a guard's line" \
+         "$PR3/tools/check-guards.sh|"$'@@ -1,2 +1 @@\n x\n-15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh'"|mutation row" \
+         "$PR3/tools/queue-gate.sh|"$'@@ -1 +1,2 @@\n x\n+autocover \&\& return 0'"|a gate" \
+         ".mergify.yml|"$'@@ -1 +1,2 @@\n x\n+      - check-success = pr-rules'"|a gate" \
+         ".github/workflows/x.yml|"$'@@ -1 +1,2 @@\n on:\n+  pull_request_target:'"|pull_request_target" \
+         ".claude/settings.json|"$'@@ -1 +1,2 @@\n x\n+      "Bash(git push:*)",'"|a permission" \
+         "$PR3/tools/pr-suites-quarantine.txt|"$'@@ -1 +1,2 @@\n x\n+check_a.ts|runtime|2026-12-02|p822'"|allow-list"; do
+  f=${c%%|*}; want=${c##*|}; pt=${c#*|}; pt=${pt%|*}
+  fp 7 "$f" modified "$pt"; TRIG=approve run label 7
+  ok "A438: $f with a weakening diff ($want): refused, read first, the comment says why" "$(! grep -q '^LABEL' <<< "$log" && grep -q "keeps the Lead's read first" <<< "$out" && grep -q 'weakening, A438' <<< "$out" && grep -q '^COMMENT 7 .*not put on by itself' <<< "$log" && echo 1)" "$out / $log"
+done
+fp 7 "$PR3/tools/new-tool.sh" added $'@@ -0,0 +1 @@\n+y'; WEAKENING=/nonexistent; export WEAKENING; run label 7; unset WEAKENING
+ok "A438: weakening.py missing: a pipeline path is refused, read first (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'could not judge' <<< "$out" && echo 1)" "$out / $log"
+sed '/^# --- pipeline/d' "$TOOLS/lead-read-paths.txt" > "$T/lrp-nopipe.txt"
+fp 7 "$PR3/tools/new-tool.sh" added $'@@ -0,0 +1 @@\n+y'; LEAD_READ_PATHS="$T/lrp-nopipe.txt"; export LEAD_READ_PATHS; run label 7; unset LEAD_READ_PATHS
+ok "A438: a list without its \"# --- pipeline\" line reads every pipeline path first (the old rule: fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "read first" <<< "$out" && echo 1)" "$out / $log"
+fp 7 "$PR3/tools/new-tool.sh" added $'@@ -0,0 +1 @@\n+y' "$S/api/src/platform/identity/keys.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 7
+ok "A438: an added tool beside the permission machinery: still refused, read first (cut 2 narrows pipeline paths only)" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'platform/identity' <<< "$out" && echo 1)" "$out / $log"
 fp 9 "$S/api/src/front-office/booking/public.controller.ts" modified $'@@ -1 +1,2 @@\n x\n+y'; run label 9
 ok "P-823: a public route file: labelled, \"Lead after-read owed: public\"" "$(grep -qx 'LABEL 9' <<< "$log" && grep -q "Lead after-read owed: public #9 $HEAD1" <<< "$log" && grep -qx 'LABELNAME 9 after-read: other' <<< "$log" && echo 1)" "$out / $log"
 fp 9 "$S/api/src/platform/settings/routes.ts" modified $'@@ -1 +1,3 @@\n x\n+  @OpenRead("a door without sign-in")\n+  @Get("hours")'; run label 9

@@ -121,10 +121,43 @@ ok "a string that is not a key (no area:verb) is not held" "$(free)" "exit $r: $
 
 # --- (a) the kept paths, from main's own list
 for p in ".github/workflows/ci.yml" ".mergify.yml" "$PR3/tools/queue-gate.sh" "$S/prisma/migrations/20261122_x/migration.sql" "$S/prisma/schema/platform.prisma" \
-         "$S/api/src/client-money/ledger.ts" "$S/web/src/modules/platform/billing/page.tsx" ".claude/settings.json" "AGENTS.md"; do
-  f "$p" "+x"; put; run judge
-  ok "kept path: $p is held" "$(held)" "exit $r: $out"
+         "$S/api/src/client-money/ledger.ts" "$S/web/src/modules/platform/billing/page.tsx" ".claude/settings.json"; do
+  # A438 cut 2: a pipeline path (.github/, .mergify.yml, the guards, .claude/) is held when its diff weakens: here it
+  # removes a line no added line keeps; the other kept paths are held whatever their patch
+  f "$p" "-      run: bash lint.sh"; put; run judge
+  ok "kept path: $p is held (a pipeline path with a weakening diff: a line removed)" "$(held)" "exit $r: $out"
 done
+# --- A438 cut 2 (founder 27 Nov): the Lead reads only where a pipeline change can weaken protection
+for p in ".github/workflows/ci.yml" "$PR3/tools/check-new.sh" "$PR3/tools/new-tool.sh" ".claude/settings.json" "AGENTS.md" "$PR3/screens/B119/check-queue-rules.py"; do
+  f "$p" "@@ -1 +1,2 @@
+ x
++y"; put; run judge
+  ok "A438: $p with only added lines (a new step, test or tool) is not held" "$(free)" "exit $r: $out"
+done
+f "AGENTS.md" "@@ -1,2 +1 @@
+ x
+-a rule in prose"; put; run judge
+ok "A438: a prose edit to AGENTS.md is not held (the reviewer reads prose)" "$(free)" "exit $r: $out"
+f ".mergify.yml" "@@ -1 +1,2 @@
+ x
++      - check-success = pr-rules"; put; run judge
+ok "A438: .mergify.yml is a gate: even an added condition is held" "$(held)" "exit $r: $out"
+f ".github/workflows/x.yml" "@@ -1 +1,2 @@
+ on:
++  pull_request_target:"; put; run judge
+ok "A438: a workflow adding pull_request_target is held" "$(held)" "exit $r: $out"
+f "$PR3/tools/check-guards.sh" "@@ -1,2 +1 @@
+ x
+-15 ci|product/tools/queue-gate.sh|s/a/b/|check-queue-gate.sh"; put; run judge
+ok "A438: a mutation row removed is held" "$(held)" "exit $r: $out"
+f "$PR3/tools/new-tool.sh"; put; run judge
+ok "A438: a pipeline file whose patch GitHub does not give is held (fails closed)" "$(held)" "exit $r: $out"
+f "$PR3/tools/new-tool.sh" "@@ -0,0 +1 @@
++y" added; put; WEAKENING=/nonexistent; export WEAKENING; run judge; unset WEAKENING
+ok "A438: weakening.py missing: a pipeline path is held (fails closed)" "$(held)" "exit $r: $out"
+f "$PR3/tools/new-tool.sh" "@@ -0,0 +1 @@
++y" added; put; printf '^\\.github/\n/product/tools/\n# --- records-exempt: below\npermission\n' > "$T/lrp-old.txt"; LRP="$T/lrp-old.txt" run judge
+ok "A438: a list without the \"# --- pipeline\" line reads every line above records-exempt first (the old rule, fails closed)" "$(held)" "exit $r: $out"
 f "$S/api/src/moved.ts" "" renamed "$S/prisma/migrations/20261101_y/migration.sql"; put; run judge
 ok "a file renamed out of a kept path is held by its old name" "$(held)" "exit $r: $out"
 f "$S/web/src/modules/platform/settings/office-panel.tsx" "+x"; f "$S/tests/check_pf18s_offices_browser.ts" "+x"; put; run judge
@@ -270,7 +303,7 @@ ok "round 2 m5: LEAD_LOGINS split on commas and compared without case" "$(free)"
 nocmt
 
 # --- who is judged
-f ".github/workflows/ci.yml" "+x"; put
+f ".github/workflows/ci.yml" "-x"; put
 prj 7 mergify/merge-queue/abc main "mergify[bot]"; run judge
 ok "Mergify's own batch PR is not held (each of its PRs is judged by itself)" "$(free)" "exit $r: $out"
 prj 7 claude/x some-branch; run status
