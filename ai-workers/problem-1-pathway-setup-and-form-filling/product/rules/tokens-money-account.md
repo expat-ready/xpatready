@@ -52,3 +52,5 @@ Before 18 Nov, RULES.md said word for word: "**Account facts:** GitHub Pro, 40 A
 Since 18 Nov 12:31 IST the repository is `expat-ready/xpatready` in the enterprise "Expat Ready" on GitHub Enterprise Cloud (paid, 1 licence). GitHub's limits page lists 500 concurrent standard hosted jobs for Enterprise; on 18 Nov only 1-6 ran at once (measured by Lead 80); Multi-cloud set (P-693); a GitHub Support ticket is with the founder. Public repository, Actions minutes free.
 
 | P-608 | Model and effort at every start: Opus 5.5 medium; high for reviewers, breakers, the fresh reader, risky rows; Fable 5.2 medium for specifying and challenges. | hook: lane-preflight.sh --hook (part; `rules/tokens-money-account.md`) | 15 Nov |  (moved word for word by Lead 80, 16:4x IST 18 Nov)
+
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit): **Account facts:** `expat-ready/xpatready` on Enterprise Cloud since 18 Nov (500 jobs documented, 1-6 measured); detail and the Pro-era line in `rules/tokens-money-account.md`.

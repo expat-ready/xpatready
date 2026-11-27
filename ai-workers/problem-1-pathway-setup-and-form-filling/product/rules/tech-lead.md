@@ -224,3 +224,7 @@ Added 23 Nov (Lead 4; full rows in DECISIONS): P-805 size exceptions #3042, #236
 
 Added 23 Nov (Lead 10; full rows in DECISIONS): P-810 size exception #3185 · P-811 the four stacked tooling PRs land as one through #2444 (founder) · P-812 size exception #3174 · P-813 size exceptions #3184, #3193.
 Added 24 Nov (Lead 13; full rows in DECISIONS): P-814 case rows RQ-02 to RQ-08 first within the 101, RQ-01 shaped only until the founder confirms, four rows stay, programs by official volume, the list beyond the 101 · P-815 Release 1 keeps all 101, committed 12 Dec, aim 6-7 Dec (replaces P-609's date).
+
+### IDX-15 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| IDX-15 | 17 Nov rows (P-664 qa records first, P-665 CI-B, P-666 high effort and 48 h stop, P-667 rules v2, P-668 cards, P-669 5-hour bar, P-670 T7 deny lines; P-693 multi-cloud compute) stand: word for word in `rules/tech-lead.md` › Moved 19 Nov (Lead 94). | prose (see rows) | 19 Nov |

@@ -2,14 +2,14 @@
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
-**Account facts:** `expat-ready/xpatready` on Enterprise Cloud since 18 Nov (500 jobs documented, 1-6 measured); detail and the Pro-era line in `rules/tokens-money-account.md`.
+**Account facts:** `rules/tokens-money-account.md` (line moved word for word 27 Nov).
 
 **Retired and moved rows** (B193 part 5; P-312, P-611c, P-641 since): `rules/merged-and-retired-2026-11-16.md`.
 
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
-| G-847 | Product work stops completely until the lab (pipeline, engineering, clean-up, Claude Ship, security, measures) is done; open product PRs park safely (pushed, hand-over comment, draft; nothing half-merged); restart when the lab must-haves are merged and proven and the founder is told. | prose (STATE, Lead check) | P-847, 27 Nov |
+| G-847 | Product work stops until the lab is done; text and restart condition word for word in DECISIONS P-847. | prose (STATE) | P-847, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | P-690 | `design/full-power-plan-2026-11-17.md` is the one action list; items leave only when done or dropped by the founder; briefs quote item IDs. | script: plan-watch.py via check-docs.sh and lead-watch.sh | 18 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
@@ -139,7 +139,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-10 | Rows (IDX-6 one-time exceptions, P-617 and others; P-539 public repo, private strategy) stand: word for word in `rules/goal-and-order.md` (Lead 87, 19 Nov). | prose | 19 Nov |
 | IDX-8 | Org move rows (P-657, P-660, P-661, P-662) stand as recorded; word for word in `rules/tech-lead.md` › Org move (moved 17 Nov by Lead 77). | prose | 17 Nov |
 | P-663 | Ramp targets by date and the stop on new rows while the queue is slow: row in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
-| IDX-15 | 17 Nov rows (P-664 qa records first, P-665 CI-B, P-666 high effort and 48 h stop, P-667 rules v2, P-668 cards, P-669 5-hour bar, P-670 T7 deny lines; P-693 multi-cloud compute) stand: word for word in `rules/tech-lead.md` › Moved 19 Nov (Lead 94). | prose (see rows) | 19 Nov |
+| IDX-15 | 17 Nov rows P-664 to P-670 and P-693 stand: word for word in `rules/tech-lead.md` › Moved 19 Nov; the full line in `rules/tech-lead.md` › IDX-15 line. | prose (see rows) | 19 Nov |
 | P-673 | Cloud environment reads canada.ca for citations; Limited network, no secrets. | prose | 17 Nov |
 | P-674 | Clean-up plan (with P-675 to P-677): row in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
 | P-678 | Private home expat-ready/private (P-679: the only one); side notes synced each check by tools/private-sync.sh; big folders on the Mac's backup. | script: private-sync.sh | 17 Nov |
