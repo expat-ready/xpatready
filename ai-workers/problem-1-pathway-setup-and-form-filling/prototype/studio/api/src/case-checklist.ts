@@ -413,7 +413,7 @@ export class CaseChecklistsController {
   @Post("checklist-lines/:id/waive") @HttpCode(200) waive(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.x.waive(actorOf(a), id, b); }
   @Post("checklist-lines/:id/not-applicable") @HttpCode(200) notApplicable(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.x.notApplicable(actorOf(a), id, b); }
   @Post("checklist-lines/:id/providers") @HttpCode(200) providers(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.x.providers(actorOf(a), id, b); }
-  // The limit is one byte over 20 MB so a file of exactly 20 MB is taken (break m5); the route's own check refuses more.
-  @Post("checklist-lines/:id/documents") @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES + 1, files: 1 } }))
+  // multer >= 2.3 takes a file of exactly fileSize bytes and refuses one byte more (it was one byte under), so 20 MB is taken (break m5).
+  @Post("checklist-lines/:id/documents") @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
   upload(@Headers("x-actor") a: H, @Param("id") id: string, @UploadedFiles() files: Upload[], @Body() b: unknown) { return this.x.upload(actorOf(a), id, files, b); }
 }
