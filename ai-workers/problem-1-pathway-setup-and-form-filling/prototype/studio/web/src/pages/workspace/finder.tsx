@@ -184,12 +184,16 @@ export function FinderPanel({ id, latest, onRedo, onChoosePage, removed = [], co
   // QA-111: a run this strip did not start (Start setup's button before the tab re-rendered, another tab, a reload while
   // it ran) is shown from the latest read, so its run card unmounts when it ends without calling onEnded. Whenever the
   // latest run goes from running to ended, every read the Forms tab shows is refreshed (lines, counts, Next step).
-  const wasActive = React.useRef(!!run && ACTIVE.has(run.status));
-  const nowActive = !!run && ACTIVE.has(run.status);
+  // LR-110: null until the first latest read arrives. A page loaded while a run was ending can read its lines before the
+  // run attached them and its first latest read after the run ended: it never saw the run running, so that first read of
+  // an ended run refreshes the lines once too ("AI found 7 forms" over a table without them, s5 slice 3 in CI).
+  const wasActive = React.useRef<boolean | null>(latest === undefined ? null : !!run && ACTIVE.has(run.status));
+  const nowActive = !!run && ACTIVE.has(run.status), loaded = latest !== undefined, hasRun = !!run;
   React.useEffect(() => {
-    if (wasActive.current && !nowActive) for (const k of formsKeys(id)) void qc.invalidateQueries({ queryKey: k });
+    if (!loaded) return;
+    if ((wasActive.current ?? hasRun) && !nowActive) for (const k of formsKeys(id)) void qc.invalidateQueries({ queryKey: k });
     wasActive.current = nowActive;
-  }, [nowActive, run?.id, id, qc]);
+  }, [loaded, hasRun, nowActive, run?.id, id, qc]);
   // A run started here (FindDialog) is shown at once; the strip keeps it until it ends, then refreshes the lines.
   React.useEffect(() => { const h = (e: Event) => setRunId((e as CustomEvent<string>).detail); window.addEventListener("s5-find-started", h); return () => window.removeEventListener("s5-find-started", h); }, []);
   return (

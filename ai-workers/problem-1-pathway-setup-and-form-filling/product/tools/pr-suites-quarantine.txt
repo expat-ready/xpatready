@@ -7,7 +7,6 @@
 # skipped silently. An entry leaves this list in its fix PR (5 green runs in a row), or the owner lane asks the Lead for a
 # new date before that date; past its date its row says "overdue since <date>" (run-suites.sh qwhy).
 # <suite>|<owner lane>|<fix by, yyyy-mm-dd>|p822
-check_s5_slice3_browser.cjs|runtime|2026-12-02|p822
 check_c69_page_browser.cjs|runtime|2026-12-02|p822
 check_c83_review_browser.cjs|screens|2026-12-02|p822
 check_fo8_prospect_won.ts|runtime|2026-12-02|p822
