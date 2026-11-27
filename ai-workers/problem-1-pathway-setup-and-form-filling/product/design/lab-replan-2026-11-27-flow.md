@@ -16,7 +16,7 @@ Minutes in the last column come from a minute-by-minute split of each PR's open 
 | #3902 | qa starts itself after merges, measures (DORA fi | OS-11 OS-78 P-847 | merged | 6.19 | 363 | 2 | 3 | 1 (1× new head: merge of main edited/conflicted) | 1 | guards_timeout (192 min) |
 | #3910 | OS-05 — the queue gate writes "Batch failures co | OS-05 P-731 | open | 6.26 | 372 | 2 | 3 | 6 (1× failed merge batch: full run owed (B206); 4× CI-PRE full run not ended; 1× new head: merge of main edited/conflicted) | 1 | guards_timeout (93 min) |
 | #3923 | account-switch enforcement OS-86 (LR-143) — dete | OS-86 LR-143 | open | 5.24 | 311 | 2 | 3 | 1 (1× new head: merge of main edited/conflicted) | 0 | main_red (198 min) |
-| #3920 | lanes at every check — claude.ai lane read enfor | LR-154 LR-146 LR-147 LR-150 | open | 5.3 | 316 | 3 | 7 | 0 | 0 | main_red (208 min) |
+| #3920 | lanes at every check — claude.ai lane read enfor | LR-160 (was LR-154) LR-146 LR-147 LR-150 | open | 5.3 | 316 | 3 | 7 | 0 | 0 | main_red (208 min) |
 | #3921 | fast route follow-up — review minors of #3908, L | LR-151 | merged | 4.41 | 259 | 2 | 4 | 0 | 0 | queue (86 min) |
 | #3944 | fix(P-214): guard 6 mutant no longer breaks chec | P-214 PS-1b LR-156 | merged | 2.21 | 132 | 0 | 2 | 1 (1× new head) | 0 | queue (94 min) |
 | #3913 | lab full-power FP-1 — away hook (LR-105), task s | FP-1 LR-105 LR-106 LR-107 | open | 6.13 | 365 | 0 | 3 | 0 | 0 | guards_timeout (295 min) |

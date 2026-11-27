@@ -17,10 +17,25 @@ elif n=$(git rev-list --count HEAD..@{upstream} 2>/dev/null) && [ "$n" -gt 0 ]; 
     behind="Pulled $n new commit(s) from GitHub at session start (P-82). Skills and hooks that changed take effect in the next session."
   else behind="NOTE: this branch is $n commit(s) behind GitHub and could not fast-forward (local changes or diverged): pull before working (P-82)."; fi
 fi
+# LR-156 (founder A433/A434, trunk-based development): the Lead copy runs live main and writes on a lead/<date> branch
+# under 24 h. After the fetch, a lead/* copy whose records are all on main, or whose base is over 24 h old, is recut onto
+# lead/<today IST> from origin/main; one that cannot be (unpushed work, changed files) gets a loud warning with the
+# exact commands (lead-age.sh recut, never losing work). Then the copy's age line.
+age=""
+case "$LANE" in lead|lead-stale)
+  age=$(case "$behind" in "NOTE: GitHub could not be reached"*) LEAD_FETCH_FAILED=1;; *) LEAD_FETCH_FAILED=;; esac; LEAD_FETCH_FAILED=$LEAD_FETCH_FAILED bash "$PH/tools/lead-age.sh" recut 2>/dev/null)
+  LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null)
+  age=$(printf '%s\n%s' "$age" "$(bash "$PH/tools/lead-age.sh" line 2>/dev/null)" | sed '/^$/d');;
+esac
 case "$LANE" in
+  lead-stale) head="STALE LEAD COPY (LR-156): this lead branch is over 24 h old or over 200 commits behind origin/main and could not be recut; fix it before anything else (the command is below).";;
   lead) head="This is the tech lead's main copy (Mac). The founder types /lead here. Builders run /next <area> in their own copies; qa runs /qa. Way of working: product/WAY-OF-WORKING.md.";;
   screens|forms|evidence|runtime|qa) head="This is the $LANE builder's copy (branch $(git branch --show-current)). Command: /next $LANE (qa: /qa <mode>). Way of working: product/WAY-OF-WORKING.md; work list: product/BACKLOG.md.";;
   *) head="This copy is not bound yet: /next <area> (screens, forms, runtime, evidence) or /qa binds it. Way of working: product/WAY-OF-WORKING.md.";;
 esac
-ctx=$(echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "--- product/STATE.md ---"; cat "$PH/STATE.md")
+# The page (private split, PS-1b): STATE.md where the records are (records-dir.sh: the Lead's private copy, else this
+# copy's while it is still here); once it has left xpatready, other copies get the public CURRENT-LEAD.md line instead.
+if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md"; [ "$RD" = "$PH" ] || w="STATE.md (private copy: $RD)"; page="--- $w ---"$'\n'"$(cat "$RD/STATE.md")"
+else page="--- product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository) ---"$'\n'"$(cat "$PH/CURRENT-LEAD.md" 2>/dev/null)"; fi
+ctx=$([ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
