@@ -228,3 +228,7 @@ Added 24 Nov (Lead 13; full rows in DECISIONS): P-814 case rows RQ-02 to RQ-08 f
 ### IDX-15 line
 Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
 | IDX-15 | 17 Nov rows (P-664 qa records first, P-665 CI-B, P-666 high effort and 48 h stop, P-667 rules v2, P-668 cards, P-669 5-hour bar, P-670 T7 deny lines; P-693 multi-cloud compute) stand: word for word in `rules/tech-lead.md` › Moved 19 Nov (Lead 94). | prose (see rows) | 19 Nov |
+
+### IDX-23 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23 (P-770, P-778 the Lead does every step; P-780 recovery swap; P-781 Opus 5.5 medium for all, Fable 5.2 medium critical). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |

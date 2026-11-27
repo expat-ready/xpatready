@@ -159,7 +159,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
 | IDX-20 | 20 Nov rows P-749 to P-756 stand: list word for word in `rules/tech-lead.md` › IDX-20 row. | script: lead-pr.sh | 20 Nov |
 | IDX-21 | 20 Nov P-757 to P-765 stand: row word for word in `rules/tech-lead.md` › IDX-21. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
-| IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23 (P-770, P-778 the Lead does every step; P-780 recovery swap; P-781 Opus 5.5 medium for all, Fable 5.2 medium critical). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |
+| IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23. | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |
 | IDX-25 | P-782-P-815 stand: `rules/tech-lead.md` › IDX-25. | script: ENF-782b (owed) | 22 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
