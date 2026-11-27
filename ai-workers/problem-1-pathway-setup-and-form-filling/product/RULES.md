@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-846**, 27 Nov 01:1x IST; earlier: `history/RULES-2026-11-27-0115-lead7-as-of-P-842.md` + older)
+# Rule register (Lead keeps it; as of **P-847**, 27 Nov 11:1x IST; earlier: `history/RULES-2026-11-27-0115-lead7-as-of-P-842.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -9,6 +9,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
+| G-847 | Product work stops until the lab is done; text and restart condition word for word in DECISIONS P-847. | prose (STATE) | P-847, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | IDX-27 | IDX-15, IDX-23 and P-690 stand, word for word in `rules/tech-lead.md` › IDX-27. | prose | 25 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
