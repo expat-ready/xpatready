@@ -1,0 +1,3 @@
+# STATE line moved word for word by Lead 4, 09:50 IST 25 Nov (size limit)
+
+**Founder in force:** A380 (25 Nov ~07:4x, typed): one step at a time, recommendation first, he follows it; act for him in the built-in browser; one question at a time. His six decisions this morning: P-818 (R1.13 alarm email confirmed by his own inbox screenshot), P-819 (R1.85 keep periods Sample for now), P-820 (nearest Partials first, Not-built only where a Partial needs it), P-821 (outside accounts in one sitting today, **time still his: ask him first**), P-822 (pr-suites required before the label: OS-2 building), P-823 (additive migration/money/public-route PRs auto-labelled after the fresh reviewer's Approve, Lead after-read: OS-2 building). Report: `design/morning-report-2026-11-25.md`.
