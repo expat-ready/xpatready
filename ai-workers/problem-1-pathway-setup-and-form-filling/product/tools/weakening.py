@@ -108,9 +108,9 @@ GUARDS_OPEN = re.compile(r"^MUT=\"\$MUT\"'$")
 def guards_rows_only(rows):
     """check-guards.sh may gain test names and mutation rows without the read (round 2 on #3942: a test's other lines can
     switch it off, so every other change is read). Shape: added lines are TESTS="$TESTS name ..." lines, comments, a
-    MUT="$MUT"' opener, or rows of data. Inside single quotes nothing runs, so the quote must stay balanced: per hunk only
-    the last added row may end the string with ', and only when the one removed line is the old last row, the same
-    but for that quote (it moves down)."""
+    MUT="$MUT"' opener, or rows of data. Inside single quotes nothing runs, so each line is judged inside or outside the
+    string: a row only inside, a TESTS line or a quoted comment only outside, and the only line removed may be the old
+    last row, whose closing quote moves down to the new last row."""
     hunk = []
     for r in rows + [(0, 0, "@", "")]:
         if r[2] != "@":
@@ -144,10 +144,6 @@ def guards_rows_only(rows):
         for t in rem:
             if not (t.endswith("'") and t[:-1] in add):
                 return "check-guards.sh removes or changes a line (a test name or mutation row): %s" % (t.strip() or "a blank line")[:80]
-        closing = [t for t in add if t.endswith("'") and GUARDS_ROW.match(t)]
-        if rem and not (len(rem) == 1 and len(closing) >= 1 and GUARDS_ROW.match(rem[0]) and rem[0].endswith("'")
-                        and rem[0][:-1] in add):
-            return "check-guards.sh: a row loses or moves its closing quote in a way that could end the string early"
         hunk = []
     return ""
 
@@ -332,7 +328,7 @@ def self_test():
         (True, "R2-B1: Python exit(0) in a test", f(T + "test_review_rounds.py", "@@ -1 +1,2 @@\n import os\n+exit(0)")),
         (False, "check-guards.sh gains a TESTS line, a comment with a quote, an opener and rows (#3715's shape)", f(T + "check-guards.sh", "@@ -40,2 +40,7 @@\n x\n+TESTS=\"$TESTS check-v.sh\"   # OS-72: plan\n+# OS-72: the skill's plan; each row switches one rule off.\n+MUT=\"$MUT\"'\n+OS72 cap|prototype/studio/tools/v.sh|s/a/b/|check-v.sh\n+OS72 data|prototype/studio/tools/v.sh|/x/s/exit 2/true/|check-v.sh'\n y")),
         (True, "check-guards.sh: a comment with a quote inside MUT='...'", f(T + "check-guards.sh", "@@ -1,2 +1,3 @@\n MUT=\"$MUT\"'\n+# don't\n A1 a|product/tools/a.sh|s/x/y/|check-a.sh'")),
-        (True, "check-guards.sh: a row outside MUT='...' (it runs as code)", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n TESTS=\"$TESTS x.sh\"\n+fail=0;:|product/tools/a.sh|s/x/y/|check-a.sh")),
+        (True, "check-guards.sh: a row outside MUT='...' (it runs as code)", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n TESTS=\"$TESTS x.sh\"\n+A9 x|product/tools/a.sh|s/x/y/|check-a.sh")),
         (True, "R2-B1: check-guards.sh gains a non-row line", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+bad=0")),
         (True, "R2-B1: check-guards.sh closes the quote early, code after", f(T + "check-guards.sh", "@@ -1,2 +1,4 @@\n-A1 a|product/tools/a.sh|s/x/y/|check-a.sh'\n+A1 a|product/tools/a.sh|s/x/y/|check-a.sh\n+A2 b|product/tools/b.sh|s/x/y/|check-b.sh'\n+A3 fail=0;:|product/tools/c.sh|s/x/y/|check-c.sh\n x")),
         (True, "R2-B1: check-guards.sh row with a quote inside", f(T + "check-guards.sh", "@@ -1 +1,2 @@\n x\n+A9 x'; exit 0; '|product/tools/a.sh|s/x/y/|check-a.sh")),
