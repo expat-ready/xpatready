@@ -1,0 +1,5 @@
+# STATE: Lead 9 entry 22:03 and Lead 8's Owed next list (moved by Lead 9, 27 Nov 22:10 IST; word for word)
+
+22:03: #3959 ci was red on decision-impact (P-851, P-855 had no Impact: line): Impact added on lead5 47bf8835b, re-Approved, relabelled; #3825 #3814 main merged by update-branch (pure); #3833 has a real conflict, lane asked; #3920 #3923 labelled.
+
+**Owed next:** (1) #3910 #3918: label when the fresh `fast` is green (#3910 also full run, P-731). (2) Once #3918 merges: dispatch nightly.yml ~3/day, count 7 green in a row (P-854); one PR for F2 (priority rule for main fixes) + F4 (`guards` required for the pipeline scope) — `design/lab-restart-line-2026-11-27.md`. (3) Bundle 1 lane: Lead reads first on each "Ready for Lead read" (exact full-sha line). (4) #3902: check the 20:38 qa routine firing pushed its branch (proof link). (5) Records: P-850..P-855 and RULES not on main until #3939 merges; then open the records PR from lead5. (6) After #3833 merges: 7 bundle lanes A1, A3-A8 at once (triage §3) at the founder's next desktop turn; top standbys up to two. (7) lab-progress.py should count the restart line's rows (owed, P-852).
