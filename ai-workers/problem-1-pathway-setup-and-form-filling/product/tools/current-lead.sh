@@ -13,9 +13,10 @@ id_only=0; where=0; fetch=1; for a in "$@"; do case "$a" in --id) id_only=1;; --
 cd "$(dirname "$0")/.." || exit 2
 pre="$(git rev-parse --show-prefix 2>/dev/null)"; rel="${pre}STATE.md"; crel="${pre}CURRENT-LEAD.md"
 # The file a ref holds the line in: of CURRENT-LEAD.md and STATE.md, the one with a line whose last change to a
-# current_lead: line on that ref is newer (a tie goes to CURRENT-LEAD.md); refs are ordered the same way, so an
-# unrelated STATE.md edit never makes an older line win (#3924 review note). A hand-over made with an older handover.sh rewrites STATE.md only; the newer
-# STATE.md line then still wins after a merge brings an older CURRENT-LEAD.md along (#3924 review).
+# current_lead: line on that ref is newer (a tie goes to CURRENT-LEAD.md), so an unrelated STATE.md edit never makes an
+# older line win on that ref (#3924 review note). A hand-over made with an older handover.sh rewrites STATE.md only; the
+# newer STATE.md line then still wins after a merge brings an older CURRENT-LEAD.md along (#3924 review). Refs stay ordered
+# by any commit to either file: -G there walks every old lead/* branch's history (8.3 s instead of 1.3 s, #3941 review).
 line_of() { local f l t bt=-1 bl=""
   for f in "$crel" "$rel"; do l=$(git show "$1:$f" 2>/dev/null | grep '^current_lead: ') || continue
     t=$(git log -1 --format=%ct -G'^current_lead: ' "$1" -- ":/$f" 2>/dev/null); t=${t:-0}; [ "$t" -gt "$bt" ] && { bt=$t; bl=$l; }; done
@@ -23,11 +24,12 @@ line_of() { local f l t bt=-1 bl=""
 best=""
 if git remote get-url origin >/dev/null 2>&1; then
   [ "$fetch" = 1 ] && git fetch -q origin main 'refs/heads/lead/*:refs/remotes/origin/lead/*' 2>/dev/null
-  # Newest STATE.md commit first; read files only until one has the line (a blob:none CI copy fetches each file it reads).
+  # Newest STATE.md or CURRENT-LEAD.md commit first; read refs only until one has the line (a blob:none CI copy fetches
+  # each file it reads; line_of's -G walks only that ref's two files).
   while read -r t ref; do
     line_of "$ref" >/dev/null && { best=$ref; break; }
   done < <(for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin/main 'refs/remotes/origin/lead/'); do
-    t=$(git log -1 --format=%ct -G'^current_lead: ' "$ref" -- STATE.md CURRENT-LEAD.md 2>/dev/null); [ -n "$t" ] && echo "$t $ref"; done | sort -s -k1,1nr)
+    t=$(git log -1 --format=%ct "$ref" -- STATE.md CURRENT-LEAD.md 2>/dev/null); [ -n "$t" ] && echo "$t $ref"; done | sort -s -k1,1nr)
 fi
 if [ -n "$best" ]; then lines=$(line_of "$best"); src="$best"
 elif [ -f CURRENT-LEAD.md ]; then lines=$(grep '^current_lead: ' CURRENT-LEAD.md 2>/dev/null); src="CURRENT-LEAD.md (this copy)"
