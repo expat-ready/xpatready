@@ -80,7 +80,7 @@ ok "OS-29: an unpushed commit gives the note, not a block" "$([ "$blocked" = non
 lane runtime/noupstream; echo 'export const os29b = 1;' > "$C/$APPREL/web/src/os29b.ts"; git -C "$C" add -A; git -C "$C" commit -qm none
 out=$(printf '{"cwd":"%s"}' "$C" | bash "$P/tools/stop-check.sh" 2>/dev/null); rc=$?
 ok "OS-29: a branch with no upstream stops without a crash (exit 0, no unpushed note)" "$([ $rc = 0 ] && ! grep -q unpushed <<< "$out" && echo 1)" "exit $rc $out"
-cp "$TOOLS/hook-fail-closed.sh" "$P/tools/"; printf '{"cwd":"%s"}' "$C" | bash "$P/tools/hook-fail-closed.sh" 50 stop-check.sh >/dev/null 2>&1
+cp "$TOOLS/hook-fail-closed.sh" "$TOOLS/hook-fail-closed.py" "$P/tools/"; printf '{"cwd":"%s"}' "$C" | bash "$P/tools/hook-fail-closed.sh" 50 stop-check.sh >/dev/null 2>&1
 ok "OS-29: ... and so does the fail-closed wrapper around it (exit 0)" "$([ $? = 0 ] && echo 1)"
 lane screens/app2; echo 'export const a = 3;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app
 git -C "$C" update-ref -d refs/remotes/origin/main; git -C "$C" branch -q -m main old-main 2>/dev/null; stop
