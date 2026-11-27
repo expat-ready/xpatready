@@ -117,7 +117,9 @@ open_() {  # for a session with the founder in Goose Desktop or 'goose session'
 save() {  # commit what an interactive session left in the scout copy, stop its app, push
   WT="$(dirname "$MAIN")/xpatready-scout"; cd "$WT" 2>/dev/null || { echo "no scout copy yet: run tools/scout.sh open"; exit 3; }
   BR=$(git branch --show-current)
-  git add -A -- "$PP/scout" "$PS/tests/scout" "$PP/lanes/scout.md" 2>/dev/null
+  # lanes/scout.md only while it is still here (private split PS-1c removes it; a missing path makes git refuse the whole add).
+  sl=(); [ -e "$PP/lanes/scout.md" ] && sl=("$PP/lanes/scout.md")
+  git add -A -- "$PP/scout" "$PS/tests/scout" ${sl[@]+"${sl[@]}"} 2>/dev/null
   git diff --cached --quiet || git commit -q -m "scout: session with the founder — brief, review and findings
 
 Co-Authored-By: Goose <noreply@goose-docs.ai>"
