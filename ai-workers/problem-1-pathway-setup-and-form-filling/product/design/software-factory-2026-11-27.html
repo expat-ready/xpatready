@@ -44,6 +44,13 @@ nav.toc{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.9rem;margin:8px 0 0}
 nav.toc a{color:var(--accent);text-decoration:none} nav.toc a:hover{text-decoration:underline}
 a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .src{color:var(--muted);font-size:.84rem}
+.bar{height:10px;border-radius:5px;background:var(--line);overflow:hidden;min-width:120px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.pct{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.duo > div{min-width:0}
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto}
+.chart svg text{fill:var(--muted);font-family:var(--mono);font-size:11px}
 </style>
 
 <div class="wrap">
@@ -51,8 +58,72 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <h1>Expat Ready Software Factory</h1>
 <p class="lede">How the agents build, check and merge the product today, where the rules are enforced and where people still do steps by hand, and how we move to the target set-up (factory v3), with the corrections from today's research. Written so the founder can explain it to anyone.</p>
 <nav class="toc">
-<a href="#today">Where we stand</a><a href="#who">Who does what</a><a href="#flow">Life of one change</a><a href="#enforce">How rules are enforced</a><a href="#manual">Still by hand</a><a href="#measure">Measures</a><a href="#target">Target</a><a href="#compare">Today vs target</a><a href="#money">Where the tokens come from</a><a href="#cleanup">Repository clean-up</a><a href="#gaps">Inconsistencies found</a><a href="#words">Words</a>
+<a href="#progress">Lab progress</a><a href="#beforeafter">Before and after</a><a href="#audit">Deep audit</a><a href="#today">Where we stand</a><a href="#who">Who does what</a><a href="#flow">Life of one change</a><a href="#enforce">How rules are enforced</a><a href="#manual">Still by hand</a><a href="#measure">Measures</a><a href="#target">Target</a><a href="#compare">Today vs target</a><a href="#money">Where the tokens come from</a><a href="#cleanup">Repository clean-up</a><a href="#gaps">Inconsistencies found</a><a href="#words">Words</a>
 </nav>
+
+<h2 id="progress">Lab progress</h2>
+<p>The lab is ready when every workstream below is done. Each is weighted by its estimated effort in working days; progress is the share of that effort done, judged from merged PRs and settings seen today. The folder move is left out on purpose (deferred until Release 1 is nearly proven).</p>
+<div class="tbl"><table>
+<tr><th>Workstream</th><th>Effort (days)</th><th>Done</th><th>Progress</th><th>Waits on</th></tr>
+<tr><td><b>Claude Ship rollout</b>: caps, environment, manual Code Review, Approvals, the switch</td><td class="pct">3.0</td><td>Caps set, Review Manual, Steward off, test environment created</td><td><div class="bar"><i style="width:25%"></i></div><span class="pct">25%</span></td><td>Your US$100 top-up · the other Claude organisation releasing expat-ready · machine user</td></tr>
+<tr><td><b>Clean-up stages 1–4</b>: unused files out, test output out of git, stale pieces, records shrunk</td><td class="pct">4.0</td><td>Stages 0, 2a, 8 merged earlier; stage 1 lane running now</td><td><div class="bar"><i style="width:20%"></i></div><span class="pct">20%</span></td><td>Stage 1 review and a quiet queue</td></tr>
+<tr><td><b>Use Claude Code instead of hand-built steps</b>: the audit's "use the tool" and "simplify" rows</td><td class="pct">5.0</td><td>Audit done (below)</td><td><div class="bar"><i style="width:10%"></i></div><span class="pct">10%</span></td><td>Your go on the order</td></tr>
+<tr><td><b>Full-power plan, still-needed items</b> (67 kept + 15 to settle)</td><td class="pct">6.0</td><td>44 of 111 relevant items found done since</td><td><div class="bar"><i style="width:40%"></i></div><span class="pct">40%</span></td><td>Lane time</td></tr>
+<tr><td><b>Security basics</b>: outside-contributor approval, Mac runner fenced, 9 high dependency alerts, pinned actions</td><td class="pct">1.5</td><td>Outside-contributor approval saved; CodeQL already on</td><td><div class="bar"><i style="width:30%"></i></div><span class="pct">30%</span></td><td>Lane time</td></tr>
+<tr><td><b>Measures</b>: 7-day baseline, DORA five, tokens per proven capability</td><td class="pct">1.0</td><td>Measure defined; first attempt rate-limited</td><td><div class="bar"><i style="width:10%"></i></div><span class="pct">10%</span></td><td>A quiet check</td></tr>
+<tr><td><b>Total</b></td><td class="pct"><b>20.5</b></td><td></td><td><div class="bar"><i style="width:24%"></i></div><span class="pct"><b>24%</b></span></td><td></td></tr>
+</table></div>
+<div class="chart">
+<svg viewBox="0 0 640 230" width="100%" role="img" aria-label="Forecast: lab progress rises from 24 percent on 27 Nov to 100 percent around 3 Dec">
+  <line x1="50" y1="190" x2="620" y2="190" stroke="var(--line)"/>
+  <line x1="50" y1="30" x2="620" y2="30" stroke="var(--line)" stroke-dasharray="3 4"/>
+  <line x1="50" y1="110" x2="620" y2="110" stroke="var(--line)" stroke-dasharray="3 4"/>
+  <text x="44" y="194" text-anchor="end">0%</text><text x="44" y="114" text-anchor="end">50%</text><text x="44" y="34" text-anchor="end">100%</text>
+  <text x="50" y="210" text-anchor="middle">27 Nov</text><text x="145" y="210" text-anchor="middle">28</text><text x="240" y="210" text-anchor="middle">29</text><text x="335" y="210" text-anchor="middle">30</text><text x="430" y="210" text-anchor="middle">1 Dec</text><text x="525" y="210" text-anchor="middle">2</text><text x="620" y="210" text-anchor="middle">3</text>
+  <path d="M50,151.6 L145,128 L240,104 L335,82 L430,62 L525,46 L620,30 L620,190 L50,190 Z" fill="var(--accent-soft)"/>
+  <polyline points="50,151.6 145,128 240,104 335,82 430,62 525,46 620,30" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+  <polyline points="50,151.6 145,135 240,117 335,100 430,84 525,68 620,52" fill="none" stroke="var(--warn)" stroke-width="2" stroke-dasharray="5 4"/>
+  <circle cx="50" cy="151.6" r="4" fill="var(--accent)"/>
+  <text x="58" y="146">24% today</text>
+  <text x="500" y="24">plan: 100% ~3 Dec</text>
+  <text x="470" y="80">if founder steps slip: ~86%</text>
+</svg>
+</div>
+<p class="src">Forecast: about 3 effort-days a calendar day (the Lead plus two lab lanes, alongside product work). The dashed line assumes the steps that wait on you (top-up, organisation release, machine user) slip by two days. Estimates; re-measured at every full report.</p>
+
+<h2 id="beforeafter">The pipeline, before and after</h2>
+<div class="duo">
+<div>
+<h3>Until 26 Nov</h3>
+<pre class="mermaid">
+flowchart TB
+  L[Lead shapes rows by hand] --> B[Builder lane: hand-written skill steps]
+  B --> R[Reviewer subagent Approve]
+  R --> LB[Label added; label guard and queue gate scripts]
+  LB --> M[Mergify batch: 24 test parts]
+  M -- red --> W[Wait for the Lead's 30-min check;\nLead restarts or nudges the lane]
+  W --> B
+  M -- green --> Q[Lead starts qa lane by hand]
+  Q --> P[Works]
+  LR[Lead reads money and schema by hand] --> LB
+</pre>
+</div>
+<div>
+<h3>Target, after the lab</h3>
+<pre class="mermaid">
+flowchart TB
+  L[Lead shapes tasks: one spec, one glossary,\npass/fail check] --> B[Builder: saved workflow +\n/goal until the check passes]
+  B --> R[Reviewer subagent + Code Review\non risky paths]
+  R --> A[GitHub approval: Claude Approvals\nor machine user; a push cancels it]
+  A --> M[Mergify batch: 24 test parts]
+  M -- red --> S[PR Steward / auto-fix repairs\nin the shared test environment]
+  S --> M
+  M -- green --> Q[Scheduled qa task runs\non every merge]
+  Q --> P[Works]
+</pre>
+</div>
+</div>
+<p>What changes in practice: approvals replace labels; red PRs are repaired by Steward instead of waiting for the Lead; qa starts by itself after a merge; the builder's cycle is one saved, repeatable workflow; the Lead shapes work and reads the risky diffs instead of shepherding.</p>
 
 <h2 id="today">Where we stand</h2>
 <div class="stats">
@@ -164,6 +235,31 @@ flowchart LR
 <tr><td>Rules</td><td>About 850 decision rows, 60 enforced by hand</td><td>Rules only for what no tool enforces</td></tr>
 <tr><td>Measures</td><td>Our flow measures + DORA four</td><td>DORA five + Works per day</td></tr>
 </table></div>
+
+<h2 id="audit">Deep audit: hand-built vs what Claude Code already does</h2>
+<p>Every part of the pipeline, checked against the current Claude Code, GitHub and Mergify docs (read 27 Nov 2026). Verdicts: <span class="pill ok">use the tool</span> we stop doing it by hand · <span class="pill acc">keep ours</span> specific to us, nothing covers it · <span class="pill warn">simplify</span> we over-built it.</p>
+<div class="tbl"><table>
+<tr><th>Part</th><th>What we do today</th><th>What exists</th><th>Verdict</th><th>Change</th></tr>
+<tr><td>Requirement names</td><td>About 14 ID schemes (AG-, P-, R1.n, C-, B-, FO-/PF-/CS-, part suffixes, J-, waves, QA-, A-, OS-…); a builder meets 8 in one row; no glossary</td><td>Anthropic's guidance: one spec per task with a pass/fail check, a feature list with a "passes" field</td><td><span class="pill warn">simplify</span></td><td>One glossary; three levels only: <b>requirement → capability (R1.n) → task</b>; every code shown with its plain name</td></tr>
+<tr><td>What the builder reads</td><td>The row, a source slice, WAY-OF-WORKING, the skill, standards, the board, decisions by number</td><td>Spec file written once, built in a fresh session with "a written definition of done"</td><td><span class="pill warn">simplify</span></td><td>One generated task spec per task: requirement text, decisions in words, Done-when check</td></tr>
+<tr><td>Design step</td><td>Concept stage in our skills</td><td>Plan mode</td><td><span class="pill ok">use the tool</span></td><td>Design in plan mode; the concept file is its output</td></tr>
+<tr><td>Build cycle inside a task</td><td>Hand-written skill steps (guard, pick, build, check, review, label)</td><td>Saved dynamic workflows (<code>.claude/workflows/</code>, run as <code>/name</code>); <code>/goal</code> keeps going until the check passes</td><td><span class="pill ok">use the tool</span></td><td>Trial one saved build workflow on 3 tasks; measure against today</td></tr>
+<tr><td>Running and checking the app</td><td>Our run and walk scripts</td><td>Bundled <code>/run</code>, <code>/verify</code></td><td><span class="pill warn">simplify</span></td><td>Use the bundled steps; keep our journey tests (they are the product's proof)</td></tr>
+<tr><td>Reviewer and breaker</td><td>Our subagents on Opus</td><td>Subagents (what we use) + hosted Code Review</td><td><span class="pill acc">keep ours</span></td><td>Keep; add Code Review on risky PRs only</td></tr>
+<tr><td>Label, label guard, queue gate</td><td>Our scripts and workflows</td><td>GitHub approval that a push cancels; Claude Approvals policy</td><td><span class="pill ok">use the tool</span></td><td>Replace at the switch (step 5)</td></tr>
+<tr><td>Red PRs, conflicts, quiet lanes</td><td>The Lead notices every 30 min and nudges</td><td>PR Steward; auto-fix on cloud PRs</td><td><span class="pill ok">use the tool</span></td><td>Turn on auto-fix now; Steward after the environment is proven</td></tr>
+<tr><td>Merge queue</td><td>Mergify, 4 queues, batches of 2</td><td>Mergify (GitHub's queue is less capable for us)</td><td><span class="pill acc">keep ours</span></td><td>No change</td></tr>
+<tr><td>CI test parts and nightly</td><td>24 parallel parts, nightly full run</td><td>GitHub Actions (what we use)</td><td><span class="pill acc">keep ours</span></td><td>No change</td></tr>
+<tr><td>qa after each merge</td><td>The Lead starts a qa lane by hand</td><td>Cloud scheduled tasks triggered by GitHub events (research preview)</td><td><span class="pill ok">use the tool</span></td><td>A scheduled qa task on every merge that completes a capability</td></tr>
+<tr><td>Rules and decisions</td><td>About 850 decision rows (800 KB), RULES, rules/*.md, skills; some disagree</td><td>Hooks and settings enforce; CLAUDE.md and skills point to them</td><td><span class="pill warn">simplify</span></td><td>Rules page only for what no hook or check enforces; decisions log keeps the why</td></tr>
+<tr><td>Hooks and guards</td><td>Session, merge, start, model, timer and stop hooks; git hooks; CI guards</td><td>Hooks (what we use); a Stop hook can run the task's own check</td><td><span class="pill acc">keep ours</span></td><td>Add a Stop hook that runs the task's Done-when check</td></tr>
+<tr><td>Lead's 30-minute check</td><td>A script plus reading every lane</td><td>Steward, auto-fix and scheduled tasks take most of it</td><td><span class="pill warn">simplify</span></td><td>Shrinks to: shape, read risky diffs, report</td></tr>
+<tr><td>Lead hand-over and standbys</td><td>Standby Leads, hand-over at 200k context</td><td>No product feature covers it</td><td><span class="pill acc">keep ours</span></td><td>Keep</td></tr>
+<tr><td>Model and effort rules</td><td>Decision says Opus medium everywhere; agent files and two checks still demand Opus high</td><td>Agent definitions set model and effort</td><td><span class="pill warn">simplify</span></td><td>Make the files and checks match the decision</td></tr>
+<tr><td>Security checks</td><td>CodeQL; 9 high dependency alerts open</td><td>Claude Security plugin (paid plans); Dependabot</td><td><span class="pill ok">use the tool</span></td><td>Security pass at each gate; clear the alerts</td></tr>
+<tr><td>Deep review at gates</td><td>Our reviewer agent</td><td><code>/code-review ultra</code> (US$5–25 a run)</td><td><span class="pill ok">use the tool</span></td><td>At milestone gates only</td></tr>
+</table></div>
+<p class="src">Not adopted: agent teams (experimental), Projects (not offered on Team), checkpoints and output styles (not relevant), Claude Tag. <code>/ship</code> and <code>/steward</code> are command-line only, so our cloud builders cannot use them.</p>
 
 <h2 id="gains">What we expect to gain, and how we will know</h2>
 <p>These are targets, not promises. Each has a measure we take before the switch (a 7-day baseline) and again two weeks after; the go/no-go on day 4 compares them, and we go only if waits are shorter, failures are not higher, the Lead's hand steps are fewer and spend is within the caps.</p>
