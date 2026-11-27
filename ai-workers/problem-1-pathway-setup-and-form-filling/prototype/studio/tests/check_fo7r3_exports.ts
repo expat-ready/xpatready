@@ -62,7 +62,7 @@ const exportsFeature = (await import("../api/src/features/client-money-exports.t
 const features: { controllers: unknown[]; providers: unknown[] }[] = [(await import("../api/src/features/client-money-invoices.ts")).default, (await import("../api/src/features/client-money-reads.ts")).default,
   (await import("../api/src/features/client-money-refunds.ts")).default, (await import("../api/src/features/client-money-trust.ts")).default, (await import("../api/src/features/client-money-write-offs.ts")).default,
   (await import("../api/src/features/client-money-reports.ts")).default, exportsFeature];
-const { COLUMNS, TRUST_COLUMNS, EXPORT_DAYS, PAGE, exportPageSql, cell } = await import("../api/src/client-money/reports/exports.ts");
+const { HEADERS, EXPORT_DAYS, PAGE, exportPageSql, cell } = await import("../api/src/client-money/reports/exports.ts");
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 let skew = 0;
@@ -127,7 +127,7 @@ try {
   ok("setup: invoices, payments, a refund, a credit note, a write-off and trust deposits through the real routes", !!pOld?.id && ref.status === 201 && cn.status === 201 && [200, 201].includes(wo.status) && dep.status === 201 && depU.status === 201 && !!iB,
     { pOld, ref: ref.body, cn: cn.body, wo: wo.body, dep: dep.body });
 
-  const X = "/front-office/money/exports", ALL = ["INVOICES", "PAYMENTS", "REFUNDS", "CREDIT_NOTES", "WRITE_OFFS", "TRUST_LEDGER"];
+  const X = "/front-office/money/exports", ALL = ["INVOICES", "PAYMENTS", "REFUNDS", "CREDIT_NOTES", "WRITE_OFFS", "CREDITS", "TRUST_LEDGER"];
   const today = new Date().toISOString().slice(0, 10);
   const exportOf = async (t: string, from: string, to: string, kinds = ALL, id?: string) => {
     const q = await call(t, "POST", X, { from, to, kinds, ...(id ? { id } : {}) }); await jobs.runDue();
@@ -167,7 +167,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------------- E2
   const all = await exportOf(tA, "2020-03-01", today);
-  ok("FO-7r3 E2 pass: six files, each with AG-6-31 rule 2's columns (the trust ledger its own)", ALL.every((k) => all.out[k]?.[0]?.join() === (k === "TRUST_LEDGER" ? TRUST_COLUMNS : COLUMNS).join()), Object.fromEntries(ALL.map((k) => [k, all.out[k]?.[0]])));
+  ok("FO-7r3 E2 pass: seven files, each with AG-6-31 rule 2's columns (credit notes, credits and the trust ledger their own)", ALL.every((k) => all.out[k]?.[0]?.join() === HEADERS[k as keyof typeof HEADERS].join()), Object.fromEntries(ALL.map((k) => [k, all.out[k]?.[0]])));
   const payRows = all.out.PAYMENTS!.slice(1);
   ok("FO-7r3 E2 pass: payments in two currencies, each row in its own (CAD 400.00, USD 50.00), method and received into filled, no total row", payRows.some((r) => r[7] === "USD" && r[5] === "50.00") && payRows.some((r) => r[7] === "CAD" && r[5] === "400.00" && r[0] === "2020-03-15")
     && payRows.every((r) => r[2] !== "" && ["CAD", "USD"].includes(r[7]!) && r[8] !== "" && ["OPERATING", "TRUST"].includes(r[9]!)) && !payRows.some((r) => /total/i.test(r.join())), payRows);
@@ -262,6 +262,38 @@ try {
   ok("FO-7r3 E12 pass: the early payment shows the day it came (2020-02-02) and counts on the issue day (2020-02-20); the period's sums equal the statement's change", earlyRow?.[0] === "2020-02-02" && earlyRow?.[11] === "2020-02-20" && febSum === stE.closingMinor - stE.openingMinor && febSum === 20000, { earlyRow, febSum, stE });
   ok("FO-7r3 E12 fail: January (the day it came) does not hold it: the period cuts by counted_on, as the statement", !jan.out.PAYMENTS!.some((r) => r[1] === "EARLY-1"), jan.out.PAYMENTS);
 
+  // ---------------------------------------------------------------------------------------------------- E13 (Lead 1 on #3887)
+  // the files reconcile across kinds in every case (AG-6-29's facts kept apart): paid from trust, money a credit note
+  // returned from trust, credit kept, credit applied and its reversal, as check_fo7r_statement.ts S9 seeds them
+  const PR = person(A, "recon"), today2 = today;
+  await call(tA, "POST", "/front-office/money/trust/deposits", { personId: PR, method: "E_TRANSFER", amountMinor: 100000, currency: "CAD", reference: "ET-R", idempotencyKey: "fo7r3-dep-r" });
+  const rx = await make(tA, PR, 60000), rwx = await call(tA, "POST", "/front-office/money/trust/applications", { invoiceId: rx, amountMinor: 60000 });
+  const RW = sql(`select id from money_trust_entry where invoice_id = '${rx}' and kind = 'WITHDRAWAL_TO_INVOICE'`);
+  const rmoved = await call(tA, "POST", "/front-office/money/trust/to-move/batches", { currency: "CAD", direction: "TRUST_TO_OPERATING", transferDate: today2, lines: [{ sourceEntryId: RW, amountMinor: 60000 }] });
+  sql(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, reason, overpaid_choice, overpaid_minor, overpaid_entry_id, created_by) values ('${A}', '${rx}', 5000, 'CAD', 'Refunded to the client (Sample)', 'OVERPAID_REFUND', 5000, '${RW}', 'seed:FO-7r-3')`);
+  const ry = await make(tA, PR, 10000), rpy = await pay(tA, ry, 15000), rkeep = await call(tA, "POST", `/front-office/money/payments/${rpy.id}/extra`, { choice: "KEEP_AS_CREDIT" });
+  const rz = await make(tA, PR, 8000);
+  const rap = sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${A}', '${PR}', 'APPLIED', -3000, 'CAD', '${rz}', 'seed:FO-7r-3') returning id`);
+  sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, reverses_entry_id, reason, created_by) values ('${A}', '${PR}', 'REVERSED', 1000, 'CAD', '${rap}', 'Applied too much (Sample)', 'seed:FO-7r-3')`);
+  ok("setup E13: paid from trust, its move, a credit note returning money from trust, credit kept, applied and reversed are accepted", rwx.status === 201 && rmoved.status === 201 && rkeep.status === 201 && !!rap, { rwx: rwx.body, rmoved: rmoved.body, rkeep: rkeep.body });
+  const rec = await exportOf(tA, "2020-01-01", today2), rSt = (await call(tA, "GET", `/front-office/money/parties/person/${PR}/statement?pageSize=200`)).body.accounts.find((a: any) => a.account === "INVOICES" && a.currency === "CAD");   // eslint-disable-line @typescript-eslint/no-explicit-any -- as answered
+  const of = (k: string, keep: (r: string[]) => boolean = () => true) => rec.out[k]!.slice(1).filter((r) => r[4] === "Client recon Sample" && keep(r));
+  const sumOf = (rows: string[][], col = 5) => rows.reduce((t, r) => t + minor(r[col] || "0"), 0);
+  const parts = { billed: sumOf(of("INVOICES")), paid: sumOf(of("PAYMENTS", (r) => r[9] === "OPERATING")), refunded: sumOf(of("REFUNDS")), credited: sumOf(of("CREDIT_NOTES")), returned: sumOf(of("CREDIT_NOTES"), 12),
+    written: sumOf(of("WRITE_OFFS")), trust: sumOf(of("TRUST_LEDGER", (r) => !!r[8] && ["WITHDRAWAL_TO_INVOICE", "CORRECTION"].includes(r[2]!))),
+    credit: sumOf(of("CREDITS", (r) => !!r[10] && ["APPLIED", "KEPT", "REVERSED_APPLIED", "REVERSED_KEPT"].includes(r[12]!))) };
+  const owed = parts.billed - parts.paid + parts.refunded - parts.credited + parts.returned - parts.written + parts.trust + parts.credit;
+  ok("FO-7r3 E13 pass: across kinds, billed − paid − paid from trust + returned from trust − credited − written off ± credit = the statement's change in what is owed (CAD)", owed === rSt.closingMinor - rSt.openingMinor && parts.trust === -60000 && parts.returned === 5000 && parts.credit === 3000, { parts, owed, rSt });
+  ok("FO-7r3 E13 fail: leave out the credits file or the trust withdrawals and it no longer reconciles (each fact counts)", owed - parts.credit !== rSt.closingMinor - rSt.openingMinor && owed - parts.trust !== rSt.closingMinor - rSt.openingMinor, { parts });
+
+  // ---------------------------------------------------------------------------------------------------- E14 (Lead 1 on #3887)
+  // the firm's days (platform.time_zone, America/Toronto by default): 22:30 on 31 March in Toronto is March's
+  const PZ = person(A, "zone"), iz = await make(tA, PZ, 4200);
+  sql(`set session_replication_role = replica; update money_invoice set issued_at = '2025-03-31 22:30:00-04' where id = '${iz}'`);
+  const mar = await exportOf(tA, "2025-03-01", "2025-03-31", ["INVOICES"]), apr = await exportOf(tA, "2025-04-01", "2025-04-30", ["INVOICES"]);
+  ok("FO-7r3 E14 pass: an invoice issued at 22:30 on 31 March in the firm's zone (02:30 UTC on 1 April) is in March's file, dated 2025-03-31; the export names its zone", mar.out.INVOICES!.some((r) => r[4] === "Client zone Sample" && r[0] === "2025-03-31") && mar.s.body.zone === "America/Toronto", { rows: mar.out.INVOICES, zone: mar.s.body.zone });
+  ok("FO-7r3 E14 fail: it is not in April's file (a UTC cut would put it there)", !apr.out.INVOICES!.some((r) => r[4] === "Client zone Sample"), apr.out.INVOICES);
+
   // ---------------------------------------------------------------------------------------------------- E10
   const BULK = 2500;
   sql(`set session_replication_role = replica; insert into money_invoice (id, firm_id, person_id, number, currency, issued_at, issued_by, due_date, created_by, updated_at)
@@ -269,7 +301,7 @@ try {
   const bulk = await exportOf(tA, "2019-06-01", "2019-06-01", ["INVOICES"]), nums = bulk.out.INVOICES!.slice(1).map((r) => r[1]);
   ok(`FO-7r3 E10 pass: ${BULK} invoices sharing one issue time export whole over ${Math.ceil(BULK / PAGE)} keyset pages, none twice, none missed`, nums.length === BULK && new Set(nums).size === BULK && bulk.s.body.rows.INVOICES === BULK, { n: nums.length, uniq: new Set(nums).size });
   const plan = await owner.$transaction(async (tx) => { await tx.$executeRaw`set local enable_seqscan = off`;   // the plan's choice of index, not of a scan (a scratch table this small may favour one)
-    return JSON.stringify(await tx.$queryRaw`explain (format json) ${exportPageSql(A, "INVOICES", "2019-06-01", "2019-06-01", new Date(), { k: "2019-06-01T09:00:00.000000", id: "00000000-0000-4000-8000-000000000000" })}`); });
+    return JSON.stringify(await tx.$queryRaw`explain (format json) ${exportPageSql(A, "INVOICES", "2019-06-01", "2019-06-01", "America/Toronto", new Date(), { k: "2019-06-01T09:00:00.000000", id: "00000000-0000-4000-8000-000000000000" })}`); });
   ok("FO-7r3 E10 pass: the invoices page plans on the firm-first index (firm_id, issued_at, id)", /money_invoice_firm_id_issued_at_id_idx/.test(plan), plan.slice(0, 600));
   const fullScan = await owner.$transaction(async (tx) => JSON.stringify(await tx.$queryRaw`explain (format json) select * from money_invoice i where i.firm_id = ${A}::uuid order by i.number limit 1000`));
   ok("FO-7r3 E10 fail: a read not keyed on (issued_at, id) does not use that index (the check tells the two apart)", !/money_invoice_firm_id_issued_at_id_idx/.test(fullScan), fullScan.slice(0, 300));
