@@ -65,7 +65,7 @@ ai-workers/problem-1-pathway-setup-and-form-filling/product/state/app-view-lates
 
 # Clean-up (test output out of git, P-674 stages; lab lane "cleanup", 27 Nov): screenshots, recordings and other images the
 # studio tests, walks and qa runs write into product/screens, product/qa and studio/evidence stay on the copy that made
-# them and in CI's run artifacts (pr-suites, ci parts, nightly); git history keeps every one committed before. Design
+# them; CI uploads the ones a failed run wrote as a run artifact (pr-suites, ci parts, nightly; 7 days); git history keeps every one committed before. Design
 # boards (screens/<item>/design/) are records, not test output, and stay tracked.
 ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.png
 ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpg
@@ -82,7 +82,12 @@ ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.gif
 ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.webp
 ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.webm
 ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.mp4
+# an upload sample a qa script reads (qa/reports/2026-11-09-c614/scripts/gate_a_c614.mts), not test output
+!ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/reports/2026-11-09-c614/scripts/marriage-sample.png
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.png
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.jpg
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.jpeg
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.webm
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.gif
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.webp
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.mp4

@@ -124,20 +124,22 @@ jobs:
           name: pr-suite-logs-part-${{ matrix.shard }}-a${{ github.run_attempt }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
           retention-days: 7
-      - name: test output (screenshots and images the suites wrote; git-ignored since the clean-up, kept here instead)
-        if: always()
+      - name: collect the images this run wrote (git-ignored, untracked only; never the tracked design boards)
+        if: steps.s.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots"
+          git ls-files -z --others --ignored --exclude-standard -- ai-workers/problem-1-pathway-setup-and-form-filling/product/screens ai-workers/problem-1-pathway-setup-and-form-filling/product/qa ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence \
+            | grep -zEi '\.(png|jpe?g|gif|webp|webm|mp4)$' | xargs -0 -r cp --parents -t "$RUNNER_TEMP/shots" || true
+      - name: test output (the images collected above; only when a suite failed)
+        if: steps.s.outcome == 'failure'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: pr-suite-shots-part-${{ matrix.shard }}-a${{ github.run_attempt }}
-          path: |
-            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.png
-            ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/**/*.jpg
-            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.png
-            ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/**/*.jpg
-            ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence/**/*.png
+          path: ${{ runner.temp }}/shots/
           if-no-files-found: ignore
-          retention-days: 30
+          retention-days: 7
       - name: verdict (P-822; the one step that can turn this part red)
         if: always()
         env: { SETUP: "${{ steps.setup.outcome }}", OUTCOME: "${{ steps.s.outcome }}" }
