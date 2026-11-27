@@ -9,6 +9,8 @@
 // bypass role (Lead B 5). Plus: a client released inside a transaction leaves the pool, a client
 // released idle is kept, and a failed transaction ('E') leaves too. One scratch database, a pool of one connection, no
 // RLS needed (app.firm_id is read back directly). No browser, no server, no model call (US$0).
+// Since Prisma 7.10 (#3904) the engine sends no late BEGIN, so each leak below is made by hand the same way when Prisma
+// did not make it (leakByHand); the note line says which.
 //   tsx studio/tests/check_pool_tx_return.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -42,8 +44,9 @@ try {
   const firmNow = () => db.$queryRawUnsafe<{ f: string; intx: boolean }[]>("select current_setting('app.firm_id', true) f, (select xact_start is not null and xact_start < query_start from pg_stat_activity where pid = pg_backend_pid()) intx").then((r) => r[0]);
   const seen = () => watch.$queryRawUnsafe<{ n: number }[]>("select count(*)::int n from note").then((r) => r[0].n);
 
-  // Firm A holds the only connection 3 s; a second transaction in firm A gives up after maxWait (1 s). Its start is sent
-  // late (BEGIN), on the connection the first one returns, and dropped by release alone.
+  // Firm A holds the only connection 3 s; a second transaction in firm A gives up after maxWait (1 s). Under Prisma 7.8 its
+  // start is sent late (BEGIN), on the connection the first one returns, and dropped by release alone; under 7.10 the
+  // same leak is made by hand below.
   const long = withFirm(A, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); await sleep(3_000); }, { timeout: 10_000 }));
   await sleep(100);
   const gaveUp = await withFirm(A, () => db.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 })).then(() => "ran", (e: Error) => e.message);
@@ -79,7 +82,8 @@ try {
       await sleep(100);
       const late = await db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); }, { maxWait: 1_000, timeout: 5_000 }).then(() => "ran", (e: Error) => e.message);
       await hold; await sleep(300);
-      if (fired("destroyed") === 1) await leakByHand(pool2);   // unscoped checkout: the bypass-role default, as the late transaction's
+      // Review M1 on #3904: by count, not by the guard having fired, so a guard switched off still gets its leak to miss.
+      if (fired("destroyed") < 2) await leakByHand(pool2);   // unscoped checkout: the bypass-role default, as the late transaction's
       await withFirm(B, who);
       await withFirm(B, () => db2.$transaction(async (t) => { await t.$queryRawUnsafe("select 1"); throw new Error("a refused change"); })).catch(() => undefined);
       const b = await withFirm(B, who);
