@@ -2,7 +2,8 @@
 // stage, value and owner; "Move to…" (never Won); Mark lost (a right panel: a reason from the firm's prospect list is
 // required); Convert to client (a yes/no with AG-02's warning while no retainer is signed) and Undo convert (offered
 // only for a Convert with no signed retainer, with a reason; the server also refuses once the client is no longer
-// empty). Each button follows its permission key and the stage. Log a call, notes and the timeline are part 2b.
+// empty). Each button follows its permission key and the stage. Log a call, notes and the timeline: part 2b
+// (prospect-activity.tsx).
 import * as React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,7 @@ import { ConflictCheckPanel, ConvertConflictNote, useConflictList } from "../com
 import { FIXED_BY_A_CHECK } from "../compliance/conflict/contract";
 import { RetainerCard } from "../retainers/retainer-card";
 import { SignatureRequestsSection } from "../sign/signature-requests";
+import { ProspectActivity } from "./prospect-activity";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo" | "value";
@@ -142,6 +144,7 @@ function ProspectBody({ id }: { id: string }) {
           {!mayMove && !mayConvert && !mayLose && !mayUndo ? <p data-no-actions className="text-xs text-text-muted">{p.stage.kind === "LOST" ? "A lost prospect does not move. To work with this person again, engage the lead again." : p.stage.kind === "WON" ? (p.wonVia === "CONVERTED" && !p.retainerSigned ? "Undoing a Convert needs a role that may convert prospects." : "This prospect is a client. A signed retainer cannot be undone here.") : "You can read this prospect. Changing it needs a role that works prospects: ask your firm's Owner or Admin."}</p> : null}
         </aside>
       </div>
+      <ProspectActivity prospectId={p.id} name={name} me={me} />   {/* FO-4 part 2b (R1.76) */}
       <RetainerCard prospectId={p.id} name={name} working={working} />   {/* FO-5s part 1 (S2) */}
       <SignatureRequestsSection prospectId={p.id} name={name} lost={p.stage.kind === "LOST"} />   {/* FO-6ds */}
       <ConflictCheckPanel prospectId={p.id} corporate={p.type === "CORPORATE"} />

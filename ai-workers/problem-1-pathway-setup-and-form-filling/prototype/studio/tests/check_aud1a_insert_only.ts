@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Audit } from "../api/src/core.ts";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const PORT = Number(process.argv[2] ?? 4606), COPY = process.argv[3] ?? "xr_studio_runtime_aud1a";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -87,7 +88,7 @@ try {
     && sql(BARE, `select count(*) from audit_event where workspace_id = '${W_PLAT}' and firm_id is null`) === "1" && n(BARE, `select count(*) from audit_event where workspace_id = '${W_DEMO}' and firm_id is not null`) === 0);
   ok("AUD-1a DW5 pass: a case line whose key is an existing case gets case_id; a line naming the case only in words stays null",
     sql(BARE, `select case_id from audit_event where entity = 'case' and entity_key = '${CASE}'`) === CASE && sql(BARE, `select count(*) from audit_event where entity = 'case' and entity_key = 'case 1234abcd' and case_id is null`) === "1");
-  for (const d of after) psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]);
+  for (const d of after) { if (d.startsWith(CSW1_PART2)) sql(BARE, SAMPLE_FIRMS_SQL); psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]); }   // CS-W1 part 2 needs the case's firm
 
   // A line written by Audit.log after the migration (the writers pass no actor_type): the trigger fills it.
   const pc = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(BARE, "xr_app"), options: "-c TimeZone=UTC" }) }); clients.push(pc);

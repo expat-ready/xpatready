@@ -65,7 +65,9 @@ export async function seedSampleStaffHours(db: PrismaClient): Promise<Record<str
 /** DEMO-LINK: the one Sample consultation type, so the Sample firm's public booking page (/book/sample-firm) is not empty.
  *  Every value is Sample: no fee, no official value; AG-4-66's Sample defaults for the timings. */
 export const SAMPLE_TYPE = { firmKey: "sample-firm", hostActorId: "user-R", slug: "sample-free-consultation", name: "Free consultation (Sample)",
-  description: "A first conversation about your plans. Sample consultation type for the demo.", minutes: 30 } as const;
+  description: "A first conversation about your plans. Sample consultation type for the demo.", minutes: 30,
+  /** FO-3v part 1: the host's Sample My meeting link (reserved .example domain, never a real room). */
+  hostMeetingLink: "https://meet.example/sample-room" } as const;
 
 /**
  * Adds SAMPLE_TYPE to the Sample firm, hosted by its Owner, once, inside the caller's transaction. A type is matched by
@@ -87,6 +89,10 @@ export async function addSampleConsultationType(tx: Tx): Promise<{ added: boolea
   await copyFirmHoursTo(tx, firm.id, [host.id]);
   await tx.foConsultationType.create({ data: { firmId: firm.id, slug: SAMPLE_TYPE.slug, name: SAMPLE_TYPE.name, description: SAMPLE_TYPE.description,
     purpose: "FREE_CONSULT", modes: ["VIDEO", "PHONE"], hostStaffIds: [host.id], minutes: SAMPLE_TYPE.minutes } });
+  // FO-3v part 1: the Sample host's own My meeting link (a reserved .example address), so the page's Video bookings carry
+  // a link (the type's meetingLink is not a source, AG-16-73); only when the host has saved none.
+  if (!(await tx.foVideoPref.findFirst({ where: firmScope(firm.id, { staffId: host.id }), select: { id: true } })))
+    await tx.foVideoPref.create({ data: { firmId: firm.id, staffId: host.id, myMeetingLink: SAMPLE_TYPE.hostMeetingLink, sourceChoice: "MY_LINK" } });
   // The booking tick's Sample wording with it (FO-2 part 3b; only when the firm has none), so the page's first read
   // (GET …/book/:slug/slots) finds it and stores nothing: check_pf28_inputs' probes reach that door now (#2687, Lead 17).
   await ensureBookingWording(tx, firm.id);

@@ -15,7 +15,7 @@ import difflib, json, os, re, sys, time
 from datetime import datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
-FILES = re.compile(r"(^|/)product/(STATE|DECISIONS)\.md$")
+FILES = re.compile(r"(^|/)product/(STATE|DECISIONS)\.md$")   # also STATE.md in the private copy, <private>/xpatready/product/ (PS-1b)
 MON = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
 M = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
 T = r"~?(\d{1,2}):([0-5])([0-9x])"

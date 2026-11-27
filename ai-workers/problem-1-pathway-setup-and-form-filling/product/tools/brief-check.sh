@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every brief and every PR body (P-611, row G-4 (3); P-526, P-606): a "Done when" that names how it is proved (a test,
 # a check, an exit code), and a "Duplicate check:" line. With --brief (a lane start, G-4 (7), P-608) also one line
-# naming the model and the effort, e.g. "Model: Opus 5.5, effort: medium"; a start brief that names no backlog row
+# naming the model and the effort, e.g. "Model: Opus 5.5, effort: medium" (P-788: only that, or a "P-788 exception:" line); a start brief that names no backlog row
 # ("Row X-1", "/next screens B124") needs only that line. A start brief that names a row or an R1 item also needs a line
 # "Item: R1.x" (several: "Item: R1.4, R1.8") or "Item: none (tooling|qa|records|lead)" (only when its own row has that
 # BACKLOG area, or it names no row), and each item must be in a wave open
@@ -24,6 +24,12 @@ elif ! printf '%s\n' "$done_when" | grep -qiE 'test|check|exit|pass|fail|\.(sh|t
 if [ "${1:-}" = --brief ]; then
   printf '%s\n' "$txt" | grep -iE '(opus|fable|sonnet|haiku)' | grep -qiE 'effort[ :=*]*(low|medium|high|xhigh|max)|(low|medium|high|xhigh|max)[ -]effort' \
     || bad="$bad no model and effort line (one line naming both, e.g. \"Model: Opus 5.5, effort: medium\", P-608);"
+  # One model rule (P-788): the line names Opus at medium, unless the brief names why with "P-788 exception:".
+  ml=$(printf '%s\n' "$txt" | grep -iE '(opus|fable|sonnet|haiku)' | grep -iE 'effort[ :=*]*(low|medium|high|xhigh|max)|(low|medium|high|xhigh|max)[ -]effort' | head -1)
+  if [ -n "$ml" ] && ! printf '%s\n' "$txt" | grep -q 'P-788 exception:'; then
+    printf '%s' "$ml" | grep -qiE '(fable|sonnet|haiku)|effort[ :=*]*(low|high|xhigh|max)|(low|high|xhigh|max)[ -]effort' \
+      && bad="$bad the model line asks for something other than Opus 5.5 medium (got: $(printf '%s' "$ml" | cut -c1-80)); one rule (P-788), or add \"P-788 exception: <why>\";"
+  fi
 fi
 wave=""
 if [ "${1:-}" = --brief ] && { [ "$row" = 1 ] || printf '%s\n' "$txt" | grep -qE '(^|[^A-Za-z0-9.])R1\.[0-9]'; }; then

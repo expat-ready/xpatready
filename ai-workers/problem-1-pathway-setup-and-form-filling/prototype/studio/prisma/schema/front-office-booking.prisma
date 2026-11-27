@@ -225,6 +225,7 @@ model FoBooking {
   type   FoConsultationType @relation(fields: [firmId, typeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   tokens FoBookingToken[]
   consultRecord FoConsultRecord?
+  video         FoBookingVideo? // FO-3v part 1: front-office-video.prisma (the booking's meeting link)
 
   /// The target of fo_booking_token's (firm_id, booking_id) key.
   @@unique([firmId, id])
