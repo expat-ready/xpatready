@@ -17,7 +17,7 @@ repository are dropped (LR-120).
 1. **Move only what no required check, hook or builder needs.** That is the Lead's running page and its archive:
    `STATE.md`, `history/`, `lanes/`, `inbox/`, `reports/`, `ops/`, `reference/`, `RESUME-ON-NEW-ACCOUNT.md`,
    `SECOND-MAC.md` (PS-1), and the four Lead-only skills `lead`, `lead-watch`, `strategy-desk`, `cto-review` (PS-2).
-   About 950 files, 29 MB.
+   951 files, 27.7 MB (26.4 MiB).
 2. **Keep public, with evidence (challenge to LR-116's "no records file under product/ except pointers"):**
    `DECISIONS.md` + `decisions/`, `RULES.md` + `rules/`, `BACKLOG*.md`, `focus-list.md`, `WAY-OF-WORKING.md`, `state/`,
    `design/`. Each is read by a required check (`ci`, `pr-rules`) or by builders, who are single-repository sessions
@@ -82,7 +82,9 @@ folder inside xpatready). GitHub is the durable home; the working copy is pulled
 
 **One resolver, `product/tools/records-dir.sh`** (new, ~10 lines, PS-1b), prints the root of the moved records:
 `$XR_RECORDS` if set; else `${PRIVATE_HOME_DIR:-$TMPDIR/private-home}/xpatready/product` if that folder has `STATE.md`
-(the same variable private-sync.sh reads); else nothing (exit 1).
+(the same variable private-sync.sh reads); else `product/` itself when it still holds `STATE.md` (before PS-1c, or after a
+rollback); else nothing (exit 1). So every re-pointed reader works with the files in either place, which is what lets the
+readers change (PS-1b) before the files go (PS-1c).
 Python tools call it once via a 3-line helper. No reader guesses a path of its own.
 
 | Reader | Today | After (PS-1b unless stated) |
@@ -102,7 +104,8 @@ Python tools call it once via a 3-line helper. No reader guesses a path of its o
 | `ist-time-guard.py` (not wired to any hook today; tested by check-ist-time-guard.sh, listed in check-guards.sh) | refuses a future time in STATE.md or DECISIONS.md | Also match the private path of STATE.md, so it is ready if the Lead wires it. |
 | `records-only.sh`, `change-kind.sh`, `check-mergify-scopes.sh`, `ci-memory.mjs`, `check-select-suites.sh` | name `product/STATE.md` as an example of a record | No change needed (a classification rule; STATE.md simply stops appearing in xpatready PRs). Tests keep their fixture paths. |
 | Tests that build their own STATE in a temp copy: check-current-lead, check-state-page, check-handover, check-founder-*, check-ist-time-guard, check-owed-watch, check-lead-upkeep, check-known-failures, check-stop-check, check-guards (mutation list), guard-test-lib.sh, test_cockpit_data.py | temp fixtures | Updated in the same PR as their tool: fixtures write `CURRENT-LEAD.md` and set `XR_RECORDS` to the temp folder. |
-| `private-sync.sh` (lead-watch each check; lead-upkeep.py) | rsyncs notes into `notes/`, then `git add -A` (line 94) | `git add -A notes` only, so a sync never commits a half-written STATE; the Lead commits records by hand. Its test (check-guards.sh list) gets one case: a file outside notes/ stays uncommitted. |
+| `lead-watch.sh` line 370 (records size snapshot) | `size(P + "/STATE.md")` | records-dir.sh root for STATE.md; RULES.md stays in `P`. |
+| `private-sync.sh` (lead-watch each check; lead-upkeep.py) | rsyncs notes into `notes/`, then `git add -A` (line 94) | `git add -A notes` only, so a sync never commits a half-written STATE; the Lead commits records by hand. Its secret scan covers notes/ only, so the Lead runs the push guard's secret check on records commits in the private copy. Its test (check-guards.sh list) gets one case: a file outside notes/ stays uncommitted. |
 | `known-failures.tsv` row `size-state` | STATE size near 12 KB | Kept; judged only where records-dir.sh finds the private clone. |
 | `CLAUDE.md`, `AGENTS.md` rules 9-10, `lead` skill, `WAY-OF-WORKING.md` | "start from product/STATE.md" | Lead: private STATE; everyone else: `CURRENT-LEAD.md`, RULES.md, own backlog row. AGENTS rule 10 names both repositories. |
 | prototype new-machine.sh, check_runtime_n7.cjs, j_13.ts, j_65.ts, two fixture READMEs | comments / printed hints citing moved files | No change (citations; history keeps them). |
@@ -119,18 +122,22 @@ ci-memory.mjs only name STATE.md as a classification example or a temp fixture. 
 | Step | Repository | Who | What | Checked by |
 |---|---|---|---|---|
 | PS-1a | private | Lead (Mac) | README layout; copy the PS-1 paths from xpatready at a named sha (one commit, message names the sha) | `diff -r` of each moved path against that sha is empty |
-| PS-1b | xpatready | builder lane (this lane) | records-dir.sh; `CURRENT-LEAD.md`; every reader in section 4; tests; then `git rm` of the moved paths; `product/PRIVATE-RECORDS.md` pointer (what moved, where, the sha); CLAUDE.md, AGENTS.md, WAY-OF-WORKING.md lines | required checks green; on the Lead's Mac with both clones: `bash tools/lead-watch.sh`, `bash tools/current-lead.sh`, `bash tools/check-docs.sh` pass; in a copy without the private clone: check-docs and current-lead.sh pass |
-| — | — | Lead | Records freeze from PS-1a's sha until PS-1b merges: STATE edits wait (or are copied again before PS-1b merges) | PS-1b's body names both shas |
+| PS-1b | xpatready | builder lane (this lane) | records-dir.sh; `CURRENT-LEAD.md`; every reader in section 4 and its test, each working with the files in either place; `product/PRIVATE-RECORDS.md` pointer; CLAUDE.md, AGENTS.md, WAY-OF-WORKING.md lines. **No file is deleted.** Under 800 changed lines, under 50 deletions. | required checks green; on the Lead's Mac with both copies: `bash tools/lead-watch.sh`, `bash tools/current-lead.sh`, `bash tools/check-docs.sh` pass reading the private copy; without it: check-docs and current-lead.sh pass reading `CURRENT-LEAD.md` and the in-tree files |
+| PS-1c | xpatready | builder lane | `git rm` of the 951 files only, plus one row in `docs/PATHS-MOVED.md`. Body: `Clean-up: delete` (cleanup-pr-check.sh, pr-rules: a PR deleting 50+ files must be a pure deletion) and `Size exception: P-NNN` (pr-size.sh: ~99k deleted lines; the moved folders hold .py/.sh/.json files, so it is not records-only). The Lead first records the size-exception row P-NNN in DECISIONS (a 800-line size row). Commit message: `BULK-DELETE-OK: private split PS-1c, files copied to expat-ready/private at <sha>` (bulk-delete-guard.sh via pre-commit, commit-msg and push-guard.sh in ci). The moved paths are **not** added to `stale-paths.txt`: DECISIONS and RULES keep citing them, and check-docs resolves those citations in the private copy (section 4). | required checks green; the same three Lead commands pass; `check-docs.sh` in a copy without the private clone passes |
+| — | — | Lead | Records freeze from PS-1a's sha until PS-1c merges: STATE edits go to the private copy only (readers already prefer it after PS-1b) | PS-1c's body names PS-1a's sha |
 | PS-2a | private | Lead (Mac) | copy the four skills and their four text checks; link `~/.claude/skills/*` | `/lead` loads in xpatready; the four checks pass in the private clone |
 | PS-2b | xpatready | builder lane | `git rm` the four skills; guards.yml list; lead-watch `skills_off`; lane-preflight text test | required checks green; guards.yml green |
 
-PS-1b is one PR on purpose: a reader is never changed in a different PR from the file it reads (the brief's rule).
+The brief's rule holds: no file a check or hook reads is removed before its reader is changed. PS-1b changes every reader
+so it works with the files in either place; only then does PS-1c remove them. PS-1b and PS-2b touch `product/tools/` and
+`.claude/`, read-first paths: the Lead reads each before it is labelled.
 
 ## 6. Roll back
 
-* **xpatready:** `git revert` of the PS-1b (or PS-2b) merge commit, as one records PR. The deleted files come back
-  exactly from history; records-dir.sh then finds no private clone in CI and falls back to the in-tree path. Prepared as a
-  branch when PS-1b merges (LR-116's "one revert PR per repository prepared").
+* **xpatready:** `git revert` of the PS-1c merge commit (body `Size exception: P-NNN`, the same row; commit message
+  `BULK-DELETE-OK:` is not needed, a revert adds files). The files come back exactly from history, and records-dir.sh
+  falls back to the in-tree path where no private copy is set. PS-1b needs no revert (its readers work either way); revert
+  it only to drop `CURRENT-LEAD.md`. Prepared as a branch when PS-1c merges (LR-116's "one revert PR per repository prepared").
 * **Lead's records written after the move:** copied back from the private repo into the revert PR (`cp -r`), so nothing
   written in between is lost.
 * **private:** nothing to roll back (the copy is additive); leave it, or revert its import commit.
