@@ -39,7 +39,7 @@ mkdir "$S"; run 06:00; ok "STATE.md a directory: an ACT" "$([ "$(acts)" = 1 ] &&
 # lead-watch step 13d, cut from lead-watch.sh (it ends in a blank line)
 sed -n '/^# 13d (OS-18/,/^$/p' "$TOOLS/lead-watch.sh" > "$T/step.sh"; mkdir -p "$T/l/x" "$T/st"
 ok "lead-watch has step 13d, ending in a blank line" "$(grep -q 'founder-wait.py' "$T/step.sh" && [ "$(tail -1 "$T/step.sh")" = "" ] && echo 1)" "$(cat "$T/step.sh")"
-step() { printf 'import sys\nprint("""%s""")\nsys.exit(%s)\n' "$1" "${2:-0}" > "$T/l/x/founder-wait.py"; o=$( ( TOOLS="$T/l/x"; STATE_DIR="$T/st"; act=0; ACT() { act=$((act + 1)); echo "ACT   $1"; }; seen() { :; }; fresh() { :; }; . "$T/step.sh"; echo "acts=$act" ) 2>&1 ); }
+step() { printf 'import sys\nprint("""%s""")\nsys.exit(%s)\n' "$1" "${2:-0}" > "$T/l/x/founder-wait.py"; o=$( ( TOOLS="$T/l/x"; RECS="$T/l"; STATE_DIR="$T/st"; act=0; ACT() { act=$((act + 1)); echo "ACT   $1"; }; seen() { :; }; fresh() { :; }; . "$T/step.sh"; echo "acts=$act" ) 2>&1 ); }
 step 'founder wait: no 🔴 line'; ok "step 13d: a plain line is no ACT" "$(has 'acts=0' && echo 1)" "$o"
 step 'ACT   founder wait: waited 30 min'; ok "step 13d: its ACT line is counted" "$(has 'acts=1' && echo 1)" "$o"
 step 'Traceback' 1; ok "step 13d: a crash is an ACT" "$(has 'did not run' && has 'acts=1' && echo 1)" "$o"

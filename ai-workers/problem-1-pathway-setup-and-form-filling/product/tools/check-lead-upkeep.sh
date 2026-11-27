@@ -75,6 +75,11 @@ out=$(ps "$T/notes" "$T/h3"); r=$?
 ok "private-sync: a working copy with no commits (git rev-parse HEAD fails) → refused (exit 4), the mirror untouched" "$([ $r = 4 ] && grep -q 'has no commits (git rev-parse HEAD)' <<<"$out" && [ "$(git --git-dir="$T/remote.git" rev-parse HEAD)" = "$before" ] && echo 1)" "exit $r: $out"
 out=$(ps "$T/notes" "$T/h4"); r=$?
 ok "private-sync: a real source pushes (exit 0) and the mirror gains the note" "$([ $r = 0 ] && grep -q 'private-sync: pushed' <<<"$out" && git --git-dir="$T/remote.git" show HEAD:notes/side-session-notes/b.md 2>/dev/null | grep -q new && echo 1)" "exit $r: $out"
+# Private split (PS-1b): the Lead's records share this working copy; a sync commits notes/ only, never a half-written STATE.
+mkdir -p "$T/h4/xpatready/product" && echo "half written" > "$T/h4/xpatready/product/STATE.md" && echo more > "$T/notes/c.md"
+out=$(ps "$T/notes" "$T/h4"); r=$?
+ok "private-sync: commits notes/ only; a records file beside it stays uncommitted" "$([ $r = 0 ] && git --git-dir="$T/remote.git" show HEAD:notes/side-session-notes/c.md >/dev/null 2>&1 && ! git --git-dir="$T/remote.git" show HEAD:xpatready/product/STATE.md >/dev/null 2>&1 && echo 1)" "exit $r: $out"
+rm -rf "$T/h4/xpatready"
 # Breaker, 23 Nov: folders, .DS_Store and hidden files are not notes; the source can empty during the pull; a working copy
 # of another remote or a failed pull must not report success. Each case: refused, the mirror's HEAD unchanged.
 untouched() { [ "$(git --git-dir="$T/remote.git" rev-parse HEAD)" = "$before" ]; }
@@ -159,6 +164,6 @@ ok "skill lead-watch step 1 passes the context to lead-watch.sh (LEAD_CONTEXT, L
 
 # --- wiring in lead-watch.sh
 L="$TOOLS/lead-watch.sh"
-ok "lead-watch.sh step 1c reads the context against STATE and counts its ACT lines" "$(grep -q 'lead-upkeep.py" context --state "\$TOOLS/../STATE.md"' "$L" && grep -q 'echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))' "$L" && echo 1)" "no 1c wiring in $L"
+ok "lead-watch.sh step 1c reads the context against STATE and counts its ACT lines" "$(grep -q 'lead-upkeep.py" context --state "\$RECS/STATE.md"' "$L" && grep -q 'echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))' "$L" && echo 1)" "no 1c wiring in $L"
 ok "lead-watch.sh step 6b runs the private sync and counts its ACT lines" "$(grep -q 'lead-upkeep.py" sync' "$L" && grep -q 'echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))' "$L" && echo 1)" "no 6b wiring in $L"
 finish

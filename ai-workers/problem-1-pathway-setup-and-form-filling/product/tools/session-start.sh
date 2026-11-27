@@ -33,5 +33,9 @@ case "$LANE" in
   screens|forms|evidence|runtime|qa) head="This is the $LANE builder's copy (branch $(git branch --show-current)). Command: /next $LANE (qa: /qa <mode>). Way of working: product/WAY-OF-WORKING.md; work list: product/BACKLOG.md.";;
   *) head="This copy is not bound yet: /next <area> (screens, forms, runtime, evidence) or /qa binds it. Way of working: product/WAY-OF-WORKING.md.";;
 esac
-ctx=$([ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "--- product/STATE.md ---"; cat "$PH/STATE.md")
+# The page (private split, PS-1b): STATE.md where the records are (records-dir.sh: the Lead's private copy, else this
+# copy's while it is still here); once it has left xpatready, other copies get the public CURRENT-LEAD.md line instead.
+if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md"; [ "$RD" = "$PH" ] || w="STATE.md (private copy: $RD)"; page="--- $w ---"$'\n'"$(cat "$RD/STATE.md")"
+else page="--- product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository) ---"$'\n'"$(cat "$PH/CURRENT-LEAD.md" 2>/dev/null)"; fi
+ctx=$([ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
