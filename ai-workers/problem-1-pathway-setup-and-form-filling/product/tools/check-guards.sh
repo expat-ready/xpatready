@@ -42,6 +42,7 @@ TESTS="$TESTS check-lead-watch-idle.sh"   # A334 fix 1: idle-lane alarm, night c
 TESTS="$TESTS check-qa-due.sh check-tools-on-main.sh check-comment-filter.sh"   # lab automation-measures: qa after merge, OS-11, OS-78 (a)
 TESTS="$TESTS check-lead-age.sh"   # LR-156: the Lead copy on live main, records on a branch under 24 h
 TESTS="$TESTS check-lane-read.sh check-lane-death.sh check-nudge-lane.sh"   # LR-154 app view enforced, LR-147 lane deaths, LR-146 nudge
+TESTS="$TESTS check-switch.sh"   # OS-86 / LR-143: the account switch (founder A417)
 TESTS="$TESTS check-proof-number.sh"   # A348: the proof number above merges
 TESTS="$TESTS check-after-read-owed.sh check-migration-additive.sh"   # P-823: the Lead's after-reads owed; the migration allowlist
 TESTS="$TESTS check-question-gate.sh"   # ENF-778a E-a: no Lead turn ends on an unanswered question
@@ -659,6 +660,8 @@ LR156 keep|product/tools/lead-age.sh|s/^      if \[ "\$extra" != 0 \]; then$/   
 LR154 push|product/tools/lead-check-guard.sh|s/^  \[ "\$pushed" = yes \] \&\& exit 0$/  exit 0/|check-lane-read.sh
 LR147 read|product/tools/lane-death.sh|s/^      \[\[ "\$t" =~ .*/      continue/|check-lane-death.sh
 LR146 hour|product/tools/nudge-lane.sh|s/ -lt "\$min" \]; then$/ -lt 0 ]; then/|check-nudge-lane.sh
+OS86 gate|product/tools/switch.sh|s/^    if \[ ! -s "\$D\/baseline" \]; then$/    if false; then/|check-switch.sh
+OS86 wave|product/tools/switch.sh|s/^    \[ "\$n15" -ge 4 \] .*/    true/|check-switch.sh
 M788 effort|product/tools/agent-model-guard.sh|s/\[ "\$e" = medium \]/true/|check-model-rule.sh
 M788 settings|product/tools/model-rule-check.py|s/^if s.get("effortLevel") != "medium":/if False:/|check-model-rule.sh
 M788 prose|product/tools/model-rule-check.py|s/^        m = OTHER_MODEL.search(line) or OTHER_EFFORT.search(line)/        m = None/|check-model-rule.sh

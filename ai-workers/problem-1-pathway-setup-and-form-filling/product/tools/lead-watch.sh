@@ -102,6 +102,12 @@ bash "$TOOLS/records-dir.sh" --private >/dev/null 2>&1 || ACT "records: no priva
 lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$RECS/STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead's get_usage"
 
+# 1c2. OS-86 / LR-143 (founder A417): at 94% weekly the old side of an account switch starts (AS-1). get_usage is the
+# Lead's tool, so the Lead passes it: LEAD_WEEKLY=<pct>. switch.sh close-prep writes the ledger row and checks STATE and
+# RESUME are pushed; an ACT until it says done. An open switch with no baseline is an ACT too.
+if [ -n "${LEAD_WEEKLY:-}" ]; then cp=$(bash "$TOOLS/switch.sh" close-prep "$LEAD_WEEKLY" 2>&1) && say "$cp" || ACT "$cp"; fi
+ss=$(bash "$TOOLS/switch.sh" status 2>&1); case "$ss" in *"baseline none"*) ACT "$ss: get_usage, then switch.sh baseline <pct> (AS-4)";; *open*) say "$ss";; esac
+fresh "switch.sh: LEAD_WEEKLY from the Lead's get_usage, the switch state in ~/.claude/xr-switch, git status of STATE and RESUME, now"
 # 1c3. LR-156 (founder A433/A434): the Lead copy's branch age, every check; stale (base over 24 h or 200 behind) is an
 # ACT with the recut command (lead-age.sh; the fetch is step 1d's, so this reads the previous check's origin/main).
 la=$(bash "$TOOLS/lead-age.sh" line 2>&1) && say "$la" || ACT "$la"
