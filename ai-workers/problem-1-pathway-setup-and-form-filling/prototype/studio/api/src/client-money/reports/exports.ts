@@ -234,14 +234,14 @@ async function csvOf(tx: Tx, f: string, kind: ExportKind, m: Manifest): Promise<
   const out = [`﻿${HEADERS[kind].join(",")}`], asOf = new Date(m.at);
   let after: { k: string; id: string } | null = null, rows = 0;
   for (;;) {
-    const page = await tx.$queryRaw<Row[]>(exportPageSql(f, kind, m.from, m.to, m.zone, asOf, after));
+    const page: Row[] = await tx.$queryRaw<Row[]>(exportPageSql(f, kind, m.from, m.to, m.zone, asOf, after));
     for (const r of page) out.push(kind === "TRUST_LEDGER"
       ? [r.date, cell(r.caseNo ?? r.billTo), cell(r.entry), cell(r.ref), cell(r.billTo), amount(r.amount), r.currency, amount(r.running ?? null), cell(r.related)].join(",")
       : [r.date, cell(r.ref), cell(r.client), cell(r.caseNo), cell(r.billTo), amount(r.amount), amount(r.tax), r.currency, cell(r.method), cell(r.into), cell(r.related), r.counted,
         ...(kind === "CREDIT_NOTES" ? [amount(r.extra ?? null)] : kind === "CREDITS" ? [cell(r.extra)] : [])].join(","));
     rows += page.length;
     if (page.length < PAGE) break;
-    const last = page.at(-1)!; after = { k: last.k, id: last.id };
+    const last: Row = page.at(-1)!; after = { k: last.k, id: last.id };
   }
   return { text: `${out.join("\r\n")}\r\n`, rows };
 }
