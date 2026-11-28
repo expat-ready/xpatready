@@ -240,7 +240,7 @@ def main(argv):
         if not own:
             return 0
         area = {}
-        for f in sorted(glob.glob(os.path.join(BACKLOG_DIR, "BACKLOG*.md"))):
+        for f in sorted(glob.glob(os.path.join(BACKLOG_DIR, "BACKLOG*.md"))) + sorted(glob.glob(os.path.join(BACKLOG_DIR, "history", "BACKLOG-done-*.md"))):   # LR-091
             for l in open(f, encoding="utf-8").read().split("\n"):
                 c = l.split("|")
                 if len(c) > 3 and ROW.fullmatch(c[1].strip()):

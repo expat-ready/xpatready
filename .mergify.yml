@@ -9,7 +9,8 @@
 # Founder 1 Nov night (reverses P-210's limit of one): the repository is public, so batches run free on GitHub's
 # machines, not the one Mac; up to 6 batches are checked at once, each assuming the ones ahead of it pass.
 merge_queue:
-  max_parallel_checks: 4   # Lead 4, 22 Nov 15:47 IST (pipeline fix, P-214): 12 to 4. At 15:44 IST 10 batches ran at once, each with
+  max_parallel_checks: 12   # Lead 13, 28 Nov 16:4x IST (pipeline fix, P-214; queue-depth.py: 0 of 20 batches failed, under 10%: 12; GitHub
+  # Enterprise Cloud runners since 18 Nov). Before: 4, by Lead 4, 22 Nov 15:47 IST (pipeline fix, P-214): 12 to 4. At 15:44 IST 10 batches ran at once, each with
   # 17-27 jobs waiting for a machine: 113 jobs running, 163 workflow runs queued, nothing merged since 14:35 IST. Fewer
   # batches at a time let the front batches finish instead of all starving. 12 was CI-SPEED-1 (founder A253, 21 Nov),
   # set when 74 jobs ran with no shortage; load has since doubled. Earlier: 6 (P-739), 3 (CK-1).
@@ -464,6 +465,8 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      # LR-181: as records (a verdict PR is a records PR): pr-rules skips its body and size rules; the always-on steps hold it when red.
+      - check-success = pr-rules
       - label = records
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
@@ -484,7 +487,8 @@ queue_rules:
   # Undo: move pipeline back after product when P-827 ends (this block below product's; check-queue-rules.py's order
   # and engineering-approved-setup.json's queue_order with it).
   - name: pipeline
-    batch_size: 2
+    batch_size: 4   # Lead 13, 28 Nov (P-214): was 2 (P-715, set at 40% failed batches); 0 of the last 20 batches failed and 13 lab PRs
+    # waited in this one-at-a-time queue (capacity 1), so a batch of 4 halves the wait; undo: 2.
     batch_max_failure_resolution_attempts: 2
     batch_max_wait_time: 2 min
     queue_conditions:
@@ -492,6 +496,10 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      # LR-181 (enforcement audit, top gap; P-214 merge-flow fix): pr-rules gates this queue too, so a pipeline PR with a
+      # red Done when, explainer, model rule, stale base or register line (LR-178) is not queued. pr-rules runs on every PR
+      # (no paths filter; only Mergify's own mergify/* batch branches skip it, and they never meet queue_conditions).
+      - check-success = pr-rules
       - -label=records
       - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$))
       - or:
@@ -566,6 +574,10 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      # LR-181: pr-rules gates records too. A records-only PR skips its body and size rules (pr-rules.yml, records-only.sh
+      # on the file list); the always-on steps (LR-156 stale base, the model rule, clean-up, comment filter, waves, deps line)
+      # still run, so a stale or otherwise red records PR is held.
+      - check-success = pr-rules
       - label = records
     merge_conditions:
       - check-success = ci

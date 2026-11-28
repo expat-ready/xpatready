@@ -14,7 +14,7 @@ const ok = (n, c, d) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL
 (async () => {
   mkdirSync(OUT, { recursive: true });
   const vv = sql("select id from combination where combination_key = 'vv.single'");
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").launchOptions());
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-A"); } catch { /* storage blocked */ } });
   await page.goto(`http://localhost:${PORT}/c/${vv}/questionnaires`, { waitUntil: "networkidle" });

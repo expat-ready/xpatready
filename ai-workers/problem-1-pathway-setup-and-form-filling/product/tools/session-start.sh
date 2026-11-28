@@ -1,5 +1,5 @@
 #!/bin/bash
-# SessionStart hook (P-189): tell the session which copy it is in, its one command, and the one-page state.
+# SessionStart hook (P-189): tell the session which copy it is in, its one command, and where its start read is (LR-052).
 # The session's own copy comes from the hook input (in lane sessions $CLAUDE_PROJECT_DIR is the main copy).
 input=$(cat 2>/dev/null); cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -37,11 +37,15 @@ case "$LANE" in
 esac
 # OS-86 / LR-143 (founder A417): an account change opens a switch and prints its checklist first (switch.sh detect).
 sw=$(bash "$PH/tools/switch.sh" detect 2>/dev/null)
-# The page (private split, PS-1b): STATE.md where the records are (records-dir.sh: the Lead's private copy, else this
-# copy's while it is still here); once it has left xpatready, other copies get the public CURRENT-LEAD.md line instead.
-if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md"; [ "$RD" = "$PH" ] || w="STATE.md (private copy: $RD)"; page="--- $w ---"$'\n'"$(cat "$RD/STATE.md")"
-else page="--- product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository) ---"$'\n'"$(cat "$PH/CURRENT-LEAD.md" 2>/dev/null)"; fi
+# The start read (LR-052, FP #54 and #186; P-545): a pointer, not the page. Pasting STATE.md made every session start
+# about 12.5 KB (measured 27 Nov), read on every task; now the current_lead line and where the start read lives, so the
+# whole output stays under 1,536 bytes (check-session-start-size.sh). STATE.md is where the records are (records-dir.sh,
+# PS-1b: the Lead's private copy, else this copy's); once it has left xpatready, the public CURRENT-LEAD.md line.
+if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md"; [ "$RD" = "$PH" ] || w="$RD/STATE.md (private copy)"; cl=$(grep -m1 '^current_lead:' "$RD/STATE.md" 2>/dev/null | cut -c1-240)
+else w="product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository)"; cl=$(grep -m1 '^current_lead:' "$PH/CURRENT-LEAD.md" 2>/dev/null | cut -c1-240); fi
+page="Start read (P-545): product/RULES.md and $w (\"Start here\"), then your own backlog row. Not pasted here (LR-052: session start under 1.5 KB)."
+[ -n "$cl" ] && page="$page"$'\n'"$cl"
 # LR-174 (founder A455): every session knows the GitHub budget (5,000/h on the user token; one full lead-watch ~2,650).
-ghl="GitHub API budget (LR-174): read product/rules/github-limits.md before any loop of GitHub calls; the user token has 5,000 requests/hour, shared by every tool on it."
+ghl="GitHub budget (LR-174): read product/rules/github-limits.md before any loop of GitHub calls (user token: 5,000/h, shared)."
 ctx=$([ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; echo "$ghl"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'

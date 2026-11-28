@@ -20,7 +20,7 @@ if [ "${1:-}" = --hook ]; then
   [ -z "$why" ] && exit 0
   echo "$in" | jq -e '[.tool_input.prompt, .tool_input.description] | map(. // "") | join(" ") | test("P-788 exception:")' >/dev/null && exit 0
   who=$(echo "$in" | jq -r '[.tool_input.subagent_type, .tool_input.description] | map(. // "") | join(" ")')
-  jq -n --arg r "One model rule (P-788): every agent on Opus 5.5 at medium effort; this launch ($who) asks for $why. Leave model and effort out, or name the reason in the prompt as \"P-788 exception: <why>\" and tell the founder (P-788 (2))." \
+  jq -n --arg r "Rule P-788: one model rule, every agent on Opus 5.5 at medium effort; this launch ($who) asks for $why. Fix: leave model and effort out, or name the reason in the prompt as \"P-788 exception: <why>\" and tell the founder (P-788 (2))." \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 fi

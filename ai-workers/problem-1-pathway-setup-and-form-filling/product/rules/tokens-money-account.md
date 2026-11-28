@@ -56,3 +56,6 @@ Since 18 Nov 12:31 IST the repository is `expat-ready/xpatready` in the enterpri
 ## Account facts line, moved word for word from RULES.md by Lead 8 (25 Nov 15:3x IST, 25 KB cap)
 **Account facts:** `expat-ready/xpatready` on Enterprise Cloud since 18 Nov (500 jobs documented, 1-6 measured); detail and the Pro-era line in `rules/tokens-money-account.md`.
 Corrected 25 Nov (A389): CI machines are NOT the constraint: Enterprise Cloud, 78/180 jobs in use at 15:0x IST; GitHub ticket #5023043 (full 500 limit) open.
+
+## Pilot before a large multi-agent run (LR-128, founder A425 through the lab register, 28 Nov; Loops article: "Pilot before a large run")
+Before a run that starts more than 5 agents at once (a Workflow, a fan-out of subagents or cloud lanes), run a pilot on 1-2 of its items first: read its result and its tokens (`usage-by.py`), fix the brief, then start the rest. The run's brief or PR names the pilot (`Pilot: <items>, <result>, <tokens>`). Not in RULES.md yet: the register is at its 25 KB cap (check-docs.sh); the tech lead folds this line in.
