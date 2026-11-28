@@ -210,6 +210,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Edit|Write|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lint-hook.sh",
+            "timeout": 20
+          }
+        ]
+      }
     ]
   },
   "claudeMdExcludes": [
