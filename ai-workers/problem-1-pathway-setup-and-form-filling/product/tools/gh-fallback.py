@@ -154,6 +154,11 @@ def main(a):
             owner, name = repo(flags); ep = ep.replace("{owner}", owner).replace("{repo}", name)
         vals = {}
         for kv in flags["raw-field"]: k, v = kv.split("=", 1); vals[k] = v
+        # gh's own syntax: "labels[]=paused" (repeatable) becomes {"labels": ["paused"]} (pause-label.sh, lab A11).
+        if (flags.get("method") or "POST").upper() != "GET":
+            for kv in flags["raw-field"]:
+                k, v = kv.split("=", 1)
+                if k.endswith("[]") and re.fullmatch(r"\w+", k[:-2]): vals.pop(k, None); vals.setdefault(k[:-2], []).append(v)
         for kv in flags["field"]:
             k, v = kv.split("=", 1)
             vals[k] = {"true": True, "false": False, "null": None}.get(v, int(v) if re.fullmatch(r"-?\d+", v) else v)

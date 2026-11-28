@@ -78,6 +78,8 @@ run bash "$GH" api repos/o/r/issues/1/events --paginate --jq '[.[]|select(.event
 ok "api --paginate follows the Link header and joins the pages" "$([ $r = 0 ] && [ "$out" = 2 ] && echo 1)" "exit $r: $out $err"
 run bash "$GH" api -X POST repos/o/r/actions/workflows/walks.yml/dispatches -f ref=main -f 'inputs[journeys]=j_74'
 ok "api -f 'inputs[k]=v' nests like gh: a workflow dispatch sends {inputs:{journeys:...}} (21 Nov, Lead 6)" "$([ $r = 0 ] && tail -1 "$T/curl.log" | grep -q '"inputs": {"journeys": "j_74"}' && ! tail -1 "$T/curl.log" | grep -q 'inputs\[' && echo 1)" "exit $r: $(tail -1 "$T/curl.log")"
+run bash "$GH" api -X POST repos/o/r/issues/6/labels -f 'labels[]=paused' -f 'labels[]=x'
+ok "api -f 'labels[]=v' (repeated) sends a list like gh: {labels:[paused,x]} (pause-label.sh, lab A11)" "$([ $r = 0 ] && tail -1 "$T/curl.log" | grep -q '"labels": \["paused", "x"\]' && echo 1)" "exit $r: $(tail -1 "$T/curl.log")"
 run bash "$GH" repo view --json nameWithOwner -q .nameWithOwner
 ok "repo view reads the repository from git, with no request" "$([ $r = 0 ] && echo "$out" | grep -qE '^[^/]+/[^/]+$' && echo 1)" "exit $r: $out $err"
 run bash "$GH" pr merge 1052
