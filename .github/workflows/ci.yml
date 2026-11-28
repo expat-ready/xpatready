@@ -398,6 +398,7 @@ jobs:
           bash "$P/tools/test-spd-2.sh"   # SPD-2 (P-802): per-area migration slots, the re-stamp check, suites by module
           bash "$P/tools/check-merge-guard.sh"
           bash "$P/tools/check-workflow-security.sh"   # A9 (LR-059, LR-057): actions SHA-pinned; Mac runners only in demo-update and queue-gate
+          bash "$P/tools/check-codeowners.sh"   # LR-061: CODEOWNERS owns workflows, hooks, agents, migrations and pipeline tools
           bash "$P/tools/check-lane-bind.sh"
           bash "$P/tools/check-new-machine.sh"   # B168: the any-Mac setup script's own logic
           node "$P/tools/ci-and-lists.mjs"

@@ -1,0 +1,29 @@
+# LR-061 (Lead 13, 28 Nov): GitHub's own reading of .github/CODEOWNERS on the PR's head. An owner GitHub cannot resolve
+# (a team that is not visible, a user without write) is ignored silently, so the path would have no owner at all; this
+# job fails on any line GitHub reports (product/tools/codeowners-errors.sh, self-tested first). The file's coverage of
+# the guarded paths is ci's check-codeowners.sh. Read-only token, no secrets, no package install. US$0, no model call.
+name: codeowners
+on:
+  pull_request:
+    paths:
+      - ".github/CODEOWNERS"
+      - ".github/workflows/codeowners.yml"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/codeowners-errors.sh"
+concurrency:
+  group: codeowners-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+permissions: {}
+jobs:
+  codeowners:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read }
+    defaults: { run: { shell: bash } }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - name: self-test (planted answers)
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/codeowners-errors.sh --self-test
+      - name: GitHub reads every CODEOWNERS line without an error (codeowners/errors on the PR's head)
+        env: { GH_TOKEN: "${{ github.token }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}" }
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/codeowners-errors.sh "$HEAD_SHA"
