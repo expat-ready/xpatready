@@ -86,6 +86,11 @@ model Filing {
   itemsFirm      FilingItem[]         @relation("FilingItemFilingFirm")
   additionsFirm  FilingFormAddition[] @relation("FilingFormAdditionFilingFirm")
 
+  reviewsFirm FilingReview[] @relation("FilingReviewFilingFirm")
+  passesFirm ReadinessPass[] @relation("ReadinessPassFilingFirm")
+  reviewRoundsFirm ReviewRoundFiling[] @relation("ReviewRoundFilingFilingFirm")
+  reviewFormsFirm ReviewRoundForm[] @relation("ReviewRoundFormFilingFirm")
+
   @@unique([caseId, stageId, subjectId])
   @@index([stageId])
   @@unique([id, firmId])
@@ -151,9 +156,12 @@ model FilingItem {
   caseFirm   Case?   @relation("FilingItemCaseFirm", fields: [caseId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
   filingFirm Filing? @relation("FilingItemFilingFirm", fields: [filingId, firmId], references: [id, firmId], onDelete: Cascade, onUpdate: Restrict)
 
+  reviewFormsFirm ReviewRoundForm[] @relation("ReviewRoundFormItemFirm")
+
   @@unique([filingId, kind, itemKey, subjectId])
   @@index([caseId])
   @@index([firmId, caseId])
+  @@unique([id, firmId])
   @@map("filing_item")
 }
 
