@@ -46,7 +46,7 @@ for m in 'Next step: add the Done when line to #2578 (I will do it in the built-
 r=$(stop qa "$click"); ok "LR-176: a lane's copy (qa) is refused too (every session, not only the Lead's)" "$([ "$r" = block ] && echo 1)" "got $r"
 r=$(stop unbound "$click"); ok "LR-176: ... and an unbound copy" "$([ "$r" = block ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" --arg m "$click" '{cwd:$d,last_assistant_message:$m}' | FAKE_LANE=lead bash "$G")
-ok "the refusal says the fix text: do it yourself now, with the session's own tools (P-752, LR-176)" "$(jq -e '.reason | contains("Do it yourself now (P-752") and contains("its own tools")' <<<"$out" >/dev/null && echo 1)" "$out"
+ok "the refusal says the fix text: do it yourself now, with the session's own tools (P-752, LR-176)" "$(jq -e '.reason | contains("Rule LR-176:") and contains("Fix: do it yourself now (P-752") and contains("its own tools")' <<<"$out" >/dev/null && echo 1)" "$out"
 # ENF-778a E-c (P-778): close, archive, reopen, label, dispatch, "Run workflow", merge and press, in a message or an ask line
 for m in 'Please close #2413, it is superseded.' 'Could you archive the session of lane forms-2?' 'You need to merge the PR when green.' \
          'Please press Run workflow on the nightly.' 'Can you dispatch the nightly workflow?' 'Please hit Run workflow on lead-watch.' \
