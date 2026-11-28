@@ -4,6 +4,7 @@
 # newest, and a change to a migration the base has (studio/tools/safety/migration-check.py). LR-074: every route that
 # changes something must be refused to nobody by a guard, a declared permission or a check on its handler's straight
 # path (role or identity, counted apart), or be on the reviewed list (studio/tools/safety/route-sweep.ts). Each tool runs its planted self-test first.
+# LR-161: job "walk" calls every route live on a seeded copy, signed out and with a wrong role (route-walk.ts).
 # Read-only token, no secrets, package scripts off. US$0, no model call. Turning it into a refusal is a later Lead call.
 name: safety
 on:
@@ -57,4 +58,43 @@ jobs:
           rc=0; npx tsx tools/safety/route-sweep.ts > "$RUNNER_TEMP/routes.txt" || rc=$?
           cat "$RUNNER_TEMP/routes.txt"
           { echo "### Route sweep (LR-074, report only)"; sed 's/^::warning::/- /' "$RUNNER_TEMP/routes.txt"; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+  # LR-161 (LR-074's other half): the live sign-in walk. A seeded isolated copy (cloud-setup.sh, as pr-suites sets up),
+  # then every route from the code called signed out and with a wrong role (studio/tools/safety/route-walk.ts); a 2xx not
+  # on route-walk-reviewed.txt is a warning. Report only like the job above: every step continues on error, nothing
+  # requires it. The copy's own database only; the walk refuses any other. Live AI off (the copy's default), US$0.
+  walk:
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: { contents: read }
+    defaults: { run: { shell: bash } }
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        continue-on-error: true
+        with: { node-version-file: .nvmrc }
+      - id: setup
+        name: set up like a cloud session (cloud-setup.sh; packages, PostgreSQL, the schema)
+        continue-on-error: true
+        timeout-minutes: 15
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: route walk, self-test (planted answers)
+        continue-on-error: true
+        run: cd "$S" && ./node_modules/.bin/tsx --tsconfig api/tsconfig.json tools/safety/route-walk.ts --self-test
+      - name: route walk, the app signed out and with a wrong role (warning only)
+        if: steps.setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          cd "$S"
+          PLATFORM_IDENTITY=local zsh tools/isolated.sh safety_walk 4612 start --ttl 20
+          trap 'zsh tools/isolated.sh safety_walk 4612 stop' EXIT
+          rc=0; ./node_modules/.bin/tsx --tsconfig api/tsconfig.json tools/safety/route-walk.ts 4612 xr_studio_safety_walk > "$RUNNER_TEMP/walk.txt" || rc=$?
+          cat "$RUNNER_TEMP/walk.txt"
+          { echo "### Route walk (LR-161, report only)"; sed 's/^::warning::/- /' "$RUNNER_TEMP/walk.txt"; } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"

@@ -1,0 +1,19 @@
+# Reviewed 2xx answers of the live sign-in walk (route-walk.ts, LR-161): "<mode> <VERB> <path> # why". A 2xx not listed
+# here is reported; a listed line that stops answering 2xx is reported too (the list only shrinks). Each line says why
+# the answer is right for that caller; a change to this list goes through the tech lead's read (product/tools/).
+# Public by design (OpenRead or /api/public): no person is needed.
+signed-out GET /api/health # the copies' health check (OpenRead)
+signed-out GET /api/public/embed/form.js # the public lead form's embed script a firm's website loads
+signed-out GET /api/public/plans # the price plans shown before sign-up
+signed-out GET /api/public/invitations/:token # the invitation link's state; an unknown token answers "not valid", never a person
+signed-out GET /api/public/web-address/availability # sign-up's web-address check, public by design
+signed-out GET /api/public/web-address/suggestion # sign-up's web-address suggestion, public by design
+# The simulated-person plane, as the client (x-actor user-P):
+wrong-role GET /api/health # the health check answers anyone
+wrong-role GET /api/session # who-am-I: any known person reads who they are
+wrong-role GET /api/releases # CaseRead (core.ts): the Open-a-case release list admits any known person, clients included (asked on the PR)
+# The platform plane, as a READ_ONLY member of the Sample firm:
+wrong-role PUT /api/front-office/booking-timings # "{}" changes no field; the service checks each changed field's key (timings.ts write)
+wrong-role PUT /api/front-office/me/video # AnyStaff: each member saves their own video link
+wrong-role POST /api/platform/session/sign-out # a member ends their own session
+wrong-role POST /api/platform/me/notifications/read-all # AnyStaff: a member marks their own notifications read
