@@ -9,6 +9,7 @@ import { idParam } from "../platform/http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../platform/identity/keys.ts";
 import { CaseNotes } from "./service.ts";
 import { CaseTimeline } from "./timeline.ts";
+import { PersonTimeline } from "./person-timeline.ts";
 
 type R = { platform?: StaffContext };
 
@@ -71,6 +72,16 @@ export class ClientNotesController {
 @Controller("api/runtime/cases/:id/timeline")
 export class CaseTimelineController {
   constructor(@Inject(CaseTimeline) private readonly svc: CaseTimeline) {}
+
+  @Get() @PermissionKeys("agent/case:show")
+  read(@Req() r: R, @Param("id") id: string, @Query() q: unknown) { return this.svc.read(staffOf(r), id, q); }
+}
+
+/** CS-NT1t (map row 76): a person's own timeline, newest first, 50 a page (?cursor=). At /api/runtime/clients/:id (beside the client notes): ConfigReadGuard admits key routes only under /api/runtime/ (CS-C1a). */
+@CaseRead()
+@Controller("api/runtime/clients/:id/timeline")
+export class PersonTimelineController {
+  constructor(@Inject(PersonTimeline) private readonly svc: PersonTimeline) {}
 
   @Get() @PermissionKeys("agent/case:show")
   read(@Req() r: R, @Param("id") id: string, @Query() q: unknown) { return this.svc.read(staffOf(r), id, q); }
