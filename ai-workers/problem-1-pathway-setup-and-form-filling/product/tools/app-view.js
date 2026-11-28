@@ -54,7 +54,7 @@
     if (share !== null && share > CTX_SHARE) why.push(`context ${Math.round(share * 100)}% (over 45%, P-565)`);
     const ctx = share === null ? 'context ?' : `context ${Math.round(used / 1000)}k (${Math.round(share * 100)}%)`;
     const text = [clean(s.title) || '(no title)', where, cat, need ? `needs: ${need}` : 'needs: none',
-      detail || 'no detail', idle === null ? 'idle ?' : `idle ${idle} min`, ctx].join(' · ');
+      detail || 'no detail', idle === null ? 'idle ?' : `idle ${idle} min`, ctx].concat(clean(s.id || s.uuid || s.session_id) ? [`id ${clean(s.id || s.uuid || s.session_id)}`] : []).join(' · ');   // LR-171: the id lane-start-watch.py matches
     return { flagged: why.length > 0, line: (why.length ? 'FLAG  ' : 'ok    ') + text + (why.length ? ' -> ' + why.join(', ') : '') };
   }
   function more(json) {   // the API's own "there is another page" markers, whichever it uses
