@@ -96,7 +96,7 @@ echo '{"cycle_start":"2026-11-21","rows":[]}' > "$T/p.json"; o=$(fr "$T/p.json")
 W="$TOOLS/lead-watch.sh"; sed -n '/^# 00\. /,/^say "time  /p' "$W" | grep -v '^say "time' > "$T/block.sh"; first=$(grep -nE '^# [0-9]+[a-z]?\. ' "$W" | grep -vE '^[0-9]+:# 000\. ' | head -1)
 # LR-174 (founder A455): the GitHub budget line (section 000: GET /rate_limit, which costs no request) is the one thing
 # allowed above it, so a check that cannot afford GitHub says so before anything else; no other section may come first.
-ok "it is lead-watch.sh's first section (only LR-174's GitHub budget, section 000, may come before it)" "$([ "$(has '# 00. ' "$first")" = 1 ] && [ -z "$(grep -nE '^# [0-9]+[a-z]?\. ' "$W" | sed -n "1,/^${first%%:*}:/p" | grep -vE '^[0-9]+:# 000?\. ')" ] && echo 1)" "$first"
+ok "it is lead-watch.sh's first section (only LR-174's GitHub budget, section 000, may come before it)" "$(has '# 00. ' "$first")" "$first"
 blk() { mkdir -p "$T/b"; printf 'import sys; print("%s"); sys.exit(%s)\n' "$1" "$2" > "$T/b/tools-fresh.py"; printf 'echo "%s"; exit %s\n' "$3" "$4" > "$T/b/copy-age.sh"; printf 'print("%s")\n' "$5" > "$T/b/plan-fresh.py"
   ( cd "$L"; TOOLS="$T/b"; act=0; seen() { :; }; say() { echo "$1"; }; fresh() { :; }; . "$T/block.sh"; echo "acts=$act" ) 2>&1; }
 o=$(blk 'tools  ok' 0 'copy   ok' 0 'plan   ok'); ok "all three right: three lines, no ACT" "$(has 'acts=0' "$o")" "$o"
