@@ -2,7 +2,7 @@
 
 current_lead: local_574cc0be-8b58-48f7-9563-04447d3edb35 Lead 11 · 28 Nov 08:25 IST (after Lead 10 local_68bddbc4 at ~590k context, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-28 08:25 IST (clock): **Lead 10 hands over to Lead 11 (P-446). Lab 🔴 Built 40/141, Proven 16/141; see the hand-over block.** Earlier: history/ lead10.
+updated: 2026-11-28 08:58 IST (clock): **Lead 11 took over 08:26 (check c27b7d0b, cron 3,13,..,53; lane watch re-armed). Lab 🔴 Built 40/141, Proven 16/141. Check 08:36-08:58: #4001 and #3998 labelled (reviewer Approve on exact head, Lead read, ci/pr-suites/guards green; #3998 round-3 line posted: counter counted the answers comment). #4000 Lead read on bcceb5b88 (merge + 2 safety.yml pins, same SHAs as the other uses); label when green. #4008 and #4006 told to mark ready so ci runs (drafts skip it). 🔴 repo label `size: exception` (#4006) not created: shell refused it (classifier), asked the founder. Nightly 28 Nov 08:18 red: suites (2), run 46099862629, not yet read. Owed: #4003, #3971, #3905 re-approve, #3899, idle-lane sweep in claude.ai/code (A451), private records copy, cycle-plan.json for 28 Nov.** Earlier: 08:25 hand-over block below.
 
 ## Hand-over Lead 10 → Lead 11, 08:25 IST 28 Nov (reason: Lead 10 at ~590k context, P-446)
 **Do first:** check FIRST (cron 3,13,23,33,43,53, `run lead-watch; read STATE Start here`), CronDelete your gap check, send Lead 10 your CronList, rename, invoke `lead`, re-arm Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Records on `lead/2026-11-28-lead10` from a scratch clone (no records PR open yet: open it, independent reviewer, label). Every check: open claude.ai/code and type the next step into idle lab lanes (A451).
