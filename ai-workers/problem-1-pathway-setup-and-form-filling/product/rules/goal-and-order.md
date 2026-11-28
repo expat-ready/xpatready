@@ -134,3 +134,15 @@ Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-6
 ## Moved 20 Nov (Lead 96, from RULES.md, word for word)
 | P-724 | Factory (detail: DECISIONS P-724): journeys A client case and B firm set-up in parallel on disjoint files; ≤6 items in flight per journey; start one only when one is Proven; automatic proof. | prose (WIP check owed) | 19 Nov |
 | P-719 | Finish by capability: a lane owns one R1 item's whole chain (parts, J-row, qa); ~8 in flight, parallel, disjoint files; fewest parts left first; next starts when one is Proven. | prose | 19 Nov |
+
+
+## P-854 to P-859, word for word as folded on 28 Nov by Lead 11 (index row IDX-30 in RULES.md)
+
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| G-854 | LR-110's 7 green nightlies: the unchanged nightly workflow, started on demand about 3 times a day by the Lead once #3918 is on main; a red run resets the count to 0; after restart the scheduled nightly keeps running and a red night stops product merges (P-852). The Lead adds `expat-ready/xpatready` (with push) to the claude.ai routine "qa after merge". | prose (Lead check) | P-854, 27 Nov |
+| G-856 | Routine "Lab lane starter (A451)" (hourly hh:47 IST, Opus 5.5) starts the next ready lab bundle while fewer than 6 lab lanes are busy; never A7, A10 or a founder step; never labels; the Lead reads every PR. | prose (routine trig_01XZsSbamtqibyfjr3kHbDH4) | P-856, 28 Nov |
+| G-857 | Restart line (P-852/P-853/P-854) is met by 1 Dec 23:59 IST or the founder re-decides that day; the line is not moved again. Added condition: the 5 critical code-scanning alerts fixed or dismissed with a written reason (54 high after restart). After restart: no new check-* script or workflow unless it protects customer data or money or stops a measured repeat incident (GitHub settings first); 3-5 lanes, one per module; lab about 20% of merges and lane time; records move to expat-ready/private (A7). | prose (STATE, lab-progress.py) | P-857, 28 Nov |
+| G-858 | The founder holds the human approver seat from production (first customer) on; until then no human approval blocks merges (Claude reviewer + Lead read). Staging cloud account (Canada) and budget approved; sign-up, card and identity checks are the founder's own steps. 1 Dec 23:59 IST: the Lead recommends restart or hold, the founder confirms. GitHub settings batch: the Lead does it in the built-in browser. | prose | P-858, 28 Nov |
+| G-859 | The GitHub organization keeps one owner, the founder, for now; LR-063 (second owner) is asked again before the first customer or production. | prose | P-859, 28 Nov |
+| IDX-31 | P-855 (#3833 stays whole as a size exception) stands in its DECISIONS row. | prose | 28 Nov |

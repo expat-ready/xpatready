@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-853**, 27 Nov 19:35 IST; earlier: `history/RULES-2026-11-27-1935-lead8-as-of-P-849.md` + older)
+# Rule register (as of **P-859**, 28 Nov 09:50 IST; earlier: `history/RULES-2026-11-28-0950-lead11.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -10,7 +10,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | G-847 | Product stops until the lab is done (P-847); the restart line is P-853 (amends P-852), word for word in DECISIONS. | prose (STATE) | P-853, 27 Nov |
-| IDX-30 | P-850, P-851 stand in their DECISIONS rows. | prose | 27 Nov |
+| IDX-30 | P-850, P-851, P-854-P-859 in DECISIONS; text: `rules/goal-and-order.md`. | prose | 28 Nov |
 | G-848 | A bot may write the "Batch failures covered" line from run data; word for word in DECISIONS P-848 (amends P-731 (4)). | CI: queue-gate.sh (owed, lab-automation) | P-848, 27 Nov |
 | G-849 | Claude Approvals is the GitHub approver (no machine account); risky paths need Code Review pass; Lead after-read stays (P-823); amends P-845 (1). | prose (approvals.yml owed, lab-ship-security) | P-849, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
