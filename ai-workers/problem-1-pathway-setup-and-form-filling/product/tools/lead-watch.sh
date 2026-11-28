@@ -353,6 +353,11 @@ fresh "nudge-lane.sh: the idle lanes of step 10's app view, sent now with claude
 # 10d. LR-147: lanes that died on an API error since the last check (StopFailure hook lane-death.sh; its PR comments).
 ld=$(bash "$TOOLS/lane-death.sh" read "$SINCE" 2>&1); echo "$ld"; act=$((act + $(grep -c '^ACT' <<<"$ld"))); seen "$ld"
 fresh "lane-death.sh read: ~/.claude/xr-lane-deaths.tsv and GitHub's search for the marker, both now"
+# 10e. Factory autonomy (lab bundle A11, founder A451, 28 Nov): lab PRs whose lane is idle over 60 min, register rows still
+# Intended after a merge naming them, open PRs over the cap of 25 (factory-watch.py; FACTORY_ARGS: planted data, tests).
+fw=$(python3 -I "$TOOLS/factory-watch.py" ${FACTORY_ARGS:-} 2>&1); echo "$fw"; act=$((act + $(grep -c '^ACT' <<<"$fw"))); seen "$fw"
+grep -q '^open PRs: ' <<<"$fw" || ACT "factory watch: factory-watch.py did not run ($(tail -1 <<<"$fw"))"
+fresh "factory-watch.py: open PRs, comments in 48 h and PRs merged in 48 h (gh.sh), origin's branches and the lab register on origin/main (fetched in step 4)"
 # 10b. The night checklist (A334 fix 1, A332 "Keep both"): product items, then operating-system items, one ACT for each
 # not done (done = a PR number merged on main, never prose), and "operating system: n done of m". Data: design/night-checklist.json.
 nc=$(python3 -I "$TOOLS/night-checklist.py" 2>&1); echo "$nc"; act=$((act + $(grep -c '^ACT' <<<"$nc"))); seen "$nc"
