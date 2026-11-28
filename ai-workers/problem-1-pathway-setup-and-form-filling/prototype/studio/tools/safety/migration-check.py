@@ -237,6 +237,8 @@ def self_test():
         ok(f"MC1 bad caught: {k}", len(check_sql(k, sql)) >= 1, check_sql(k, sql))
     for k, sql in good.items():
         ok(f"MC2 good passes: {k}", check_sql(k, sql) == [], check_sql(k, sql))
+    inside = 'ALTER TABLE "Case"\n  ADD COLUMN "y" TEXT,\n  -- destructive-ok: never shipped beyond local copies\n  DROP COLUMN "old";\nDROP TABLE "Answer";'
+    ok("MC3b a waiver inside an open statement waives nothing (both statements reported)", len(check_sql("i", inside)) == 2, check_sql("i", inside))
     ok("MC3 a waiver covers only its own statement", len(check_sql("w", '-- destructive-ok: never shipped beyond local copies\nDROP TABLE "A";\nDROP TABLE "B";')) == 1)
 
     # MC4-MC7 on a throwaway repository: a new destructive migration, an early stamp, a changed old one, a clean one.
