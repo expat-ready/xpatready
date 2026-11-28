@@ -24,7 +24,7 @@ fi
 if [ "$LANE" != lead ] && [ "$LANE" != unbound ]; then
   own=$( [ "$LANE" = qa ] && echo "$PH/qa/" )
   lead=$(printf '%s\n' "$touched" | grep -E "^(\.claude/(skills|agents|settings)|\.github/|CLAUDE\.md$|AGENTS\.md$|$PH/[^/]+\.md$|$PH/(decisions|tools)/)" | { [ -n "$own" ] && grep -v "^$own" || cat; } | head -8)
-  [ -n "$lead" ] && reasons="- This $LANE copy changed the tech lead's files (rules, skills, settings, decisions, backlog). Undo them (git checkout origin/main -- <file>) and propose the change in your PR or to the tech lead:
+  [ -n "$lead" ] && reasons="- Rule P-314: this $LANE copy changed the tech lead's files (rules, skills, settings, decisions, backlog; P-521, P-387). Fix: undo them (git checkout origin/main -- <file>) and propose the change in your PR or to the tech lead:
 $lead
 "
 fi
@@ -64,7 +64,7 @@ if ! docs=$(bash "$PH/tools/check-docs.sh" 2>"${TMPDIR:-/tmp}/stop-check-$$.err"
 "; fi
   done <<< "$docs"
   [ -z "$mine$theirs" ] && mine="check-docs.sh failed with no problem line: $(head -c 600 "${TMPDIR:-/tmp}/stop-check-$$.err")"$'\n'   # a crash blocks (fail closed)
-  [ -n "$mine" ] && reasons="$reasons- Rules files need attention (fix the links):
+  [ -n "$mine" ] && reasons="$reasons- Rule P-756: rules files this branch changed fail check-docs. Fix: correct the link, size or line each entry names:
 $mine"
   [ -n "$theirs" ] && { warn="warning: check-docs fails only on the tech lead's records, which this copy did not change (CI enforces them on records PRs; not blocking): $(printf '%s' "$theirs" | cut -c1-160 | paste -sd ';' - | sed 's/;/; /g')"; notes="$warn"; }
 fi
@@ -72,7 +72,7 @@ rm -f "${TMPDIR:-/tmp}/stop-check-$$.err"
 # (3) STANDARDS §7 "no any": the explicit-any count in live code may only fall.
 if [ -f "$APP/node_modules/typescript/lib/typescript.js" ]; then
   NODE="$ROOT/.tools/node-v24.21.0/bin/node"; [ -x "$NODE" ] || NODE=$(command -v node)
-  if [ -n "$NODE" ]; then anyc=$("$NODE" "$APP/tools/count-any.mjs" 2>&1) || reasons="$reasons- $anyc
+  if [ -n "$NODE" ]; then anyc=$("$NODE" "$APP/tools/count-any.mjs" 2>&1) || reasons="$reasons- Rule STANDARDS-7: no any, the explicit-any count in live code may only fall. $anyc Fix: type the new code instead of any, then stop.
 "; fi
 else
   echo "stop-check: no studio packages ($APP/node_modules/typescript missing) — skipping the any-count (run npm ci)" >&2
@@ -95,4 +95,4 @@ ahead=$(git rev-list --count @{upstream}..HEAD 2>/dev/null) && [ "$ahead" -gt 0 
 [ -z "$reasons" ] && { [ -n "$notes" ] && jq -n --arg m "note: $notes" '{systemMessage:$m}'; exit 0; }
 [ -n "$notes" ] && reasons="$reasons- note: $notes (not blocking)
 "
-jq -n --arg r "$reasons" '{decision:"block",reason:$r}'
+jq -n --arg r "$reasons" '{decision:"block",reason:("Rule P-314: this copy may not stop yet (stop-check.sh, the Stop checks of P-314, P-521 and P-387 and the parts below):\n" + $r + "Fix: do the fix each line above names, then stop.")}'

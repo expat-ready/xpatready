@@ -8,7 +8,11 @@ changes, Block, Reject; markdown * _ ` ignored). Bots never count. Rounds 1 and 
 write-access comment has a line starting "Lead allows round N:" with N >= k (so "Lead allows round 3:" allows a third
 round; a fourth needs "Lead allows round 4:"). A PR with the `records` label is exempt (P-385: the Lead's records
 approvals are not review rounds). Limit, stated for the Lead (#2749 review M3): only rounds posted as such a line
-count; a round summarised in prose, or posted as "Verdict: ..." or "Block on <sha>", is not seen.
+count; a round summarised in prose, or posted as "Verdict: ..." or "Block on <sha>", is not seen. A repeated
+"Reviewer: Approve <sha>" for a SHA (7+ hex, full or prefix) an earlier counted comment already approved is the same
+round, not a new one: lanes' "Ready for Lead read" status comments repeat the reviewer's verdict (#3506 counted 8
+rounds for 7, #3819 5 for 3). Any other verdict, or an Approve with no SHA or a new SHA, is a round; after a Changes
+or Block, an Approve of a SHA approved before it is a round again.
 
 Usage:
   python3 -I review-rounds.py --comments FILE          # a JSON array of issue comments (tests)
@@ -29,12 +33,17 @@ TEAM = {"OWNER", "MEMBER", "COLLABORATOR"}
 VERDICT = re.compile(r"^\s*(?:>\s*)?reviewer:\s*(approve[sd]?|changes(?: requested)?|requests? changes|block(?:ed|er)?|"
                      r"reject(?:ed)?|needs? changes)\b", re.I | re.M)
 ALLOW = re.compile(r"^\s*(?:>\s*)?lead allows round\s+(\d+)\s*:", re.I | re.M)
+APPROVED_SHA = re.compile(r"^\s*(?:>\s*)?reviewer:\s*approve[sd]?\s+([0-9a-f]{7,40})\b", re.I | re.M)
 CONTEXT = "review-rounds"
+
+
+def same_sha(a, b):
+    return a.startswith(b) or b.startswith(a)
 
 
 def judge(comments):
     """-> (ok, rounds, allowed, message)"""
-    rounds, allowed, ids = 0, 2, []
+    rounds, allowed, ids, approved = 0, 2, [], []
     for c in comments:
         user = c.get("user") or {}
         if user.get("type") == "Bot" or user.get("login", "").endswith("[bot]"):
@@ -43,6 +52,13 @@ def judge(comments):
             continue
         body = re.sub(r"[*_`]", "", c.get("body") or "")
         if VERDICT.search(body):
+            shas = [x.lower() for x in APPROVED_SHA.findall(body)]
+            verdicts = VERDICT.findall(body)
+            repeat = shas and len(shas) == len(verdicts) and all(
+                any(same_sha(x, y) for y in approved) for x in shas)
+            approved = approved + shas if len(shas) == len(verdicts) else []   # a Changes/Block resets
+            if repeat:
+                continue
             rounds += 1
             ids.append(str(c.get("id", "?")))
         for n in ALLOW.findall(body):
