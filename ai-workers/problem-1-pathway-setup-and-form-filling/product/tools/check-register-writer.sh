@@ -15,7 +15,10 @@ rw < <(printf '%s\n' "$PRODREL/design/lab-register-renamed.md" "$REG"); ok "(2) 
 rw < <(printf '%s\n' "x/$REG" "$REG.bak" "$PRODREL/design/lab-register-2026-11-27.mdx"); ok "(3) look-alike paths do not count" "$([ $r = 0 ] && echo 1)" "exit $r: $o"
 rw < <(true); ok "(3) an empty list passes" "$([ $r = 0 ] && echo 1)" "exit $r: $o"
 rw < "$T"; ok "(3) an unreadable list exits 2 with an ::error line (fail closed)" "$([ $r = 2 ] && grep -q '^::error' <<<"$o" && echo 1)" "exit $r: $o"
-REGPATH=$(sed -n 's/^REG="\(.*\)"$/\1/p' "$TOOLS/register-writer.sh"); ok "(5) the register file register-writer.sh names exists on this checkout (a move to a new dated file turns this red)" "$([ -n "$REGPATH" ] && [ -f "$ROOTD/$REGPATH" ] && echo 1)" "REG=$REGPATH"
+# (5) The register file the tool names exists. Checked only where the checkout has a lab register at all (a mutation copy
+# of the tools holds none); a register moved to a new dated file while REG still names the old one turns this red.
+REGPATH=$(sed -n 's/^REG="\(.*\)"$/\1/p' "$TOOLS/register-writer.sh"); HAVE=$(ls "$ROOTD/$PRODREL/design/"lab-register-*.md 2>/dev/null | head -1)
+if [ -n "$HAVE" ]; then ok "(5) the register file register-writer.sh names exists (a move to a new dated file turns this red)" "$([ -n "$REGPATH" ] && [ -f "$ROOTD/$REGPATH" ] && echo 1)" "REG=$REGPATH; on disk: $(ls "$ROOTD/$PRODREL/design/"lab-register-*.md 2>/dev/null | xargs -n1 basename | tr '\n' ' ')"; fi
 
 # (4) The pr-rules step as written: skipped on records-only PRs; a failed file read fails the step (LR-043).
 grep -F -- "- name: a PR that is not records-only $PAT" "$W" >/dev/null; ok "(4) the step is in pr-rules.yml" "$([ $? = 0 ] && echo 1)"
