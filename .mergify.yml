@@ -464,6 +464,8 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      # LR-181: as records (a verdict PR is a records PR): pr-rules passes it with the rule steps skipped.
+      - check-success = pr-rules
       - label = records
       - "title ~= ^qa:"
       - files ~= qa/CAPABILITIES\.md$
@@ -492,6 +494,10 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      # LR-181 (enforcement audit, top gap; P-214 merge-flow fix): pr-rules gates this queue too, so a pipeline PR with a
+      # red Done when, explainer, model rule, stale base or register line (LR-178) is not queued. pr-rules runs on every PR
+      # (no paths filter; only Mergify's own mergify/* batch branches skip it, and they never meet queue_conditions).
+      - check-success = pr-rules
       - -label=records
       - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$))
       - or:
@@ -566,6 +572,9 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      # LR-181: pr-rules gates records too. A records-only PR passes it with its rule steps skipped (pr-rules.yml,
+      # records-only.sh on the file list), so this holds only a PR whose pr-rules run is red or missing.
+      - check-success = pr-rules
       - label = records
     merge_conditions:
       - check-success = ci
