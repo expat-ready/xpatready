@@ -7,4 +7,6 @@ LR175 stamp|product/tools/lead-watch-lite.sh|s/^echo "\$now" > "\$stamp.\$\$" &&
 LR175 mode|product/tools/lead-watch-lite.sh|s/echo lite > "\$stamp-mode/echo full > "$stamp-mode/|check-lead-watch-lite.sh
 LR175 gapmode|product/tools/lead-watch.sh|s/md=\${md:+ (\$md)}/md=/|check-lead-watch-lite.sh
 LR175 owed|product/tools/lead-watch-lite.sh|s/if (n, sha) not in read and/if False and/|check-lead-watch-lite.sh
+LR175 bold|product/tools/lead-watch-lite.sh|s/ready for lead read(?: and label)?:?/ready for lead read/|check-lead-watch-lite.sh
+LR175 window|product/tools/lead-watch-lite.sh|s/\[ "\$c0" -lt "\$qfrom" \] \&\& qfrom=\$c0/:/|check-lead-watch-lite.sh
 LR175 fallback|product/tools/lead-watch.sh|s/^  bash "\$TOOLS\/lead-watch-lite.sh" "\$SINCE"; exit/  exit/|check-lead-watch-lite.sh'

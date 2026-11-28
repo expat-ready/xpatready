@@ -44,7 +44,11 @@ L += [c(12, "Question for the tech lead: which lane?"), c(13, "Question for the 
       c(31, "Reviewer: Approve " + s1 + "\nReady for Lead read " + s1, old),
       c(32, "Ready for Lead read " + s2, old), c(32, "Lead read the diff: " + s2),
       c(33, "Ready for Lead read " + s3, old), c(33, "Lead read the diff: " + s4),
-      c(77, "Ready for Lead read " + s4, old)]
+      c(77, "Ready for Lead read " + s4, old),
+      c(41, "**Ready for Lead read and label: " + s1 + "**.", old), c(42, "**Ready for Lead read: " + s2 + "**.", old),
+      c(43, "Ready for Lead read " + s3, old), c(43, "**Lead read the diff:** " + s3),
+      c(44, "Ready for Lead read " + s4, old), c(44, "lead read: ok " + s4.upper()),
+      c(45, "Ready for Lead read " + s1, old), c(45, "```\nLead read the diff: " + s1 + "\n```")]
 json.dump(L, open(f, "w"))
 PY
 echo 100 > "$T/used"
@@ -58,7 +62,9 @@ ok "lite: the lab line (lab-progress.py on origin/main)" "$(grep -q 'lab' <<<"$o
 ok "lite: merges since the window's start from git (#77)" "$(grep -q '^merges since .*: 1 (#77)$' <<<"$out" && echo 1)" "$out"
 ok "lite: the question in the window is an ACT; an older one and one on a merged PR are not" "$(grep -q '^ACT   #12 has a new question for the tech lead$' <<<"$out" && ! grep -q '#13 has' <<<"$out" && ! grep -q '#77 has' <<<"$out" && echo 1)" "$out"
 ok "lite: reads owed: #31 (no read) and #33 (a read of another sha); not #32 (read) nor #77 (merged)" "$(grep -q "^ACT   #31 waits for the Lead's read of $S1" <<<"$out" && grep -q "^ACT   #33 waits for the Lead's read of $S3" <<<"$out" && ! grep -q '#32 waits' <<<"$out" && ! grep -q '#77 waits' <<<"$out" && echo 1)" "$out"
-ok "lite: exit = number of ACT lines (3)" "$([ $r = 3 ] && [ "$(grep -c '^ACT' <<<"$out")" = 3 ] && echo 1)" "exit $r"
+ok "lite: the bold ready forms are owed too (#41 \"Ready for Lead read and label:\", #42 \"Ready for Lead read:\")" "$(grep -q "^ACT   #41 waits for the Lead's read of $S1" <<<"$out" && grep -q "^ACT   #42 waits for the Lead's read of $S2" <<<"$out" && echo 1)" "$out"
+ok "lite: reads in the gate's grammar count (bold \"Lead read the diff:\", \"lead read: ok\" in any case); one in a code block does not" "$(! grep -q '#43 waits' <<<"$out" && ! grep -q '#44 waits' <<<"$out" && grep -q "^ACT   #45 waits" <<<"$out" && echo 1)" "$out"
+ok "lite: exit = number of ACT lines (6)" "$([ $r = 6 ] && [ "$(grep -c '^ACT' <<<"$out")" = 6 ] && echo 1)" "exit $r"
 n=$(awk -F'\t' '$3=="lead-watch-lite" {print $4}' "$T/state/github-meter/meter.tsv" | tail -1)
 ok "lite: measured from the headers, under 50 requests (2 pages of comments: 2)" "$([ "$n" = 2 ] && [ "$(grep -c '' "$T/gh.log")" = 2 ] && echo 1)" "measured ${n:-none}; gh calls: $(cat "$T/gh.log")"
 ok "lite: the measured cost is within the real budget line (lead-watch-lite in github-budget.tsv)" "$(GITHUB_METER_DIR="$T/state/github-meter" bash "$L/github-meter.sh" budget | grep -q '^ok    lead-watch-lite: 2 of 50' && echo 1)" "$(GITHUB_METER_DIR="$T/state/github-meter" bash "$L/github-meter.sh" budget)"
@@ -74,10 +80,22 @@ ok "fail: gap 16 min after the lite check with none since: ACT, exit 1" "$([ $gr
 : > "$T/gh.log"; lite --lite
 ok "--lite runs the lite check too" "$(sed -n 2p <<<"$out" | grep -q 'mode lite' && echo 1)" "$(head -2 <<<"$out")"
 # A page cap holds the cost; an unreadable answer is an ACT, never a silent pass.
-: > "$T/gh.log"; out=$(cd "$R" && LITE_MAX_PAGES=1 bash "$L/lead-watch.sh" lite 2>&1)
+echo 1700000000 > "$T/state/lite-comments-ok"; : > "$T/gh.log"; out=$(cd "$R" && LITE_MAX_PAGES=1 bash "$L/lead-watch.sh" lite 2>&1)
 ok "a page cap: one request, and the check says it stopped" "$([ "$(grep -c '' "$T/gh.log")" = 1 ] && grep -q 'stopped at 1 pages' <<<"$out" && echo 1)" "$out"
+ok "a capped read does not move the comments stamp" "$([ "$(cat "$T/state/lite-comments-ok")" = 1700000000 ] && echo 1)" "ok $(cat "$T/state/lite-comments-ok")"
 touch "$T/gh-down"; lite lite; rm -f "$T/gh-down"
 ok "comments unreadable: an ACT, and the stamp is still written" "$(grep -q '^ACT   comments unreadable' <<<"$out" && [ "$(cat "$T/state/last-check-mode")" = lite ] && echo 1)" "$out"
+# The next whole read looks back to the last whole read: a question posted 20 min ago (after that read's window began,
+# before the failed checks' stamps) is still shown.
+echo $(( $(date +%s) - 25 * 60 )) > "$T/state/lite-comments-ok"; echo $(( $(date +%s) - 60 )) > "$T/state/last-check"
+python3 -I - "$T/comments.json" <<'PY2'
+import json, sys, time
+f = sys.argv[1]; L = json.load(open(f))
+L.append({"issue_url": "https://api.github.com/repos/o/r/issues/51", "body": "Question for the tech lead: while the read failed", "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 20 * 60))})
+json.dump(L, open(f, "w"))
+PY2
+lite lite
+ok "after failed reads, the question window starts at the last whole read: the 20-min-old question is an ACT" "$(grep -q '^ACT   #51 has a new question for the tech lead$' <<<"$out" && echo 1)" "$out"
 
 # LR-174 + LR-175: a full check that would not fit the remaining budget runs the lite check, which writes the stamp.
 echo full > "$T/state/last-check-mode"; echo 1 > "$T/state/last-check"; echo 4900 > "$T/used"; : > "$T/gh.log"

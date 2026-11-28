@@ -29,6 +29,8 @@ if [ -n "$last" ] && [ $(( (now - last) / 60 )) -gt "${STALL_MAX:-15}" ]; then
   ACT "previous check ran $(( (now - last) / 60 )) min ago ($(ist "$last" '%d %b %H:%M')): checks were missed; tell the founder at once (P-388, P-389)"; fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"; echo lite > "$stamp-mode.$$" && mv -f "$stamp-mode.$$" "$stamp-mode"
 from=${last:-$(( now - SINCE * 60 ))}   # the window: since the previous check, else the minutes given
+# Questions: since the last check whose comments read was whole (a failed or capped read never moves it), so none is lost.
+cok="$STATE_DIR/lite-comments-ok"; qfrom=$from; c0=$( { tr -cd '0-9' < "$cok"; } 2>/dev/null); [ -n "$c0" ] && [ "$c0" -lt "$qfrom" ] && qfrom=$c0
 
 # Lab line and merges: git only (a fetch is not a REST request).
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin 2>/dev/null || echo "note  origin not fetched: the lab line and merges are from the last fetch"
@@ -39,14 +41,14 @@ done_prs=$(git log origin/main --first-parent --since='48 hours ago' --format='%
 
 # One read of the comments of the last 24 h: questions in the window and reads owed.
 day=$(TZ=UTC date -d "@$(( now - 86400 ))" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || TZ=UTC date -r "$(( now - 86400 ))" '+%Y-%m-%dT%H:%M:%SZ')
-win=$(TZ=UTC date -d "@$from" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || TZ=UTC date -r "$from" '+%Y-%m-%dT%H:%M:%SZ')
-cm="$STATE_DIR/lite-comments.$$.jsonl"; : > "$cm"; trap 'rm -f "$MS" "$cm"' EXIT; ok=1
+win=$(TZ=UTC date -d "@$qfrom" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || TZ=UTC date -r "$qfrom" '+%Y-%m-%dT%H:%M:%SZ')
+cm="$STATE_DIR/lite-comments.$$.jsonl"; : > "$cm"; trap 'rm -f "$MS" "$cm"' EXIT; ok=1; capped=0
 for p in $(seq 1 "${LITE_MAX_PAGES:-20}"); do
-  page=$(gh api "repos/{owner}/{repo}/issues/comments?since=$day&per_page=100&page=$p" 2>/dev/null) || { ok=0; break; }
+  page=$(gh api "repos/{owner}/{repo}/issues/comments?since=$day&sort=created&direction=desc&per_page=100&page=$p" 2>/dev/null) || { ok=0; break; }
   n=$(jq 'length' <<<"$page" 2>/dev/null) || { ok=0; break; }
   jq -c '.[] | {n: (.issue_url | split("/") | last | tonumber), b: (.body // ""), t: .created_at}' <<<"$page" >> "$cm" 2>/dev/null
   [ "$n" -lt 100 ] && break
-  [ "$p" = "${LITE_MAX_PAGES:-20}" ] && echo "note  comments: stopped at $p pages (budget); older ones not read"
+  [ "$p" = "${LITE_MAX_PAGES:-20}" ] && capped=1 && echo "note  comments: stopped at $p pages (budget), newest first; the oldest of the 24 h not read"
 done
 if [ "$ok" = 0 ]; then ACT "comments unreadable: questions and reads owed not read this check (lite)"
 else
@@ -54,14 +56,25 @@ else
     grep -qx "$n" <<<"$done_prs" || ACT "#$n has a new question for the tech lead"; done
   owed=$(python3 -I -c '
 import json, re, sys
+# The same grammar as the gate (lead-read-gate.sh, queue-blocked.py LEAD_READ): HTML comments and fenced blocks dropped,
+# then * _ ` and CR; the ready line in its plain and bold forms ("Ready for Lead read and label: <sha>").
+DROP = [re.compile(r"<!--[\s\S]*?(?:-->|\Z)"), re.compile(r"```[\s\S]*?(?:```|\Z)"), re.compile(r"~~~[\s\S]*?(?:~~~|\Z)")]
+READY = re.compile(r"^[ \t]*ready for lead read(?: and label)?:?[ \t]+([0-9a-f]{40})\b", re.I | re.A)
+LEAD_READ = re.compile(r"^[ \t\v\f]*lead read(?:: *ok| the diff:?)[ \t\v\f]+([0-9a-f]{40})[ \t\v\f]*\.?[ \t\v\f]*$", re.I | re.A)
 ready, read = {}, set()
 for l in open(sys.argv[1]):
-    c = json.loads(l)
-    for m in re.finditer(r"(?m)^\s*Ready for Lead read ([0-9a-f]{40})\b", c["b"]): ready[c["n"]] = (m.group(1), c["t"])
-    for m in re.finditer(r"(?m)^\s*Lead read(?: the diff:|: OK) ([0-9a-f]{40})\.?\s*$", c["b"]): read.add((c["n"], m.group(1)))
+    c = json.loads(l); b = c["b"]
+    for d in DROP: b = d.sub("", b)
+    for line in re.sub(r"[*_`\r]", "", b).split("\n"):
+        if line.startswith(("    ", "\t")): continue
+        m = READY.match(line)
+        if m: ready[c["n"]] = (m.group(1).lower(), c["t"])
+        m = LEAD_READ.match(line)
+        if m: read.add((c["n"], m.group(1).lower()))
 done = set(sys.argv[2].split())
 for n, (sha, t) in sorted(ready.items()):
     if (n, sha) not in read and str(n) not in done: print(n, sha, t)' "$cm" "$done_prs")
+  [ "$capped" = 0 ] && { echo "$now" > "$cok.$$" && mv -f "$cok.$$" "$cok"; }
   if [ -z "$owed" ]; then echo "reads owed: none in the last 24 h"
   else while read -r n sha t; do ACT "#$n waits for the Lead's read of $sha (Ready for Lead read at $t)"; done <<<"$owed"; fi
 fi
