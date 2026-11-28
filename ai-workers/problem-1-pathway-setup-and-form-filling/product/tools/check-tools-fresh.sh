@@ -68,7 +68,8 @@ o=$(cd "$L" && bash "$D/takeover.sh" 2>&1); r=$?; ok "takeover.sh refuses a copy
 git -C "$L" checkout -qf -b lead/today origin/main; o=$(cd "$L" && bash "$D/takeover.sh" 2>&1); r=$?; ok "... and takes over in a fresh one" "$([ $r = 0 ] && has 'lead  main-state' "$o")" "exit $r: $o"
 ss() { jq -n --arg d "$1" '{cwd:$d}' | (cd "$1" && bash "$TOOLS/session-start.sh") 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext' | head -4; }
 git -C "$T/new" checkout -qb screens/x; o=$(ss "$T/new"); ok "session-start.sh says every copy's age against origin/main (a builder's here)" "$(has 'copy   ' "$o")" "$o"
-git -C "$L" checkout -qf lead/old; cp "$TOOLS/copy-age.sh" "$L/$D/"; o=$(ss "$L"); w='is 48 h old'; [ "$(uname)" = Darwin ] && w='OVER 24 h'; ok "... and an old Lead copy's is named as such (the Mac; elsewhere its age)" "$(has "$w" "$o")" "$o"
+# On the Mac an old lead branch is the Lead's copy: main's LR-156 (lead-age.sh) recuts it or warns, with its LR-156 line.
+git -C "$L" checkout -qf lead/old; cp "$TOOLS"/{copy-age.sh,lead-age.sh} "$L/$D/"; o=$(ss "$L"); w='is 48 h old'; [ "$(uname)" = Darwin ] && w='LR-156'; ok "... and an old Lead copy's is named as such (the Mac: LR-156's recut or stale line; elsewhere its age)" "$(has "$w" "$o")" "$o"
 
 # the plan
 pl() { printf '%s' "$1" > "$T/plan.json"; python3 -I "$TOOLS/plan-fresh.py" --plan "$T/plan.json" --now "$2"; }
