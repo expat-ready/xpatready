@@ -2,7 +2,8 @@
 """LR-128 (lab register, founder A425; Loops article: "Review usage: /usage ..."): where the tokens went, by skill and by
 subagent, for the daily measures line. /usage is a screen, not a file; Claude Code's own session transcripts are files:
 <root>/<project>/<session>.jsonl (the main thread) and <root>/<project>/<session>/subagents/agent-<id>.jsonl with its
-agent-<id>.meta.json ({"agentType": ...}). Each assistant line carries message.usage; its tokens are input + cache
+agent-<id>.meta.json ({"agentType": ...}). Each assistant line carries message.usage; a response written as several
+lines (one per content block, the same message.id) is one call, counted once. Its tokens are input + cache
 creation + cache read + output (one model call, as billed against the plan; cache reads are counted, so the share
 follows what was read, not what was new).
   by subagent  "main" for a session's own thread, else the subagent's agentType (general-purpose, Explore, ...).
@@ -30,19 +31,20 @@ def tokens(u):
     return sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
 
 
-def skills_in(msg):
-    """The skills a line invokes, in order: Skill tool calls (assistant) and typed /commands (user)."""
+def skills_in(msg, kind):
+    """The skills a line invokes, in order: Skill tool calls (assistant lines) and typed /commands (user lines only: a
+    reply that quotes a command tag switches nothing, review of #4076)."""
     c = msg.get("content")
     out = []
     if isinstance(c, str):
-        out += CMD.findall(c)
+        out += CMD.findall(c) if kind == "user" else []
     elif isinstance(c, list):
         for b in c:
             if not isinstance(b, dict):
                 continue
-            if b.get("type") == "tool_use" and b.get("name") == "Skill" and isinstance(b.get("input"), dict) and b["input"].get("skill"):
+            if kind == "assistant" and b.get("type") == "tool_use" and b.get("name") == "Skill" and isinstance(b.get("input"), dict) and b["input"].get("skill"):
                 out.append(str(b["input"]["skill"]))
-            elif b.get("type") == "text":
+            elif kind == "user" and b.get("type") == "text":
                 out += CMD.findall(b.get("text") or "")
     return out
 
@@ -50,6 +52,7 @@ def skills_in(msg):
 def walk(path, since, until, start_skill, agent, by_skill, by_agent, bad, spawn=None):
     """Adds one thread's calls; returns nothing. spawn maps a Task/Agent tool_use id to the skill current at that call."""
     skill = start_skill
+    seen = set()   # Claude Code writes one line per content block of a response, each with the same id and usage
     try:
         lines = open(path, encoding="utf-8").read().splitlines()
     except OSError:
@@ -64,7 +67,10 @@ def walk(path, since, until, start_skill, agent, by_skill, by_agent, bad, spawn=
         if not isinstance(d, dict) or not isinstance(d.get("message"), dict):
             continue
         m = d["message"]
-        if d.get("type") == "assistant" and isinstance(m.get("usage"), dict):
+        mid = m.get("id")
+        if d.get("type") == "assistant" and isinstance(m.get("usage"), dict) and not (mid and mid in seen):
+            if mid:
+                seen.add(mid)
             t = when(d.get("timestamp"))
             if t is None:
                 bad["lines"] += 1
@@ -72,7 +78,7 @@ def walk(path, since, until, start_skill, agent, by_skill, by_agent, bad, spawn=
                 n = tokens(m["usage"])
                 by_skill[skill] += n
                 by_agent[agent] += n
-        for s in skills_in(m):
+        for s in skills_in(m, d.get("type")):
             skill = s
         if spawn is not None and isinstance(m.get("content"), list):
             for b in m["content"]:
