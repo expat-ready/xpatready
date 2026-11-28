@@ -1,0 +1,17 @@
+# Code owners (lab register LR-061): GitHub asks the owner for a review on a PR that touches these paths.
+# The owner is the repository's tech-lead team (a role, not a person; AGENTS.md rule 5), which has write access.
+# "Require review from Code Owners" stays OFF in the ruleset until a second approver exists (LR-065 / P-849): until
+# then this file only requests the review, it blocks nothing. Last matching line wins, so no line below may re-own
+# these paths without an owner; product/tools/check-codeowners.sh (ci) proves each guarded path keeps its owner.
+# Workflows, Dependabot, the PR template and this file
+/.github/                                                                                @expat-ready/tech-lead
+# The merge queue, the git hooks, the agents' settings, skills and hooks, the review rules
+/.mergify.yml                                                                            @expat-ready/tech-lead
+/.githooks/                                                                              @expat-ready/tech-lead
+/.claude/                                                                                @expat-ready/tech-lead
+/REVIEW.md                                                                               @expat-ready/tech-lead
+# Migrations and the schema
+/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/            @expat-ready/tech-lead
+# Pipeline tools: the scripts main's workflows run (queue gate, label guard, guards, push guard, CI's own tools)
+/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/                      @expat-ready/tech-lead
+/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/             @expat-ready/tech-lead
