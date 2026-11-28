@@ -82,18 +82,44 @@ def api(path):
     return json.loads(out.stdout or "null")
 
 
-def fetch(repo):
-    """One snapshot of what the three targets need; the evaluation below reads only this."""
+def graphql():
+    """tools/gh_graphql.py (LR-098), loaded by path: python3 -I does not put this folder on the import path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gh_graphql", os.path.join(TOOLS, "gh_graphql.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def fetch(repo, gql=None):
+    """One snapshot of what the three targets need; the evaluation below reads only this. LR-098: every PR's comments
+    and "review: approved" label times come from a few GraphQL queries (gh_graphql.py), not two REST reads per PR; when
+    GraphQL fails the REST reads run as before, and snap["github"] says which path ran."""
     prs = api(f"repos/{repo}/pulls?state=open&per_page=100")
     heads = {}
     for p in prs:
         heads.setdefault(p["head"]["sha"], []).append(p["number"])
     snap = {"now": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "prs": []}
+    mine = [p["number"] for p in prs if not p["head"]["ref"].startswith("mergify/")]
+    try:
+        g = gql or graphql()
+        bundle = g.pr_bundle(repo, mine, comments=True, labels=True)
+        snap["github"] = "graphql: %d PRs' comments and label events in %d queries" % (
+            len(mine), -(-len(mine) // g.PR_BATCH))
+    except Exception as e:   # GraphQLError, or the helper missing: REST, as before
+        bundle = None
+        snap["github"] = "REST: GraphQL not used (%s)" % str(e)[:120]
+
+    def events(n):
+        if bundle is not None:
+            return [{"event": "labeled", "created_at": x["created_at"], "label": {"name": x["label"]}}
+                    for x in bundle[n]["labeled"]]
+        return api(f"repos/{repo}/issues/{n}/events?per_page=100")
     for p in prs:
         if p["head"]["ref"].startswith("mergify/"):
             continue  # the queue's own batch PRs
         n, labels = p["number"], [l["name"] for l in p["labels"]]
-        comments = api(f"repos/{repo}/issues/{n}/comments?per_page=100")
+        comments = bundle[n]["comments"] if bundle is not None else api(f"repos/{repo}/issues/{n}/comments?per_page=100")
         e = {"number": n, "title": p["title"], "draft": p["draft"], "labels": labels, "head": p["head"]["sha"],
              "updated_at": p["updated_at"], "body": (p.get("body") or "")[:4000],
              "comments": [{"at": c["created_at"], "body": c["body"][:600]} for c in comments],
@@ -102,12 +128,12 @@ def fetch(repo):
              "same_head": [m for m in heads[p["head"]["sha"]] if m != n]}
         on_head = any(p["head"]["sha"].startswith(a["sha"]) for a in e["approves"])
         if "review: approved" in labels and "queued" in labels:   # P-798: step-age.py ages queued PRs from the label too (--dump)
-            ev = api(f"repos/{repo}/issues/{n}/events?per_page=100")
+            ev = events(n)
             lab = [x["created_at"] for x in ev if x.get("event") == "labeled" and x.get("label", {}).get("name") == "review: approved"]
             e["approved_at"] = lab[-1] if lab else None
         if ("review: approved" in labels and "queued" not in labels) or ("review: approved" not in labels and on_head):
             if "review: approved" in labels:
-                ev = api(f"repos/{repo}/issues/{n}/events?per_page=100")
+                ev = events(n)
                 lab = [x["created_at"] for x in ev if x.get("event") == "labeled" and x.get("label", {}).get("name") == "review: approved"]
                 e["approved_at"] = lab[-1] if lab else None
             runs = api(f"repos/{repo}/commits/{p['head']['sha']}/check-runs?check_name=ci&per_page=100")["check_runs"]
@@ -215,6 +241,8 @@ def main(a):
     if dump:
         json.dump(snap, open(dump, "w"), indent=1)
     lines = evaluate(snap)
+    if snap.get("github"):   # LR-098: which path read GitHub (absent in a --snapshot run)
+        print(f"sle   github {snap['github']}" if grouped else f"info  github {snap['github']}")
     for kind, text in lines:
         print(f"sle   {kind.lower()} {text}" if grouped else f"{kind:<5} {text}")
     if grouped:
