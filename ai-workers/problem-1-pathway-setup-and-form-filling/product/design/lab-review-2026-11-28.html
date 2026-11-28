@@ -1,0 +1,180 @@
+<title>Lab review, 28 Nov</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Serif:wght@600&family=IBM+Plex+Mono&display=swap">
+<style>
+/* Layout: one reading column, verdict block first, evidence sections below, tables scroll inside their own box */
+:root{
+  --bg:#f6f7f5;--surface:#ffffff;--fg:#1d2420;--muted:#5b665f;--line:#d8ddd8;
+  --accent:#2f6b4f;--good:#2f6b4f;--warn:#9a6a00;--bad:#a8322b;--chip:#e8eee9;
+  --display:"IBM Plex Serif",Georgia,serif;--body:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917;--surface:#1c2320;--fg:#e4ebe6;--muted:#9aa8a0;--line:#2f3a35;
+  --accent:#7cc4a0;--good:#7cc4a0;--warn:#e0b450;--bad:#f08a80;--chip:#24302b;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917;--surface:#1c2320;--fg:#e4ebe6;--muted:#9aa8a0;--line:#2f3a35;
+  --accent:#7cc4a0;--good:#7cc4a0;--warn:#e0b450;--bad:#f08a80;--chip:#24302b;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--body)}
+.wrap{max-width:860px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:36px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.25;margin:0}
+h1{font-size:2rem}h2{font-size:1.4rem;padding-top:8px;border-top:1px solid var(--line)}h3{font-size:1.08rem;font-family:var(--body);font-weight:600}
+p,li{max-width:68ch}p{margin:0}ul,ol{margin:0;padding-left:1.2em;display:grid;gap:6px}
+section{display:grid;gap:14px;min-width:0}
+.eyebrow{font:600 .75rem var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.verdict{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:grid;gap:14px}
+.score{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.score b{font:600 3rem var(--display);color:var(--accent);font-variant-numeric:tabular-nums}
+.score span{color:var(--muted)}
+.tag{display:inline-block;font:600 .72rem var(--body);letter-spacing:.04em;padding:1px 8px;border-radius:99px;background:var(--chip);white-space:nowrap}
+.dec{color:var(--warn)}.wrong{color:var(--bad)}.ok{color:var(--good)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.92rem}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-weight:600;background:var(--chip)}tr:last-child td{border-bottom:0}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+code{font:.86em var(--mono);background:var(--chip);padding:0 4px;border-radius:4px;overflow-wrap:anywhere}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:8px;align-content:start;min-width:0}
+.small{font-size:.86rem;color:var(--muted)}
+a{color:var(--accent)}a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:8px">
+  <div class="eyebrow">Round-2 review · 28 Nov 2026 · read-only · for the founder</div>
+  <h1>Lab review, 28 Nov</h1>
+  <p class="small">Your question (about 07:5x IST): is the pipeline around the product grounded in industry practice or cooked up and over-fitted; what it gives you; whether so much code is worth it; whether this is your own hardness; a rating; and whether we are going the right way. Three independent reviewers answered first (standards 6/10, value 6/10, sceptic 4/10). This page checks their disputed facts against main and GitHub and gives one answer.</p>
+</header>
+
+<section class="verdict">
+  <div class="eyebrow">Verdict</div>
+  <div class="score"><b>5 / 10</b><span>Right destination, overbuilt road.</span></div>
+  <p><strong>One line:</strong> the backbone is standard and good, but about half the custom layer fences the way we run agents (about 20 parallel lanes, one Lead agent changing about 5 times a day) rather than protecting customers, and the lab now causes much of its own delay while a standard security scanner's findings sit unread.</p>
+  <ul>
+    <li><strong>Grounded or cooked up?</strong> Both. Small pull requests, a merge queue, trunk-based work, a separate reviewer, code scanning, hooks and a push guard are what GitHub, Shopify, Uber and Anthropic's own guidance describe. The 118 hand-written <code>check-*</code> scripts, 30 workflows that partly rebuild GitHub settings, 855 decision rows and about 474,000 lines of markdown records are our own invention, and much larger than industry norms.</li>
+    <li><strong>Your hardness?</strong> Your standard (no gate lowered, quality first, rules enforced) is right for an immigration product that will hold client documents and money. The over-fitting comes from the operating model, not from the standard.</li>
+    <li><strong>Should product code do this internally?</strong> Partly. Product correctness (permissions, validation, money rules) belongs in product tests. The lab should be a thin, mostly standard layer around it, plus a few guards only this business needs.</li>
+    <li><strong>Direction:</strong> right to make the pipeline safe before customers. Wrong to keep extending it. Stop adding lab work, freeze the restart line, restart product.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Top five recommendations</h2>
+  <ol>
+    <li><strong>Freeze the restart line you already decided (P-852, P-853, P-854) and add a date.</strong> No new conditions. If it is not met by 1 Dec 23:59 IST, you re-decide that day (this lines up with the 1 Dec Release 1 re-decision, P-609). <span class="tag dec">needs your decision</span></li>
+    <li><strong>Read the 5 critical code-scanning alerts before restart.</strong> GitHub's CodeQL already runs on every pull request; 66 alerts are open (5 critical, 54 high, 7 medium) and nothing gates on them. Two critical ones are request forgery and two are type confusion in the app; one is in <code>label-guard.yml</code>. Fix or dismiss each with a reason. <span class="tag dec">needs your decision (adds to the restart line)</span></li>
+    <li><strong>No new lab scripts after restart.</strong> A new <code>check-*</code> file or workflow is allowed only when it protects a future customer's data or money, or blocks a repeat of a measured incident. Prefer a GitHub setting (ruleset, CODEOWNERS, required check) to a script.</li>
+    <li><strong>Cap the lab at about 20% of merges and lane time after restart, and run 3 to 5 lanes by module, not about 20.</strong> Most guards exist to fence many lanes and a rotating Lead; fewer lanes need fewer fences. <span class="tag dec">needs your decision</span></li>
+    <li><strong>Cap records.</strong> Finish moving records to the private repository (LR-115, LR-116), keep BACKLOG to open rows (LR-091), turn size-exception decisions into a pull request label instead of decision rows, and bring RULES (144 rows today) down to the rules a check enforces. <span class="tag dec">needs your decision on the RULES limit</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Facts checked (round 1 against main and GitHub)</h2>
+  <p class="small">Read from main at 37de8b83f (28 Nov 07:32 IST) and the GitHub API on 28 Nov. A local fetch was refused by the network sandbox, so main may be a few commits behind; the GitHub API answers are live.</p>
+  <div class="tbl"><table>
+    <tr><th>Claim</th><th>Who</th><th>What we found</th><th>Result</th></tr>
+    <tr><td>No CodeQL</td><td>Standards</td><td>CodeQL default setup is configured (since 18 Nov, weekly plus every pull request; actions, JavaScript/TypeScript, Python). Recent analyses ran on #4001, #4003, #4000, #3971. There is no workflow file because GitHub runs it as a setting. But 66 alerts are open: 5 critical, 54 high, 7 medium, and nothing requires them to be read.</td><td class="wrong">Wrong, and the real gap is worse: a scanner nobody reads</td></tr>
+    <tr><td>No CODEOWNERS</td><td>Standards</td><td>No CODEOWNERS file on main. A <code>.github/dependabot.yml</code> exists. No Scorecard workflow.</td><td class="ok">Right</td></tr>
+    <tr><td>48 actions pinned by tag, not by commit</td><td>Standards</td><td>100 <code>uses:</code> lines; all 100 pinned by tag, 0 by commit SHA (checkout 52, setup-node 21, upload-artifact 20, download-artifact 5, setup-python 2).</td><td class="wrong">Count too low; the gap is real</td></tr>
+    <tr><td><code>pull_request_target</code> and a self-hosted Mac runner</td><td>Standards</td><td><code>pull_request_target</code> in 6 workflows: ci, label-guard, lead-read, queue-gate, records-label, review-rounds. Self-hosted runner in demo-update and queue-gate. CodeQL itself flags label-guard as critical (improper access control) and skeleton.yml as high (cache poisoning).</td><td class="ok">Right</td></tr>
+    <tr><td>No truly independent approver</td><td>Standards</td><td>P-849 (27 Nov) made the Claude Approvals app the approver GitHub records, with Claude Code Review first on money, schema, migration, permission and pipeline paths. P-849 itself quotes Anthropic: an agent's approval never counts as a person's.</td><td class="ok">Right in substance; your decision accepts it until a second person joins</td></tr>
+    <tr><td>"One green nightly, not seven"</td><td>Sceptic</td><td>Your decisions P-853 and P-854 require 7 green nightlies in a row, run on demand about 3 times a day (restart about 30 Nov). Changing to one is your call.</td><td class="dec">A recommendation, not a fact; see the restart section</td></tr>
+    <tr><td>RULES about 170 rows; 120 check scripts</td><td>Sceptic, Standards</td><td>144 table rows in RULES on main; 118 files named <code>check-*</code> in the tools folder.</td><td>Slightly high; the point stands</td></tr>
+    <tr><td>Red main mostly caused by lab changes</td><td>Value, Sceptic</td><td>On 27 Nov, yes: all 13.3 waiting hours came from the tooling fast route (#3908, then #3925, #3944, #3953; #3924 merged with its own guards part red because only <code>ci</code> was required). Over the week it is mixed: product test fixes (the FO-3st3 suite, a Node 24 hang) and tooling fixes (fast-route change reverted twice, check-docs #3926, queue parallel checks 12 to 4). The weekly 29.3 of 168 hours is not on main; it came from round 1's own count.</td><td class="dec">True for the last day, unproven for the week</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Where "1.5 million lines" comes from</h2>
+  <p>The lab is not 1.5 million lines, and nobody writes that much for a pipeline. Main holds about 2.14 million lines of text in 11,795 files. Most of it is not code you run:</p>
+  <div class="tbl"><table>
+    <tr><th>Part</th><th>Lines</th><th>What it is</th></tr>
+    <tr><td>Data files (JSON, CSV)</td><td class="n">≈ 953,000</td><td>Mostly old prototype data in p1 to p5 (about 810,000) and the evidence lane; not lab, not product code</td></tr>
+    <tr><td>Markdown records</td><td class="n">≈ 474,000</td><td>STATE, DECISIONS, BACKLOG, history, design notes, reports</td></tr>
+    <tr><td>Product</td><td class="n">≈ 392,000</td><td>API 77k, web 40k, tests 182k, database 29k, packages 64k</td></tr>
+    <tr><td>Lab</td><td class="n">≈ 50,700</td><td>Tools 46,264 in 336 files, GitHub workflows 3,644, agent settings 768, git hooks 41</td></tr>
+  </table></div>
+  <p>Without the data files the repository is about 1.19 million lines, so "1.5 million" most likely mixes records, product, data and lab. The lab is about 2.4% of the repository and about 13% of lab plus product (about 24% of product code without tests). That ratio is high, about 2 to 3 times what is common, but the evidence for "common" is thin. The real weight is in records and stored data, not lab code. Moving the old prototype data to an archive repository would make the repository honest about its size. <span class="tag dec">needs your decision</span></p>
+</section>
+
+<section>
+  <h2>Where the three reviewers agree and differ</h2>
+  <div class="cols">
+    <div class="col"><h3>All three agree</h3><ul>
+      <li>The backbone is standard: small pull requests, merge queue, separate reviewer, enforced checks, push guard.</li>
+      <li>Records and rules are far larger than needed.</li>
+      <li>DORA speed measures are used without real users, so they say little yet.</li>
+      <li>The lab now slows itself: 27 Nov, 99 open PR-hours, 9.6 h of CI, the rest waiting.</li>
+      <li>The restart has slipped: P-847 said about one day; P-852 and P-853 changed the line the same day.</li>
+    </ul></div>
+    <div class="col"><h3>Where they differ</h3><ul>
+      <li><strong>How much to cut.</strong> The sceptic would cut to about 8 essentials; value says a GitHub-native setup gives about 75 to 80% and the rest is domain guards worth keeping. On evidence, value is closer: guards for sources, PDFs, secrets, names and cited immigration values have no off-the-shelf substitute.</li>
+      <li><strong>Score.</strong> 6, 6, 4. The standards reviewer missed that CodeQL runs (too harsh there) but also missed that its alerts are ignored (too kind overall). The sceptic is right that many guards fence the operating model. 5 is the fair middle.</li>
+      <li><strong>Nightlies.</strong> The sceptic says one; you decided seven, on demand. Seven on demand costs about 2.5 days of machine time and no money; keep it unless the date slips.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>What the lab gives you</h2>
+  <div class="tbl"><table>
+    <tr><th>Benefit</th><th>Without a lab</th><th>With today's lab</th><th>With a right-sized lab</th></tr>
+    <tr><td>Agents cannot mark their own homework</td><td>An agent says "done" and merges; mistakes reach main</td><td>Green CI plus a separate reviewer; about 1% of changes reverted</td><td>Same, using GitHub rulesets and required checks instead of custom workflows</td></tr>
+    <tr><td>Business rules enforced, not just written</td><td>Sources, PDFs, secrets or names can be pushed by mistake</td><td>Push guard and CI refuse them; cited-value checks</td><td>Keep these domain guards; drop guards that only police lanes</td></tr>
+    <tr><td>Speed with safety</td><td>Fast but unsafe, or a person checks everything</td><td>575 merges in 7 days (238 app code), median lead time about 3 h, but about 90% of open time is waiting</td><td>Fewer lanes and required checks; aim for Approve-to-merge under 45 min (your P-853 target)</td></tr>
+    <tr><td>Main protected from tooling mistakes</td><td>One bad script cancels all runs (the zsh incident) or breaks main</td><td>Each incident became a guard (zsh cancel, P-766, #3924)</td><td>Same, but a guard only for repeat incidents, and required so it cannot be skipped</td></tr>
+    <tr><td>Work survives agent hand-overs</td><td>Each new session starts blind</td><td>STATE hand-over block; work survives about 5 Lead changes a day</td><td>Short STATE in the private repo; fewer hand-overs because fewer lanes</td></tr>
+  </table></div>
+  <p class="small">Costs today: on 27 Nov, 13.3 h of red main or red fast route from tooling changes, 17.4 h in the queue, 29.5 h waiting on the Lead; demo update fails about 20% of runs; the stop overran its estimate 3 to 5 times.</p>
+</section>
+
+<section>
+  <h2>Keep, simplify, cut</h2>
+  <div class="cols">
+    <div class="col"><h3 class="ok">Keep</h3><ul>
+      <li>Small pull requests and the merge queue (<code>.mergify.yml</code>)</li>
+      <li>Push guard <code>.githooks/pre-push</code> and its CI twin (sources, code, archive, PDFs, databases, secrets)</li>
+      <li>No-names and cited-immigration-value checks</li>
+      <li>Separate reviewer plus Claude Code Review on risky paths (P-849)</li>
+      <li>Agent hooks and a short CLAUDE.md</li>
+      <li>The nightly with its restore drill (LR-110)</li>
+      <li>STATE hand-over (P-557)</li>
+      <li>CodeQL and Dependabot, now with someone reading them</li>
+      <li>The class A safety rows already in the line: bundle 1 (#3833, #3814, #3825, #3843), A1 to A5, A7, A8</li>
+    </ul></div>
+    <div class="col"><h3 class="dec">Simplify</h3><ul>
+      <li>Replace label-guard, records-label, review-rounds, lead-read and parts of queue-gate with a GitHub ruleset, CODEOWNERS and required checks; drop <code>pull_request_target</code> where possible</li>
+      <li>Pin all 100 action lines to commit SHAs; let Dependabot keep them current</li>
+      <li>Make <code>guards</code> required for every scope (F4 did it for pipeline) and keep it under its time limit</li>
+      <li>30 workflows down to a handful; one guard suite</li>
+      <li>DECISIONS in short decision-record form; 22 size-exception rows become a label</li>
+      <li>Move permission and money rules that guards check into product tests</li>
+    </ul></div>
+    <div class="col"><h3 class="wrong">Cut or park</h3><ul>
+      <li>Class C rows in the register (<code>design/lab-replan-2026-11-27-triage.md</code>), and B rows that are records chores (for example LR-008, LR-128, LR-153) after restart</li>
+      <li>Reporting workflows nobody acts on: candidates are cycle-timeline, measures, module-cards, test-graph, trace, walk-report; measure use first (your measure-before-delete rule, P-845)</li>
+      <li>Public records PRs, once records move private (LR-033 already C)</li>
+      <li>Old prototype data p1 to p5 on main (archive repository) <span class="tag dec">needs your decision</span></li>
+    </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>The restart line</h2>
+  <p><strong>What you decided (P-852, amended by P-853, completed by P-854):</strong> product restarts when (1) the six flow fixes F1 to F6 are on main and one measured day proves them (Approve-to-merge median ≤ 45 min, no red main over 30 min, no guards time-out, no Lead read waiting over 30 min); (2) bundle 1 and A1 to A5, A7, A8 are merged and proven; (3) 7 green nightlies in a row, started on demand about 3 times a day. Expected restart about 30 Nov.</p>
+  <p><strong>Recommendation:</strong> keep this line as decided, add the CodeQL critical-alert read, and fix a date: if it is not met by 1 Dec 23:59 IST, you choose that day between restarting with what is proven or holding. No more conditions get added before restart. <span class="tag dec">needs your decision</span></p>
+  <p><strong>The sceptic's "one nightly, not seven"</strong> is an option for you to re-decide, not a finding. It would save about 2 days; it gives up evidence that the full suite is stable. Recommended only if the 1 Dec date is at risk. <span class="tag dec">needs your decision</span></p>
+  <h3>After restart</h3>
+  <ul>
+    <li>Lanes: 3 to 5, one per module (screens, forms, runtime, evidence), instead of about 20. <span class="tag dec">needs your decision</span></li>
+    <li>Lab capacity: at most about 20% of merges and lane time; lab work only from the frozen after-the-lab list (LR-153) and real incidents. <span class="tag dec">needs your decision</span></li>
+    <li>New mechanisms: only if they protect a future customer's data or money, or block a repeat of a measured incident.</li>
+    <li>Records: private repository, open rows only in BACKLOG, RULES limited to enforced rules (suggest 60 or fewer; the sceptic said 40). <span class="tag dec">needs your decision</span></li>
+    <li>Security: someone reads CodeQL each week; high alerts gate pull requests that touch money, permissions or uploads.</li>
+  </ul>
+  <p class="small">Dates: Release 1 internal date 12 Dec (P-815), charter launch 12 Mar 2027. Legal points: none in this review.</p>
+</section>
+
+</div>
