@@ -1,6 +1,6 @@
 #!/bin/bash
 # Push guard (P-82): ported from the P-81 filtered-mirror push check. Refuses a range of commits that adds
-# an excluded path, a PDF, a secret, a personal name or a bulk delete without its reason (ENF-803). Called by .githooks/pre-push for every pushed ref
+# an excluded path, a PDF, a secret, a personal name, a bulk delete without its reason (ENF-803) or an image over 300 KB (LR-162). Called by .githooks/pre-push for every pushed ref
 # and by the CI guard job for each pull request.
 #   push-guard.sh <old>..<new> [...]   check the given commit ranges
 #   push-guard.sh --unpushed <sha> [remote]   check every commit on <sha> not on <remote>'s branches (default origin)
@@ -47,6 +47,20 @@ check_range() {
   [ -n "$commits" ] || return 0
   # ENF-803 (P-803): a commit deleting more than 50 files needs "BULK-DELETE-OK: <reason>" (22 Nov: 54e27fc66, 10,753 files).
   bash "$GDIR/bulk-delete-guard.sh" range $range || bad=1
+  # LR-162 (Lead 11, 28 Nov; LR-095): an image (png, jpg, jpeg, webp, gif) new to history and over IMAGE_MAX_KB (300)
+  # refuses: image-size.sh --enforce on the same range; the --unpushed form counts the head over the remote's branches.
+  # Its exit 2 (cannot read the range, tool missing) refuses too. Test: check-push-guard-images.sh.
+  local img_out img_rc
+  case "$range" in
+    *" --not --remotes="*) img_out=$(bash "$GDIR/image-size.sh" --enforce --remote "${range##* --not --remotes=}" "${range%% *}" 2>&1); img_rc=$? ;;
+    *..*) img_out=$(bash "$GDIR/image-size.sh" --enforce "$range" 2>&1); img_rc=$? ;;
+    *) img_out="not a base..head range"; img_rc=2 ;;
+  esac
+  if [ "$img_rc" = 1 ]; then
+    printf '%s\n' "$img_out" | grep '^  OVER ' | sed "s/^  /GUARD: image too big in $range (LR-162; shrink it, e.g. pngquant or a smaller viewport, then amend): /"; bad=1
+  elif [ "$img_rc" != 0 ]; then
+    echo "GUARD: image size could not be checked in $range — refusing ($(printf '%s' "$img_out" | head -1))"; bad=1
+  fi
   # Paths added, modified, renamed-to or copied-into by the range (deletions are safe, so D is excluded).
   # P-83: a .pdf is admitted ONLY under official-sources/ and only when the blob's SHA-256 at its commit
   # equals a "sha256" value in an official-sources/*/manifest.json at the range tip; every other PDF refuses.
@@ -98,5 +112,5 @@ if [ "${1:-}" = "--unpushed" ]; then
 else
   for r in "$@"; do check_range "$r"; done
 fi
-[ "$bad" = 0 ] && echo "push guard: clean" || { echo "push guard: REFUSED — see above (P-81/P-82: sources/, code/, archive/, PDFs, tools, databases, secrets and personal names never go to GitHub)"; exit 1; }
+[ "$bad" = 0 ] && echo "push guard: clean" || { echo "push guard: REFUSED — see above (P-81/P-82: sources/, code/, archive/, PDFs, tools, databases, secrets and personal names never go to GitHub; LR-162: no image over 300 KB)"; exit 1; }
 exit 0

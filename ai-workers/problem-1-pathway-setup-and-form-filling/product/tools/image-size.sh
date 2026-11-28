@@ -5,21 +5,32 @@
 # from <head> and not from <base> (git rev-list --objects), so it counts what the range adds to history: a large image
 # shrunk by a later commit still counts (PRs merge with merge commits, so every commit stays), a file main changed
 # after the branch was cut does not, and a rename of an existing image adds nothing. Report-only by default (exit 0, so
-# it slows no lane); with --enforce, exit 1 on any such image. Wired into nothing yet: whether and where it blocks is
-# the tech lead's decision. --objects-edge-aggressive also leaves out every file in the base commit itself, so a
+# it slows no lane); with --enforce, exit 1 on any such image. LR-162 (Lead 11, 28 Nov): push-guard.sh runs it with
+# --enforce on every range it checks (so the pre-push hook and CI's guard jobs refuse an oversized image); --remote
+# <name> <head> counts what <head> adds over every branch of that remote (the pre-push hook's --unpushed form).
+# --objects-edge-aggressive also leaves out every file in the base commit itself, so a
 # shallow clone (CI's default checkout) or a base that is not an ancestor of head never counts the whole tree. An image
 # deleted before the base and later restored counts as new (rare; errs toward reporting). Exit 2 on bad use or when git cannot read the range (never a pass). US$0, no network.
 #   bash product/tools/image-size.sh [--enforce] <base>..<head>
+#   bash product/tools/image-size.sh [--enforce] --remote <name> <head>
 # Test: product/tools/check-image-size.sh.
 set -u -o pipefail
-enforce=0; range=""
-for a in "$@"; do
-  case "$a" in
+enforce=0; range=""; remote=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --enforce) enforce=1;;
-    -*) echo "unknown argument: $a" >&2; exit 2;;
-    *) [ -z "$range" ] || { echo "one range only" >&2; exit 2; }; range="$a";;
+    --remote) [ -n "${2:-}" ] && [ "${2#-}" = "$2" ] || { echo "--remote needs a remote name" >&2; exit 2; }; remote="$2"; shift;;
+    -*) echo "unknown argument: $1" >&2; exit 2;;
+    *) [ -z "$range" ] || { echo "one range only" >&2; exit 2; }; range="$1";;
   esac
+  shift
 done
+if [ -n "$remote" ]; then
+  case "$range" in ""|*..*) echo "with --remote, name one head commit (not a range)" >&2; exit 2;; esac
+  git rev-parse --verify -q "$range^{commit}" >/dev/null || { echo "cannot read $range" >&2; exit 2; }
+  git remote get-url "$remote" >/dev/null 2>&1 || { echo "no remote named $remote" >&2; exit 2; }
+  range="--remotes=$remote..$range"
+fi
 case "$range" in
   *...*) echo "a two-dot range only (base..head: what head adds to history)" >&2; exit 2;;
   *..*) ;;
@@ -30,7 +41,7 @@ max_kb="${IMAGE_MAX_KB:-300}"
 max=$((max_kb * 1024))
 base="${range%%..*}"; head="${range#*..}"
 [ -n "$base" ] && [ -n "$head" ] || { echo "name both ends of the range (base..head; got $range)" >&2; exit 2; }
-for r in "$base" "$head"; do git rev-parse --verify -q "$r^{commit}" >/dev/null || { echo "cannot read $r" >&2; exit 2; }; done
+for r in "$base" "$head"; do [ -n "$remote" ] && [ "$r" = "--remotes=$remote" ] && continue; git rev-parse --verify -q "$r^{commit}" >/dev/null || { echo "cannot read $r" >&2; exit 2; }; done
 # Every blob new to the range with the first path git saw it under, then its size. Held in a variable, so a git error
 # ends the run (pipefail) instead of reading as "no images".
 list=$(git rev-list --objects-edge-aggressive "$head" --not "$base" \
