@@ -58,7 +58,7 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <h1>Expat Ready Software Factory</h1>
 <p class="lede">How the agents build, check and merge the product today, where the rules are enforced and where people still do steps by hand, and how we move to the target set-up (factory v3), with the corrections from today's research. Written so the founder can explain it to anyone.</p>
 <nav class="toc">
-<a href="#progress">Lab progress</a><a href="#beforeafter">Before and after</a><a href="#audit">Deep audit</a><a href="#today">Where we stand</a><a href="#who">Who does what</a><a href="#flow">Life of one change</a><a href="#enforce">How rules are enforced</a><a href="#manual">Still by hand</a><a href="#measure">Measures</a><a href="#target">Target</a><a href="#compare">Today vs target</a><a href="#money">Where the tokens come from</a><a href="#cleanup">Repository clean-up</a><a href="#gaps">Inconsistencies found</a><a href="#words">Words</a>
+<a href="#progress">Lab progress</a><a href="#beforeafter">Before and after</a><a href="#audit">Deep audit</a><a href="#today">Where we stand</a><a href="#who">Who does what</a><a href="#flow">Life of one change</a><a href="#enforce">How rules are enforced</a><a href="#manual">Still by hand</a><a href="#layers">Layers</a><a href="#measure">Measures</a><a href="#target">Target</a><a href="#compare">Today vs target</a><a href="#money">Where the tokens come from</a><a href="#cleanup">Repository clean-up</a><a href="#gaps">Inconsistencies found</a><a href="#words">Words</a>
 </nav>
 
 <h2 id="progress">Lab progress</h2>
@@ -201,6 +201,24 @@ flowchart LR
 <tr><td>Account switches</td><td>Founder + Lead</td><td>Plan limits are per account</td><td>Unchanged; run by the switch runbook</td></tr>
 <tr><td>Product decisions, money over caps, new technology</td><td>Founder</td><td>Deliberate</td><td>Unchanged</td></tr>
 </table></div>
+
+<h2 id="layers">Layers and escapes</h2>
+<p>No single gate catches everything: each layer catches some problems and misses others. An escape is a problem that reached <code>main</code> (a revert, or an episode of ci or nightly red on main). Each one names the layer that should have caught it, so we can see which layer leaks. Map: <code>design/layer-map.tsv</code>; escapes: <code>design/escapes.tsv</code>. Re-run after naming escapes: <code>python3 -I product/tools/escape-map.py --page product/design/software-factory-2026-11-27.html</code>.</p>
+<!-- escape-map -->
+<p>Escapes since 2026-11-14 (reverts on main, and episodes of ci or nightly red on main), each named against the layer that should have caught it, counted by <code>product/tools/escape-map.py --page</code> from <code>design/escapes.tsv</code> (LR-142). 62 escapes, 61 not named yet.</p>
+<div class="tbl"><table>
+<tr><th>Layer</th><th>Catches</th><th>Misses</th><th>Escapes</th></tr>
+<tr><td>self-check</td><td>the builder&#x27;s own run of the row&#x27;s tests and guards before a push</td><td>what the builder did not think to test; checks run on a stale copy</td><td class="pct">0</td></tr>
+<tr><td>reviewer</td><td>logic and scope errors in the diff, read in a fresh context (P-303)</td><td>failures that only show when the code runs against main or other suites</td><td class="pct">0</td></tr>
+<tr><td>breaker</td><td>breakage through the UI and the API on a built screen</td><td>pipeline and tooling changes (no screen to break)</td><td class="pct">0</td></tr>
+<tr><td>CI</td><td>the PR&#x27;s own checks and affected suites on its head</td><td>interactions with what lands on main after its run; suites a path filter skipped</td><td class="pct">1</td></tr>
+<tr><td>Code Review</td><td>risky-path problems Claude Code Review finds on the PR</td><td>anything when it is skipped (balance, mode); it never blocks by itself</td><td class="pct">0</td></tr>
+<tr><td>Approvals</td><td>a merge without the required approval</td><td>the content of an approved change</td><td class="pct">0</td></tr>
+<tr><td>queue</td><td>conflicts and failures of the PR batched with main (merge queue)</td><td>checks the batch does not run (nightly, scheduled, slow suites)</td><td class="pct">0</td></tr>
+<tr><td>qa</td><td>a capability that does not work end to end, tested like a person on main</td><td>faults in tooling, pipeline and records; anything outside the capability walked</td><td class="pct">0</td></tr>
+<tr><td><b>Not named yet</b></td><td></td><td></td><td class="pct">61</td></tr>
+</table></div>
+<!-- /escape-map -->
 
 <h2 id="measure">How we measure</h2>
 <ul>

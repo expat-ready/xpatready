@@ -1,0 +1,11 @@
+# Layer map (LR-142): each layer of the factory, what it catches and what it misses. escape-map.py reads it; design/escapes.tsv names one layer per escape.
+# Tab-separated: layer, catches, misses. Code review guide: "Each layer catches some problems and misses others".
+layer	catches	misses
+self-check	the builder's own run of the row's tests and guards before a push	what the builder did not think to test; checks run on a stale copy
+reviewer	logic and scope errors in the diff, read in a fresh context (P-303)	failures that only show when the code runs against main or other suites
+breaker	breakage through the UI and the API on a built screen	pipeline and tooling changes (no screen to break)
+CI	the PR's own checks and affected suites on its head	interactions with what lands on main after its run; suites a path filter skipped
+Code Review	risky-path problems Claude Code Review finds on the PR	anything when it is skipped (balance, mode); it never blocks by itself
+Approvals	a merge without the required approval	the content of an approved change
+queue	conflicts and failures of the PR batched with main (merge queue)	checks the batch does not run (nightly, scheduled, slow suites)
+qa	a capability that does not work end to end, tested like a person on main	faults in tooling, pipeline and records; anything outside the capability walked
