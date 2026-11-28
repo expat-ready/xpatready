@@ -1,7 +1,7 @@
 # LR-168 (founder A455, 28 Nov: the gap alarm must not depend on a Mac session; Lead 12's root cause (2): the watchdog was
 # "lead-watch.sh gap" and lead-heartbeat.sh on a Mac standby, which die with the Mac). Every 10 min GitHub reads the check
 # stamp the Lead's lead-watch.sh pushes at the end of each run (branch lead/check-stamp, file lead-check-stamp.json;
-# product/tools/check-stamp.sh) and sets the commit status "lead-check-gap" on main's tip: failure when the stamp is over
+# product/tools/lead-stamp.sh) and sets the commit status "lead-check-gap" on main's tip: failure when the stamp is over
 # 20 min old (or missing or unreadable), success otherwise. One signal the founder sees on main (the red cross by the newest
 # commit on the repository's front page); a merge moves main's tip, so each run sets it again on the new tip. The run itself
 # never fails (a red scheduled run mails its owner: no email, A455), and it writes the verdict to its summary.
@@ -40,7 +40,7 @@ jobs:
           api="https://api.github.com/repos/$REPO"
           curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw+json" \
             "$api/contents/lead-check-stamp.json?ref=lead/check-stamp" -o "$RUNNER_TEMP/stamp.json" || rm -f "$RUNNER_TEMP/stamp.json"
-          v=$(bash "$P/tools/check-stamp.sh" judge "$RUNNER_TEMP/stamp.json"); state=${v%% *}; desc=${v#* }
+          v=$(bash "$P/tools/lead-stamp.sh" judge "$RUNNER_TEMP/stamp.json"); state=${v%% *}; desc=${v#* }
           case "$state" in success|failure) ;; *) state=failure; desc="the stamp could not be judged (LR-168)";; esac
           echo "**lead-check-gap:** $state: $desc" >> "$GITHUB_STEP_SUMMARY"
           sha=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/main" | jq -r '.sha // empty')

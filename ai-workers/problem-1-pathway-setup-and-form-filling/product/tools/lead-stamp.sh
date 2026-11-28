@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # LR-168 (founder A455, 28 Nov: the gap alarm must not depend on a Mac session; "we have unlimited machines in the GitHub").
 # The Lead's check stamp, pushed to GitHub, and its judge, run by .github/workflows/lead-gap.yml every 10 min.
-#   check-stamp.sh push [dir]        lead-watch.sh's last step in the Lead's copy: one commit on refs/heads/lead/check-stamp
+#   lead-stamp.sh push [dir]        lead-watch.sh's last step in the Lead's copy: one commit on refs/heads/lead/check-stamp
 #                                    (a branch of its own, no history but stamps, no working-tree or index change: git
 #                                    plumbing) holding lead-check-stamp.json {"epoch","ist","head","behind"}; fast-forward
 #                                    only (never forced), one retry after a refetch; prints one line, exit 0 pushed, 1 not.
-#   check-stamp.sh judge FILE [now]  the workflow's verdict on a stamp file: "<success|failure> <description>" (exit 0);
+#   lead-stamp.sh judge FILE [now]  the workflow's verdict on a stamp file: "<success|failure> <description>" (exit 0);
 #                                    over STAMP_MAX (20) min, missing, unreadable or in the future is failure.
 # Env: CHECK_STAMP_REMOTE (origin), STAMP_MAX (20), NOW (tests). Test: check-check-stamp-push.sh.
 set -u
@@ -36,5 +36,5 @@ print(e if isinstance(e,int) and not isinstance(e,bool) else "")' "$2" 2>/dev/nu
       if err=$(g -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 push -q "$R" "$c:$B" 2>&1); then echo "check stamp pushed: $(ist "$now") to lead/check-stamp (${c:0:9}, LR-168)"; exit 0; fi
     done
     echo "check stamp NOT pushed to lead/check-stamp (LR-168; git: $(printf '%s\n' "${err:-no commit made}" | { grep -iE 'fatal|error|rejected|denied|refused|^ *!' || printf '%s\n' "${err:-no commit made}"; } | grep -v '^ *$' | head -1 | cut -c1-160)): GitHub's gap alarm will go red in $MAX min unless the next check pushes"; exit 1;;
-  *) echo "usage: check-stamp.sh push [dir] | judge FILE [now]"; exit 2;;
+  *) echo "usage: lead-stamp.sh push [dir] | judge FILE [now]"; exit 2;;
 esac

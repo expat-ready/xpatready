@@ -7,7 +7,7 @@ set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/stamppush.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-S="$TOOLS/check-stamp.sh"; WF="$TOOLS/../../../../.github/workflows/lead-gap.yml"; NOW=1800000000
+S="$TOOLS/lead-stamp.sh"; WF="$TOOLS/../../../../.github/workflows/lead-gap.yml"; NOW=1800000000
 # judge
 j() { printf '%s' "$1" > "$T/s.json"; bash "$S" judge "$T/s.json" "$NOW"; }
 ok "a stamp 5 min old: success" "$(j "{\"epoch\": $((NOW - 300))}" | grep -q '^success last Lead check 5 min ago' && echo 1)" "$(j "{\"epoch\": $((NOW - 300))}")"
@@ -40,10 +40,10 @@ ok "a push that cannot reach the remote: exit 1, one line saying so, with git's 
 ok "lead-gap.yml's checkout cannot turn the run red" "$(grep -A1 'uses: actions/checkout' "$WF" | grep -q 'continue-on-error: true' && echo 1)"
 # lead-watch pushes it at its end in the Lead's copy only, an ACT when not pushed
 lw="$TOOLS/lead-watch.sh"
-ok "lead-watch.sh pushes the stamp in the Lead's copy (lane.sh whoami = lead) and makes a failed push an ACT" "$(grep -q 'whoami 2>/dev/null)" in lead|lead-stale) true;;' "$lw" && grep -q 'sp=$(bash "$TOOLS/check-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"' "$lw" && echo 1)"
+ok "lead-watch.sh pushes the stamp in the Lead's copy (lane.sh whoami = lead) and makes a failed push an ACT" "$(grep -q 'whoami 2>/dev/null)" in lead|lead-stale) true;;' "$lw" && grep -q 'sp=$(bash "$TOOLS/lead-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"' "$lw" && echo 1)"
 # the workflow
 ok "lead-gap.yml runs every 10 min and by hand" "$(grep -q 'cron: "\*/10 \* \* \* \*"' "$WF" && grep -q '^  workflow_dispatch:' "$WF" && echo 1)"
 ok "... with contents: read and statuses: write only" "$(grep -q 'permissions: { contents: read, statuses: write }' "$WF" && grep -q '^permissions: {}' "$WF" && echo 1)"
-ok "... judges with check-stamp.sh and sets the status lead-check-gap on main's tip" "$(grep -q 'check-stamp.sh" judge' "$WF" && grep -q 'context: "lead-check-gap"' "$WF" && grep -q 'commits/main' "$WF" && echo 1)"
+ok "... judges with lead-stamp.sh and sets the status lead-check-gap on main's tip" "$(grep -q 'lead-stamp.sh" judge' "$WF" && grep -q 'context: "lead-check-gap"' "$WF" && grep -q 'commits/main' "$WF" && echo 1)"
 ok "... and never fails its run (no exit 1, ends exit 0)" "$(! grep -qE 'exit [1-9]' "$WF" && grep -q 'set +e' "$WF" && [ "$(grep -c '^          exit 0$' "$WF")" = 1 ] && echo 1)"
 finish

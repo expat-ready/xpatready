@@ -455,5 +455,5 @@ echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)
 # LR-168 (founder A455): the Lead's copy pushes this check's stamp to lead/check-stamp, which .github/workflows/lead-gap.yml
 # judges every 10 min with no Mac running (a red lead-check-gap status on main over 20 min). Not pushed is an ACT.
 if [ "${LEAD_STAMP_PUSH:-on}" != off ] && case "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" in lead|lead-stale) true;; *) false;; esac; then
-  sp=$(bash "$TOOLS/check-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
+  sp=$(bash "$TOOLS/lead-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
 exit "$act"
