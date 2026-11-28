@@ -114,7 +114,8 @@ transcript() {  # $1 the turn's prompt → a transcript: the prompt, then a tool
     {type:"user", message:{content:[{type:"tool_result", content:"run lead-watch; read STATE Start here"}]}}, {type:"user", isMeta:true, message:{content:"x"}},
     {type:"user", message:{content:"Stop hook feedback: stale"}}, {type:"user", message:{content:"<task-notification>agent done</task-notification>"}}' > "$T/t.jsonl"; }
 stop() {  # $1 lane, $2 clock, $3 prompt → block | pass
-  transcript "$3"; local out; out=$(jq -n --arg d "$T/copy" --arg t "$T/t.jsonl" '{hook_event_name:"Stop", cwd:$d, transcript_path:$t, stop_hook_active:true}' | NOW=$2 FAKE_LANE="$1" bash "$G")
+  transcript "$3"; local out; mkdir -p "$T/lw"; echo "$2 0 x 30" > "$T/lw/full-check"   # LR-167: lead-watch finished just now
+  out=$(jq -n --arg d "$T/copy" --arg t "$T/t.jsonl" '{hook_event_name:"Stop", cwd:$d, transcript_path:$t, stop_hook_active:true}' | LEAD_WATCH_STATE_DIR="$T/lw" NOW=$2 FAKE_LANE="$1" bash "$G")
   if printf '%s' "$out" | jq -e '.decision == "block" and (.reason | test("app view not read in"))' >/dev/null 2>&1; then echo block; else echo pass; fi; }
 C='run lead-watch; read STATE Start here'
 r=$(stop lead $((NOW + 16 * 60)) "$C"); ok "the hook refuses a check turn whose app view is 16 min old (even on a repeat stop)" "$([ "$r" = block ] && echo 1)" "got $r"

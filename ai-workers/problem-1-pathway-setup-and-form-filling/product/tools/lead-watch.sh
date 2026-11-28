@@ -452,4 +452,8 @@ cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-wait
   --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
 fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board as step 11 accepted it (over $FRESH_MAX_MIN min: not measured)"
 echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
+# LR-167 (founder A455): the end-of-run stamp the Lead's Stop hook asks of a check turn (lead-check-guard.sh): written only
+# here, after every step ran, as "<epoch> <commits this script's copy is behind origin/main> <its head> <minutes arg>".
+fb=$(git -C "$TOOLS" rev-list --count HEAD..origin/main 2>/dev/null || echo 9999)
+echo "$(date +%s) $fb $(git -C "$TOOLS" rev-parse HEAD 2>/dev/null) $SINCE" > "$STATE_DIR/full-check.$$" && mv -f "$STATE_DIR/full-check.$$" "$STATE_DIR/full-check"
 exit "$act"

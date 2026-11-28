@@ -22,7 +22,8 @@ tr() {  # $1 prompt, $2 tool name used in the turn (optional) → $T/t.jsonl; an
     {type:"assistant", message:{content:([{type:"text", text:"Check done."}] + (if $tool == "" then [] else [{type:"tool_use", name:$tool, input:{}}] end))}},
     {type:"user", message:{content:"<task-notification>agent done</task-notification>"}}' > "$T/t.jsonl"; }
 stop() {  # $1 lane → $out, $v block|pass
-  out=$(jq -n --arg d "$T/copy" --arg t "$T/t.jsonl" '{hook_event_name:"Stop", cwd:$d, transcript_path:$t, stop_hook_active:true}' | FAKE_LANE="${1:-lead}" bash "$G" 2>&1)
+  mkdir -p "$T/lw"; echo "$NOW 0 x 30" > "$T/lw/full-check"   # LR-167: lead-watch finished just now
+  out=$(jq -n --arg d "$T/copy" --arg t "$T/t.jsonl" '{hook_event_name:"Stop", cwd:$d, transcript_path:$t, stop_hook_active:true}' | LEAD_WATCH_STATE_DIR="$T/lw" FAKE_LANE="${1:-lead}" bash "$G" 2>&1)
   v=pass; printf '%s' "$out" | jq -e '.decision == "block"' >/dev/null 2>&1 && v=block; }
 view "app view rows=14 · 2 flagged" 3; tr "$C"; stop
 ok "a check turn with a fresh, readable app view passes" "$([ $v = pass ] && echo 1)" "$out"
