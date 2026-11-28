@@ -11,10 +11,13 @@ out=$(python3 -I "$STUDIO/tools/safety/migration-check.py" --self-test 2>&1); r=
 ok "LR-045: migration-check.py's planted good and bad migrations are each judged right (self-test exit 0)" "$([ $r = 0 ] && echo 1)" "$(printf '%s\n' "$out" | grep -m3 '^FAIL\|Error')"
 v=$(printf 'ALTER TABLE "Case" DROP COLUMN "note";\n' > "${TMPDIR:-/tmp}/os36-$$.sql"; python3 -I "$STUDIO/tools/safety/migration-check.py" --files "${TMPDIR:-/tmp}/os36-$$.sql"; echo "exit $?"); rm -f "${TMPDIR:-/tmp}/os36-$$.sql"
 ok "LR-045: a planted DROP COLUMN is reported as a warning and exits 1" "$(printf '%s' "$v" | grep -q '^::warning::destructive' && printf '%s' "$v" | grep -q 'exit 1' && echo 1)" "$v"
-# safety.yml stays a warning (LR-045, LR-074: warning before it refuses): every step after checkout continues on error.
+# safety.yml stays a warning (LR-045, LR-074, LR-161: warning before it refuses): every step but each job's checkout
+# continues on error (one checkout per job: job "safety" and, since LR-161, job "walk").
 if [ -f "$WF" ]; then
   steps=$(grep -cE '^      - (name|uses|id):' "$WF"); soft=$(grep -cE '^        continue-on-error: true$' "$WF")
-  ok "safety.yml: every step after checkout is continue-on-error: true ($soft of $((steps - 1)))" "$([ "$soft" -eq $((steps - 1)) ] && ! grep -q 'continue-on-error: false' "$WF" && echo 1)" "steps $steps, soft $soft"
+  co=$(grep -cE '^      - uses: actions/checkout@' "$WF")
+  ok "safety.yml: every step but the $co checkout(s) is continue-on-error: true ($soft of $((steps - co)))" "$([ "$co" -ge 1 ] && [ "$soft" -eq $((steps - co)) ] && ! grep -q 'continue-on-error: false' "$WF" && echo 1)" "steps $steps, checkouts $co, soft $soft"
+  ok "safety.yml: job walk runs the route walk's self-test and the walk (LR-161)" "$(grep -q 'route-walk.ts --self-test' "$WF" && grep -q 'route-walk.ts 4612 xr_studio_safety_walk' "$WF" && echo 1)"
   ok "safety.yml: runs both self-tests and both checks" "$(grep -q 'migration-check.py" --self-test' "$WF" && grep -q 'migration-check.py" --base HEAD^1' "$WF" && grep -q 'route-sweep.ts --self-test' "$WF" && grep -q 'npx tsx tools/safety/route-sweep.ts > ' "$WF" && echo 1)"
 else ok "safety.yml exists" 0 "no $WF"; fi
 if [ -x "$STUDIO/node_modules/.bin/tsx" ] && [ -d "$STUDIO/tests/lib" ]; then
