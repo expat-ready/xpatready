@@ -818,5 +818,14 @@ printf '{"workflow_run": {"path": ".github/workflows/ci.yml", "event": "pull_req
 ok "LR-169: ... another workflow's end takes nothing off here" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
 prj 7 $HEAD1; printf '{"workflow_run": {"path": ".github/workflows/pr-suites.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
 ok "LR-169: ... an unlabelled PR: nothing to take off" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+# breaker r2 of LR-169: a run that ended red with its job pr-suites green; queue-fresh waits while the ready run is on its way
+prj 7 $HEAD1 false "review: approved"; files 7 "$S/src/a.ts"; suites $HEAD1 completed success
+jq '.status = "completed" | .conclusion = "failure"' "$T/fx/run-88.json" > "$T/fx/r.json" && mv "$T/fx/r.json" "$T/fx/run-88.json"
+printf '{"workflow_run": {"path": ".github/workflows/pr-suites.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
+ok "LR-169 (breaker r2): the run ends red while its job pr-suites is green: the kept label comes off" "$(grep -qx 'UNLABEL 7' <<< "$log" && echo 1)" "exit $r: $out / $log"
+prj 7 $HEAD1 false "review: approved"; files 7 "$S/api/src/form.ts"; lr169 in_progress; run fresh 7
+ok "LR-169 (breaker r2): app code with the label kept while its ready run is on its way: queue-fresh pending (the product queue waits)" "$(grep -q "^STATUS $HEAD1 queue-fresh pending" <<< "$log" && echo 1)" "exit $r: $out / $log"
+suites $HEAD1 completed success; rm -f "$T/fx/suiteruns.json"; run fresh 7
+ok "LR-169 (breaker r2): ... once pr-suites is green, queue-fresh is decided as before (not held)" "$(! grep -q 'has not ended (LR-169)' <<< "$out$log" && echo 1)" "exit $r: $out / $log"
 rm -f "$T/fx/suiteruns.json"; unset QG_NOW
 finish

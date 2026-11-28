@@ -405,6 +405,9 @@ fresh() {
   has queued && { status success "in the queue: its batch is tested on today's main"; return; }
   # Review M2: an unlabelled PR never holds a success, so a label always waits for a verdict made at labelling time.
   has "$LABEL" || [ "${LABELLING:-}" = 1 ] || { status pending "decided when review: approved goes on"; return; }
+  # LR-169 (breaker r2): while a label is kept for the PR's own pr-suites run still on its way, queue-fresh waits, so the
+  # product queue cannot take it before its suites end (the pipeline queue's batch runs every suite, P-651).
+  suites "$head"; [ "${suites_inflight:-}" = 1 ] && { status pending "its pr-suites run on this head has not ended (LR-169)"; return; }
   ci; [ "$ci_state" = success ] || { status pending "waiting for a green ci on this head"; return; }
   [ -n "${run_started:-}" ] || { status pending "the ci run cannot be read: tried again on the next event"; return; }
   [ "${run_attempt:-1}" -ge 3 ] && { status success "3 ci attempts: the merge-queue batch checks the rest"; return; }
@@ -520,7 +523,10 @@ suitesend() {  # LR-169: $1 the event of a finished workflow run. When it is the
   [ "$(jq -r '(.workflow_run.path // "") | split("@")[0]' "$e")" = .github/workflows/pr-suites.yml ] && [ "$(jq -r '.workflow_run.event // ""' "$e")" = pull_request ] || return 0
   load || return 2; has "$LABEL" || return 0
   [ "$(jq -r '.workflow_run.head_sha // ""' "$e")" = "$head" ] || return 0
-  suites "$head"; case "$suites_state" in success|pending|unread) return 0;; esac
+  # The run's own conclusion counts too (breaker r2 of LR-169): a green job "pr-suites" in a run that ended red reads
+  # "pending" in suites() forever, so a run that ended not green takes the label off unless the head's pr-suites is green.
+  local conc; conc=$(jq -r '.workflow_run.conclusion // ""' "$e")
+  suites "$head"; case "$suites_state" in success|unread) return 0;; pending) [ "$conc" = success ] && return 0;; esac
   [ "$SUITES_GATE" = warn ] && return 0
   api -X DELETE "$API/repos/$REPO/issues/$PR/labels/review%3A%20approved" >/dev/null || { echo "#$PR: could not take the label off"; return 2; }
   labels=$(grep -vxF "$LABEL" <<< "$labels"); echo "#$PR: $LABEL taken off: pr-suites ended $suites_state on ${head:0:9} (LR-169)"
