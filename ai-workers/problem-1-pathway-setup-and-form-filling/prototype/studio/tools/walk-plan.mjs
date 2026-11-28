@@ -13,7 +13,9 @@
 //   * push to main (ENF-733, P-733, P-728 (3)): the merged PR's journeys, walked on main's new head: each R1 item its
 //     title names ("R1.29", "(R1 row 42)") or its body's "Completes:" line names, mapped as item-proof.mjs journeyOf
 //     (R1.40 -> j_38), when j_<n>.ts is on main. Skipped with a reason when the PR names no item, or changes nothing the
-//     app runs (no file under APP: a records-only or qa-records PR leaves main's walk as it was). At most 20. No
+//     app runs (no file under APP: a records-only PR leaves main's walk as it was), except a qa PR (title starting
+//     "qa:"; LR-055, OS-07): its verdict is about main as it stands, so the items it names walk on main's head even
+//     when it changes only qa records. At most 20. No
 //     fixtures: they ran on the PR; the comment counts real journeys only. walk-report.yml posts the result.
 //   * The fixtures j_0_fails and j_0_throws join every non-empty pull_request and dispatch matrix (the workflow's own
 //     self-test). Zero journeys and no machinery change: an empty matrix with a reason; walks.yml then skips the walk
@@ -76,6 +78,9 @@ export function titleItems(title) {
   return [...ids].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
 }
 
+/** A qa lane's PR, by its title's first word ("qa:", as /qa titles its PRs): LR-055 walks its named items on main. */
+export const isQaTitle = (title) => /^\s*qa\s*:/i.test(String(title ?? ""));
+
 /** push to main: the merged PR's named items' journeys (see the header). */
 function pushPlan({ d, all, title, body, changed, pr }) {
   const named = new Map(), add = (i, via) => named.set(i, named.has(i) && named.get(i) !== via ? "title and Completes" : via);
@@ -86,7 +91,8 @@ function pushPlan({ d, all, title, body, changed, pr }) {
   if (!named.size) return { matrix: [], reason: `skipped: ${who}'s title names no R1 item and its body has no Completes line`, warn: "" };
   const ch = changed.map((f) => f.trim()).filter(Boolean), app = ch.filter((f) => APP.some((a) => f.startsWith(a)));
   const items = [...named.keys()].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
-  if (!app.length) return { matrix: [], reason: `skipped: ${who} names ${items.join(" ")} but changes nothing the app or a journey runs (${ch.length} file(s), none under studio/, contracts/, p2/ or p5/): main's walk is as before`, warn: "" };
+  const qa = isQaTitle(title);
+  if (!app.length && !qa) return { matrix: [], reason: `skipped: ${who} names ${items.join(" ")} but changes nothing the app or a journey runs (${ch.length} file(s), none under studio/, contracts/, p2/ or p5/): main's walk is as before`, warn: "" };
   const by = new Map(), why = [];
   for (const item of items) {
     const id = journeyOf(item).replace(/^tests\/journeys\/|\.ts$/g, "");
@@ -99,7 +105,8 @@ function pushPlan({ d, all, title, body, changed, pr }) {
   let warn = "";
   if (matrix.length > CAP) { warn = `${matrix.length} journeys named (over ${CAP}): walking the first ${CAP}; not walked: ${matrix.slice(CAP).map((e) => e.name).join(" ")}`; matrix = matrix.slice(0, CAP); }
   if (!matrix.length) return { matrix, reason: `skipped: ${who}: ${why.join("; ")}`, warn };
-  return { matrix, reason: `${matrix.length} journey(s) of ${who} on main's head (no fixtures: they ran on the PR): ${why.join("; ")}`, warn };
+  const how = !app.length ? "a qa PR changing only records (LR-055): main as it stands" : "no fixtures: they ran on the PR";
+  return { matrix, reason: `${matrix.length} journey(s) of ${who} on main's head (${how}): ${why.join("; ")}`, warn };
 }
 
 /** The plan. Throws Error(reason) on a refusal. */
@@ -239,7 +246,9 @@ export function selftest() {
     p = push("screens: R1.2 x", "Completes: R1.2, R1.6\n", [app]);
     t("T11 title and Completes: each journey once, named by both or by Completes", names(p) === "j_2 j_6" && p.matrix[0].via === "title and Completes" && p.matrix[1].via === "Completes", p);
     p = push("qa: R1.3 re-run on main", "", ["records-elsewhere/notes.md"]);
-    t("T12 a PR naming R1.3 that changes nothing the app runs (records, qa records) walks nothing, with a reason", p.matrix.length === 0 && /changes nothing the app or a journey runs/.test(p.reason), p);
+    t("T12 a qa PR naming R1.3 that changes only qa records walks j_3 on main's head (LR-055), saying why", names(p) === "j_3" && p.matrix[0].items === "R1.3" && /a qa PR changing only records \(LR-055\)/.test(p.reason), p);
+    const p12 = [push("records: R1.3 notes", "", ["records-elsewhere/notes.md"]), push("Fix qa: R1.3 wording", "", ["records-elsewhere/notes.md"]), push("QA : R1.99 rerun", "", ["records-elsewhere/notes.md"])];
+    t("T12b any other PR naming R1.3 that changes nothing the app runs walks nothing (\"qa:\" only as the title's first word); a qa PR's item with no journey is named", p12[0].matrix.length === 0 && /changes nothing the app or a journey runs/.test(p12[0].reason) && p12[1].matrix.length === 0 && /changes nothing the app/.test(p12[1].reason) && p12[2].matrix.length === 0 && /R1\.99 \(title\): no j_99\.ts on main/.test(p12[2].reason), p12);
     const p13 = [push("tooling: no item", "", [app]), push("runtime: R1.99", "", [app]), push("runtime: R1.3", "", [app], "")];
     t("T13 no item named, an item with no journey on main, or a push that merged no PR: nothing walked, each with its reason", p13.every((q) => q.matrix.length === 0) && /names no R1 item/.test(p13[0].reason) && /R1\.99 \(title\): no j_99\.ts on main/.test(p13[1].reason) && /no PR's merge commit/.test(p13[2].reason), p13);
     const rdir = join(root, "results"); put("results/walk-result-j_3/walk.json", JSON.stringify({ exit: 0, pass: 9, fail: 0, held: 1, seconds: 80, failed: [] }));
@@ -265,7 +274,7 @@ export function selftest() {
 function main(argv) {
   const [cmd] = argv, opt = {};
   for (let i = cmd === "selftest" || cmd === "comment" ? 1 : 0; i < argv.length; i++) if (argv[i].startsWith("--")) opt[argv[i].slice(2)] = argv[++i] ?? "";
-  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T18 hold (with T1b, T5b, T5c, T9b)"); return f.length ? 1 : 0; }
+  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T18 hold (with T1b, T5b, T5c, T9b, T12b)"); return f.length ? 1 : 0; }
   const file = (k) => (opt[k] && existsSync(opt[k]) ? readFileSync(opt[k], "utf8") : "");
   if (cmd === "comment") {
     let plan = null; try { plan = JSON.parse(file("plan")); } catch { plan = null; }
