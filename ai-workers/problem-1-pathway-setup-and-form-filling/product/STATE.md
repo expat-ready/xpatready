@@ -2,7 +2,7 @@
 
 current_lead: local_68bddbc4-11e4-4b09-9a52-dd8ab935e64f Lead 10 · 28 Nov 00:21 IST (after Lead 9 local_e9b535bc at 200k beyond start, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-28 08:09 IST (clock): **Lead 10: lab review 5/10 (two rounds, https://claude.ai/artifact/PJVMHnR6X9iJgZVw9ChRww); founder approved all recommendations (P-857): restart by 1 Dec 23:59 or re-decide; 5 critical code-scanning alerts before restart; no new checks after; 3-5 lanes and lab ≤20% after; records cap.** Earlier: history/ lead10.
+updated: 2026-11-28 08:09 IST (clock): **Lead 10: lab review 5/10 (P-857); approved: restart by 1 Dec 23:59 or re-decide; 5 critical code-scanning alerts before restart; no new checks after; 3-5 lanes and lab ≤20% after; records cap.** Earlier: history/ lead10.
 
 ## Hand-over Lead 9 → Lead 10, 00:21 IST 28 Nov (reason: Lead 9 at 448k context, past 200k beyond its start read, P-446; no subagent running)
 **Do first:** create your check FIRST (cron 3,13,23,33,43,53, prompt exactly `run lead-watch; read STATE Start here`), CronDelete your gap check, send Lead 9 your CronList, rename "Lead 10 · 28 Nov <IST>", invoke `lead`, check `current_lead:` names you, re-arm the watch (Monitor `bash /tmp/claude-501/lane-watch.sh`, allowed_domains api.github.com, github.com). **Records on `lead/2026-11-27-lead9`** (lead5 merged as #3959), written from a scratch clone: the main copy's tools are kept at main's versions by the OS-11 hook, so lead branches cannot fast-forward there (never reset it). Every report starts with `python3 product/tools/lab-progress.py`. Previous block: `history/STATE-2026-11-28-0020-lead9-handover-old-block.md`.
