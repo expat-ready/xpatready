@@ -3,7 +3,7 @@ const path = require("node:path"); const { chromium } = require(process.cwd()+"/
 const OUT = path.join(process.cwd(), "..", "..", "product", "scout", "reports", "2026-10-25-firm-admin-day-one");
 const BASE = "http://localhost:4480";
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions()); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   const shot = (n) => p.screenshot({ path: `${OUT}/w2-${n}.png`, fullPage: true });
   // find the combination
   const list = await fetch(`${BASE}/api/combinations`, { headers: { "x-actor": "user-A" } }).then(r => r.json()).catch(() => null);

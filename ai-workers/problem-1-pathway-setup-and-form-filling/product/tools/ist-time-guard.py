@@ -135,9 +135,9 @@ def main():
     bad = [(t, g) for new, old in pairs for t, g in ahead(new, now) if t not in tokens(old)]
     if bad:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-            "permissionDecisionReason": f"P-302: times only from `TZ=Asia/Kolkata date`; it is {now:%d %b %H:%M} IST now and this edit writes "
+            "permissionDecisionReason": f"Rule P-302: times only from `TZ=Asia/Kolkata date`; it is {now:%d %b %H:%M} IST now and this edit writes "
             + ", ".join(f"'{t}' ({int(g.total_seconds() // 60)} min ahead)" for t, g in bad[:4])
-            + ". Run TZ=Asia/Kolkata date and write that time; a planned time says so (due, by, next, target …)."}}))
+            + ". Fix: run TZ=Asia/Kolkata date and write that time; a planned time says so (due, by, next, target …)."}}))
     return 0
 
 

@@ -53,3 +53,11 @@ A brief carries `Done when` (the test that proves it) and a stop rule (`stop aft
 without one), and the PR repeats them; the builder fixes
 every Important with a failing test first, answers each finding once (fixed in `<sha>`, or the one-line reason), and
 asks for round 2 only when all are answered.
+
+## 8. The reviewer is tested too
+When this page, the reviewer agent or skill, its tools or its model change, the change's PR runs the reviewer test set
+(our own shipped bugs, `ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/reviewer-eval.py`: pilot 2 cases, then the rest) and adds its line to
+`reviewer-test-runs.md` beside it. One 16-case run is noisy (at 3 of 16, an unchanged reviewer scores 2 or fewer about
+40% of the time), so the rate is reported, not judged: a finding on that PR is a case caught in the last run that is
+now missed and stays missed on a rerun of that case. The scorer reads free text, so each run's score is checked by hand against the
+answers before it is recorded, as the first run was.
