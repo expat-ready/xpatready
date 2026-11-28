@@ -4,8 +4,9 @@
 # summary. Nothing here fails a PR: the steps after checkout are continue-on-error, and no Mergify condition or ruleset names
 # the job. Read-only token, no secrets, package scripts off (--ignore-scripts). About 2 minutes, US$0.
 # To accept a finding into the baseline on purpose: npx eslint . --suppress-rule <rule> (or --suppress-all) in the studio
-# folder; after fixes, npx eslint . --prune-suppressions. Edit-time hook: not wired (LR-083 asks it to be timed under 2 s a
-# file first; measured 0.7-2.5 s on 28 Nov, the gate note has the numbers).
+# folder; after fixes, npx eslint . --prune-suppressions. Edit-time hook (LR-181): product/tools/edit-lint.sh lints
+# each edited studio file with eslint.edit.config.js (these rules minus the React Compiler ones, about 1 s a file); this
+# job still runs every rule. The gate note has the timings.
 name: studio-lint
 on:
   pull_request:
