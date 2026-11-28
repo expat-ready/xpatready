@@ -11,7 +11,7 @@
 // CommonJS so the .cjs checks can require it and the .ts ones import it. Test: tests/check_launch_options.ts. US$0.
 "use strict";
 const { existsSync, readFileSync } = require("node:fs");
-const { join, dirname } = require("node:path");
+const { join, dirname, resolve } = require("node:path");
 const { homedir } = require("node:os");
 
 const CHROME = "/opt/google/chrome/chrome";
@@ -27,11 +27,12 @@ function launchOptions(extra = {}, env) {
 
 // Where Playwright keeps its downloads: PLAYWRIGHT_BROWSERS_PATH ("0" = inside playwright-core), else its default cache.
 function browsersPath(env = process.env, platform = process.platform) {
+  // As Playwright 1.64 resolves it: a relative path against INIT_CWD (npm's) or the working directory.
   const p = env.PLAYWRIGHT_BROWSERS_PATH;
   if (p === "0") return join(dirname(require.resolve("playwright-core/package.json")), ".local-browsers");
-  if (p) return p;
+  if (p) return resolve(env.INIT_CWD || process.cwd(), p);
   if (platform === "darwin") return join(homedir(), "Library", "Caches", "ms-playwright");
-  if (platform === "win32") return join(env.LOCALAPPDATA || homedir(), "ms-playwright");
+  if (platform === "win32") return join(env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "ms-playwright");
   return join(env.XDG_CACHE_HOME || join(homedir(), ".cache"), "ms-playwright");
 }
 

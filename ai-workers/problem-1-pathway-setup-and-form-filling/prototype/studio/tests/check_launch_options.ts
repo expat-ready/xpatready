@@ -36,6 +36,9 @@ ok("V2: PLAYWRIGHT_BROWSERS_PATH is where it looks (a cloud image: /opt/pw-brows
   lib.browsersPath({ PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" }, "linux") === "/opt/pw-browsers");
 ok("V3: without it, Linux looks in ~/.cache/ms-playwright and the Mac in ~/Library/Caches/ms-playwright",
   lib.browsersPath({}, "linux").endsWith(join(".cache", "ms-playwright")) && lib.browsersPath({}, "darwin").endsWith(join("Library", "Caches", "ms-playwright")));
+ok("V3b: a relative PLAYWRIGHT_BROWSERS_PATH resolves against INIT_CWD, as Playwright does; Windows without LOCALAPPDATA uses ~/AppData/Local",
+  lib.browsersPath({ PLAYWRIGHT_BROWSERS_PATH: "pw", INIT_CWD: "/w" }, "linux") === join("/w", "pw")
+  && lib.browsersPath({}, "win32").endsWith(join("AppData", "Local", "ms-playwright")));
 const want = join("/b", `ffmpeg-${rev}`, "ffmpeg-linux");
 ok("V4: video is possible when that ffmpeg is there", lib.videoGap({ PLAYWRIGHT_BROWSERS_PATH: "/b" }, "linux", (p: string) => p === want) === null);
 const gap = lib.videoGap({ PLAYWRIGHT_BROWSERS_PATH: "/b" }, "linux", (p: string) => p === join("/b", "ffmpeg-1011", "ffmpeg-linux"));
@@ -51,9 +54,24 @@ ok("R3: acceptance/lib/browser.ts launches with launchOptions", /chromium\.launc
 ok("R4: no revision is linked to another in cloud-setup.sh (the chrome channel link is the only browser link)",
   !/ln -s[f]* [^\n]*chromium[-_][^\n]*chromium[-_]\d/.test(readFileSync(join(STUDIO, "..", "..", "product", "tools", "cloud-setup.sh"), "utf8")));
 
-// The sweep. Exempt: the journey fixtures (tests/journeys/fixtures/), which record.ts loads first and whose
-// chromium.launch it wraps with the same options, as it does for every journey.
-const BARE = /chromium\.launch\((\)|\{ *headless:[^,}]*\}\))/;
+// The sweep, turned round (review of #4099, Important 1): every chromium.launch( call is read with its arguments (up to the
+// call's closing parenthesis, across lines) and passes only when they name the shared options, a channel or an
+// executablePath (a caller's own exe object counts). Exempt by name: the journey fixtures (tests/journeys/fixtures/), which
+// record.ts loads first and whose launch it wraps with the same options, as it does for every journey.
+const GOOD = /launchOptions\(|channel|executablePath|\bexe\b/;
+function launchCalls(text: string): { line: number; args: string }[] {
+  const out: { line: number; args: string }[] = [];
+  for (let i = text.indexOf("chromium.launch("); i >= 0; i = text.indexOf("chromium.launch(", i + 1)) {
+    let depth = 0, k = i + "chromium.launch".length;
+    for (; k < text.length; k++) { if (text[k] === "(") depth++; else if (text[k] === ")" && --depth === 0) break; }
+    out.push({ line: text.slice(0, i).split("\n").length, args: text.slice(i + "chromium.launch(".length, k) });
+  }
+  return out;
+}
+const bareIn = (text: string) => launchCalls(text).filter((c) => !GOOD.test(c.args)).map((c) => c.line);
+ok("S0: the sweep's own examples: bare launch(), launch(opts), launch({ headless, args }) over two lines are caught; launchOptions, a channel, an executablePath and an exe spread pass",
+  JSON.stringify(bareIn("a = chromium.launch();\nb = chromium.launch(opts);\nc = chromium.launch({ headless: true,\n  args: [\"--x\"] });")) === "[1,2,3]"
+  && bareIn("chromium.launch(launchOptions({ headless: true }));\nchromium.launch({ channel: \"chrome\" });\nchromium.launch({\n  executablePath: p });\nchromium.launch({ headless: true, ...exe });").length === 0);
 const files: string[] = [];
 const walk = (d: string) => {
   for (const n of readdirSync(d)) {
@@ -64,14 +82,11 @@ const walk = (d: string) => {
   }
 };
 for (const d of ["tests", "acceptance", "tools", "evidence"]) walk(join(STUDIO, d));
-const bare = files
-  .filter((f) => !relative(STUDIO, f).startsWith(join("tests", "journeys", "fixtures")) && !f.endsWith("launch-options.cjs") && !f.endsWith("check_launch_options.ts"))
-  .flatMap((f) => readFileSync(f, "utf8").split("\n").map((l, i) => [f, i + 1, l] as const))
-  .filter(([, , l]) => BARE.test(l) && !/\.catch\(\(\) => chromium\.launch/.test(l) && !/chromium\.launch\(\)\.catch\(/.test(l))
-  .map(([f, n]) => `${relative(STUDIO, f)}:${n}`);
-ok(`S1: no bare chromium.launch() in the studio's ${files.length} script files (a fallback after a channel try is allowed)`, bare.length === 0, bare);
-const fix = "fixtures";
-ok("S2: the sweep is not empty-handed (it reads the journey fixtures it exempts)", files.some((f) => f.includes(fix)));
+const exempt = (f: string) => relative(STUDIO, f).startsWith(join("tests", "journeys", "fixtures")) || f.endsWith("launch-options.cjs") || f.endsWith("check_launch_options.ts");
+const bare = files.filter((f) => !exempt(f)).flatMap((f) => bareIn(readFileSync(f, "utf8")).map((n) => `${relative(STUDIO, f)}:${n}`));
+ok(`S1: every chromium.launch( in the studio's ${files.length} script files names the shared options, a channel or an executablePath`, bare.length === 0, bare);
+const fixtures = files.filter((f) => relative(STUDIO, f).startsWith(join("tests", "journeys", "fixtures")));
+ok("S2: the only exempt launches are the journey fixtures record.ts wraps (and the sweep does see them)", fixtures.length > 0 && fixtures.flatMap((f) => bareIn(readFileSync(f, "utf8"))).length >= 3);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
