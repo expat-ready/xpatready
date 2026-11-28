@@ -90,8 +90,13 @@ def findings(text):
     numbered item, "**1."/"**I1.", or a line that opens with a severity tag). A top-level bullet stays inside a finding
     whose title it follows; under a heading, or where no title opened the chunk, each top-level bullet is a finding of
     its own. (The count line "1 Important, 2 Nit" opens no finding: a tag counts only at the start of a line.)"""
-    chunks, cur, titled = [], [], False
+    chunks, cur, titled, fence = [], [], False, False
     for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fence = not fence
+        if fence or line.lstrip().startswith("```"):   # inside a code block nothing starts a finding ("# comment")
+            cur.append(line)
+            continue
         new = bool(START.match(line)) or (bool(BULLET.match(line)) and not titled)
         if new and cur:
             chunks.append(cur)
@@ -131,14 +136,24 @@ def caught(c, text):
     if v[-1].lower() == "approve":
         return False, "approved"
     on_file = False
-    section = ""   # set by a severity heading ("## Important", "## Nits"), cleared by any other heading
+    # A bare severity heading ("## Important", "## Nits") sets the section; another heading at its level or higher
+    # ("## Checked and fine") clears it; a deeper one ("### Off by one") keeps it. A heading that says more than a bare
+    # severity word is a finding title and is judged with its body ("### 1. Important: src/a.ts:3 ...").
+    section, level = "", 0
     for lines in findings(text):
-        if lines[0].lstrip().startswith("#"):
+        m = re.match(r"\s*(#+)\s*(.*)", lines[0])
+        if m and not lines[0].lstrip().startswith("```"):
+            depth, title = len(m.group(1)), m.group(2).strip()
             head = SEV.match(lines[0])
-            section = ("nit" if head.group(1).lower().startswith("nit") else head.group(1).lower()) if head else ""
-            lines = [l for l in lines[1:] if l.strip()]   # text right under the heading is judged as one finding
-            if not lines:
-                continue
+            if head and re.fullmatch(r"\W*(Important|Nits?|Nitpicks?|Pre-existing)\W*", title, re.I):
+                section, level = ("nit" if head.group(1).lower().startswith("nit") else head.group(1).lower()), depth
+                lines = [l for l in lines[1:] if l.strip()]   # text right under the heading is judged as one finding
+                if not lines:
+                    continue
+            else:
+                if not level or depth <= level:
+                    section, level = "", 0
+                lines = [title] + [l for l in lines[1:] if l.strip()]
         first, body = lines[0], "\n".join(lines)
         if IS_OTHER.match(first):   # the tag is read at the start of the line, never a mention later in it
             tagged = False

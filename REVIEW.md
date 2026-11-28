@@ -59,4 +59,5 @@ When this page, the reviewer agent or skill, its tools or its model change, the 
 (our own shipped bugs, `ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/reviewer-eval.py`: pilot 2 cases, then the rest) and adds its line to
 `reviewer-test-runs.md` beside it. One 16-case run is noisy (at 3 of 16, an unchanged reviewer scores 2 or fewer about
 40% of the time), so the rate is reported, not judged: a finding on that PR is a case caught in the last run that is
-now missed and stays missed on a rerun of that case.
+now missed and stays missed on a rerun of that case. The scorer reads free text, so each run's score is checked by hand against the
+answers before it is recorded, as the first run was.

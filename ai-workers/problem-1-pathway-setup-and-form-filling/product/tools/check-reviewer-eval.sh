@@ -61,7 +61,7 @@ grep -q '^RT-08 #108 CAUGHT' "$D/out"; ok "one finding laid out as Where/What su
 grep -q '^RT-09 #109 MISSED' "$D/out"; ok "a file of the same name on another path (other/a.ts) is not the bug file" $?
 grep -q '^RT-10 #110 MISSED' "$D/out"; ok "a note under '## Checked and fine' after '## Important' is not an Important finding" $?
 # Round-3 review of #4078: layouts the whole-finding split must still read right.
-mk 15 "$D/s15.json"; python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));[c.__setitem__("match","one too far") for c in d];json.dump(d,open(sys.argv[1],"w"))' "$D/s15.json"
+mk 19 "$D/s15.json"; python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));[c.__setitem__("match","one too far") for c in d];json.dump(d,open(sys.argv[1],"w"))' "$D/s15.json"
 B2="$D/answers2"; mkdir -p "$B2"
 printf '1 Important, 1 Nit\n\n**Nit (naming):** `x.ts:1` naming.\n\n**Important (off-by-one):** `src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-11.md"
 printf '1 Important\n\n## Important\n\n- `src/a.ts:3` reads well.\n- `lib/bug.ts:9` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-12.md"
@@ -74,5 +74,15 @@ grep -q '^RT-12 #112 MISSED' "$D/out"; ok "two untagged bullets under '## Import
 grep -q '^RT-13 #113 CAUGHT' "$D/out"; ok "a ../ prefix still names the file: caught" $?
 grep -q '^RT-14 #114 MISSED' "$D/out"; ok "'Important' mentioned later in a Pre-existing line is not its tag" $?
 grep -q '^RT-15 #115 CAUGHT' "$D/out"; ok "a finding right after the count line is not dropped with it: caught" $?
+# Code Review on 55937258a: headings and code fences.
+printf '1 Important\n\n## Important\n\n### Off by one\n\n`src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-16.md"
+printf '2 Important\n\n## Important\n\n**1. Wrong label.** `x.ts:1`.\n\n```bash\n# reproduce\nrun it\n```\n\n**2. Off by one.** `src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-17.md"
+printf '### 1. Important: `src/a.ts:3` loops one too far\n\nThe fix: stop one earlier.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-18.md"
+printf '### Important: `src/a.ts:3`\n\nIt loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-19.md"
+e score "$B2" --set "$D/s15.json" >/dev/null
+grep -q '^RT-16 #116 CAUGHT' "$D/out"; ok "a deeper sub-heading under '## Important' keeps the section: caught" $?
+grep -q '^RT-17 #117 CAUGHT' "$D/out"; ok "a '# comment' inside a code block is no heading: the section holds, caught" $?
+grep -q '^RT-18 #118 CAUGHT' "$D/out"; ok "a finding titled as a heading ('### 1. Important: file ...') is judged with its heading: caught" $?
+grep -q '^RT-19 #119 CAUGHT' "$D/out"; ok "a heading 'Important: file' with the bug words in its body: caught" $?
 echo "check-reviewer-eval: $pass passed, $fail failed"
 [ "$fail" = 0 ]

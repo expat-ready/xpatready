@@ -25,7 +25,7 @@ is about ten times larger. Plan subagents, no paid API call, live AI off.
 * Answers: `reviewer-test-runs/2026-11-28/RT-*.md`.
 * Scorer revised 28 Nov 17:18 IST after Claude Code Review on #4078 (1 Important, 3 Nit): it now judges whole findings
   (sub-bullets stay with their finding), matches the bug file by path (a same-named file elsewhere does not count),
-  and resets the severity at every heading; after the round-3 review it also keeps a paragraph finding apart from the one before it, splits untagged bullets under a heading, reads ../, a/, b/ and blob links as the path, and reads a tag only at the start of a line. Re-scored on these 16 answers: caught 3 of 16 (RT-03, RT-07, RT-08), unchanged.
+  and resets the severity at every heading; after the round-3 review it also keeps a paragraph finding apart from the one before it, splits untagged bullets under a heading, reads ../, a/, b/ and blob links as the path, reads a tag only at the start of a line; after Code Review on 55937258a it skips code blocks, keeps the section under a deeper sub-heading and judges a heading that is itself a finding title. Re-scored on these 16 answers: caught 3 of 16 (RT-03, RT-07, RT-08), unchanged.
 
 ```
 RT-01 #3924 MISSED  Changes, Important on check-docs.sh but for another problem (match: syntax|empty .?then|if\b.*\bthen|mutant|row 6)
