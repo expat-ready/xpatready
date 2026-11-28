@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Test for reviewer-eval.py (LR-136): the set's own check, the blind brief and the scoring rule. A throwaway git
+# repository and fixture answers: no network, no model, US$0.   bash product/tools/check-reviewer-eval.sh
+set -u
+cd "$(dirname "$0")"
+D="$(mktemp -d)"; trap 'rm -rf "$D"' EXIT
+pass=0; fail=0
+ok() { if [ "$2" = 0 ]; then pass=$((pass + 1)); echo "PASS  $1"; else fail=$((fail + 1)); echo "FAIL  $1"; fi; }
+R="$D/repo"; git init -q "$R"; git -C "$R" -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+B=$(git -C "$R" rev-parse HEAD); mkdir -p "$R/src"; echo x > "$R/src/a.ts"; git -C "$R" add -A
+git -C "$R" -c user.email=t@t -c user.name=t commit -q -m bug; M=$(git -C "$R" rev-parse HEAD)
+mk() { python3 - "$1" "$2" "$B" "$M" "${3:-src/a.ts}" <<'PY'
+import json, sys
+n, out, b, m, f = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+json.dump([{"id": f"RT-{i:02d}", "culprit_pr": 100 + i, "culprit_merge_sha": m, "base_sha": b, "files": [f],
+            "bug": "the secret bug words", "class": "off-by-one", "found_by": "fix #1"} for i in range(1, n + 1)], open(out, "w"))
+PY
+}
+e() { python3 -I ./reviewer-eval.py "$@" > "$D/out" 2>&1; echo $?; }
+mk 10 "$D/set.json"
+[ "$(e check --set "$D/set.json" --repo "$R")" = 0 ]; ok "10 complete cases, shas present, bug file in the diff: check passes" $?
+mk 9 "$D/s9.json"; [ "$(e check --set "$D/s9.json" --repo "$R")" = 1 ] && grep -q '9 cases' "$D/out"; ok "9 cases: refused (10-20)" $?
+mk 21 "$D/s21.json"; [ "$(e check --set "$D/s21.json" --repo "$R")" = 1 ]; ok "21 cases: refused" $?
+mk 10 "$D/sf.json" src/other.ts; [ "$(e check --set "$D/sf.json" --repo "$R")" = 1 ] && grep -q 'not in its diff' "$D/out"; ok "a bug file outside the diff: refused" $?
+python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));d[0]["base_sha"]="f"*40;json.dump(d,open(sys.argv[1],"w"))' "$D/sf.json"
+mk 10 "$D/ss.json"; python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));d[0]["base_sha"]="f"*40;json.dump(d,open(sys.argv[1],"w"))' "$D/ss.json"
+[ "$(e check --set "$D/ss.json" --repo "$R")" = 1 ] && grep -q 'not in this clone' "$D/out"; ok "a sha not in the clone: refused" $?
+python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));del d[0]["bug"];json.dump(d,open(sys.argv[1],"w"))' "$D/set.json"
+[ "$(e check --set "$D/set.json" --repo "$R")" = 1 ] && grep -q 'RT-01: missing bug' "$D/out"; ok "a case without its bug: refused" $?
+mk 10 "$D/set.json"
+[ "$(e brief RT-02 --set "$D/set.json")" = 0 ] && grep -q "git diff $B $M" "$D/out" && ! grep -q 'secret bug words\|off-by-one\|fix #1' "$D/out"; ok "the brief names the diff and never the bug, class or fix" $?
+A="$D/answers"; mkdir -p "$A"
+printf '1 Important\n\n1. Important (off-by-one). src/a.ts:3 loops one too far. Fix: <.\n\nTokens: 1,200\nReviewer: Changes %s\n' "$M" > "$A/RT-01.md"
+printf '0 Important\n\nReviewer: Approve %s\n' "$M" > "$A/RT-02.md"
+printf '1 Important\n\n1. Important: web/x.tsx:9 wrong label.\n2. Nit: a.ts naming.\n\nReviewer: Changes %s\n' "$M" > "$A/RT-03.md"
+printf 'no verdict here, a.ts Important\n' > "$A/RT-04.md"
+printf 'Block: approach wrong.\n\n- Important: a.ts:1 never read.\n\nTokens: 800\nReviewer: Block %s\n' "$M" > "$A/RT-05.md"
+[ "$(e score "$A" --set "$D/set.json")" = 0 ]; ok "score runs" $?
+grep -q '^RT-01 #101 CAUGHT' "$D/out"; ok "Changes with an Important finding on the bug file: caught" $?
+grep -q '^RT-02 #102 MISSED  approved' "$D/out"; ok "Approve: missed" $?
+grep -q '^RT-03 #103 MISSED' "$D/out"; ok "Important elsewhere, the bug file only in a Nit: missed" $?
+grep -q '^RT-04 #104 MISSED  no verdict line' "$D/out"; ok "no verdict line: missed" $?
+grep -q '^RT-05 #105 CAUGHT' "$D/out"; ok "Block with an Important on the bug file name: caught" $?
+grep -q '^reviewer-eval: caught 2 of 5 (40%), tokens 2000 (5 cases not run)$' "$D/out"; ok "summary: caught, rate, tokens, cases not run" $?
+echo "check-reviewer-eval: $pass passed, $fail failed"
+[ "$fail" = 0 ]
