@@ -24,7 +24,7 @@ const ok = (name, cond, detail) => { if (cond) { pass++; console.log(`PASS  ${na
   const d = JSON.parse(String(s.stdout).trim().split("\n").pop() || "{}");
   ok("QA-377 setup: round 2 sent for the principal's filing (setup_c83_walk.ts)", !!d.caseId && !!d.r2 && !!d.fP, { exit: s.status, err: String(s.stderr).slice(-300) });
   if (!d.r2) process.exit(1);
-  const b = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await p.goto(`${BASE}/`); await p.evaluate((a) => localStorage.setItem("xr-actor", a), d.rep);
   await p.goto(`${BASE}/cases/${d.caseId}/representative-review/${d.r2}?filing=${d.fP}`);

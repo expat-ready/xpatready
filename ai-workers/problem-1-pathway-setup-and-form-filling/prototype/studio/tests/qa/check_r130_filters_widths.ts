@@ -18,6 +18,7 @@ import { platformAuditWorkspaceId } from "../../api/src/platform/audit/audit-eve
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { EVERYONE_SEES_ALL, writeSetting } from "../../api/src/platform/settings.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [NAME, PORT] = [process.argv[2] ?? "qa_r130", Number(process.argv[3] ?? 4473)];
@@ -65,7 +66,7 @@ ok("R1.30 setup: three prospects, one engaged 20 days ago", sql(`select count(*)
 const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
 
 // ------------------------------------------------------------------------------------------------ the browser
-const browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: process.env.HEADED !== "1" }));
 const pageAt = async (width: number) => {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   await ctx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tok);

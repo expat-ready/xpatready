@@ -25,7 +25,7 @@ const api = async (method, url, body, actor = "user-O") => { const r = await fet
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const ctxFor = async (actor) => { const c = await browser.newContext({ viewport: { width: W, height: 900 }, deviceScaleFactor: 1, timezoneId: "America/Toronto" }); await c.addInitScript((a) => { localStorage.setItem("xr-actor", a); }, actor); return c; };
   const shot = async (p, name) => p.screenshot({ path: path.join(SHOTS, `${name}-${TAG}.png`), fullPage: false });

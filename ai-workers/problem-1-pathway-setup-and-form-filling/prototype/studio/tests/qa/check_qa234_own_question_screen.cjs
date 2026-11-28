@@ -11,7 +11,7 @@ const port = process.argv[2]; if (!port || port === "4400") { console.log("usage
 const base = `http://localhost:${port}`;
 let failed = 0; const ok = (n, c, d) => { if (!c) failed++; console.log(`${c ? "PASS" : "FAIL"} ${n}${!c && d !== undefined ? `: ${JSON.stringify(d).slice(0, 400)}` : ""}`); };
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false })?.isFile() ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } }); await ctx.addInitScript(() => localStorage.setItem("xr-actor", "user-A"));
   const p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(String(e))); p.setDefaultTimeout(20000);
   await p.goto(base + "/"); await p.waitForLoadState("networkidle");

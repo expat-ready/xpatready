@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { chromium, type Page } from "playwright";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4477), DBNAME = process.argv[3] ?? "xr_studio_qar16w", BASE = `http://localhost:${PORT}`;
 const { ok, summary } = recorder();
@@ -27,7 +28,7 @@ const { sql: rawSql } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
 const emailOf = (actor: string) => sql(`select email from platform_staff where actor_id = '${actor}'`);
 
-const browser = await chromium.launch(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {});
+const browser = await chromium.launch(launchLib.chromiumOptions());
 const signIn = async (email: string, path: string) => {
   const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await page.goto(`${BASE}${path}`);

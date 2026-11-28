@@ -22,8 +22,7 @@ let failed = 0; const ok = (name, pass, detail) => { if (!pass) failed++; consol
     if (l.status >= 300) { console.log("STOP the configured checkpoint did not load", l.status); process.exit(2); }
   }
   const row = await sp();
-  const exe = fs.existsSync("/opt/pw-browsers/chromium-1243/chrome-linux64/chrome") ? { executablePath: "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome" } : {};
-  const b = await chromium.launch({ headless: true, ...exe });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));   // LR-182: no pinned revision
   const walk = async (tag, extra) => {
     const ref = `QA447${tag}-${Date.now() % 100000}`;
     const made = await call("POST", "/runtime/cases", "user-R", { combinationId: row.combination_id, reference: ref, clientActor: "user-P", principal: { displayName: `Sample Student ${tag}` }, idempotencyKey: ref, ...extra });

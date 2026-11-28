@@ -26,7 +26,7 @@ let failed = 0; const ok = (name, pass, detail) => { if (!pass) failed++; consol
   const forms = (await get(`/api/runtime/cases/${fam.id}/forms`, "user-O")).forms;
   const gone = forms.filter((f) => !f.applies);
   ok("QA-391 setup: the family case has conditional forms that no longer apply (IMM 5475, IRM 0002)", gone.length > 0, forms.map((f) => `${f.form}|${f.person}|${f.applies}`));
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false })?.isFile() ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {}) }); const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true })); const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
   await ctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-O"); } catch {} });
   const p = await ctx.newPage(); await p.goto(`${base}/cases/${fam.id}`); await p.waitForLoadState("networkidle"); await p.waitForTimeout(1500);
   const rows = await p.locator("li[data-row-form]").evaluateAll((els) => els.map((e) => ({ key: e.getAttribute("data-row-form"), text: e.innerText.replace(/\s+/g, " ") })));

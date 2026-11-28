@@ -56,7 +56,7 @@ async function clientAnswersAll(id, dobs) {
   ok("setup: the finished story is loaded (a recorded family case and a thin case)", !!thin && !!story && sql("select count(*) from filing_record") !== "0", cases.map((c) => c.reference));
   const firm = (await call("GET", "/runtime/firm", "user-O")).body;
   const rep = (firm?.users ?? []).find((u) => (u.duties ?? []).includes("represent"))?.id ?? "user-R";
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: W, height: 1000 }, reducedMotion: "reduce" });
   await ctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-O"); } catch { /* ignore */ } });
   const p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(e.message));

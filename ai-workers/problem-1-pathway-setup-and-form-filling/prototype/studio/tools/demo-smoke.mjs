@@ -14,6 +14,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { createRequire } from "node:module";
 
 const arg = (name, dflt) => { const i = process.argv.indexOf(name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt; };
 const BASE = arg("--base", "http://localhost:4400").replace(/\/$/, ""), SHOTS = arg("--shots", ""), WAIT = Number(arg("--timeout-ms", "20000"));
@@ -94,9 +95,8 @@ async function walk() {
   const story = rows.find((c) => c.reference === STORY_REF) ?? null;
   const theCase = story ?? [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] ?? null;
 
-  const executablePath = process.platform !== "darwin" && existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined;
-  let browser;
-  try { browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : executablePath ? { executablePath } : {}) }); }
+  let browser;   // LR-182: the studio's shared rule for the older checks (acceptance/lib/launch-options.cjs chromiumOptions)
+  try { browser = await chromium.launch(createRequire(import.meta.url)("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true })); }
   catch (e) { const err = new Error(`no browser could start: ${String(e?.message ?? e).split("\n")[0]}`); err.cannotRun = true; throw err; }
   try {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();

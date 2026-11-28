@@ -21,6 +21,7 @@ import { chromium, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 
 const [NAME, PORT] = [process.argv[2] ?? "s17", Number(process.argv[3] ?? 4475)];
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
@@ -52,7 +53,7 @@ const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST
 const tok = ((await signIn.json()) as { token?: string }).token;
 if (!tok) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
 sql(`update fo_retainer_template set active = false where firm_id = '${firmId}'`);
-const browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: process.env.HEADED !== "1" }));
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce", acceptDownloads: true });
 await ctx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tok);
 const p: Page = await ctx.newPage();
