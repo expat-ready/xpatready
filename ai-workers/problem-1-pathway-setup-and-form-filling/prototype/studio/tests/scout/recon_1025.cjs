@@ -4,7 +4,7 @@ const BASE = "http://localhost:4480";
 const OUT = path.join(__dirname, "..", "..", "..", "..", "product", "scout", "reports", "2026-10-25-firm-admin-day-one");
 const pages = [["home","/"],["new","/new"],["library-fields","/library/fields"],["library-forms","/library/forms"],["release","/release"],["ai","/ai"],["activity","/activity"],["releases","/releases"]];
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions()); const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   for (const [name, url] of pages) {
     await page.goto(BASE + url, { waitUntil: "networkidle" }).catch(() => {});
     await page.waitForTimeout(600);

@@ -50,3 +50,4 @@ The Lead reads these for the 27 Nov 12:00 IST decision: minutes per commit, red 
 * :4400, the demo database, another lane's port, or a copy left running.
 * Live AI, paid runs, or editing a pack, a fixture or a check to make it pass.
 * Skipping silently: a commit with no `Verify:` line on a trial lane is a gap the Lead asks about.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

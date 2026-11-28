@@ -15,6 +15,12 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
 {
   check 100 10 "$ROOT"/.claude/skills/*/SKILL.md "$ROOT"/.claude/agents/*.md
   check 60 0 "$ROOT/CLAUDE.md" "$ROOT/AGENTS.md"
+  # LR-152: a rule file under .claude/rules/ loads only for its paths (never at every start), each pattern still matches a
+  # file, and a register row copied into conventions/ is word for word in RULES.md; the check proves itself first.
+  if [ -f "$PH/tools/path-rules.py" ]; then
+    python3 -I "$PH/tools/path-rules.py" --self-test >/dev/null 2>&1 || echo "PATH RULES: path-rules.py --self-test fails: the check itself is broken"
+    python3 -I "$PH/tools/path-rules.py" "$ROOT"
+  fi
   # STATE.md (or else the newest origin/lead/* branch's) names the current Lead on exactly one line, so every lane can
   # find whom to report to (founder, 6 Nov ~03:00 IST: "a hard rule and it never messes up"; tools/current-lead.sh reads it; test: check-current-lead.sh).
   # Since PS-1b the line lives in CURRENT-LEAD.md (public: lanes read it when STATE.md is private); when that file is
@@ -71,7 +77,7 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         # here). When no capability row does and every such backlog row is tooling, qa, records or the Lead's (its area
         # cell), nothing a person can see carries it: it changes the workflow too (P-618, P-619, P-631 passed this way).
         grep -qE "^\| C[0-9.]+ .*\b$id\b" "$PH/qa/CAPABILITIES.md" 2>/dev/null && continue
-        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md 2>/dev/null | cut -d'|' -f3)
+        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md "$PH"/history/BACKLOG-done-*.md 2>/dev/null | cut -d'|' -f3)   # LR-091: done rows too
         [ -n "$areas" ] || continue
         printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
       esac
@@ -205,6 +211,12 @@ PY
       echo "MISSING LINK in ${f#$ROOT/}: $ref"
     done
   done
+  # LR-119: the files GitHub, Mergify and Claude read only in this repository stay in it (private split step 5); the
+  # check proves itself on a planted break first, so a broken check cannot pass quietly.
+  if [ -f "$PH/tools/stays-public.sh" ]; then
+    bash "$PH/tools/stays-public.sh" --self-test >/dev/null 2>&1 || echo "STAYS PUBLIC: stays-public.sh --self-test fails: the check itself is broken"
+    bash "$PH/tools/stays-public.sh" "$ROOT"
+  fi
 } | sort -u > "$out"
 # Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
 # HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
@@ -250,5 +262,14 @@ if [ -f "$PH/LEAD-START.md" ]; then
     echo "START READ: start-read.py failed (exit $src): $(printf '%s' "$sr" | tail -1 | cut -c1-160)" >> "$out"; sr=$(grep -v '^START READ: ' <<<"$sr" | grep '^start read: ' || true); fi
   printf '%s\n' "$sr" | grep -v '^START READ: ' | grep . || true; printf '%s\n' "$sr" | grep '^START READ: ' >> "$out" || true
 elif [ -f "$ROOT/.claude/skills/lead/SKILL.md" ]; then echo "START READ: LEAD-START.md is missing: the Lead's start read is unmeasured (OS-16, P-615)" >> "$out"
+fi
+# LR-090 (SF:A1): every ID code an instruction file uses has its prefix's plain name in product/GLOSSARY.md. No glossary
+# and no next skill (a throwaway test copy): nothing; the skill without the page fails. Test: check-glossary.sh.
+if [ -f "$PH/GLOSSARY.md" ]; then
+  gl=$(python3 -I "$PH/tools/check-glossary.py" --product "$PH" --root "$ROOT" 2>&1); glc=$?
+  if [ "$glc" -gt 1 ] || { [ "$glc" = 1 ] && ! grep -q '^GLOSSARY: ' <<<"$gl"; }; then
+    echo "GLOSSARY: check-glossary.py failed (exit $glc): $(printf '%s' "$gl" | tail -1 | cut -c1-160)" >> "$out"
+  else printf '%s\n' "$gl" | grep '^GLOSSARY: ' >> "$out" || true; fi
+elif [ -f "$ROOT/.claude/skills/next/SKILL.md" ]; then echo "GLOSSARY: product/GLOSSARY.md is missing: ID codes have no plain names (LR-090)" >> "$out"
 fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0

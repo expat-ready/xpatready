@@ -11,7 +11,7 @@ let pass = 0, fail = 0;
 const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions()); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   // any existing combination (the walk creates "Sample Federal Skilled Worker" on a fresh scout copy)
   const combos = await fetch(`${BASE}/api/catalog/combinations`, { headers: { "x-actor": "user-A" } }).then((r) => r.json()).catch(() => null)
     .then((c) => Array.isArray(c) ? c : c?.combinations ?? c?.items ?? null);

@@ -74,7 +74,7 @@ const TECH = /\b(P|D)-\d+\b|nodeKey|undefined|null\b|\[object/;
   const tr2 = r.body.created?.find((c) => c.level === "pathway")?.key, prog2 = r.body.created?.find((c) => c.level === "program")?.key;
   await api("/structure/path", { method: "POST", data: { pathwayType: "INDIVIDUAL", pathway: { key: tr2 }, program: { key: prog2 }, category: { label: "Employer work permit (qa)" }, subCategory: null } });
   const NAME = { 1440: owpLabel, 1024: "Employer work permit (qa)" };
-  const b = await chromium.launch();
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions());
   for (const w of [1440, 1024]) {
     const ctx = await b.newContext({ viewport: { width: w, height: 900 }, extraHTTPHeaders: { "x-actor": "user-A" } });
     await ctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-A"); } catch {} });
