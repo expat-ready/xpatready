@@ -21,7 +21,7 @@ Rows A242-A418 word for word in `history/STATE-2026-11-27-0915-lead1-founder-ask
 | A441-A443 | 27 Nov 15:3x-16:2x | public/private split; tech-lead Write grant; factory org templates | A442 done; A441 in force; A443 decided, ships in #3913. Word for word: `history/STATE-2026-11-27-1840-lead8-asks-A441-A443-rows.md` |
 | A444-A446 | 27 Nov 18:0x-19:1x | why slow; replan; restart line by 80% impact, 7 nights | Decided: P-852, P-853, P-854 (nightlies on demand ~3/day from #3918; qa routine repository set). Word for word: `history/STATE-2026-11-27-2040-lead8-asks-A444-A446-rows.md` |
 | A447 | 27 Nov 20:4x | audit + one diagram of the engineering machinery | Done; page refreshed 28 Nov (A450): https://claude.ai/artifact/NNq7CTgMa488EBg8ZpzSnG; row in `history/STATE-2026-11-28-0745-lead10-A447-row.md` |
-| A448 | 27 Nov 21:2x | quick fix, retest, solid, fast | Answered 21:4x; carried into A449. Word for word: `history/STATE-2026-11-28-0005-lead9-27nov-entries-and-A448.md` |
+| A448 | 27 Nov 21:2x | quick fix, retest, solid, fast | Carried into A449; row in `history/STATE-2026-11-28-0815-lead10-A448-row.md` |
 | A452 | 28 Nov 07:5x-08:0x | review the lab against industry practice, worth it?, rate it; then "start implementing, you have my approval" | Decided P-857; implementing |
 | A451 | 28 Nov 07:3x | lanes wake and start themselves, register on merge, open-PR cap; how long; how we know the lab is ready | Decided P-856; routine and lane A11 started; word for word in `history/STATE-2026-11-28-0745-lead10-A451-row.md` |
 | A450 | 28 Nov 07:1x | detailed report, every lane checked, factory picture, recovery plan | Done 08:0x: word for word in `history/STATE-2026-11-28-0800-lead10-A450-row.md` |
