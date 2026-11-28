@@ -60,5 +60,19 @@ e score "$A" --set "$D/set.json" >/dev/null
 grep -q '^RT-08 #108 CAUGHT' "$D/out"; ok "one finding laid out as Where/What sub-bullets is judged whole: caught" $?
 grep -q '^RT-09 #109 MISSED' "$D/out"; ok "a file of the same name on another path (other/a.ts) is not the bug file" $?
 grep -q '^RT-10 #110 MISSED' "$D/out"; ok "a note under '## Checked and fine' after '## Important' is not an Important finding" $?
+# Round-3 review of #4078: layouts the whole-finding split must still read right.
+mk 15 "$D/s15.json"; python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));[c.__setitem__("match","one too far") for c in d];json.dump(d,open(sys.argv[1],"w"))' "$D/s15.json"
+B2="$D/answers2"; mkdir -p "$B2"
+printf '1 Important, 1 Nit\n\n**Nit (naming):** `x.ts:1` naming.\n\n**Important (off-by-one):** `src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-11.md"
+printf '1 Important\n\n## Important\n\n- `src/a.ts:3` reads well.\n- `lib/bug.ts:9` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-12.md"
+printf '1 Important\n\n1. Important: `../src/a.ts:3` loops one too far (also https://github.com/o/r/blob/0123abcd/src/a.ts#L3).\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-13.md"
+printf '1 Important\n\n## Pre-existing\n\n1. The root of Important 1: `src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-14.md"
+printf '# Review\n1 Important, 0 Nit\nImportant: `src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$B2/RT-15.md"
+e score "$B2" --set "$D/s15.json" >/dev/null
+grep -q '^RT-11 #111 CAUGHT' "$D/out"; ok "a paragraph finding after a Nit paragraph keeps its own Important tag: caught" $?
+grep -q '^RT-12 #112 MISSED' "$D/out"; ok "two untagged bullets under '## Important' are two findings: the file of one and the words of the other are no catch" $?
+grep -q '^RT-13 #113 CAUGHT' "$D/out"; ok "a ../ prefix still names the file: caught" $?
+grep -q '^RT-14 #114 MISSED' "$D/out"; ok "'Important' mentioned later in a Pre-existing line is not its tag" $?
+grep -q '^RT-15 #115 CAUGHT' "$D/out"; ok "a finding right after the count line is not dropped with it: caught" $?
 echo "check-reviewer-eval: $pass passed, $fail failed"
 [ "$fail" = 0 ]

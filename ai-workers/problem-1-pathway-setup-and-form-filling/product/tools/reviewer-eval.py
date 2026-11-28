@@ -76,26 +76,42 @@ def brief(c, review="REVIEW.md"):
 # A finding starts at a heading or a top-level finding line: a numbered item ("1." or "**1." or "**I1."), or a bullet
 # that opens with a severity tag. Sub-bullets and blank lines stay in the finding, so its file, tag and description
 # are judged together (Code Review on #4078: a split at every bullet scored RT-09's layout as missed).
-START = re.compile(r"^(#+\s|\*\*[A-Za-z]?\d+[.)]|\d+[.)]\s|[-*]\s+\**(?:Important|Nit|Pre-existing)\b)")
+TAG = r"\W{0,4}(?:\d+[.)]\s*)?\W{0,4}"   # what may open a line before its tag: "1. ", "**", "- **", "_"
+START = re.compile(rf"^(#+\s|\*\*[A-Za-z]?\d+[.)]|\d+[.)]\s|{TAG}(?:Important|Nits?|Pre-existing)\b)")
+TITLE = re.compile(rf"^(\*\*[A-Za-z]?\d+[.)]|\d+[.)]\s|{TAG}(?:Important|Nits?|Pre-existing)\b)")
+BULLET = re.compile(r"^[-*]\s")
 SEV = re.compile(r"^\s*#+\s*(Important|Nits?|Nitpicks?|Pre-existing)\b", re.I)
-COUNT = re.compile(r"^\W*\d+ Important\b")   # the summary's count line is not a finding
+IS_IMPORTANT = re.compile(rf"^{TAG}Important\b")
+IS_OTHER = re.compile(rf"^{TAG}(?:Nits?|Pre-existing)\b")
 
 
 def findings(text):
-    chunks, cur = [], []
+    """Whole findings (Code Review on #4078, round-3 review): a finding starts at a heading or a finding title (a
+    numbered item, "**1."/"**I1.", or a line that opens with a severity tag). A top-level bullet stays inside a finding
+    whose title it follows; under a heading, or where no title opened the chunk, each top-level bullet is a finding of
+    its own. (The count line "1 Important, 2 Nit" opens no finding: a tag counts only at the start of a line.)"""
+    chunks, cur, titled = [], [], False
     for line in text.splitlines():
-        if START.match(line) and cur:
+        new = bool(START.match(line)) or (bool(BULLET.match(line)) and not titled)
+        if new and cur:
             chunks.append(cur)
             cur = []
+        if new or not cur:
+            titled = bool(TITLE.match(line)) and not line.lstrip().startswith("#")   # a heading is no title
         cur.append(line)
     if cur:
         chunks.append(cur)
     return chunks
 
 
+PREFIX = re.compile(r"\S*/blob/[0-9a-f]{7,40}/|(?<![\w.])(?:\.\.?/)+|(?<![\w./-])[ab]/(?=\S)")
+
+
 def names_file(path, text):
     """The finding names this file: its repo path or a suffix of it at a "/" boundary (the bare file name included),
-    never the tail of a different path (platform/MODULE.md is not front-office/MODULE.md)."""
+    never the tail of a different path (platform/MODULE.md is not front-office/MODULE.md). ./, ../, a/, b/ and a
+    GitHub .../blob/<sha>/ link before a path are read as the path itself."""
+    text = PREFIX.sub(" ", text)
     parts = path.split("/")
     for i in range(len(parts)):
         suf = "/".join(parts[i:])
@@ -124,12 +140,10 @@ def caught(c, text):
             if not lines:
                 continue
         first, body = lines[0], "\n".join(lines)
-        if COUNT.match(first):
-            continue
-        if re.search(r"\b(Nit|Nits|Pre-existing)\b", first):
+        if IS_OTHER.match(first):   # the tag is read at the start of the line, never a mention later in it
             tagged = False
         else:
-            tagged = bool(re.search(r"\bImportant\b", first)) or section == "important"
+            tagged = bool(IS_IMPORTANT.match(first)) or section == "important"
         if tagged and any(names_file(f, body) for f in c["files"]):
             on_file = True
             if not c.get("match") or re.search(c["match"], body, re.I):
