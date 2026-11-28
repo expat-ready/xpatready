@@ -73,6 +73,22 @@ a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <tr><td><b>Measures</b>: 7-day baseline, DORA five, tokens per proven capability</td><td class="pct">1.0</td><td>Measure defined; first attempt rate-limited</td><td><div class="bar"><i style="width:10%"></i></div><span class="pct">10%</span></td><td>A quiet check</td></tr>
 <tr><td><b>Total</b></td><td class="pct"><b>20.5</b></td><td></td><td><div class="bar"><i style="width:24%"></i></div><span class="pct"><b>24%</b></span></td><td></td></tr>
 </table></div>
+<h3>Counted from the lab register</h3>
+<p>The table above weights workstreams by estimated effort, as judged by hand on 27 Nov. The counts below are not estimates: a script reads each row's gate from <code>design/lab-register-2026-11-27.md</code>. Re-run it after a register change: <code>python3 -I product/tools/lab-progress.py --page product/design/software-factory-2026-11-27.html</code>.</p>
+<!-- lab-progress:lanes -->
+<p>Register rows by gate, counted by <code>product/tools/lab-progress.py --page</code> from the register on origin/main 1b750ad4c (LR-102). Built here means built and not yet proven.</p>
+<div class="tbl"><table>
+<tr><th>Lane</th><th>Intended</th><th>Built</th><th>Proven</th><th>Rows</th><th>Proven</th></tr>
+<tr><td>Lead</td><td class="pct">11</td><td class="pct">3</td><td class="pct">12</td><td class="pct">26</td><td><div class="bar"><i style="width:46%"></i></div><span class="pct">46%</span></td></tr>
+<tr><td>automation-measures</td><td class="pct">15</td><td class="pct">2</td><td class="pct">8</td><td class="pct">25</td><td><div class="bar"><i style="width:32%"></i></div><span class="pct">32%</span></td></tr>
+<tr><td>cleanup</td><td class="pct">12</td><td class="pct">1</td><td class="pct">4</td><td class="pct">17</td><td><div class="bar"><i style="width:23%"></i></div><span class="pct">23%</span></td></tr>
+<tr><td>fast-route</td><td class="pct">18</td><td class="pct">2</td><td class="pct">14</td><td class="pct">34</td><td><div class="bar"><i style="width:41%"></i></div><span class="pct">41%</span></td></tr>
+<tr><td>full-power</td><td class="pct">9</td><td class="pct">3</td><td class="pct">2</td><td class="pct">14</td><td><div class="bar"><i style="width:14%"></i></div><span class="pct">14%</span></td></tr>
+<tr><td>private-split</td><td class="pct">4</td><td class="pct">1</td><td class="pct">0</td><td class="pct">5</td><td><div class="bar"><i style="width:0%"></i></div><span class="pct">0%</span></td></tr>
+<tr><td>ship-security</td><td class="pct">21</td><td class="pct">4</td><td class="pct">4</td><td class="pct">29</td><td><div class="bar"><i style="width:13%"></i></div><span class="pct">13%</span></td></tr>
+<tr><td><b>Total</b></td><td class="pct">86</td><td class="pct">16</td><td class="pct">44</td><td class="pct">146</td><td><div class="bar"><i style="width:30%"></i></div><span class="pct">30%</span></td></tr>
+</table></div>
+<!-- /lab-progress:lanes -->
 <div class="chart">
 <svg viewBox="0 0 640 230" width="100%" role="img" aria-label="Forecast: lab progress rises from 24 percent on 27 Nov to 100 percent around 3 Dec">
   <line x1="50" y1="190" x2="620" y2="190" stroke="var(--line)"/>
