@@ -18,7 +18,7 @@ cat > "$T/python3" <<'STUB'
 if [ "$1" = -m ] && [ "$2" = venv ]; then
   [ "${FAKE_VENV:-ok}" = fail ] && exit 1
   mkdir -p "$3/bin"
-  printf '#!/usr/bin/env bash\necho x >> "%s/../pip-calls"\nif [ "${FAKE_PIP:-ok}" = fail ]; then echo "ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated the package versions, please update the hashes."; echo "    cffi==2.0.0 from https://files.pythonhosted.org/packages/x/cffi-2.0.0-cp311-cp311-manylinux2014_x86_64.whl:"; echo "        Expected sha256 3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba"; echo "        Expected     or c8d3b5532fc71b7a77c09192b4a5a200ea992702734a2e9279a37f2478236f26"; echo "             Got        8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26"; echo ""; echo "[notice] A new release of pip is available: 26.2.2 -> 26.3"; exit 1; fi\ntouch "%s/installed"\n' "$3" "$3" > "$3/bin/pip"
+  printf '#!/usr/bin/env bash\necho x >> "%s/../pip-calls"\nif [ "${FAKE_PIP:-ok}" = fail ]; then cat "%s/../pip-refusal.txt"; exit 1; fi\ntouch "%s/installed"\n' "$3" "$3" "$3" > "$3/bin/pip"
   printf '#!/usr/bin/env bash\n[ -f "%s/installed" ] && echo "pypdf 6.19.0" || exit 1\n' "$3" > "$3/bin/python"
   chmod +x "$3/bin/pip" "$3/bin/python"; exit 0
 fi
@@ -26,13 +26,27 @@ fi
 exit 1
 STUB
 chmod +x "$T/python3"
+# pip's own words on a hash mismatch, word for word (pip 24.0, Python 3.11.18, the lock before LR-180; 28 Nov): the long
+# ERROR sentence, the package line with its full URL and "(from -r ...)", the Expected lines, Got, blanks, [notice].
+cat > "$T/pip-refusal.txt" <<'PIP'
+ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated the package versions, please update the hashes. Otherwise, examine the package contents carefully; someone may have tampered with them.
+    cffi==2.0.0 from https://files.pythonhosted.org/packages/d7/91/500d892b2bf36529a75b77958edfcd5ad8e2ce4064ce2ecfeab2125d72d1/cffi-2.0.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (from -r /tmp/lock.txt (line 10)):
+        Expected sha256 3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
+        Expected     or afb8db5439b81cf9c9d0c80404b60c3cc9c3add93e114dcae767f1477cb53775
+        Expected     or c8d3b5532fc71b7a77c09192b4a5a200ea992702734a2e9279a37f2478236f26
+             Got        8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26
+
+
+[notice] A new release of pip is available: 24.0 -> 26.3
+[notice] To update, run: python3.11 -m pip install --upgrade pip
+PIP
 run() { out=$(env -u CI -u XR_HELPERS_STRICT PYTHON="$T/python3" bash "$H" "$1" "$2" 2>&1); r=$?; }   # a session (GitHub sets CI)
 
 touch "$T/lock"
 FAKE_PIP=fail run "$T/v1" "$T/lock"
 ok "H1: pip refusing the lock exits 0 (the set-up goes on)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
-ok "H2: the WARNING names the gap: pip's DO NOT MATCH line, the package and the hash it got, the Python version and the lock (no [notice], no runs of spaces)" \
-  "$(echo "$out" | grep -q '^WARNING: the Python form helpers are not installed: pip refused the lock: ERROR: THESE PACKAGES DO NOT MATCH.*;cffi==2.0.0 from .*;Got 8941aaad.*(Python 3.11.9; lock '"$T"'/lock).*the rest of the set-up goes on' && ! echo "$out" | grep -q -e notice -e '  ' && echo 1)" "$out"
+ok "H2: the WARNING names the gap: pip's ERROR line cut at its first sentence, the package and wheel file (no URL), the hash it got, the Python version and the lock; no [notice], no runs of spaces, under the cap" \
+  "$(echo "$out" | grep -q '^WARNING: the Python form helpers are not installed: pip refused the lock: ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE\.;cffi==2\.0\.0 from cffi-2\.0\.0-cp311-cp311-manylinux2014_x86_64\.manylinux_2_17_x86_64\.whl;Got 8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26 (Python 3\.11\.9; lock '"$T"'/lock).*the rest of the set-up goes on' && ! echo "$out" | grep -q -e notice -e '  ' -e 'https://' -e 'from -r' && echo 1)" "$out"
 ok "H3: the half-made venv is removed, so the next run tries again" "$([ ! -e "$T/v1" ] && echo 1)" "$(ls "$T")"
 rm -f "$T/pip-calls"; run "$T/v2" "$T/lock"
 ok "H4: a working install prints the pypdf version and exits 0, no WARNING" "$([ $r = 0 ] && [ "$out" = "pypdf 6.19.0" ] && echo 1)" "exit $r: $out"
@@ -59,13 +73,14 @@ CS="$TOOLS/cloud-setup.sh"
 ok "C1: cloud-setup.sh runs python-helpers.sh for the venv and lock" "$(grep -q 'bash "$P/product/tools/python-helpers.sh" "$VENV" "$LOCK"' "$CS" && echo 1)"
 ok "C2: cloud-setup.sh has no pip install of its own left (under set -e it stopped the set-up)" "$(grep -q 'pip" install' "$CS" || echo 1)"
 
-if [ -f "$LOCK" ]; then   # a guards.d mutation copy holds product/tools only: there the lock rows are not read
-  cffi=$(awk '/^cffi==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK"); zx=$(awk '/^zxing-cpp==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK")
+if [ -d "$(dirname "$LOCK")" ]; then   # LR-184: skipped only where prototype/env is absent (a guards.d copy of product/tools);
+  # a real checkout without the lock fails L1, L2 instead of skipping them
+  cffi=$(awk '/^cffi==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK" 2>/dev/null); zx=$(awk '/^zxing-cpp==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK" 2>/dev/null)
   ok "L1: the lock pins cffi's cp311 wheel (8941aaad…, PyPI) beside the cp312-cp314 ones" \
     "$(echo "$cffi" | grep -q 8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26 && [ "$(echo "$cffi" | grep -c hash=)" = 4 ] && echo 1)" "$cffi"
   ok "L2: the lock pins zxing-cpp's cp311 wheel (8a5b32d7…) beside the cp312-abi3 one" \
     "$(echo "$zx" | grep -q 8a5b32d719a5448f1b2f474e04d2db6ce41cc6973fb5c705d47dbe899361e5f9 && [ "$(echo "$zx" | grep -c hash=)" = 2 ] && echo 1)" "$zx"
-else echo "note  L1, L2 not run: no lock at $LOCK (a check-guards.sh copy of product/tools)"; fi
+else echo "note  L1, L2 not run: no prototype/env at $(dirname "$LOCK") (a check-guards.sh copy of product/tools)"; fi
 
 if [ "${XR_NET_TESTS:-}" = 1 ]; then
   for v in 3.11 3.12 3.13; do

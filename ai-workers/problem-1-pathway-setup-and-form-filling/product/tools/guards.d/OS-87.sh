@@ -1,7 +1,7 @@
 # OS-87 (Lead 2, 26 Nov): the full run and a missing pr-suites run start by themselves on an Approve or a review label;
 # the gate's dispatched pr-suites run (main's file, named by PR and head) counts for P-822.
 MUT="$MUT"'
-OS87 counted|product/tools/queue-gate.sh|s/^  case "\$suites_state" in missing.skipped) dispatched "\$s";; esac; return 0; }/  return 0; }/|check-queue-gate.sh
+OS87 counted|product/tools/queue-gate.sh|/^  case "\$suites_state" in missing.skipped) dispatched "\$s";; esac$/d|check-queue-gate.sh
 OS87 main|product/tools/queue-gate.sh|s/    and .event == "workflow_dispatch" and .head_branch == "main")/    and .event == "workflow_dispatch")/|check-queue-gate.sh
 OS87 job|product/tools/queue-gate.sh|s/\[.jobs\[\]? . select(.name == "pr-suites")\]/[.jobs[]?]/|check-queue-gate.sh
 OS87 approved|product/tools/queue-gate.sh|s/^  approved \(.. { echo "#\$PR: no pr-suites run started\)/  true \1/|check-queue-gate.sh

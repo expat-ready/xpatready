@@ -35,6 +35,9 @@ case "$LANE" in
   screens|forms|evidence|runtime|qa) head="This is the $LANE builder's copy (branch $(git branch --show-current)). Command: /next $LANE (qa: /qa <mode>). Way of working: product/WAY-OF-WORKING.md; work list: product/BACKLOG.md.";;
   *) head="This copy is not bound yet: /next <area> (screens, forms, runtime, evidence) or /qa binds it. Way of working: product/WAY-OF-WORKING.md.";;
 esac
+# LR-166 (founder A455): the Lead's copy (and an unbound one) over 20 behind origin/main or on a base over 24 h old gets the
+# line lead-watch.sh refuses with (copy-gate.sh, on the fetch above): the same command, at the top.
+case "$LANE" in lead|lead-stale|unbound) gate=$(COPY_GATE_NOFETCH=1 bash "$PH/tools/copy-gate.sh" "$ROOT" 2>/dev/null) && gate="";; esac
 # OS-86 / LR-143 (founder A417): an account change opens a switch and prints its checklist first (switch.sh detect).
 sw=$(bash "$PH/tools/switch.sh" detect 2>/dev/null)
 # The start read (LR-052, FP #54 and #186; P-545): a pointer, not the page. Pasting STATE.md made every session start
@@ -45,5 +48,5 @@ if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md";
 else w="product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository)"; cl=$(grep -m1 '^current_lead:' "$PH/CURRENT-LEAD.md" 2>/dev/null | cut -c1-240); fi
 page="Start read (P-545): product/RULES.md and $w (\"Start here\"), then your own backlog row. Not pasted here (LR-052: session start under 1.5 KB)."
 [ -n "$cl" ] && page="$page"$'\n'"$cl"
-ctx=$([ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
+ctx=$([ -n "${gate:-}" ] && { echo "$gate"; echo; }; [ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'

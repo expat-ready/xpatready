@@ -35,7 +35,8 @@ G=$(command -v git); printf '#!/bin/sh\nfor a; do [ "$a" = fetch ] && exit 1; do
 for c in psql curl; do printf '#!/bin/sh\nexit 1\n' > "$T/bin/$c"; chmod +x "$T/bin/$c"; done
 SETSID=$(command -v setsid || true)
 run() { echo $(( $(date +%s) - $1 * 60 )) > "$T/state/last-check"; : > "$T/run.out"
-  PATH="$T/bin:$PATH" LEAD_WATCH_STATE_DIR="$T/state" GIT_TERMINAL_PROMPT=0 $SETSID bash "$TOOLS/lead-watch.sh" > "$T/run.out" 2>/dev/null < /dev/null & local pid=$! i
+  # LEAD_WATCH_GATE=off: this fixture tests step 0, not the copy gate (check-copy-gate.sh); on a CI checkout the real copy can read as stale (LR-166).
+  PATH="$T/bin:$PATH" LEAD_WATCH_STATE_DIR="$T/state" LEAD_WATCH_GATE=off GIT_TERMINAL_PROMPT=0 $SETSID bash "$TOOLS/lead-watch.sh" > "$T/run.out" 2>/dev/null < /dev/null & local pid=$! i
   for i in $(seq 150); do grep -q 'IST from the clock' "$T/run.out" && break; kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
   kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; out=$(sed -n '/^time  /,/IST from the clock/p' "$T/run.out"); }
 run 20; ok "normal run, previous check 20 min ago: the stall ACT (was silent under the 40-min guard)" "$(grep -q '^ACT   previous check ran 20 min ago' <<< "$out" && echo 1)" "$out"
