@@ -1,4 +1,5 @@
-# Platform-plane writes a READ_ONLY member of the Sample firm gets past the guard (route-walk.ts, LR-161 part 2):
+# Writes a READ_ONLY member of the Sample firm gets past the guard (route-walk.ts, LR-161 part 2; LR-187 adds the
+# bearer retry of keyed /api/runtime routes and /api/system):
 # "<VERB> <path> # why". The platform guard runs before the handler, so a wrong-role write that answers anything but
 # 401/403 means the route's declared access lets READ_ONLY in. Each line says why that is right for the route (its
 # declared access, read from the code on 28 Nov). A past-guard write not listed here is reported, and so is a listed
@@ -37,8 +38,10 @@ POST /api/front-office/identity-checks/:id/copy/download-link # agent/document:s
 POST /api/front-office/signature-requests/:id/download-link # agent/document:show, own or all: a download link
 POST /api/front-office/duplicates/check # agent/prospect:show: a duplicate check that changes nothing
 POST /api/platform/support/tickets/:id/files/:n/link # the support list key: a download link
+POST /api/runtime/documents/:id/check-unchanged # agent/document:show (keyed runtime route, LR-187): checks the stored file is the one uploaded; changes nothing
 # Support (any member may raise and follow a ticket):
 POST /api/platform/support/tickets # the support create key: any member raises a ticket
 POST /api/platform/support/tickets/:id/messages # the support list key: a member follows up on a ticket
 # The sign-in door (no session yet):
 POST /api/platform/session/local # StaffSignIn: the local stand-in's sign-in door
+POST /api/system/session/local # SystemSignIn (LR-187): the system staff sign-in door, no session yet; the stand-in answers 404 unless PLATFORM_SYSTEM_IDENTITY=local
