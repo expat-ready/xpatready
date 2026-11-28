@@ -59,11 +59,13 @@ CS="$TOOLS/cloud-setup.sh"
 ok "C1: cloud-setup.sh runs python-helpers.sh for the venv and lock" "$(grep -q 'bash "$P/product/tools/python-helpers.sh" "$VENV" "$LOCK"' "$CS" && echo 1)"
 ok "C2: cloud-setup.sh has no pip install of its own left (under set -e it stopped the set-up)" "$(grep -q 'pip" install' "$CS" || echo 1)"
 
-cffi=$(awk '/^cffi==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK"); zx=$(awk '/^zxing-cpp==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK")
-ok "L1: the lock pins cffi's cp311 wheel (8941aaad…, PyPI) beside the cp312-cp314 ones" \
-  "$(echo "$cffi" | grep -q 8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26 && [ "$(echo "$cffi" | grep -c hash=)" = 4 ] && echo 1)" "$cffi"
-ok "L2: the lock pins zxing-cpp's cp311 wheel (8a5b32d7…) beside the cp312-abi3 one" \
-  "$(echo "$zx" | grep -q 8a5b32d719a5448f1b2f474e04d2db6ce41cc6973fb5c705d47dbe899361e5f9 && [ "$(echo "$zx" | grep -c hash=)" = 2 ] && echo 1)" "$zx"
+if [ -f "$LOCK" ]; then   # a guards.d mutation copy holds product/tools only: there the lock rows are not read
+  cffi=$(awk '/^cffi==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK"); zx=$(awk '/^zxing-cpp==/{f=1;next} /^[a-z]/{f=0} f' "$LOCK")
+  ok "L1: the lock pins cffi's cp311 wheel (8941aaad…, PyPI) beside the cp312-cp314 ones" \
+    "$(echo "$cffi" | grep -q 8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26 && [ "$(echo "$cffi" | grep -c hash=)" = 4 ] && echo 1)" "$cffi"
+  ok "L2: the lock pins zxing-cpp's cp311 wheel (8a5b32d7…) beside the cp312-abi3 one" \
+    "$(echo "$zx" | grep -q 8a5b32d719a5448f1b2f474e04d2db6ce41cc6973fb5c705d47dbe899361e5f9 && [ "$(echo "$zx" | grep -c hash=)" = 2 ] && echo 1)" "$zx"
+else echo "note  L1, L2 not run: no lock at $LOCK (a check-guards.sh copy of product/tools)"; fi
 
 if [ "${XR_NET_TESTS:-}" = 1 ]; then
   for v in 3.11 3.12 3.13; do
