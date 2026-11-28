@@ -53,7 +53,8 @@ jobs:
       - name: route sweep, the app (warning only)
         continue-on-error: true
         run: |
-          rc=0; (cd "$S" && npx tsx tools/safety/route-sweep.ts) > "$RUNNER_TEMP/routes.txt" || rc=$?
+          cd "$S"
+          rc=0; npx tsx tools/safety/route-sweep.ts > "$RUNNER_TEMP/routes.txt" || rc=$?
           cat "$RUNNER_TEMP/routes.txt"
           { echo "### Route sweep (LR-074, report only)"; sed 's/^::warning::/- /' "$RUNNER_TEMP/routes.txt"; } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"

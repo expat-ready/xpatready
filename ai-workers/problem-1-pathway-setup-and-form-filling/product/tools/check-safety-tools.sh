@@ -15,7 +15,7 @@ ok "LR-045: a planted DROP COLUMN is reported as a warning and exits 1" "$(print
 if [ -f "$WF" ]; then
   steps=$(grep -cE '^      - (name|uses|id):' "$WF"); soft=$(grep -cE '^        continue-on-error: true$' "$WF")
   ok "safety.yml: every step after checkout is continue-on-error: true ($soft of $((steps - 1)))" "$([ "$soft" -eq $((steps - 1)) ] && ! grep -q 'continue-on-error: false' "$WF" && echo 1)" "steps $steps, soft $soft"
-  ok "safety.yml: runs both self-tests and both checks" "$(grep -q 'migration-check.py" --self-test' "$WF" && grep -q 'migration-check.py" --base HEAD^1' "$WF" && grep -q 'route-sweep.ts --self-test' "$WF" && grep -q 'npx tsx tools/safety/route-sweep.ts)' "$WF" && echo 1)"
+  ok "safety.yml: runs both self-tests and both checks" "$(grep -q 'migration-check.py" --self-test' "$WF" && grep -q 'migration-check.py" --base HEAD^1' "$WF" && grep -q 'route-sweep.ts --self-test' "$WF" && grep -q 'npx tsx tools/safety/route-sweep.ts > ' "$WF" && echo 1)"
 else ok "safety.yml exists" 0 "no $WF"; fi
 if [ -x "$STUDIO/node_modules/.bin/tsx" ] && [ -d "$STUDIO/tests/lib" ]; then
   out=$(cd "$STUDIO" && node_modules/.bin/tsx tools/safety/route-sweep.ts --self-test 2>&1); r=$?
