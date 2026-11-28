@@ -1,0 +1,65 @@
+# eslint over the studio app, REPORT ONLY (lab row LR-083; FP #76, #101, #213, #214; OS-62). Technology gate (STANDARDS §1):
+# product/design/lr083-gate-eslint.md. The findings on main when this landed are held in the studio's
+# eslint-suppressions.json (eslint's bulk suppressions), so the job shows only findings a PR adds; the count goes to the job
+# summary. Nothing here fails a PR: the steps after checkout are continue-on-error, and no Mergify condition or ruleset names
+# the job. Read-only token, no secrets, package scripts off (--ignore-scripts). About 2 minutes, US$0.
+# To accept a finding into the baseline on purpose: npx eslint . --suppress-rule <rule> (or --suppress-all) in the studio
+# folder; after fixes, npx eslint . --prune-suppressions. Edit-time hook: not wired (LR-083 asks it to be timed under 2 s a
+# file first; measured 0.7-2.5 s on 28 Nov, the gate note has the numbers).
+name: studio-lint
+on:
+  pull_request:
+    paths:
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/**"
+      - ".github/workflows/studio-lint.yml"
+concurrency:
+  group: studio-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+permissions: {}
+jobs:
+  lint:
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: { contents: read }
+    env:
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        continue-on-error: true
+        with: { node-version-file: .nvmrc }
+      - id: ci
+        name: npm ci (package scripts off)
+        continue-on-error: true
+        run: cd "$S" && npm ci --ignore-scripts --no-audit --no-fund
+      - name: eslint, new findings only (report only)
+        continue-on-error: true
+        env: { CI_OUTCOME: "${{ steps.ci.outcome }}" }
+        run: |
+          if [ "$CI_OUTCOME" != success ]; then echo "::warning title=eslint (LR-083, report only)::npm ci failed: nothing was linted" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          cd "$S"
+          # --pass-on-unpruned-suppressions (LR-083 M1, review of #4043): without it a finding the baseline holds that a PR
+          # fixes leaves a stale suppression, and eslint exits 2 even beside a new finding (exit 1), so "(exit 2)" said nothing.
+          # A stale suppression is now not reported; the summary says how to prune.
+          rc=0; npx eslint . --pass-on-unpruned-suppressions --format json --output-file "$RUNNER_TEMP/eslint.json" || rc=$?
+          python3 -I - "$RUNNER_TEMP/eslint.json" "$rc" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, os, sys, collections
+          out = open(sys.argv[3], "a")
+          try:
+              d = json.load(open(sys.argv[1]))
+          except (OSError, ValueError) as e:
+              print("### eslint (LR-083, report only)\n\neslint gave no report (exit %s, %s)." % (sys.argv[2], type(e).__name__), file=out); sys.exit(0)
+          c = collections.Counter(m.get("ruleId") or "(parse or directive)" for f in d for m in f["messages"])
+          n = sum(c.values()); files = sum(1 for f in d if f["messages"])
+          print("### eslint (LR-083, report only)\n", file=out)
+          print("%d new finding(s) in %d file(s) beyond eslint-suppressions.json (exit %s)." % (n, files, sys.argv[2]), file=out)
+          for r, k in c.most_common(15): print("* `%s`: %d" % (r, k), file=out)
+          print("\nA held finding this PR fixed is not reported. To shrink the baseline: `npx eslint . --prune-suppressions` in the studio folder, then commit eslint-suppressions.json.", file=out)
+          shown = 0   # the first 200 as annotations on the PR's files
+          for f in d:
+              for m in f["messages"]:
+                  if shown < 200:
+                      print("::warning file=%s,line=%s::%s (%s)" % (os.path.relpath(f["filePath"], os.environ.get("GITHUB_WORKSPACE", ".")), m.get("line", 1), m["message"].replace("\n", " ")[:300], m.get("ruleId"))); shown += 1
+          PY

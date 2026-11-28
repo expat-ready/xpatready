@@ -32,6 +32,12 @@ cat > "$T/BACKLOG.md" <<'B'
 B
 M="Model: Opus 5.5, effort: medium."
 fc() { out=$(printf '%s\n' "$1" | FOCUS_LIST="${2-$T/focus-list.md}" FOCUS_BACKLOG_DIR="$T" python3 -I "$TOOLS/focus-check.py" 2>&1); r=$?; }
+fc "$M /next runtime X-77. Done when: check-x.sh exits 0; stop after 3 tries."
+ok "LR-091 control: an id in no BACKLOG file is not known as a build row (not refused)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+mkdir -p "$T/history"; printf '| Row | Area | What |\n|---|---|---|\n| X-77 | runtime (case side) | a done build row |\n' > "$T/history/BACKLOG-done-2026-11-28.md"
+fc "$M /next runtime X-77. Done when: check-x.sh exits 0; stop after 3 tries."
+ok "LR-091: a row moved to history/BACKLOG-done-*.md keeps its area (an off-list build row: refused)" "$([ $r = 1 ] && echo "$out" | grep -q 'is for X-77,' && echo 1)" "exit $r: $out"
+rm -rf "$T/history"
 fc "$M Build J-37 per lead-b-briefs/J-rows.md §J-37, from main; one PR (R1.37)."
 ok "a brief for a listed item and its row passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
 fc "$M R1.31 with R1.30: build FO-4 part 2a from main."

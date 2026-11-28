@@ -17,7 +17,7 @@ const step = (name, cond, detail) => { results.push({ name, ok: !!cond }); conso
 const KEYS = ["pages", "people", "forms", "questions_documents", "release"];
 
 (async () => {
-  const b = await chromium.launch();
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").launchOptions());
   const p = await b.newPage({ viewport: { width: 1440, height: 1000 } });
   const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": init.actor ?? "user-A", "content-type": "application/json" }, data: init.data, timeout: 120000 }); let body = null; try { body = await r.json(); } catch { /* not JSON */ } return { status: r.status(), body }; };
   try {

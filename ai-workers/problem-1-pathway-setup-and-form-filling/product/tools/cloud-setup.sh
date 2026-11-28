@@ -55,13 +55,10 @@ command -v zsh >/dev/null && echo "zsh $(zsh --version | cut -d' ' -f2)"
 echo "== python helpers (api PY path, hash-pinned)"
 VENV="$ROOT/.tools/solution-1-prototype/.venv"
 case "$(uname -s)" in Linux) LOCK="$P/prototype/env/requirements-linux.lock";; *) LOCK="$P/prototype/env/requirements.lock";; esac
-if [ ! -x "$VENV/bin/python" ]; then
-  [ -f "$LOCK" ] || { echo "missing $LOCK"; exit 1; }
-  mkdir -p "$ROOT/.tools/solution-1-prototype"
-  python3 -m venv "$VENV" 2>/dev/null || { apt python3-venv && python3 -m venv "$VENV"; }
-  "$VENV/bin/pip" install -q --require-hashes --no-deps --only-binary :all: -r "$LOCK"
-fi
-"$VENV/bin/python" -c "import pypdf, cryptography, zxingcpp; print('pypdf', pypdf.__version__)"
+# LR-180 (qa #4083): python-helpers.sh never stops the set-up; a gap (a python3 whose wheels the lock does not pin, no
+# venv module) is one WARNING naming it, and the rest (PostgreSQL, the schema) still runs.
+[ -x "$VENV/bin/python" ] || python3 -c 'import venv, ensurepip' 2>/dev/null || apt python3-venv || true
+bash "$P/product/tools/python-helpers.sh" "$VENV" "$LOCK"
 
 echo "== postgresql 18 on 127.0.0.1:$PGPORT"
 PGBIN=""

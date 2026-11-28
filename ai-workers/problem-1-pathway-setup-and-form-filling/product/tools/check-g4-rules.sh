@@ -22,6 +22,19 @@ out=$(PATH="$T/bin:$PATH" FX_PRS="$T/prs.json" REPO=o/r GH_TOKEN=x bash "$TOOLS/
 ok "(1) the tech lead's lead/* branch is not checked (its records go through records PRs)" "$([ $r = 0 ] && echo "$out" | grep -q 'tech-lead branch' && echo 1)" "exit $r: $out"
 po '[]' down; ok "(1) GitHub unreadable: a warning, not a block" "$([ $r = 0 ] && echo "$out" | grep -q '^warn' && echo 1)" "exit $r: $out"
 grep -q 'pr-open-guard.sh' "$ROOTD/.githooks/pre-push"; ok "(1) .githooks/pre-push runs pr-open-guard.sh" "$([ $? = 0 ] && echo 1)"
+# A455: a branch restarted from main after its PR merged passes by itself; a push that lacks the merge commit, or a
+# closed-unmerged PR, still refuses; no sha given keeps the old answer.
+G="$T/g"; git init -q "$G"; gg() { git -C "$G" -c user.email=t@example.invalid -c user.name=t -c commit.gpgsign=false "$@"; }
+gg commit -q --allow-empty -m base; OLD=$(gg rev-parse HEAD); gg commit -q --allow-empty -m merge; MC=$(gg rev-parse HEAD)
+gg commit -q --allow-empty -m newwork; NEW=$(gg rev-parse HEAD); gg checkout -q -b stale "$OLD"; gg commit -q --allow-empty -m stale; STALE=$(gg rev-parse HEAD)
+pos() { echo "$1" > "$T/prs.json"; out=$(cd "$G" && PATH="$T/bin:$PATH" FX_PRS="$T/prs.json" REPO=o/r GH_TOKEN=x bash "$TOOLS/pr-open-guard.sh" lane/x origin "$2" 2>&1); r=$?; }
+pos "[{\"number\":12,\"state\":\"closed\",\"merged_at\":\"2026-11-28T01:00:00Z\",\"merge_commit_sha\":\"$MC\"}]" "$NEW"
+ok "(1) A455: a branch restarted from main after its PR merged may be pushed (new work on the merge commit)" "$([ $r = 0 ] && echo "$out" | grep -q 'restarted from main after #12 merged' && echo 1)" "exit $r: $out"
+pos "[{\"number\":12,\"state\":\"closed\",\"merged_at\":\"2026-11-28T01:00:00Z\",\"merge_commit_sha\":\"$MC\"}]" "$STALE"
+ok "(1) A455: a push that does not hold the merge commit (old base) is still refused" "$([ $r = 1 ] && echo "$out" | grep -q '#12 merged' && echo 1)" "exit $r: $out"
+pos "[{\"number\":12,\"state\":\"closed\",\"merged_at\":\"2026-11-28T01:00:00Z\",\"merge_commit_sha\":\"$MC\"},{\"number\":9,\"state\":\"closed\",\"merged_at\":null}]" "$NEW"
+ok "(1) A455: a closed, unmerged PR on the branch still refuses even on main's history" "$([ $r = 1 ] && echo "$out" | grep -q '#9 closed' && echo 1)" "exit $r: $out"
+grep -q 'pr-open-guard.sh" "${rref#refs/heads/}" "$1" "$lsha"' "$ROOTD/.githooks/pre-push"; ok "(1) A455: pre-push passes the pushed sha to the guard" "$([ $? = 0 ] && echo 1)"
 
 # (2) One model rule (P-788): every agent file and launch on Opus 5.5 medium; another only with "P-788 exception:".
 mkdir "$T/ag"; printf -- '---\nname: screen-reviewer\nmodel: opus\neffort: medium\n---\nbody model: sonnet\n' > "$T/ag/screen-reviewer.md"
