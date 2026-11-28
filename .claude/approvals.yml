@@ -14,6 +14,11 @@
 #   * mode: observe: the "Claude Approvals" check shows what these rules WOULD decide and blocks nothing; "observe
 #     mode is billed" (approvals-setup). Enforcing is a later, separate step (delete the mode line) after the observe
 #     week (LR-144 Done when) and the switch (LR-072).
+#   * The gate is Claude's approving review, not the check: with `claude: comments` and no seat the "Claude Approvals"
+#     check itself passes on a risky PR whose Code Review failed; only Claude's approval is withheld, so P-849 holds
+#     through GitHub's "1 approval" rule (LR-072). A Mergify condition on the check alone would not hold it; switching
+#     the risky rules to `claude: blocks` (the check fails until Code Review passes) is the tech lead's call at the switch.
+#   * Risky globs name folders too (`**/*word*/**`): `*` stays in one folder, so `**/*word*` matches file names only.
 #   * reuse across a main-merge push is LR-148 (lane ship-security-2), built on this file.
 # product/tools/check-approvals-policy.sh (ci) checks these points.
 version: 1
@@ -23,7 +28,7 @@ rules:
     paths: ["**"]
     verdict: { claude: approves, seats: 0 }
 
-  - purpose: "Client money, fees, payments, trust, invoices and billing: Claude approves only after Code Review passes."
+  - purpose: "Client money, fees, payments, trust, invoices, billing, plans and entitlements: Claude approves only after Code Review passes."
     paths:
       - "**/client-money/**"
       - "**/client-money-*"
@@ -40,6 +45,24 @@ rules:
       - "**/*ledger*"
       - "**/*pric*"
       - "**/*stripe*"
+      - "**/*stripe*/**"
+      - "**/*money*"
+      - "**/*money*/**"
+      - "**/billing/**"
+      - "**/*billing*/**"
+      - "**/*payment*/**"
+      - "**/*invoice*/**"
+      - "**/*trust*/**"
+      - "**/*ledger*/**"
+      - "**/*refund*/**"
+      - "**/*fees*/**"
+      - "**/entitlements/**"
+      - "**/*entitlement*"
+      - "**/*plan-change*"
+      - "**/*plan-change*/**"
+      - "**/*cost-check*"
+      - "**/cost-gate.ts"
+      - "**/currencies.ts"
     verdict: { claude: comments, seats: 0 }
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
@@ -52,7 +75,7 @@ rules:
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
 
-  - purpose: "Permissions, roles, identity, firm scope and access checks: Claude approves only after Code Review passes."
+  - purpose: "Permissions, roles, identity (staff and system), firm scope and its bypasses, secrets and access checks: Claude approves only after Code Review passes."
     paths:
       - "**/*permission*"
       - "**/*role*"
@@ -66,11 +89,27 @@ rules:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/**/*public*"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/**/*-public/**"
+      - "**/system-identity/**"
+      - "**/*identity*/**"
+      - "**/*permission*/**"
+      - "**/*.bypass.ts"
+      - "**/*audit-access*"
+      - "**/firm-lock/**"
+      - "**/*firm-wall*"
+      - "**/secret-box/**"
+      - "**/*secret-box*"
+      - "**/config/secret.ts"
+      - "**/*-scope.ts"
+      - "**/staff-read/**"
+      - "**/ports/staff.ts"
+      - "**/contracts/session.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/system/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/modules/platform/staff/**"
     verdict: { claude: comments, seats: 0 }
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
 
-  - purpose: "The pipeline and the rules agents follow (workflows, merge queue, hooks, guards, review rules): Claude approves only after Code Review passes; no PR loosens its own judge."
+  - purpose: "The pipeline, deploy and the rules agents follow (workflows, merge queue, hooks and the scripts they run, guards, review rules): Claude approves only after Code Review passes; no PR loosens its own judge."
     paths:
       - ".github/**"
       - ".mergify.yml"
@@ -80,6 +119,9 @@ rules:
       - "REVIEW.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
+      - "ai-workers/tools/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/**"
+      - "**/Dockerfile*"
     verdict: { claude: comments, seats: 0 }
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
