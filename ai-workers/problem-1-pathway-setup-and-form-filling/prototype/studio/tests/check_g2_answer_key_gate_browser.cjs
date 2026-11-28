@@ -20,7 +20,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   if (sql("select count(*) from combination where combination_key = 'vv.single'") !== "1")
     execFileSync(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "tests", "runtime", "setup_visitor_visa.ts"), String(PORT), DB], { stdio: "ignore" });
   const vv = sql("select id from combination where combination_key = 'vv.single'"), wp = sql("select id from combination where combination_key = 'wp.family'");
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
   const p = await ctx.newPage();
   const errs = []; p.on("pageerror", (e) => errs.push(e.message));

@@ -18,7 +18,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   // Setup: Visitor visa configured and released as the runtime lane does it (US$0).
   execFileSync(path.join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", path.join(STUDIO, "api", "tsconfig.json"), path.join(STUDIO, "tests", "runtime", "setup_visitor_visa.ts"), String(PORT), DB], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const vv = sql(`select id from combination where combination_key='vv.single'`);
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" })).newPage();
   const spent0 = Number(sql("select coalesce(sum(cost_usd),0) from drafting_job") || 0);
   try {

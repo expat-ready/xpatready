@@ -102,7 +102,7 @@ async function confirmAll(id) {
 (async () => {
   const { submitted, thin } = await story();
   const family = await answeredFamily();
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: SHOTS ? 2 : 1 });
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-O"); });
   const p = await ctx.newPage();

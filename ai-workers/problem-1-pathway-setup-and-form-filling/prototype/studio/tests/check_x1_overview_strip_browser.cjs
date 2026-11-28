@@ -23,7 +23,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   step("C11.10 X1 C3 (rule): a proposal opens the review queue filtered to the combination and step; AI progress opens the jobs page", itemHref("c1", "forms", "forms", it("review_proposals", "review:forms")) === "/review/proposals?c=c1&step=3" && itemHref("c1", "forms", "forms", it("view_ai", "ai:b1")) === "/c/c1/jobs");
   step("C11.10 X1 C3 fail (rule): a key no tab answers (release items) stays on the step's own tab, never a made-up one", itemHref("c1", "release", "review", it("submit", "review:submit")) === "/c/c1/review?focus=review%3Asubmit" && itemHref("c1", "release", "review", it("fix_problems", "release:problems")) === "/c/c1/review?focus=release%3Aproblems");
 
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|status of 4\d\d/.test(m.text())) errs.push(m.text()); });

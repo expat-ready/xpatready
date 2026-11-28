@@ -16,7 +16,6 @@
 //     && trap 'zsh studio/tools/isolated.sh qar16w 4477 stop' EXIT \
 //     && tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_r16_walk.ts 4477 xr_studio_qar16w
 // Sample rows only; US$0, no model call.
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { chromium, type Page } from "playwright";
 import { client, recorder } from "../runtime/api.ts";

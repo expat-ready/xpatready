@@ -44,7 +44,7 @@ const yearsAgo = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYea
   const principal = (open.body?.people ?? []).find((p) => p.role === "principal")?.subject_id;
   await call("PUT", `/runtime/cases/${id}/answers/${principal}/person.date_of_birth`, { value: yearsAgo(40), expectedId: null });
 
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: SHOTS ? 2 : 1 });
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-O"); });
   const p = await ctx.newPage();

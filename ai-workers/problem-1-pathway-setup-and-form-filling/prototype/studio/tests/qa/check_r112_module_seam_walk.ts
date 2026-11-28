@@ -15,7 +15,7 @@
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";

@@ -22,7 +22,7 @@ const spent = () => Number(sql("select coalesce(sum(cost_usd),0) from drafting_j
 const proposals = () => Number(sql("select count(*) from proposal_item where step in ('masters_edition','masters_form','masters_guide')"));
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   const errors = []; p.on("pageerror", (e) => errors.push(e.message));
   const consoleErrors = []; p.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });

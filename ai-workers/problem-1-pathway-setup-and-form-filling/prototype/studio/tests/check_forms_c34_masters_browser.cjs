@@ -3,7 +3,6 @@
 // sections and answer lists by the rules (no AI, US$0) into To review; a second click says it is already drafted. axe
 // (WCAG 2.2 AA) on the panel; no page errors. On an isolated copy with the six loaded (Demo load).
 //   zsh studio/tools/isolated.sh forms_c34b 4457 start && node studio/tests/check_forms_c34_masters_browser.cjs 4457 xr_studio_forms_c34b
-const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const { chromium } = require("../node_modules/playwright");
 const AxeBuilder = require("../node_modules/@axe-core/playwright").default;
@@ -13,7 +12,7 @@ let pass = 0, failed = 0;
 const step = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 300)}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   const errors = []; p.on("pageerror", (e) => errors.push(e.message));
   // QA-209: Playwright's request has a 30 s limit by default, and Load sample takes 80–180 s on a loaded Mac (106 s at load

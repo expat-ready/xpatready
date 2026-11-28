@@ -24,7 +24,7 @@ const WHY = "The form asks this Yes/No itself before its details (walk)";
   fs.mkdirSync(OUT, { recursive: true });
   console.log(steps("apply").trim().split("\n").pop().slice(0, 200));
   const vv = sql("select id from combination where combination_key = 'vv.single'");
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium/chrome-linux/chrome" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const as = async (actor, width = 1440) => { const c = await b.newContext({ viewport: { width, height: 900 } }); c.setDefaultNavigationTimeout(180_000); await c.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* blocked */ } }, actor); return c.newPage(); };
   const page = await as("user-A");
   const errors = []; page.on("pageerror", (e) => errors.push(String(e)));

@@ -111,7 +111,7 @@ const pinned = files.filter((f) => !f.endsWith("check_launch_options.ts")).filte
 ok("S3: no script names a Chromium revision folder (/opt/pw-browsers/chromium-<n>): the image's revision changes under us", pinned.length === 0, pinned);
 // S4, a ratchet: checks that still write their own /opt/pw-browsers rule inline. 252 before LR-183; each later part lowers
 // MAX to its new count, so a new inline rule fails here and points at chromiumOptions().
-const MAX_INLINE = 206;
+const MAX_INLINE = 146;   // part 2 (tests/*.cjs): 206 -> 146
 const inline = files.filter((f) => !f.endsWith("launch-options.cjs") && !f.endsWith("check_launch_options.ts")).filter((f) => readFileSync(f, "utf8").includes("/opt/pw-browsers"));
 ok(`S4: at most ${MAX_INLINE} scripts still write their own /opt/pw-browsers rule (252 before LR-183; use chromiumOptions())`, inline.length <= MAX_INLINE, `${inline.length}: ${inline.slice(0, 5).map((f) => relative(STUDIO, f)).join(", ")}`);
 

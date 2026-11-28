@@ -192,7 +192,7 @@ async function walk(p, id, tag, shot) {
     ok("setup: the configured checkpoint loads (Visitor visa and Study permit released)", r.status < 300 && sql("select count(*) from combination where combination_key in ('vv.single','sp.outside')") === "2", r.body);
   }
   const vv = await familyCase("vv.single", "vv"), sp = await familyCase("sp.outside", "sp");
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: SHOTS ? 2 : 1 });
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-O"); });
   const p = await ctx.newPage();

@@ -26,7 +26,7 @@ const ok = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "PAS
 const OWNER = "representative@sample-firm.example.com", OFFICER = "user-o@sample-firm.example.com";
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const http = await (await b.newContext()).request;
   const api = async (method, path, json, o = {}) => {
     const headers = { "content-type": "application/json", ...(o.actor ? { "x-actor": o.actor } : {}), ...(o.token ? { authorization: `Bearer ${o.token}` } : {}) };

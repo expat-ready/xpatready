@@ -17,7 +17,7 @@
 //     release); once the adult date of birth is typed and that gate answered No on screen, it is gone.
 // Fails on main 3ea36a0d3 (before #1643: Personal details last). US$0, live AI off, never :4400.
 //   zsh tools/isolated.sh qa_439 4475 start && node tests/qa/check_qa439_deciders_first.cjs 4475 xr_studio_qa_439 <shots dir> [width]
-const fs = require("fs"); const path = require("path"); const { execFileSync } = require("child_process");
+const path = require("path"); const { execFileSync } = require("child_process");
 const { chromium } = require("../../node_modules/playwright");
 const port = process.argv[2], DB = process.argv[3], SHOTS = process.argv[4], W = Number(process.argv[5] ?? 1024);
 if (!port || port === "4400" || !/^xr_studio_(?!demo)/.test(DB ?? "")) { console.log("usage: <port of an isolated copy, never 4400> <its database> [shots] [width]"); process.exit(2); }

@@ -22,7 +22,7 @@ let fail = 0, pass = 0;
 const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail !== undefined && !ok ? ` — ${String(typeof detail === "string" ? detail : JSON.stringify(detail)).slice(0, 300)}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errs = [];
   const api = async (pth, init = {}) => { const r = await fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": init.actor ?? "user-A", "content-type": "application/json" }, ...(init.data ? { body: JSON.stringify(init.data) } : {}) }); const t = await r.text(); return { status: r.status, body: t ? JSON.parse(t) : null }; };
   /** Client A comes back: a fresh browser, nothing passed on this device. */

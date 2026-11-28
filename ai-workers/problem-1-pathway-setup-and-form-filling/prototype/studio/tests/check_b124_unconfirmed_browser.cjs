@@ -36,7 +36,7 @@ const call = (method, p, body, actor = OFFICER) => new Promise((res, rej) => {
   ok("set-up: the case officer answers the three deciding facts (not confirmed yet)", answered.every((r) => r.status < 300), answered.map((r) => r.body?.detail ?? r.status));
   const idle = await open(`ACC-B124-idle-${stamp}`, "Sample Client Idle");
 
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium/chrome-linux/chrome") ? { executablePath: "/opt/pw-browsers/chromium/chrome-linux/chrome" } : fs.statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false })?.isFile() ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const as = async (width) => { const ctx = await b.newContext({ viewport: { width, height: 900 } }); ctx.setDefaultNavigationTimeout(180_000); ctx.setDefaultTimeout(30_000); await ctx.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* blocked */ } }, OFFICER); return ctx.newPage(); };
   const errors = [];
   const page = await as(1440); page.on("pageerror", (e) => errors.push(String(e)));

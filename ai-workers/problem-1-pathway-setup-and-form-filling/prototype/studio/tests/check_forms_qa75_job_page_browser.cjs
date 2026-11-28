@@ -5,7 +5,6 @@
 // step (read_form) is not called an AI field map; a running or queued step shows no step code and a rules step is never
 // "the AI" (break M1); links follow the job's own combination, not the address (break m1). axe (WCAG 2.2 AA) on the page. US$0, no model call (rows are inserted).
 //   zsh studio/tools/isolated.sh forms_qa75 4465 start && node studio/tests/check_forms_qa75_job_page_browser.cjs 4465 xr_studio_forms_qa75
-const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const { chromium } = require("../node_modules/playwright");
 const AxeBuilder = require("../node_modules/@axe-core/playwright").default;
@@ -17,7 +16,7 @@ const step = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "P
 const CODE = /\b[A-Z]{2,}_[A-Z_]{2,}\b/; // a status or system code on screen (NEEDS_PERSON, IN_REVIEW …)
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   const errors = []; p.on("pageerror", (e) => errors.push(e.message));
   const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": "user-A", "content-type": "application/json" }, data: init.json }); return { status: r.status(), body: await r.json().catch(() => null) }; };

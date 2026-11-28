@@ -17,7 +17,7 @@
 // one filing out), so "nothing after submission" is read only where part of the case is still to file (step 6).
 // Fails on main 3ea36a0d3 (before #1652): steps 2-6 read "Next: Client A answers on their phone". US$0, never :4400.
 //   zsh tools/isolated.sh qa_427 4473 start && node tests/qa/check_qa427_client_card.cjs 4473 xr_studio_qa_427 <shots dir> [width]
-const fs = require("fs"); const path = require("path"); const { execFileSync } = require("child_process");
+const path = require("path"); const { execFileSync } = require("child_process");
 const { chromium } = require("../../node_modules/playwright");
 const port = process.argv[2], DB = process.argv[3], SHOTS = process.argv[4], W = Number(process.argv[5] ?? 1024);
 if (!port || port === "4400" || !/^xr_studio_(?!demo)/.test(DB ?? "")) { console.log("usage: <port of an isolated copy, never 4400> <its database> [shots] [width]"); process.exit(2); }

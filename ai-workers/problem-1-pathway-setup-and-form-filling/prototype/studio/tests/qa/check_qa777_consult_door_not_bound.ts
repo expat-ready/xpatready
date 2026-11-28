@@ -14,7 +14,6 @@
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type APIRequestContext } from "playwright";
 import { recorder } from "../runtime/api.ts";

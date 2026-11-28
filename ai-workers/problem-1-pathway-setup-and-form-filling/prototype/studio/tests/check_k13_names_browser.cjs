@@ -50,7 +50,7 @@ const oldIn = (t) => OLD.filter(([re]) => re.test(t)).map(([re, why]) => `${why}
     if (r.status !== 0) { console.error("STOP  setup_visitor_visa failed", r.stdout?.slice(-400), r.stderr?.slice(-400)); process.exit(2); }
   }
   const vv = sql("select id from combination where combination_key='vv.single'");
-  const b = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined, channel: fs.existsSync("/opt/pw-browsers/chromium") ? undefined : "chrome", headless: true });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message));

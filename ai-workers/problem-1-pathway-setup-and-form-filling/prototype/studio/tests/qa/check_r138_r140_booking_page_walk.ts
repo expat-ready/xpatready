@@ -8,7 +8,7 @@
 // is written once with Prisma. No model call (US$0). Screenshots to the report folder given as argv[2].
 //   STUDIO_URL=http://localhost:4472 DATABASE_URL=… tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_r138_r140_booking_page_walk.ts <shots-dir>
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";

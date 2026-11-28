@@ -6,7 +6,7 @@
 // it. Passes when the screen exists. US$0, live AI off.
 //   zsh tools/isolated.sh qa_234 4475 start && (cd .. && studio/node_modules/.bin/tsx studio/tests/b83_six_steps.ts 4475 xr_studio_qa_234 apply) \
 //     && node tests/qa/check_qa234_own_question_screen.cjs 4475
-const fs = require("fs"); const { chromium } = require("playwright");
+const { chromium } = require("playwright");
 const port = process.argv[2]; if (!port || port === "4400") { console.log("usage: <port of an isolated copy>, never 4400"); process.exit(2); }
 const base = `http://localhost:${port}`;
 let failed = 0; const ok = (n, c, d) => { if (!c) failed++; console.log(`${c ? "PASS" : "FAIL"} ${n}${!c && d !== undefined ? `: ${JSON.stringify(d).slice(0, 400)}` : ""}`); };

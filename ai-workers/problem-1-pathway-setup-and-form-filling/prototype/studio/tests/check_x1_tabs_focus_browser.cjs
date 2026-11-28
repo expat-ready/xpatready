@@ -25,7 +25,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   step("C11.10 X1 (rule, review M3): a tab counts the sum of its items' counts, as the board's 'Forms 5' = 3 found + 1 proposal + 1 problem", c.forms === 5 && c.documents === 3 && c.questionnaires === 0, c);
   step("C11.10 X1 fail (rule): no checklist counts nothing (never a guess)", JSON.stringify(tabCounts(null)) === JSON.stringify({ forms: 0, documents: 0, questionnaires: 0 }));
 
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|status of 4\d\d/.test(m.text())) errs.push(m.text()); });

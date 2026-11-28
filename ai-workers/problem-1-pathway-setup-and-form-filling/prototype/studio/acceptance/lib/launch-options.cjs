@@ -33,7 +33,8 @@ function launchOptions(extra = {}, env) {
 // /opt/pw-browsers/chromium (a link to whatever revision the image ships: never name a revision); (5) the channel chrome
 // where that Chrome exists; (6) nothing (Playwright's own error, which says how to install).
 // Step (3) reads chromium.executablePath(), the full Chromium; a headless launch uses chromium-headless-shell instead.
-// `playwright install chromium` (every workflow) installs both; a --no-shell or --only-shell install would mislead it. It differs from launchOptions() (chrome first) on purpose: moving ~250 checks from
+// `playwright install chromium` (every workflow) installs both; a --no-shell or --only-shell install would mislead it.
+// It differs from launchOptions() (chrome first) on purpose: moving ~250 checks from
 // Playwright's Chromium to Chrome stable in CI is a change of its own, not this row's.
 const PW_IMAGE = "/opt/pw-browsers/chromium";
 function playwrightChromium() {

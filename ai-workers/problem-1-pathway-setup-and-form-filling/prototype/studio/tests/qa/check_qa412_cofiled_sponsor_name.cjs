@@ -10,7 +10,7 @@
 //   zsh tools/isolated.sh qa_412 4475 start && curl -sX POST -H 'content-type: application/json' -H 'x-actor: user-A' \
 //     -d '{"confirm":"RESET"}' localhost:4475/api/demo/reset && curl -sX POST -H 'content-type: application/json' \
 //     -H 'x-actor: user-A' -d '{"sample":"configured"}' localhost:4475/api/demo/load && node tests/qa/check_qa412_cofiled_sponsor_name.cjs 4475
-const fs = require("fs"); const { chromium } = require("playwright");
+const { chromium } = require("playwright");
 const port = process.argv[2]; if (!port || port === "4400") { console.log("usage: <port of an isolated copy>, never 4400"); process.exit(2); }
 const base = `http://localhost:${port}`;
 let failed = 0; const ok = (n, c, d) => { if (!c) failed++; console.log(`${c ? "PASS" : "FAIL"} ${n}${!c && d !== undefined ? `: ${JSON.stringify(d).slice(0, 400)}` : ""}`); };

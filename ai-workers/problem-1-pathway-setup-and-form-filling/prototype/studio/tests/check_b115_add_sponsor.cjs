@@ -37,7 +37,7 @@ const shot = async (p, name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: 
     if (l.status >= 300 || !(l.body?.released ?? []).includes(FS)) { console.error("STOP  the configured checkpoint did not release Family sponsorship", l.status, JSON.stringify(l.body).slice(0, 400)); process.exit(2); }
     console.log(`      loaded the configured checkpoint in ${Number(l.body.seconds ?? 0).toFixed(1)} s`);
   }
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: SHOTS ? 2 : 1 });
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-O"); });

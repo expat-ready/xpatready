@@ -2,7 +2,6 @@
 // or by the code of a form that fills it, typed with or without its space, as GET /library/fields?q= does; a search that
 // matches nothing shows no row. Sample inputs; no AI call (US$0). axe (WCAG 2.2 AA) on the searched list.
 //   zsh studio/tools/isolated.sh c313_search 4460 start && node studio/tests/check_c313_search_browser.cjs 4460
-const fs = require("node:fs");
 const { chromium } = require("../node_modules/playwright");
 const AxeBuilder = require("../node_modules/@axe-core/playwright").default;
 const PORT = Number(process.argv[2] ?? 4460), BASE = `http://localhost:${PORT}`;
@@ -10,7 +9,7 @@ let fail = 0, pass = 0;
 const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${String(detail).replace(/\s+/g, " ").slice(0, 260)}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })).newPage();
   const errs = []; p.on("pageerror", (e) => errs.push(e.message));
   const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": "user-A", "content-type": "application/json" }, data: init.data, timeout: init.timeout ?? 30000 }); let body = null; try { body = await r.json(); } catch { /* not JSON */ } return { status: r.status(), body }; };
