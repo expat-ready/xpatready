@@ -196,6 +196,42 @@ def held(repo, now):
     return why, warn, note
 
 
+def bundle_of(repo, numbers):
+    """LR-098 (P-860): the candidates' files and comments in a few GraphQL queries (gh_graphql.py, through this script's
+    gh(), so QB_GH's fake answers it in the test) instead of two REST reads each. -> (bundle, note); ({}, note) when
+    GraphQL fails: every read then goes through REST, as before."""
+    def run(q):
+        out = json.loads(gh("api", "graphql", "-f", "query=" + q))
+        if not isinstance(out, dict) or out.get("errors") or not out.get("data"):
+            raise Unread("GraphQL answer without data")
+        return out["data"]
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("gh_graphql", os.path.join(TOOLS, "gh_graphql.py"))
+        g = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(g)
+        b = g.pr_bundle(repo, numbers, comments=True, files=True, run=run)
+        return b, "graphql: %d PRs in %d queries" % (len(numbers), -(-len(numbers) // g.PR_BATCH))
+    except Exception as e:
+        return {}, "REST: GraphQL not used (%s)" % " ".join(str(e).split())[:100]
+
+
+def files_of(repo, n, e):
+    """PR n's changed paths: the bundle's, unless it has a rename or copy (no previous path in GraphQL) or over 100
+    files (e["files"] is None): then REST, filename and previous_filename."""
+    if e.get("files") is not None:
+        return e["files"]
+    return [x for f in pages("repos/%s/pulls/%s/files?per_page=100" % (repo, n), PAGES["files"])
+            for x in (f.get("filename"), f.get("previous_filename")) if x]
+
+
+def comments_of(repo, n, e):
+    """Every comment of PR n: the bundle's when it holds them all, else REST, every page."""
+    if e.get("comments_complete"):
+        return e["comments"]
+    return pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
+
+
 def main_like(branch):
     return branch == "main" or str(branch or "").startswith("mergify/merge-queue/")
 
@@ -248,25 +284,31 @@ def main(argv):
     except Unread as e:
         print("warn  queue blocked by checks: open PRs unreadable (%s)" % e); return 0
     hits = 0
+    cand = [p.get("number") for p in prs if not p.get("draft") and (p.get("head") or {}).get("sha")
+            and not str((p.get("head") or {}).get("ref") or "").startswith("mergify/")]
+    bundle, note = bundle_of(repo, cand) if cand else ({}, None)
+    if note:
+        print("github " + note)   # LR-098: which path read the PRs' files and comments
     for p in prs:
         n, head = p.get("number"), (p.get("head") or {}).get("sha") or ""
         if p.get("draft") or str((p.get("head") or {}).get("ref") or "").startswith("mergify/") or not head:
             continue
         try:
-            files = [x for f in pages("repos/%s/pulls/%s/files?per_page=100" % (repo, n), PAGES["files"])
-                     for x in (f.get("filename"), f.get("previous_filename")) if x]
+            e = bundle.get(n) or {}
+            files = files_of(repo, n, e)
+            all_comments = lambda: comments_of(repo, n, e)
             if not check_only(files):
                 continue
             labels = [l.get("name") for l in p.get("labels") or []]
             comments = None
             if "review: approved" not in labels:
-                comments = pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
+                comments = all_comments()
                 if not approved_by_comment(comments, head, who):
                     continue
             if not ci_green(api("repos/%s/commits/%s/check-runs?check_name=ci&filter=latest&per_page=100" % (repo, head), dict).get("check_runs") or []):
                 continue
             if comments is None:
-                comments = pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
+                comments = all_comments()
             read = leads is not None and lead_read(comments, head, (p.get("user") or {}).get("login"), leads)
         except Unread as e:
             print("warn  queue blocked by checks: #%s unreadable (%s)" % (n, e)); continue

@@ -21,6 +21,7 @@ sle = load("sle_watch", "sle-watch.py")
 prw = load("proof_read_watch", "proof-read-watch.py")
 os.environ.setdefault("GITHUB_REPOSITORY", "o/r")   # flow-measure reads no git remote at import
 fm = load("flow_measure", "flow-measure.py")
+qb = load("queue_blocked", "queue-blocked.py")
 
 
 def node(n, comments=(), labeled=(), files=None):
@@ -267,6 +268,53 @@ class SleMainLine(unittest.TestCase):
         finally:
             sle.fetch = real
         self.assertIn("sle   github REST: GraphQL not used (HTTP 403)\n", out.getvalue())
+
+
+class QueueBlockedBundle(unittest.TestCase):
+    """queue-blocked: the query goes through its own gh() (QB_GH in its test); errors and answers without data are REST."""
+    def setUp(self):
+        self.real, self.args = qb.gh, []
+
+    def tearDown(self):
+        qb.gh = self.real
+
+    def test_graphql_through_its_gh(self):
+        import json as j
+
+        def gh(*a):
+            self.args.append(a)
+            return j.dumps({"data": {"repository": {"p7": node(7, [C1], files=["x.sh"])}}})
+        qb.gh = gh
+        b, note = qb.bundle_of("o/r", [7])
+        self.assertEqual(self.args[0][:3], ("api", "graphql", "-f"))
+        self.assertEqual(b[7]["files"], ["x.sh"]); self.assertTrue(b[7]["comments_complete"])
+        self.assertEqual(note, "graphql: 1 PRs in 1 queries")
+
+    def test_files_and_comments_from_the_bundle_only_when_whole(self):
+        real, calls = qb.pages, []
+        qb.pages = lambda path, cap, enough=None: calls.append(path) or [{"filename": "new.sh", "previous_filename": "old.sh"}]
+        try:
+            self.assertEqual(qb.files_of("o/r", 7, {"files": []}), [])                     # an empty list is an answer
+            self.assertEqual(qb.files_of("o/r", 7, {"files": None}), ["new.sh", "old.sh"])
+            self.assertEqual(qb.comments_of("o/r", 7, {"comments": ["c"], "comments_complete": True}), ["c"])
+            qb.comments_of("o/r", 8, {"comments": ["c"], "comments_complete": False}); qb.comments_of("o/r", 9, {})
+            self.assertEqual(calls, ["repos/o/r/pulls/7/files?per_page=100", "repos/o/r/issues/8/comments?per_page=100",
+                                     "repos/o/r/issues/9/comments?per_page=100"])
+        finally:
+            qb.pages = real
+
+    def test_failures_are_rest(self):
+        partial = '{"data": {"repository": {"p7": %s}}, "errors": [{"message": "x"}]}' % __import__("json").dumps(node(7, [C1], files=["x"]))
+        for answer in ('{"errors": [{"message": "x"}]}', "not json", '{"data": null}', partial):
+            qb.gh = lambda *a, ans=answer: ans
+            b, note = qb.bundle_of("o/r", [7])
+            self.assertEqual(b, {}); self.assertTrue(note.startswith("REST: GraphQL not used ("))
+
+        def boom(*a):
+            raise qb.Unread("HTTP 403\nmore")
+        qb.gh = boom
+        b, note = qb.bundle_of("o/r", [7])
+        self.assertEqual((b, note), ({}, "REST: GraphQL not used (HTTP 403 more)"))
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
