@@ -48,7 +48,8 @@ rm -f "$T/lw/full-check"
 # lead-watch.sh writes the stamp at its very end, after every step, with this copy's behind count
 lw="$TOOLS/lead-watch.sh"
 last=$(grep -n 'full-check.\$\$" \&\& mv -f' "$lw" | cut -d: -f1); ex=$(grep -n '^exit "\$act"' "$lw" | cut -d: -f1)
-ok "lead-watch.sh writes full-check on the line before its final exit" "$([ -n "$last" ] && [ -n "$ex" ] && [ "$((ex - last))" = 1 ] && echo 1)" "stamp line ${last:-none}, exit line ${ex:-none}"
+sp=$(grep -n '^echo "spent ' "$lw" | cut -d: -f1)   # the last line stays the seconds of the whole check (check-lead-watch-speed.sh)
+ok "lead-watch.sh writes full-check after every step: then only its seconds line, then its final exit" "$([ -n "$last" ] && [ -n "$ex" ] && [ "$((sp - last))" = 1 ] && [ "$((ex - sp))" = 1 ] && echo 1)" "stamp line ${last:-none}, spent line ${sp:-none}, exit line ${ex:-none}"
 ok "... with the epoch and the commits its own copy is behind origin/main" "$(grep -q 'fb=$(git -C "$TOOLS" rev-list --count HEAD..origin/main' "$lw" && echo 1)"
 ok "... and the gap watchdog still reads last-check (written at the start), not full-check" "$(grep -q 'st="$STATE_DIR/last-check"' "$lw" && echo 1)"
 finish
