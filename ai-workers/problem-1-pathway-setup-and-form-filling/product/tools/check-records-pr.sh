@@ -21,6 +21,8 @@ fresh() {   # a clone on lead/test whose origin has main with RULES as of P-$1 a
   printf '#!/bin/sh\nexec "%s" "$@"\n' "$T/gh" > "$Q/tools/gh.sh"
   printf '# Rule register (Lead keeps it; as of **P-%s**, 24 Nov 09:0x IST; earlier: `history/RULES-old.md` + older)\n\n| ID | Rule | Enforced by | As of |\n|---|---|---|---|\n| P-%s | a rule | prose | 24 Nov |\n' "$1" "$1" > "$Q/RULES.md"; mkdir -p "$Q/history"; echo old > "$Q/history/RULES-old.md"
   [ -n "${3:-}" ] && printf '| IDX-9 | rows P-%s to P-%s stand | prose | 24 Nov |\n' "$3" "$4" >> "$Q/RULES.md"
+  # main's check-docs (PS-1b) finds the Lead in CURRENT-LEAD.md once STATE.md is moved or removed: the cases below do both
+  printf 'current_lead: local_aaa-0000-1111 Lead 1 · 6 Nov 01:00 IST\n' > "$Q/CURRENT-LEAD.md"
   { echo '| # | Date | Decision |'; echo '|---|---|---|'; n=$2; while [ "$n" -ge "$1" ]; do echo "| P-$n | 25 Nov | d |"; n=$((n - 1)); done; } > "$Q/DECISIONS.md"
   git -C "$C" add -A && git -C "$C" commit -qm base && git init -q --bare "$T/o" && git -C "$C" remote add origin "$T/o" && git -C "$C" push -q origin main 2>/dev/null && git -C "$C" checkout -q -b lead/test
 }
