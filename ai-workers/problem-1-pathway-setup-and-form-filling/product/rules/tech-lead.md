@@ -231,3 +231,28 @@ Added 24 Nov (Lead 13; full rows in DECISIONS): P-814 case rows RQ-02 to RQ-08 f
 | P-690 | `design/full-power-plan-2026-11-17.md` is the one action list; items leave only when done or dropped by the founder; briefs quote item IDs. | script: plan-watch.py via check-docs.sh and lead-watch.sh | 18 Nov |
 | IDX-15 | 17 Nov rows (P-664 qa records first, P-665 CI-B, P-666 high effort and 48 h stop, P-667 rules v2, P-668 cards, P-669 5-hour bar, P-670 T7 deny lines; P-693 multi-cloud compute) stand: word for word in `rules/tech-lead.md` › Moved 19 Nov (Lead 94). | prose (see rows) | 19 Nov |
 | IDX-23 | P-766 to P-780 stand, word for word in `rules/tech-lead.md` › IDX-23 (P-770, P-778 the Lead does every step; P-780 recovery swap; P-781 Opus 5.5 medium for all, Fable 5.2 medium critical). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5); owed ENF-778a/g | 21 Nov |
+
+## IDX-29 (moved word for word from RULES.md, 25 Nov 22:2x IST, Lead 10, size)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-635 | Enforcement defaults (overnight hooks, daily settings batch, pr-rules timing, hook speed): row word for word in `rules/tech-lead.md`. | prose | 16 Nov |
+| P-673 | Cloud environment reads canada.ca for citations; Limited network, no secrets. | prose | 17 Nov |
+| P-674 | Clean-up plan (with P-675 to P-677): row in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
+| P-680 | Spend master kept private; board card parked (P-681); architecture sized for ~500 capabilities with an AI layer. | prose | 17 Nov |
+| P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
+
+### P-610 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-610 | Fix each problem the narrowest way; a row's PR under 800 changed lines (exceptions only by a DECISIONS row: P-843, P-844, P-846); re-review reads only new commits. | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 15 Nov |
+
+### P-845 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-845 | Factory v3 approved: Lead machine user approves risky paths; agents capped ~US$1,000 month one, Code Review on risky paths only; keep Mergify, GitHub approval replaces the label; factory moves to expat-ready/private. | prose | 26 Nov |
+
+### P-339 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-339 | Works = pack green on main's head on GitHub's runners on the counted data, run id in qa's row, an independent re-run, a fresh Opus reader's verdict (P-322, P-290, P-303, P-432). | CI: ci.yml gate B (part) | P-612 |
+
+### P-500 line
+Moved word for word from RULES.md, 27 Nov (Lead 3, size limit):
+| P-500 | The right sample for the purpose in every analysis, named beside the number; speed = app-code PRs or qa-confirmed Works. | script: cockpit-data.py (part: board numbers carry source and class, P-596) | 12 Nov |

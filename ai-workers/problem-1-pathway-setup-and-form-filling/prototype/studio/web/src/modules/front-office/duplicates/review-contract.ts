@@ -28,3 +28,31 @@ export function mergedBy(m: Pick<MergeRecord, "automatic" | "by">, me: string, n
 }
 /** One query per tab, shared by People to merge and the Sales menu's count (To review's openCount). */
 export const reviewQuery = (status: "OPEN" | "KEPT_SEPARATE") => ({ queryKey: ["fo", "duplicates", "review", status], queryFn: async () => ReviewList.parse(await staffApi(`/front-office/duplicates/review?status=${status}`)) });
+
+// FO-9s part 3 (concept r3 §4 S3, BR-8, BR-9, M7): the guided merge's preview and merge answers.
+export const FieldPick = z.enum(["SURVIVOR", "LOSER"]);
+export type FieldPick = z.infer<typeof FieldPick>;
+const FieldRow = z.object({ field: z.string(), survivor: z.unknown(), loser: z.unknown(), pick: FieldPick });
+export const Preview = z.object({
+  pairId: z.string(), survivorId: z.string(), loserId: z.string(), needsCaseSide: z.boolean(), hasMoney: z.boolean(), fields: z.array(FieldRow),
+  moves: z.object({ leads: z.number(), notes: z.number(), calls: z.number(), bookings: z.number() }),
+  updatedAt: z.object({ survivor: z.string(), loser: z.string() }),
+});
+export type Preview = z.infer<typeof Preview>;
+export const Merged = z.object({ mergeRef: z.string() });
+/** The person's merge fields (ports/person-merge.ts MERGE_FIELDS.PERSON), in words. */
+export const FIELD_LABEL: Record<string, string> = { givenNames: "First name", familyName: "Last name", email: "Email", phone: "Phone", language: "Language", timeZone: "Time zone" };
+const present = (v: unknown) => v !== null && v !== undefined && v !== "";
+/** BR-8: why the server's default was picked (ports/person-merge.ts defaultPick: the only value, else the newer record's,
+ *  a tie keeping the record that stays). Pure; the pick itself is always the server's. */
+export function fieldWhy(f: { survivor: unknown; loser: unknown }, at?: { survivor: string; loser: string }): string {
+  if (!present(f.survivor) && !present(f.loser)) return "neither has it";
+  if (present(f.survivor) !== present(f.loser)) return "only value";
+  if (String(f.survivor) === String(f.loser)) return "same";
+  return at && Date.parse(at.loser) === Date.parse(at.survivor) ? "the record that stays" : "newer";   // a tie (break r1 m2)
+}
+/** Word for word: the stale answer (concept §4) and a failed merge (AG-2-16 §11, Minor 4). */
+export const STALE_WORDS = "One of these records changed. Reload to see it.";
+export const MERGE_FAILED = "Could not merge. Nothing changed.";
+/** No answer came back (break r1 M1): the merge may have gone through, so never "Nothing changed". */
+export const MERGE_UNKNOWN = "We did not hear back, so the merge may have gone through. The list was read again: check the Merged tab before trying again.";

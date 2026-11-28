@@ -4,7 +4,8 @@
 // the summary, every other empty value marked "missing", BR-6), the Code s. 24(3) checklist line (FO-5b, never blocking,
 // BR-17) and the one primary, Check and send, which opens the Send panel (S4). Every save is a new version (BR-9); a sent
 // version never changes (BR-7): Edit on a sent one makes version n+1 in Draft, to be sent again. Once the client signed,
-// Edit is gone (the server refuses a racing save too). Withdraw, Signed offline and Sign as the firm are later parts.
+// Edit is gone (the server refuses a racing save too). Part 3a (R1.55): Withdraw and Signed offline (S6, ./end-panels.tsx);
+// Sign as the firm is a later part.
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +17,7 @@ import { Loading } from "../sales/loading";
 import { SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError, staffToken } from "../sales/session";
 import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, Templates, VALUE_LABELS, WHEN } from "./contract";
+import { OFFLINE_FROM, SignedOfflinePanel, WITHDRAWABLE, WithdrawPanel } from "./end-panels";
 
 type Row = { label: string; amount: string; when: string; dueOn: string };
 const rowsOf = (r: Retainer): Row[] => r.version.fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? "" : (Number(f.amountMinor) / 100).toFixed(2), when: f.when, dueOn: f.dueOn ?? "" }));
@@ -42,6 +44,7 @@ function RetainerBody({ id }: { id: string }) {
   React.useEffect(() => { if (templateId && templates.data && !templates.data.some((t) => t.id === templateId && t.active)) setTemplateId(""); }, [templates.data, templateId]);
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false), [warnings, setWarnings] = React.useState<string[]>([]);
+  const [ending, setEnding] = React.useState<"withdraw" | "offline" | null>(null);   // part 3a: the S6 panel open, if any
   const r = one.data;
   // QA-779 (b): an Individual client had no email when this version was made. Once the record has one (added on the
   // prospect page), a new version takes it (the save re-reads the record), so Save is pressable with no typed change.
@@ -137,7 +140,7 @@ function RetainerBody({ id }: { id: string }) {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold text-text [overflow-wrap:anywhere]">Retainer for {client}</h1>
+        <h1 tabIndex={-1} className="text-2xl font-semibold text-text outline-none [overflow-wrap:anywhere]">Retainer for {client}</h1>
         <Pill tone={s.tone} title={s.tip}><span data-retainer-status>{s.label}</span></Pill>
         <span className="text-sm text-text-muted" data-version>Version {r.version.n}</span>
         {r.prospect ? r.mayChange ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">{r.prospect.number}</Link> : <span className="text-sm text-text-muted">{r.prospect.number}</span> : null}
@@ -227,6 +230,12 @@ function RetainerBody({ id }: { id: string }) {
             <FoldOut className="mt-2" summaryClassName="text-xs text-text-muted" summary="Each item, marked or not"><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></FoldOut>
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
+          {r.mayChange && ((WITHDRAWABLE.includes(r.status) && can(me, R_KEY.void)) || (OFFLINE_FROM.includes(r.status) && can(me, R_KEY.offline))) ? (
+            <div className="flex flex-wrap gap-2 border-t border-border pt-3" data-end-actions>
+              {WITHDRAWABLE.includes(r.status) && can(me, R_KEY.void) ? <Button variant="outline" size="sm" data-open-withdraw onClick={() => setEnding("withdraw")}>Withdraw</Button> : null}
+              {OFFLINE_FROM.includes(r.status) && can(me, R_KEY.offline) ? <Button variant="outline" size="sm" data-open-offline onClick={() => setEnding("offline")}>Signed offline</Button> : null}
+            </div>
+          ) : null}
           {draft && r.mayChange && can(me, R_KEY.send) ? <>
             <Button data-check-and-send busy={save.isPending} onClick={checkAndSend} aria-describedby={form && typed ? "fo-unsaved-hint" : undefined}>Check and send</Button>
             {form && typed ? <p id="fo-unsaved-hint" className="-mt-2 text-xs text-text-muted" data-unsaved-hint>You have unsaved changes. Check and send saves them as version {next} first.</p> : null}
@@ -239,6 +248,10 @@ function RetainerBody({ id }: { id: string }) {
         <p className="mt-3 text-sm">{client} is asked to sign this version. After {client} signs, {repName(r.representativeStaffId)} signs for the firm.</p>
         {r.missing.length ? <p className="mt-2 text-sm text-text-muted">{r.missing.length} value{r.missing.length === 1 ? " is" : "s are"} missing. You can send without {r.missing.length === 1 ? "it" : "them"}.</p> : null}
       </Panel>
+      <WithdrawPanel r={r} client={client} open={ending === "withdraw"} onOpenChange={(o) => setEnding(o ? "withdraw" : null)} onDone={after} onStale={() => void one.refetch()}
+        returnFocus={() => document.querySelector<HTMLElement>("[data-open-withdraw]") ?? document.querySelector<HTMLElement>("h1")} />
+      <SignedOfflinePanel r={r} client={client} open={ending === "offline"} onOpenChange={(o) => setEnding(o ? "offline" : null)} onDone={after} onStale={() => void one.refetch()}
+        returnFocus={() => document.querySelector<HTMLElement>("[data-open-offline]") ?? document.querySelector<HTMLElement>("h1")} />
       <Panel open={showItems} onOpenChange={setShowItems} bodyLabel="The Code's items" title="The regulator's Code, s. 24(3)" description={checklist.data?.summary}>
         {checklist.isPending ? <Loading label="Loading the items" rows={3} /> : checklist.isError ? <Notice tone="danger" title="Could not load the items." /> : (
           <div className="flex flex-col gap-3 text-sm">

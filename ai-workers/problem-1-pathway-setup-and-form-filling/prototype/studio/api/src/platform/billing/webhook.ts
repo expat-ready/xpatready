@@ -45,7 +45,7 @@ export const SUB_MOVES: Record<PlatformSubscriptionStatus, PlatformSubscriptionS
 };
 /** The firm a subscription status gives: overdue is an indicator (the firm stays Active); an ended subscription leaves the
  *  firm on hold, where the 90-day clock runs (contracts §7 "Firm exit"; the clock and the close are part 3). */
-const FIRM_OF: Record<PlatformSubscriptionStatus, PlatformFirmStatus> = { TRIAL: "TRIAL", ACTIVE: "ACTIVE", OVERDUE: "ACTIVE", PAYMENT_HOLD: "PAYMENT_HOLD", ENDED: "PAYMENT_HOLD" };
+export const FIRM_OF: Record<PlatformSubscriptionStatus, PlatformFirmStatus> = { TRIAL: "TRIAL", ACTIVE: "ACTIVE", OVERDUE: "ACTIVE", PAYMENT_HOLD: "PAYMENT_HOLD", ENDED: "PAYMENT_HOLD" };
 /** Billing moves a firm only between these; a security lock, an abandoned or a deleted firm is never moved by Stripe. */
 export const FIRM_MOVES: Record<PlatformFirmStatus, PlatformFirmStatus[]> = {
   PROVISIONING: ["TRIAL", "ACTIVE", "PAYMENT_HOLD"], TRIAL: ["ACTIVE", "PAYMENT_HOLD"], ACTIVE: ["PAYMENT_HOLD"], PAYMENT_HOLD: ["ACTIVE"],

@@ -236,6 +236,11 @@ export class Retainers {
 
   /** The retainer if the person may see it (firm, then visibility). The representative always may read it (BR-3); a
    *  change needs the prospect's own visibility (break B-11, review m3: the row grants the representative reading). */
+  /** FO-5d: whether this person may open the retainer now (the page's own rule, `visible`); a notification's labeller asks. */
+  async canOpen(ctx: StaffContext, id: string): Promise<boolean> {
+    try { await this.visible(ctx, id); return true; } catch (e) { if (e instanceof HttpException && e.getStatus() === 404) return false; throw e; }
+  }
+
   private async visible(ctx: StaffContext, id: string, change = false) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
     const r = await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, id } });

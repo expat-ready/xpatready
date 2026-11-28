@@ -188,7 +188,7 @@ try {
     await c.close();
   }
   const kept = hasColumn(["fo_retainer", "fo_retainer_version", "fo_signature_request", "fo_signer"], "decline%reason%")
-    ? sql(`select count(*) from (select to_jsonb(r) as j from fo_signature_request r where document_id = '${rb.id}' union all select to_jsonb(v) from fo_retainer_version v where retainer_id = '${rb.id}' union all select to_jsonb(f) from fo_retainer f where id = '${rb.id}') x where x.j::text like '%${REASON}%'`) : "0";
+    ? sql(`select count(*) from (select to_jsonb(r) as j from fo_signature_request r where document_id = '${rb.id}' union all select to_jsonb(s) from fo_signer s join fo_signature_request r2 on r2.id = s.request_id where r2.document_id = '${rb.id}' union all select to_jsonb(v) from fo_retainer_version v where retainer_id = '${rb.id}' union all select to_jsonb(f) from fo_retainer f where id = '${rb.id}') x where x.j::text like '%${REASON}%'`) : "0";
   ok("J-55 W3 (parts missing: FO-6, the decline with its reason): the client's decline is kept with their own reason, word for word, and the retainer reads DECLINED",
     declinedVia === "door" && kept !== "0" && (await retOf(B.id))[0].status === "DECLINED", { declinedVia, kept });
   await p.goto(`${BASE}/front-office/retainers/${rb.id}`); await status.waitFor({ timeout: 15_000 });

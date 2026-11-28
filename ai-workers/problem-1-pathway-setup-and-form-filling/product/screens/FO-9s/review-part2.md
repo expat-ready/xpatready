@@ -39,4 +39,20 @@ UXL (EXPERIENCE §7, 1280 and 375 px): 01 Met · 02 N/A · 03 Met · 04 Met · 0
 ## Not checked
 A real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); a visible headed browser (the cloud container has none: headless Playwright clicked and typed as a person would). I did not re-run `check_fo4_sales_browser.ts`, `check_fo4al_add_lead_browser.ts` or `check_fo9b_merge.ts`: they write screenshots into folders another session has already modified in this working tree, and the Sales frame change only adds lines. CI covers them; on my copy the Leads page loaded with the new menu item and no page error. The full `ci` run was not checked.
 
-Reviewer: Changes 46097f1b6761b82e83c3a77356fe136cd89fd839
+Round 1: Reviewer: Changes 46097f1b6761b82e83c3a77356fe136cd89fd839
+
+## Round 2 (25 Nov, commit `0b9a9eed3133d872e31feaf6603344ef46917bbe`, diff since `46097f1b6`)
+Diff: `people-to-merge-page.tsx` and `check_fo9s_review_browser.ts` only. Re-checked on my isolated copy `rev_ptm` :4583 (stopped afterwards): `check_fo9s_review_browser.ts` **37/37 twice**; `tsc -p web` 0 errors; my own keyboard walk (headless Playwright, keys only) as below.
+* **Issue 1 (Must) closed.** `returnFocus={() => opener.current}` on the Dialog; `focusNext` after the refresh. Measured: Escape → focus on the same row's Keep separate; Cancel by keyboard → the same; confirm → the next pair's Keep separate, and the next Tab goes on from that row; Undo by Enter → the row's "Undone …" line (`data-dup-after`, `tabIndex=-1`), and the next Tab reaches the next row's Undo merge. A fail test each (R7, "never the page body").
+* **Issue 2 closed.** A `sending` ref guards both confirm and Undo: double Enter → one POST (200) for each; the check's double-click test counts 1.
+* **Issue 3 closed for To review and Kept separate.** At 375 px What matched and First seen are hidden (`headClass`), the reasons sit under the names, `break-words` and the lead number on one line (`whitespace-nowrap`); table overflow 2 px, every action inside the viewport. A fail test (People column ≥ 140 px). **Still open, Should:** the **Merged** tab at 375 px is unchanged: the table box overflows by 151 px and Undo merge sits at x = 462 of 375, with no cue that it scrolls (UXL-10). Fix: hide How or When below `sm` there too, as on To review.
+* **Issue 4 closed** as far as the API allows: identical names read "<name> (two records)"; different names keep "<loser> into <survivor>".
+* **Issue 5 closed:** "Someone who may merge people (an Owner, Admin or Case Manager) can undo it."
+* **Issue 6 closed:** a refused Undo reads the list again (`void refresh()` in `onError`).
+* **The breaker's F1, F4 and F7** (`break-report-part2.md`): the lead queries (`["fo","leads"]`, the same key `lead-page.tsx:115` uses) are invalidated after every decision, so Back shows no stale "Possible match" (fail test R4); a 503 shows the server's "Try again" in a toast and Undo merge stays offered (fail test R5); a 403 on any list read shows the no-key sentence, and 401 and 403 are not retried (fail test R1). The code matches each fix.
+* Spot-checked for new defects: on a 401, Undo's toast is shown and focus falls back to the tab (its `[data-dup-after]` is absent), which is correct; `focusNext`'s effect has no dependency list but clears itself once focus lands, so it does not loop. No page errors in my run.
+* Breaker Minors not fixed in this round (F5 counts after a second-tab Undo are now refreshed by issue 6; F6 no refetch on focus; F8 "Merged by a staff member" for a Case Officer; F12 the 500 cap): API or shared-cache matters outside this part's touch list. Not findings for this verdict; list them in the PR.
+
+**Round 2 verdict: Ship (Approve).** No Must is open. One Should remains (the Merged tab at 375 px), to be fixed or listed in the PR as a follow-up. Journey score 8.5 → **9/10**: feedback and state goes from ½ to 1; accessibility and screen sizes stays ½ because of the Merged tab at 375 px.
+
+Reviewer: Approve 0b9a9eed3133d872e31feaf6603344ef46917bbe

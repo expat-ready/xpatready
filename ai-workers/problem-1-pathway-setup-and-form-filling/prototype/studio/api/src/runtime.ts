@@ -4,6 +4,7 @@
 // on the workspace's cases; a client reaches only the case they answer, and only its questionnaire; configuration
 // people reach no case. Answer values and typed names never go into audit text or logs (STANDARDS §5): audit lines name
 // a case by its id.
+import { ASSESSMENT_ONLY_CASE_WORDS } from "../../engine/programs.ts";
 import { additionsOf, withAdditions } from "../../engine/runtime/added-forms.ts";
 import { clientPersonOf, withClient, type StoredChange } from "../../engine/runtime/filing-changes.ts";
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
@@ -19,7 +20,7 @@ import { withoutLeadIn } from "../../engine/options.ts"; // QA-383
 import { actorOf, Audit, CaseRead, Db, fail, need, RUNTIME_ACTORS, Workspace, type Actor } from "./core.ts";
 import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
-import { firmByKey, firmOfActor, STAND_IN } from "./firms.ts";
+import { firmByKey, firmOfActor, firmIdOfActor, STAND_IN } from "./firms.ts";
 import { clientCode, clientLineOf, clientOfFirm, newClient } from "./clients.ts";
 import { FO_PERSON_PORT, type FoPersonPort } from "../../ports/fo-person.ts";
 import { currentFirm, withFirm } from "./platform/firm-scope.ts";
@@ -146,6 +147,10 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
     : `Please check this answer. It did not match the ${doc} on file. If it is wrong, change it here. Your case officer settles any difference with you.`;
 }
 
+/** AS-2a (P-650 (2)): an assessment-only release is not for cases at all, so the refusal says that, not "items to fix". */
+/** Review m5: the New case list already names the release, so its line leaves the name out (`named` false). */
+export const whyNotForCases = (label: string, missing: { code: string }[], named = true) => (missing.some((m) => m.code === "assessment_only") ? `${named ? `"${label}": ` : ""}${ASSESSMENT_ONLY_CASE_WORDS}` : notReadyForCases(label, missing.length));
+
 /** Who may reach a case at all, as reach() decides it before any look-up (R1.10 A5: a door that checks an id's shape before
  *  the body calls this first, so authorise before validate stays: a person with no case duty is 403 whatever the id). */
 export function mayReach(actor: Actor, want: "read" | "answer" | "officer") {
@@ -175,7 +180,8 @@ export class Runtime {
     const { officer } = mayReach(actor, want);
     const c = await this.db.case.findFirst({ where: { id: caseId, workspaceId }, include: REACHED });
     // C6.11 (BR-20): staff reach only their own firm's cases; another firm's case is "not found", as for a client.
-    if (!c || (!officer && c.clientActorId !== actor.id) || (officer && c.firmKey !== firmOfActor(actor)?.key)) fail("No such case.", HttpStatus.NOT_FOUND);
+    // CS-W1 part 2b: the firm is compared by its platform id (the case's firm_id, NOT NULL since part 2a), not by key.
+    if (!c || (!officer && c.clientActorId !== actor.id) || (officer && c.firmId !== await firmIdOfActor(this.db, actor))) fail("No such case.", HttpStatus.NOT_FOUND);
     return pinned(c!);
   }
 
@@ -292,10 +298,14 @@ export class Runtime {
     // C6.11 (BR-20): the case belongs to the opener's firm; its reference and idempotency key are the firm's own (break M2, M3).
     const firm = firmOfActor(actor);
     if (!firm) fail(`${actor.name} (simulated) is not staff of a firm, so cannot open a case.`, HttpStatus.FORBIDDEN);
+    // CS-W1 part 2b (part 2a's review m3, breaker B8): a firm with no account on the platform cannot open a case; said in
+    // words before anything is written (the database's NOT NULL would otherwise answer with a server error).
+    const firmId = await firmIdOfActor(this.db, actor);
+    if (!firmId) fail(`${firm!.name} has no account on the platform yet, so it cannot open a case. Nothing was created.`, HttpStatus.CONFLICT);
     const { idempotencyKey: _k, ...request } = b;
     const fingerprint = createHash("sha256").update(JSON.stringify(request)).digest("hex");
     const replay = async () => {
-      const again = b.idempotencyKey ? await this.db.case.findFirst({ where: { workspaceId, firmKey: firm!.key, idempotencyKey: b.idempotencyKey } }) : null;
+      const again = b.idempotencyKey ? await this.db.case.findFirst({ where: { workspaceId, firmId: firmId!, idempotencyKey: b.idempotencyKey } }) : null;
       if (!again) return null;
       if (again.idempotencyFingerprint !== fingerprint) fail("This idempotency key was already used for a different case request; nothing was created. Use a new key.", HttpStatus.CONFLICT);
       return { ...(await this.get(actor, again.id)), created: false };
@@ -312,7 +322,7 @@ export class Runtime {
     // S4 (SA-1B-90): a case opens only on a startable release. The case officer reads a plain sentence (review M2 on
     // ea7f28b2: no field paths or keys, no author's step); the catalogue's own lines go in `missing` for the authors.
     const missing = await this.programs.startableMissing(b.combinationId, release!);
-    if (missing.length) throw new HttpException({ type: "https://expatready.local/problems/not-startable", title: "Not ready for cases", status: 409, detail: notReadyForCases(combination!.label, missing.length), missing: missing.map((m) => ({ code: m.code, text: m.text, step: m.step })) }, HttpStatus.CONFLICT);
+    if (missing.length) throw new HttpException({ type: "https://expatready.local/problems/not-startable", title: "Not ready for cases", status: 409, detail: whyNotForCases(combination!.label, missing), missing: missing.map((m) => ({ code: m.code, text: m.text, step: m.step })) }, HttpStatus.CONFLICT);
     let client: Actor | null = null;
     try { client = actorOf(b.clientActor); } catch { /* reported below as a field error */ }
     if (!client || !(client.duties as readonly string[]).includes("answer")) fieldError("clientActor", "Choose a client login (the client who answers the questionnaire).");
@@ -349,7 +359,7 @@ export class Runtime {
         // so two openings at the same moment cannot both pass; a refusal writes nothing and spends no case number.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-open:${firm!.key}`}))`;
         // Review M1: a retry with the same key that waited on this lock answers the case its twin made, never the limit.
-        if (b.idempotencyKey && await tx.case.findFirst({ where: { workspaceId, firmKey: firm!.key, idempotencyKey: b.idempotencyKey }, select: { id: true } })) return REPLAYED;
+        if (b.idempotencyKey && await tx.case.findFirst({ where: { workspaceId, firmId: firmId!, idempotencyKey: b.idempotencyKey }, select: { id: true } })) return REPLAYED;
         const group = await groupOfCombination(tx, b.combinationId);
         const used = (await new PgCaseCount(tx, firm!.key).activeCounts(tx))[group];
         const limit = await this.entitlements(tx).check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
@@ -447,7 +457,7 @@ export class Runtime {
       const on = routeOf(routes, r.combination.combinationKey);
       const stage = on && on.at > 0 ? { route: on.route.key, route_label: on.route.label, key: on.route.stages[on.at].key, name: on.route.stages[on.at].staff_name,
         earlier: on.route.stages.slice(0, on.at).map((x) => ({ key: x.key, name: x.staff_name, key_details: (x.key_details ?? []).map((d) => ({ field: d.field, label: d.label, type: d.type, same_every_stage: !!d.same_every_stage })) })) } : undefined;
-      return { combination_id: r.combinationId, combination: r.combination.label, version: r.version, startable: !missing.length, items: missing.length, why: missing.length ? notReadyForCases(r.combination.label, missing.length) : null, ...(stage ? { stage } : {}) };
+      return { combination_id: r.combinationId, combination: r.combination.label, version: r.version, startable: !missing.length, items: missing.length, why: missing.length ? whyNotForCases(r.combination.label, missing, false) : null, ...(stage ? { stage } : {}) };
     }));
     return out.sort((a, b) => Number(b.startable) - Number(a.startable) || a.combination.localeCompare(b.combination));
   }
@@ -1051,10 +1061,14 @@ export class Runtime {
     need(actor, "case");
     const firm = firmOfActor(actor);
     if (!firm) fail(`${actor.name} (simulated) is not staff of a firm, so cannot open a case.`, HttpStatus.FORBIDDEN);
+    // CS-W1 part 2b (part 2a's review m3, breaker B8): a firm with no account on the platform cannot open a case; said in
+    // words before anything is written (the database's NOT NULL would otherwise answer with a server error).
+    const firmId = await firmIdOfActor(this.db, actor);
+    if (!firmId) fail(`${firm!.name} has no account on the platform yet, so it has no case numbers.`, HttpStatus.CONFLICT);   // review m4: its own words
     const workspaceId = await this.ws.id();
     const [{ n }] = await this.db.$queryRaw<{ n: string }[]>`SELECT 'C-' || y.y || '-' || lpad(v.v::text, greatest(5, length(v.v::text)), '0') AS n
       FROM (SELECT extract(year FROM now() AT TIME ZONE 'America/Toronto')::integer AS y) y,
-      LATERAL (SELECT coalesce((SELECT next_value FROM firm_case_counter WHERE workspace_id = ${workspaceId}::uuid AND firm_key = ${firm!.key} AND year = y.y), 1) AS v) v`;
+      LATERAL (SELECT coalesce((SELECT next_value FROM firm_case_counter WHERE workspace_id = ${workspaceId}::uuid AND firm_id = ${firmId}::uuid AND year = y.y), 1) AS v) v`;
     return { case_number: n };
   }
 
@@ -1077,7 +1091,8 @@ export class Runtime {
     if (q.client !== undefined && (typeof q.client !== "string" || !q.client)) fieldError("client", "Name one client login.");
     const client = q.client ?? null;
     const words = searchWords(q.q);
-    const rows = await this.db.case.findMany({ where: { workspaceId, firmKey: firmOfActor(actor)?.key ?? "", ...(client ? { clientActorId: client } : {}), ...(words ? searchWhere(words) : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, ...(q.after ? { cursor: { id: q.after }, skip: 1 } : {}), include: { combination: { select: { label: true } } } });
+    const listFirm = (await firmIdOfActor(this.db, actor)) ?? "00000000-0000-0000-0000-000000000000";   // CS-W1 part 2b: by platform id; none: no case
+    const rows = await this.db.case.findMany({ where: { workspaceId, firmId: listFirm, ...(client ? { clientActorId: client } : {}), ...(words ? searchWhere(words) : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1, ...(q.after ? { cursor: { id: q.after }, skip: 1 } : {}), include: { combination: { select: { label: true } } } });
     const page = rows.slice(0, take), ids = page.map((c) => c.id);
     // The people of this page's cases in one query (never one per row): for the client's name, and for one client's page.
     const people = new Map<string, { subjectId: string; label: string; role: string; applies: boolean }[]>();

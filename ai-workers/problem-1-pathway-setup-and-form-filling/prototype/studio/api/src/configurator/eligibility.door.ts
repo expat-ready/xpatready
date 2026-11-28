@@ -5,12 +5,12 @@
 // with no spouse on the application does not apply. Gates saved today are all per person (checkGates), so the spouse's
 // list stays empty until a release carries a spouse's rule (AS-1g, AS-1s). `scores` is empty until AS-1s.
 import type { Snapshot } from "../../../engine/snapshot.ts";
-import { gateFacts, type Gate, type SnapshotEligibility } from "../../../engine/eligibility/gates.ts";
+import { assessmentOnlyRelease, gateFacts, type Gate, type SnapshotEligibility } from "../../../engine/eligibility/gates.ts";
 import { gateResult, outcomeOf, type GateResult } from "../../../engine/eligibility/assess.ts";
 import { kkey, type Known } from "../../../engine/resolver.ts";
 import {
   AssessInput, EligibilityRefused, EligibilityResult, type AssessableRelease, type EligibilityPort, type EligibilityReason,
-  type EligibilityRole, type RequiredFact, type RequiredFacts,
+  type EligibilityRole, type RequiredFact, type RequiredFacts, type RuleLine,
 } from "../../../ports/eligibility.port.ts";
 
 /** One release row as the adapter reads it (config_release). */
@@ -54,7 +54,7 @@ export class ConfiguratorEligibility implements EligibilityPort {
       const was = newest.get(r.combinationId);
       if (!was || r.version > was.version) newest.set(r.combinationId, r);
     }
-    return [...newest.values()].map((r) => ({ combination_id: r.combinationId, name: (r.snapshot as Snapshot).combination.label, release_id: r.id, version: r.version, content_hash: r.sha256 }))
+    return [...newest.values()].map((r) => ({ combination_id: r.combinationId, name: (r.snapshot as Snapshot).combination.label, release_id: r.id, version: r.version, content_hash: r.sha256, assessment_only: assessmentOnlyRelease(r.snapshot as Snapshot) }))
       .sort((a, b) => a.name.localeCompare(b.name) || a.release_id.localeCompare(b.release_id));
   }
 
@@ -87,6 +87,9 @@ export class ConfiguratorEligibility implements EligibilityPort {
       for (const key of r.missing) if (!seen.has(`${role}|${key}`)) { seen.add(`${role}|${key}`); missing.push({ role, key }); }
     }
     for (const m of missing) reasons.push({ kind: "FACT_MISSING", role: m.role, ref: m.key, words: fieldOf(s, m.key)?.meaning || m.key });
-    return EligibilityResult.parse({ outcome, reasons, missing_facts: missing, scores: [], rules_version: { release_id: row.id, content_hash: row.sha256 }, disclaimer: rulesOf(s)!.disclaimer });
+    // AS-2a: every rule read, with its state and its source (null for a rule saved without one).
+    const source = new Map(gates.map((g) => [g.key, g.source ?? null]));
+    const rules: RuleLine[] = read.map(({ role, r }) => ({ role, ref: r.key, words: r.label, state: r.state, source: source.get(r.key) ?? null }));
+    return EligibilityResult.parse({ outcome, reasons, missing_facts: missing, rules, scores: [], rules_version: { release_id: row.id, content_hash: row.sha256 }, disclaimer: rulesOf(s)!.disclaimer });
   }
 }

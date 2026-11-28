@@ -3,8 +3,8 @@
 // :4400), with the API and the database read underneath. Each line has a pass and a fail:
 //   DW3 (issued is frozen) an issued invoice offers "Use a credit note" and no edit control; a part credit note issues and the
 //       balance is the API's; fail: a draft offers no credit note;
-//   DW6 (allowedActions) the Case Officer (no agent/invoice:void) sees no "Use a credit note"; nobody sees Record payment in
-//       this part; fail: an action FO-7q does not name (injected into the answer) is never shown;
+//   DW6 (allowedActions) the Case Officer (no agent/invoice:void) sees no "Use a credit note" (Record payment is FO-7s3a's,
+//       shown from RECORD_PAYMENT); fail: an action FO-7q does not name (injected into the answer) is never shown;
 //   DW7 (currencies) a CAD and a USD invoice in the list: every figure carries exactly one currency, no row or total adds them;
 //       fail: the scan catches a planted figure that sums the two;
 //   DW1 (part 1's half) a government-fee line on the detail says "Government fees are never taxed" and shows no tax figure;
@@ -133,8 +133,8 @@ try {
   // ---------------------------------------------------------------------------------------------- L1, DW7, DW9 on the list
   const po = await tab(TOWNER); await list(po);
   const menu = await po.locator('nav[aria-label="Money"] [data-money-menu]').allInnerTexts();
-  ok("FO-7s1 L1: the Money area's menu offers Invoices, and the list shows this run's CAD and USD invoices with their numbers and status words",
-    JSON.stringify(menu) === JSON.stringify(["Invoices"]) && (await po.locator(`[data-invoice-row="${cadNo}"]`).count()) === 1 && (await po.locator(`[data-invoice-row="${usdNo}"]`).count()) === 1
+  ok("FO-7s1 L1: the Money area's menu offers Invoices (and FO-7s3a's Payments), and the list shows this run's CAD and USD invoices with their numbers and status words",
+    JSON.stringify(menu) === JSON.stringify(["Invoices", "Payments"]) && (await po.locator(`[data-invoice-row="${cadNo}"]`).count()) === 1 && (await po.locator(`[data-invoice-row="${usdNo}"]`).count()) === 1
     && (await po.locator(`[data-invoice-row="${cadNo}"]`).getByText("Open").count()) === 1, { menu });
   const billCad = await po.locator(`[data-invoice-row="${cadNo}"] [data-bill-to]`).innerText(), billUsd = await po.locator(`[data-invoice-row="${usdNo}"] [data-bill-to]`).innerText();
   ok("FO-7s1 N1 pass: Bill to shows the stored names from FO-7q part 3 (#3306): \"Client b Sample\" and \"Client u Sample\"; no case on either (—)",
@@ -175,9 +175,9 @@ try {
   // ---------------------------------------------------------------------------------------------- DW3, DW1, DW6 on the detail
   await detail(po, cad);
   const acts = await po.locator("[data-action]").evaluateAll((els) => els.map((e) => e.getAttribute("data-action")));
-  ok("FO-7s1 DW3 pass: the issued invoice offers \"Use a credit note\" and Download PDF, says it can't be edited, and has no edit or Record payment control",
-    JSON.stringify(acts) === JSON.stringify(["CREDIT_NOTE", "DOWNLOAD_PDF"]) && (await po.getByRole("button", { name: "Use a credit note" }).count()) === 1
-    && (await po.locator("[data-frozen]").innerText()) === "Issued invoices can't be edited — use a credit note." && (await po.getByRole("button", { name: /^edit|record payment/i }).count()) === 0 && (await po.locator("main input").count()) === 0, { acts });
+  ok("FO-7s1 DW3 pass: the issued invoice offers \"Use a credit note\", Download PDF and (FO-7s3a) Record payment…, says it can't be edited, and has no edit control",
+    JSON.stringify(acts) === JSON.stringify(["RECORD_PAYMENT", "CREDIT_NOTE", "DOWNLOAD_PDF"]) && (await po.getByRole("button", { name: "Use a credit note" }).count()) === 1
+    && (await po.locator("[data-frozen]").innerText()) === "Issued invoices can't be edited — use a credit note." && (await po.getByRole("button", { name: /^edit/i }).count()) === 0 && (await po.locator("main input").count()) === 0, { acts });
   ok("FO-7s1 N1: the detail's header names who it is for (\"Bill to: Client b Sample\") and shows no case for an invoice with none",
     (await po.locator("[data-bill-to]").innerText()) === "Client b Sample" && (await po.locator("[data-case]").count()) === 0);
   const govTax = await po.locator('[data-line="GOVERNMENT_FEE"] [data-line-tax]').innerText(), feeTax = await po.locator('[data-line="FEE"] [data-line-tax]').innerText();

@@ -5,6 +5,9 @@
 // fields: the note follows its case through the migration's triggers (the case's firm checked on insert, the case row
 // held for the insert, its notes removed when the case row goes), so no back-relation line is needed on cases.prisma's
 // Case (CS-K1 holds that file next), as case-search.prisma does.
+// CS-NT1 part 3 (migration 20261126100000_shared__csnt1c_case_client_note): a note on a case client too (AG-13-20, "a note on a
+// case or a person"): exactly one of case_id and case_client_id (a check); the same triggers hold the client row, check
+// its firm and remove its notes with it. Still no relation fields (cases.prisma untouched).
 
 /// One version of one note on a case. A note is every row of its note_key; the current note is its highest version.
 /// An edit, a pin or unpin and a visibility change each write the next version (insert-only: the database refuses
@@ -17,7 +20,9 @@ model CaseNote {
   id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firmId                 String   @map("firm_id") @db.Uuid
   workspaceId            String   @map("workspace_id") @db.Uuid
-  caseId                 String   @map("case_id") @db.Uuid
+  caseId                 String?  @map("case_id") @db.Uuid
+  /// CS-NT1 part 3: the case client (case_client.id) this note is on, when it is not on a case.
+  caseClientId           String?  @map("case_client_id") @db.Uuid
   noteKey                String   @map("note_key") @db.Uuid
   version                Int
   text                   String
@@ -31,6 +36,8 @@ model CaseNote {
 
   @@unique([noteKey, version])
   @@unique([caseId, idempotencyKey])
+  @@unique([caseClientId, idempotencyKey])
   @@index([caseId, noteKey, version])
+  @@index([caseClientId, noteKey, version])
   @@map("case_note")
 }

@@ -6,11 +6,11 @@
 // and the port (contract v0.1 §1 rule 3).
 import {
   AssessInput, EligibilityRefused, EligibilityResult, type AssessableRelease, type EligibilityPort, type EligibilityReason,
-  type EligibilityRole, type MissingFact, type RequiredFact, type RequiredFacts,
+  type EligibilityRole, type MissingFact, type RequiredFact, type RequiredFacts, type RuleLine,
 } from "../eligibility.port.ts";
 
 type SampleGate = { key: string; label: string; role: EligibilityRole; fact: string; equals: unknown; needsReview?: true };
-type SampleRelease = AssessableRelease & { gates: SampleGate[]; grid: { role: EligibilityRole; fact: string }[]; words: Record<string, { wording: string; value_type: string; allowed_values: string[] | null }> };
+type SampleRelease = Omit<AssessableRelease, "assessment_only"> & { gates: SampleGate[]; grid: { role: EligibilityRole; fact: string }[]; words: Record<string, { wording: string; value_type: string; allowed_values: string[] | null }> };
 
 const DISCLAIMER = "Sample: indicative only. This check compares the answers given with Sample rules; it is not a guarantee of approval.";
 const WORDS = {
@@ -52,7 +52,7 @@ export function fakeEligibility(releases: readonly SampleRelease[] = SAMPLE_RELE
   const find = (id: string) => { const r = releases.find((x) => x.release_id === id); if (!r) throw new EligibilityRefused("RELEASE_NOT_FOUND", id); return r; };
   return {
     async listAssessable() {
-      return releases.map(({ combination_id, name, release_id, version, content_hash }) => ({ combination_id, name, release_id, version, content_hash }));
+      return releases.map(({ combination_id, name, release_id, version, content_hash }) => ({ combination_id, name, release_id, version, content_hash, assessment_only: false }));
     },
     async requiredFacts(id: string): Promise<RequiredFacts> {
       const r = find(id), seen = new Set<string>(), facts: RequiredFact[] = [];
@@ -66,20 +66,23 @@ export function fakeEligibility(releases: readonly SampleRelease[] = SAMPLE_RELE
     async assess(input: AssessInput) {
       const q = AssessInput.parse(input), r = find(q.release_id);
       const of = (role: EligibilityRole) => q.persons.find((p) => p.role === role)?.known;
-      const reasons: EligibilityReason[] = [], missing: MissingFact[] = [];
+      const reasons: EligibilityReason[] = [], missing: MissingFact[] = [], rules: RuleLine[] = [];
       let failed = false, review = false;
       for (const g of r.gates) {
         const known = of(g.role);
         if (!known) continue; // a spouse's rule with no spouse on the application does not apply
         const v = known[g.fact];
-        if (!present(v)) { missing.push({ role: g.role, key: g.fact }); continue; }
-        if (v === g.equals) continue;
+        // AS-2a: every Sample rule is labelled Sample on its line.
+        const line = (state: RuleLine["state"]) => rules.push({ role: g.role, ref: g.key, words: g.label, state, source: { sample: true } });
+        if (!present(v)) { missing.push({ role: g.role, key: g.fact }); line("not_answered"); continue; }
+        if (v === g.equals) { line("met"); continue; }
+        line("not_met");
         if (g.needsReview) { review = true; reasons.push({ kind: "GATE_NEEDS_REVIEW", role: g.role, ref: g.key, words: g.label }); }
         else { failed = true; reasons.push({ kind: "GATE_NOT_MET", role: g.role, ref: g.key, words: g.label }); }
       }
       for (const m of missing) reasons.push({ kind: "FACT_MISSING", role: m.role, ref: m.key, words: r.words[m.key as keyof typeof r.words].wording });
       const outcome = failed ? "NOT_ELIGIBLE" : missing.length || review ? "POSSIBLY_ELIGIBLE" : "LIKELY_ELIGIBLE";
-      return EligibilityResult.parse({ outcome, reasons, missing_facts: missing, scores: [], rules_version: { release_id: r.release_id, content_hash: r.content_hash }, disclaimer: DISCLAIMER });
+      return EligibilityResult.parse({ outcome, reasons, missing_facts: missing, rules, scores: [], rules_version: { release_id: r.release_id, content_hash: r.content_hash }, disclaimer: DISCLAIMER });
     },
   };
 }

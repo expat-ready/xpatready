@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL, firmsSql } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261112150000_a24_case_number";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", DB = `xr_studio_a24_mig_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
@@ -39,7 +40,11 @@ try {
       (gen_random_uuid(), '${W}', '${K[0]}', '${u(40)}', 'spouse_or_partner', 2);
     insert into case_stage (id, workspace_id, case_id, firm_key, ord, stage_key, staff_name, client_name, combination_id, application_subject_id, state, started_from)
       select gen_random_uuid(), workspace_id, id, firm_key, 1, 'k', 'S', 'S', combination_id, ('{${A.join(",")}}'::uuid[])[array_position('{${K.join(",")}}'::uuid[], id)], 'CURRENT', 'BEGIN' from runtime_case;`);
-  for (const d of all.filter((x) => x >= NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
+  for (const d of all.filter((x) => x >= NEW)) {
+    // CS-W1 part 2 needs every case's firm: the firms this suite's cases use exist before it.
+    if (d.startsWith(CSW1_PART2)) sql(SAMPLE_FIRMS_SQL + firmsSql("solo-firm", "other-firm", "new-firm"));
+    psql(["-f", join(MIG, d, "migration.sql")]);
+  }
   // The workspace's person roles (the database refuses a role that is not one; the Sample import writes them).
   sql(`insert into person_role (workspace_id, role_key, label, meaning, takes_part_in_case, may_be_applicant) values ${["principal", "spouse_or_partner", "child"].map((r) => `('${W}', '${r}', '${r}', 'Sample', true, true)`).join(", ")}`);
   const numberOf = (k: string) => sql(`select case_number from runtime_case where id='${k}'`);
@@ -71,7 +76,7 @@ try {
   // ---------------------------------------------------------------- the number's own rules
   ok("A24-1 CS-7 fail: a case number is never changed", refused(`update runtime_case set case_number='C-2026-00099' where id='${K[0]}'`, /case_number_fixed/) && numberOf(K[0]) === "C-2026-00002");
   ok("A24-1 CS-7 pass: the rest of a case still changes (its status)", sql(`update runtime_case set status='OPEN' where id='${K[0]}' returning case_number`) === "C-2026-00002");
-  ok("A24-1 CS-7 fail: two cases of one firm never share a number", refused(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number) values (gen_random_uuid(), '${W}', '${CMB}', 'user-P', 'user-O', 'sample-firm', 'C-2026-00002')`, /runtime_case_workspace_id_firm_key_case_number_key/));
+  ok("A24-1 CS-7 fail: two cases of one firm never share a number", refused(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number) values (gen_random_uuid(), '${W}', '${CMB}', 'user-P', 'user-O', 'sample-firm', 'C-2026-00002')`, /runtime_case_workspace_id_firm_(key|id)_case_number_key/));
   ok("A24-1 CS-7 pass: another firm may hold the same number", sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number) values ('${u(90)}', '${W}', '${CMB}', 'user-P', 'user-O', 'other-firm', 'C-2026-00002') returning reference is null`) === "t");
   ok("A24-1 CS-7 fail: a case with no number, or one in another shape, is refused",
     refused(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by) values (gen_random_uuid(), '${W}', '${CMB}', 'user-P', 'user-O')`, /case_number/)

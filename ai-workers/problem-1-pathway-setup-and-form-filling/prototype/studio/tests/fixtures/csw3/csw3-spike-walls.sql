@@ -13,8 +13,8 @@
 CREATE FUNCTION csw3_spike_firm() RETURNS uuid LANGUAGE sql STABLE SET search_path = pg_catalog, public
   AS $fn$ SELECT coalesce(platform_session_firm(), nullif(current_setting('csw3.firm', true), '')::uuid) $fn$;
 
-ALTER TABLE filing ADD COLUMN firm_id uuid;
-UPDATE filing f SET firm_id = c.firm_id FROM runtime_case c WHERE c.id = f.case_id;
+ALTER TABLE filing ADD COLUMN IF NOT EXISTS firm_id uuid;   -- CS-W2 part filings brings it on main (#3811)
+UPDATE filing f SET firm_id = c.firm_id FROM runtime_case c WHERE c.id = f.case_id AND f.firm_id IS NULL;
 CREATE TRIGGER csw3_spike_fill BEFORE INSERT ON filing FOR EACH ROW EXECUTE FUNCTION case_firm_fill('runtime_case', 'case_id');
 
 ALTER TABLE party ADD COLUMN firm_id uuid DEFAULT csw3_spike_firm();

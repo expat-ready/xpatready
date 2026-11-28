@@ -11,6 +11,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fakeAlerts } from "../ports/alert.ts";
 import { AuditEntry, CaseEntry, fakeAudit } from "../ports/audit.ts";
+import { SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), API = join(STUDIO, "api", "src");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -58,6 +59,7 @@ ok("AUD-1m CW2 fail: a case line of an area entity, a bare word (test, system, r
 // ----------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-c", SAMPLE_FIRMS_SQL]);   // a case needs its firm (CS-W1 part 2)
 process.env.DATABASE_URL = urlOf(DB);
 
 const { Audit, actorWordOf } = await import("../api/src/core.ts");

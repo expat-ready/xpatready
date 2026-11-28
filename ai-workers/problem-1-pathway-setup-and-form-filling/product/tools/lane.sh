@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lanes (P-64, product/LANES.md): which lane this copy is, binding it, making it runnable, syncing it, and the status of all.
-#   lane.sh whoami            -> lead | screens | forms | evidence | runtime | m3 | qa | scout | unbound
+#   lane.sh whoami            -> lead | lead-stale (LR-156: a lead/* copy over 24 h or 200 commits behind main) | screens | forms | evidence | runtime | m3 | qa | scout | unbound
 #   lane.sh bind <lane>       bind this lane copy (git worktree, or a cloud clone: checks out the lane's newest branch, or
 #                             stays on origin/main when that branch is merged, unrelated or older than 24 h: QA-181) once
 #   lane.sh branch <lane>     the lane's newest branch on origin (<lane>/* or claude/<lane>-*)
@@ -15,6 +15,8 @@ LANES="screens forms runtime m3 evidence qa"  # scout retired 29 Oct (P-146)
 P="ai-workers/problem-1-pathway-setup-and-form-filling"
 HERE="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not in the repository"; exit 2; }
 MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+# Private split (PS-1b): lanes/, inbox/ and STATE.md are read where the records are (records-dir.sh), else in main.
+RECS=$(bash "$MAIN/$P/product/tools/records-dir.sh" 2>/dev/null) || RECS="$MAIN/$P/product"
 whoami_() {
   # lead on branch main or lead/* (P-82, P-87: the Mac's main copy, or a cloud clone checked out on main); a lane branch prefix (screens/, forms/, evidence/,
   # runtime/, qa/, or the existing claude/<lane>-* branches and <lane>-* worktree names) maps to that lane;
@@ -25,7 +27,9 @@ whoami_() {
   { [ "${CLAUDE_CODE_REMOTE:-}" = true ] || [ "$(uname)" != Darwin ]; } && cloud=1
   if [ -z "$cloud" ]; then
     [ "$br" = main ] && { echo lead; return; }
-    case "$br" in lead/*) echo lead; return;; esac
+    # LR-156 (founder A433/A434): a lead/* copy whose base is over 24 h old or over 200 commits behind origin/main is
+    # lead-stale; callers that act for the Lead read it as lead, the lead skill's first step stops with the recut command.
+    case "$br" in lead/*) if (cd "$HERE" && bash "$HERE/$P/product/tools/lead-age.sh" stale 2>/dev/null); then echo lead-stale; else echo lead; fi; return;; esac
   fi
   if [ -f "$HERE/.claude/lane" ]; then
     local ln; ln=$(cat "$HERE/.claude/lane")
@@ -75,7 +79,7 @@ field() { grep -m1 "^$1:" "$2" 2>/dev/null | cut -d' ' -f2-; }
 table_() {
   echo "| Lane | Item | Stage | Who acts | Next |"; echo "|---|---|---|---|---|"
   for ln in $LANES; do
-    m="$MAIN/$P/product/lanes/$ln.md"; [ -f "$m" ] || continue
+    m="$RECS/lanes/$ln.md"; [ -f "$m" ] || m="$MAIN/$P/product/lanes/$ln.md"; [ -f "$m" ] || continue   # the records place first (PS-1b)
     # Stage, owner and next action come from the lane's own newest copy: main's file is newer whenever the Lead edits
     # its note, but its lane fields are only as fresh as the lane's last merged commit. A candidate (a worktree or a
     # pushed branch) counts only when its newest lane commit on this file (not "lead:") is in neither this copy nor
@@ -110,7 +114,7 @@ table_() {
 case "$1" in
   whoami) whoami_ ;;
   bind)
-    [ "$(whoami_)" = lead ] && { echo "This is the Lead's main copy; lanes run in their own copies."; exit 2; }
+    case "$(whoami_)" in lead|lead-stale) echo "This is the Lead's main copy; lanes run in their own copies."; exit 2;; esac
     echo " $LANES " | grep -q " $2 " || { echo "Lane must be one of: $LANES"; exit 2; }
     cur=$(whoami_); [ "$cur" != unbound ] && [ "$cur" != "$2" ] && { echo "This copy is already the $cur lane. Type: /next $cur"; exit 3; }
     # A cloud clone on a session branch (P-82): continue on the lane's own branch so its pushes reach the Lead.
@@ -136,7 +140,7 @@ case "$1" in
     fi
     mkdir -p "$HERE/.claude" && echo "$2" > "$HERE/.claude/lane" && echo "bound to $2" ;;
   setup)
-    [ "$(whoami_)" = lead ] && { echo "main copy: nothing to link"; exit 0; }
+    case "$(whoami_)" in lead|lead-stale) echo "main copy: nothing to link"; exit 0;; esac
     # A cloud clone (Linux, not a Mac lane worktree): run the cloud setup every time. It is idempotent (seconds when
     # done) and finishes what an interrupted run left, or restarts a database a container restart stopped (P-82).
     if [ "$HERE" = "$MAIN" ] && [ "$(uname -s)" = Linux ]; then bash "$HERE/$P/product/tools/cloud-setup.sh" || exit 5; fi
@@ -148,7 +152,7 @@ case "$1" in
     [ -d "$HERE/$SN/node_modules" ] || { echo "installing studio packages (npm ci)"; (cd "$HERE/$SN" && npm ci); }
     git config core.hooksPath .githooks && echo "hooks: core.hooksPath=.githooks" ;;
   sync)
-    [ "$(whoami_)" = lead ] && { echo "main copy: nothing to sync"; exit 0; }
+    case "$(whoami_)" in lead|lead-stale) echo "main copy: nothing to sync"; exit 0;; esac
     git -C "$HERE" diff --quiet && git -C "$HERE" diff --cached --quiet || { echo "Commit this lane's work before syncing."; exit 3; }
     git -C "$HERE" fetch -q origin 2>/dev/null || true
     ref=main; git -C "$HERE" rev-parse -q --verify refs/remotes/origin/main >/dev/null 2>&1 && ref=origin/main
@@ -158,7 +162,7 @@ case "$1" in
     git -C "$MAIN" worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
       [ "$wt" = "$MAIN" ] && continue
       ln=$(cat "$wt/.claude/lane" 2>/dev/null || echo unbound); f="$wt/$P/product/lanes/$ln.md"
-      st=$(field stage "$f"); ow=$(field owner "$f"); mo=$(field owner "$MAIN/$P/product/lanes/$ln.md")
+      st=$(field stage "$f"); ow=$(field owner "$f"); mo=$(field owner "$RECS/lanes/$ln.md")
       [ -n "$mo" ] && [ "$mo" != "$ow" ] && ow="$ow (main says: $mo)"
       up=$(git -C "$wt" log -1 --format='%cd' --date=format:'%d %b %H:%M' 2>/dev/null)
       dirty=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
@@ -174,7 +178,7 @@ case "$1" in
   branch) lane_branch "$2" ;;
   state)
     [ "$HERE" = "$MAIN" ] || { echo "Only the Lead's main copy writes STATE.md."; exit 2; }
-    S="$MAIN/$P/product/STATE.md"; t=$(mktemp); tb=$(mktemp); table_ > "$tb"
+    S="$RECS/STATE.md"; t=$(mktemp); tb=$(mktemp); table_ > "$tb"
     awk -v tf="$tb" '/<!-- lanes:start -->/{print; while ((getline l < tf) > 0) print l; skip=1; next} /<!-- lanes:end -->/{skip=0} !skip' "$S" > "$t" && mv "$t" "$S" && rm -f "$tb" && echo "STATE.md table regenerated" ;;
   leads)
     git -C "$HERE" fetch -q origin 2>/dev/null; me=$(git -C "$HERE" branch --show-current)
@@ -191,6 +195,7 @@ case "$1" in
     # Acknowledged = merged: the Lead merges each checker branch into its own PR, so a handled branch drops out here.
     git -C "$HERE" fetch -q origin || { echo "Cannot refresh the inbox from GitHub: retry before treating it as empty." >&2; exit 3; }
     git -C "$HERE" ls-tree --name-only origin/main "$P/product/inbox/" | grep -v -e '/README.md$' -e '/DEVIN-PROMPTS.md$' | sed 's|^|main |'
+    [ "$RECS" = "$MAIN/$P/product" ] || { ls "$RECS/inbox" 2>/dev/null | grep -v -e '^README.md$' -e '^DEVIN-PROMPTS.md$' | sed 's|^|private inbox/|'; }
     for b in $(git -C "$HERE" for-each-ref --format='%(refname:short)' refs/remotes/origin/devin/); do
       git -C "$HERE" merge-base --is-ancestor "$b" origin/main 2>/dev/null && continue
       echo "$b $(git -C "$HERE" log -1 --format='%h %cr' "$b") · $(git -C "$HERE" diff --name-only "origin/main...$b" | tr '\n' ' ')"

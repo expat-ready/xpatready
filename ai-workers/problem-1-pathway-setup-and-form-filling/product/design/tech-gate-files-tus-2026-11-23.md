@@ -1,0 +1,42 @@
+# Technology gate: resumable uploads on tus (PF-F2, 23 Nov 2026)
+
+Row **PF-F2** (`product/BACKLOG.md`; capability R1.64, map row 64: uploads that resume after a dropped connection), STANDARDS §1 ("a new tool only for a concrete, evidenced gap; record problem, options, integration and upkeep cost, data/licence impact, and when to reconsider"), P-587 (gold-class only; licence, upkeep, maintainers, Scorecard recorded, not assumed). Entries numbered on from `tech-gate-files-s3-2026-11-22.md` (entries 18, 19). **Approval:** the Lead reads `package.json`, the lockfile and this page before the label (P-423).
+
+**How this was checked (23 Nov 2026, cloud runtime lane):** versions, publish times, licence fields, maintainers and dependencies from the npm registry (`npm view <name> time|license|maintainers|dependencies|optionalDependencies`); licence files opened in the installed packages and in each project's repository (`raw.githubusercontent.com/tus/tus-node-server/main/LICENSE`, `raw.githubusercontent.com/tus/tus-js-client/main/LICENSE`). **Age rule:** at least 14 days old on 23 Nov, so published on or before 9 Nov 2026; installed with `npm@11.19.1 install --save-exact --before=2026-11-09T00:00:00Z`, so every transitive package new to the lockfile is old enough too.
+
+**Not verified (recorded, not assumed):** the OpenSSF Scorecard (`api.securityscorecards.dev`) and deps.dev were refused by the cloud network's proxy (HTTP 403, 23 Nov), and the GitHub API too (stars, open issues, last push). **Question for the tech lead:** read the two Scorecards on the Mac (`https://api.securityscorecards.dev/projects/github.com/tus/tus-node-server`, `…/tus/tus-js-client`) before the label; the pick stands unless either scores under 5.
+
+**Licences: Unconfirmed: no counsel.** "Read at source" means the licence file was opened and read on the date given; it is not a legal opinion.
+
+## Summary
+
+| # | Need | Pick | Exact version (published) | Licence (read at source) | Our data leaves to | Added by |
+|---|---|---|---|---|---|---|
+| 20 | The server side of resumable uploads (tus 1.0.0: creation, offsets, expiration) | `@tus/server` | 2.4.7 (2 Nov 2026) | MIT | nothing (in-process) | PF-F2 part 1 |
+| 21 | The staging store on the server's disk (local, CI, demo) | `@tus/file-store` | 2.1.2 (2 Nov 2026) | MIT | nothing | PF-F2 part 1 |
+| 22 | The staging store on PF-F1's bucket (deployed: the two API tasks share the unfinished uploads) | `@tus/s3-store` | 2.1.0 (2 Nov 2026) | MIT | the unfinished upload's bytes and its tus record to Amazon S3, the PF-F1 bucket and region (`ca-central-1` by default), KMS-encrypted | gated here; **installed by the S3 staging row** with its shared lock (review M1) |
+| 23 | The browser side: resume from the server's offset after a dropped connection | `tus-js-client` | 4.3.1 (16 Jan 2025) | MIT | nothing beyond the upload itself | PF-F2 part 2 (gated here, installed there) |
+
+## Problem (evidenced gap)
+R1.64 / AG-9-1, AG-9-3, AG-9-4: a person on a weak connection (mobile, abroad) uploading a 25 MB passport scan or bank statement must not start over when the connection drops, and must see per-file progress. Every upload door today (`FileInterceptor`, one multipart body) loses the whole transfer on a drop. The row names tus (P-502: an open standard, `tus.io/protocols/resumable-upload`, version 1.0.0) so the client and server agree on offsets without our own protocol.
+
+## Options
+1. **tus with the reference Node server and client (picked).** The protocol's own implementations, maintained by the protocol's authors (Transloadit). Creation, `HEAD` for the server's offset, `PATCH` at that offset only (a chunk at a wrong offset answers 409, so a repeated chunk is never stored twice), and the expiration extension. Hooks (`onIncomingRequest`, `onUploadCreate`, `onUploadFinish`, `namingFunction`) are where our firm wall, PF-F4's checks and `FilesPort.put` go.
+2. **Our own chunked upload (session and part tables, as the base row had).** Batch 5 dropped `plat_upload_session` and `plat_upload_part` for this: offsets, locking, expiry and the client's retry loop would all be ours to keep right. Refused.
+3. **S3 multipart upload with presigned part URLs from the browser.** Ties the client to S3 (the local store and CI would need a second path), and the bytes would reach the bucket before PF-F4's check and the firm wall run on our server. Refused.
+4. **Uppy (the full upload UI kit).** A framework of UI around `tus-js-client`; we need only the client (our screens follow EXPERIENCE.md). Refused: a small library over a framework.
+
+## 20-22. `@tus/server`, `@tus/file-store`, `@tus/s3-store`
+* **Integration cost:** one controller at `/api/platform/files/uploads` handing Express's request to `server.handle`, the door registry, and the finish step (about 400 lines in `api/src/platform/files/uploads/`). ESM packages; the API is ESM (`"type": "module"`).
+* **Upkeep:** `@tus/server` first published 12 Dec 2022 (the 1.x line of the older `tus-node-server`, since 2015); 36 releases, 8 in the last 365 days; the three packages and `@tus/utils` release together from one repository (`github.com/tus/tus-node-server`). Maintainers on npm: 4 (the protocol's author, a bot, two Transloadit engineers). Engines: Node 20.19 or later (we run 24).
+* **What it brings (lockfile, part 1 installs 20 and 21 only):** 13 packages new, none changed, none removed (169 lines added, 0 removed): the two plus `@tus/utils` 0.7.3 (MIT, 2 Nov 2026), `srvx` 0.11.22 (MIT, 11 Jul 2026; the Request/Response bridge `@tus/server` 2.x is built on), `lodash.throttle` (MIT). (`@tus/s3-store` would add itself and `multistream` 4.1.0, MIT.) `@tus/utils` lists `ioredis` 5.11.1 and `@redis/client` 5.12.1 (both MIT) as **optional** dependencies for its Redis lock and record stores; npm installs them and their five helpers (`@ioredis/commands`, `cluster-key-slot` twice, `redis-errors`, `redis-parser`, `standard-as-callback`; all MIT, marked optional in the lockfile), we never import them (our lock is the in-process one, below), so no Redis is run or reached.
+* **Licence (read at source):** `node_modules/@tus/{server,file-store,s3-store}/LICENSE` and the repository's `LICENSE`, read 23 Nov 2026: "The MIT License (MIT) Copyright (c) 2015 tus - Resumable File Uploads". `srvx`: `node_modules/srvx/LICENSE`, MIT. Registry fields agree. Unconfirmed: no counsel.
+* **Data:** the file-store keeps unfinished uploads in a scratch folder on the server; the s3-store keeps them in PF-F1's bucket under its own `uploads/` prefix (never a firm's file key), so nothing leaves Canada. A finished upload is copied through `FilesPort.put`; its staging copy stays (never served) until the 24-hour cleanup, so a client whose answer was lost reads it as complete.
+* **The deployment runs two API tasks** (`deploy/cdk/lib/service.ts` `MIN_TASKS = 2`, no load-balancer stickiness), and tus's default lock is in-process (`MemoryLocker`) while the file-store keeps uploads on one task's disk. So a resumed request landing on the other task would not find its upload. **Part 1 therefore switches the rail off where `PLATFORM_FILES=s3` (every request 503, in words)** and runs it where the store is local (the reference app, CI, lanes: one process). Turning it on in the deployment needs entry 22 plus a shared `Locker` (a PostgreSQL advisory lock, about 40 lines): its own row (review M1 on PR #3277).
+* **Reconsider when:** the repository goes a year without a release, or a major (3.x) changes the hook shapes.
+
+## 23. `tus-js-client`
+* **Version:** 4.3.1, 16 Jan 2025 (the 5.0 line is still a pre-release, 5.0.0-pre3 on 30 Sep 2026: not taken). 56 releases since 20 Aug 2015, 2 in the last 365 days (the 5.0 pre-releases): upkeep is slow on the stable line but the project is active. Maintainers on npm: 2.
+* **Licence (read at source):** `raw.githubusercontent.com/tus/tus-js-client/main/LICENSE`, read 23 Nov 2026: "The MIT License (MIT) Copyright (c) 2015 tus - Resumable File Uploads". Unconfirmed: no counsel.
+* **Installed in part 2** (`web/src/lib/resumable-upload.ts`), with its lockfile lines recorded there.
+* **Reconsider when:** 5.0 is released and 14 days old (its own row), or 4.x gets a security advisory without a 4.x fix.

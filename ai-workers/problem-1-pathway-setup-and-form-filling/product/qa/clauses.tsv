@@ -29,9 +29,9 @@ R1.9	1	A job queued twice with one key runs once	confirmed	qa/reports/2026-11-15
 R1.9	2	a failing job retries with back-off, then shows in a failed list with its reason	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
 R1.9	3	a reminder fires at its time in the firm's zone	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
 R1.9	4	stopping the worker mid-job loses nothing	confirmed	qa/reports/2026-11-15-capability-R1-rescore.md	d52b7274	2026-11-15
-R1.10	1	Every PF/FO route checks body, query and params against one schema	not			
-R1.10	2	wrong type, missing, unknown and over-long fields each answer 400 Problem Details naming the field in plain words	not			
-R1.10	3	qa probes every route in the route table	not			
+R1.10	1	Every PF/FO route checks body, query and params against one schema	confirmed	qa/reports/2026-11-26-qa1b.md	a1fd1b69	2026-11-26
+R1.10	2	wrong type, missing, unknown and over-long fields each answer 400 Problem Details naming the field in plain words	confirmed	qa/reports/2026-11-26-qa1b.md	a1fd1b69	2026-11-26
+R1.10	3	qa probes every route in the route table	confirmed	qa/reports/2026-11-26-qa1b.md	a1fd1b69	2026-11-26
 R1.11	1	PF-7: one container image from a clean clone, PostgreSQL beside it, migrations first	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
 R1.11	2	/api/health and the first page 200	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
 R1.11	3	non-root	confirmed	qa/reports/2026-11-16-capability-platform.md	6ee7a805	2026-11-16
@@ -86,9 +86,9 @@ R1.27	3	lists filter by source	confirmed	qa/reports/2026-11-21-capability-R1.27-
 R1.28	1	Each purpose recorded with time, wording and source	confirmed	qa/reports/2026-11-19-after-merge-r128.md	95fbf96bf	2026-11-19
 R1.28	2	withdrawing one keeps the others	confirmed	qa/reports/2026-11-19-after-merge-r128.md	95fbf96bf	2026-11-19
 R1.28	3	a record is never edited, only superseded	confirmed	qa/reports/2026-11-19-after-merge-r128.md	95fbf96bf	2026-11-19
-R1.29	1	Adding a lead that matches name, email or phone warns before saving	not			
-R1.29	2	merge keeps both histories, never automatic when either has a case or money	not			
-R1.29	3	a merge can be undone from the review list	not			
+R1.29	1	Adding a lead that matches name, email or phone warns before saving	confirmed	qa/reports/2026-11-26-qa1b.md	a1fd1b69	2026-11-26
+R1.29	2	merge keeps both histories, never automatic when either has a case or money	confirmed	qa/reports/2026-11-26-qa1b.md	a1fd1b69	2026-11-26
+R1.29	3	a merge can be undone from the review list	confirmed	qa/reports/2026-11-26-qa1b.md	a1fd1b69	2026-11-26
 R1.30	1	Filter by stage, owner, source and date	confirmed	qa/reports/2026-11-20-r130-qa12.md	ce8e05b1	2026-11-20
 R1.30	2	the board moves a lead by drag and by keyboard	confirmed	qa/reports/2026-11-20-r130-qa12.md	ce8e05b1	2026-11-20
 R1.30	3	400, 1024, 1440 px	confirmed	qa/reports/2026-11-20-r130-qa12.md	ce8e05b1	2026-11-20
@@ -209,8 +209,8 @@ R1.80	2	judged on the checklist row's words	confirmed	qa/reports/2026-11-19-qa6-
 R1.82	1	As C7.6, C7.10, C8.3	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
 R1.83	1	As C4.4	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
 R1.84	1	As M2's rows (60/60 Works)	confirmed	qa/CAPABILITIES.md	fe388b64	2026-11-16
-R1.85	1	A privacy request is logged and worked to an outcome within its time	not			
-R1.85	2	a legal hold stops deletion	not			
+R1.85	1	A privacy request is logged and worked to an outcome within its time	confirmed	qa/reports/2026-11-26-capability-R1.85-works-qa2.md	0c47ce72	2026-11-26
+R1.85	2	a legal hold stops deletion	confirmed	qa/reports/2026-11-26-capability-R1.85-works-qa2.md	0c47ce72	2026-11-26
 R1.86	1	A breach is recorded with its assessment and the firms notified, each with time and words	confirmed	qa/reports/2026-11-25-capability-R1.86-works-qa9.md	a9269080	2026-11-25
 R1.87	1	Every read of a firm's data by our staff writes who, when and why	not			
 R1.87	2	the firm sees those lines	not			
@@ -237,10 +237,10 @@ R1.93	4	"?" opens a ticket that reaches the console	confirmed	qa/reports/2026-11
 R1.95	1	An Admin adds a field (type, required) shown on the record and in filters	not			
 R1.95	2	a saved view keeps its filters per person	not			
 R1.95	3	a field in use is not removed without a confirm	not			
-R1.96	1	A refund or credit note never exceeds what was paid	not			
-R1.96	2	instalments sum exactly to the invoice	not			
-R1.96	3	a write-off needs a reason and the key	not			
-R1.96	4	the ledger stays balanced each time	not			
+R1.96	1	A refund or credit note never exceeds what was paid	confirmed	qa/reports/2026-11-26-qa1b.md	83024178	2026-11-26
+R1.96	2	instalments sum exactly to the invoice	confirmed	qa/reports/2026-11-26-qa1b.md	83024178	2026-11-26
+R1.96	3	a write-off needs a reason and the key	confirmed	qa/reports/2026-11-26-qa1b.md	83024178	2026-11-26
+R1.96	4	the ledger stays balanced each time	confirmed	qa/reports/2026-11-26-qa1b.md	83024178	2026-11-26
 R1.97	1	Each line holds the hash of the one before	not			
 R1.97	2	a changed or removed line is detected by the check	not			
 R1.97	3	the daily export lands in S3 Object Lock in ca-central-1	not			
@@ -277,3 +277,29 @@ R1.111	2	a period export sums to the same totals	not
 R1.112	1	A video booking carries the host's provider link in the confirmation and invite	not			
 R1.112	2	a change keeps or replaces it	not			
 R1.112	3	none for in-person types	not			
+R1.113	1	Our staff switch maintenance on	not			
+R1.113	2	every firm and client page answers with the EN/FR message	not			
+R1.113	3	switching off restores service	not			
+R1.113	4	audited	not			
+R1.114	1	Our staff publish one EN/FR banner with a start and end	not			
+R1.114	2	firm users see it only in that window and can dismiss it	not			
+R1.115	1	Our staff change a security setting and revert it	not			
+R1.115	2	each change versioned and audited	not			
+R1.115	3	a firm cannot change it	not			
+R1.116	1	Our staff are signed out after 60 minutes idle and after 12 hours	not			
+R1.116	2	always on	not			
+R1.116	3	the policy is versioned with its revisions	not			
+R1.117	1	An invite outside the company domains is refused	not			
+R1.117	2	deactivation destroys sign-in factors and hands the firms to another account manager	not			
+R1.117	3	reset two-step forces a new set-up	not			
+R1.117	4	all audited	not			
+R1.118	1	About eight numbers counted nightly against last month (firms by status, trial conversion, monthly active users) and a feature-usage table	not			
+R1.118	2	the CSV export is audited	not			
+R1.119	1	Each outside service shows its state and last error, and each red item has a what-to-do line	not			
+R1.119	2	nothing on the page changes a setting	not			
+R1.120	1	Our staff draft and publish a template	not			
+R1.120	2	firms get a 7-day notice with 'Keep my current wording'	not			
+R1.120	3	a test send reaches the sender only	not			
+R1.121	1	A firm Owner or Admin turns Escalation and at-risk marks on or off	not			
+R1.121	2	with a switch off the feature is hidden and refused by the API	not			
+R1.121	3	other roles cannot change it	not			

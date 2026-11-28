@@ -91,7 +91,8 @@ if grep -rlE 'sk-ant-[A-Za-z0-9_-]{20}|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|g
   exit 3
 fi
 
-git add -A
+# notes/ only (private split PS-1b): the Lead's records share this working copy and are committed by hand, never half-written.
+git add -A notes
 # A commit an earlier run made but GitHub refused is still ahead of origin: push it, never "nothing new" (breaker round 2).
 ahead=$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 1)
 if git diff --cached --quiet && [ "$ahead" = 0 ]; then

@@ -1,0 +1,3 @@
+Entry points: `live-party.ts` `liveParty(tx, firm, partyId, seen?)` (FO-9b part 2m, R1.29): every client-money writer that names a party (draft create, issue, payment, credit note, refund, the extra's choice, trust request, deposit, pay from trust, trust refund and its payee, reversal) calls it after the party's trust lock; it holds the party row FOR KEY SHARE and answers 409 `PARTY_MERGED` for a merged-away person or company (`survivorId` only when the caller sees it), so no money is written on a merged-away record and a merge waits or is busy while a money write is open
+Tables: fo_person (read, FOR KEY SHARE), fo_company (read, FOR KEY SHARE)
+Tests: tests/check_fo9b_2m_money_merged.ts

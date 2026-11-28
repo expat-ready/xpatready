@@ -1,0 +1,2 @@
+Entry points: Money → Payments (FO-7s3a part 1: /money/payments, /money/payments/:id, `modules/client-money/payments/list.tsx`, `modules/client-money/payments/detail.tsx`) inside PlatformFrame, for holders of agent/invoice:show; Record payment… (`modules/client-money/payments/record-payment.tsx`) on an invoice from its RECORD_PAYMENT action; one line each in `modules/client-money/routes.tsx`, `modules/client-money/area.tsx` and `modules/client-money/invoices/detail.tsx`
+Tests: tests/check_fo7s3a_payments_trust_browser.ts

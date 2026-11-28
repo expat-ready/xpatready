@@ -43,7 +43,7 @@ fc "$M Start R1.760 from main; R1.37 is nearly done."
 ok "R1.760 is not R1.76 or R1.7: refused by its full number" "$([ $r = 1 ] && echo "$out" | grep -q 'is for R1.760,' && echo 1)" "exit $r: $out"
 fc "$M Build CS-NT1 part 1 from CS-NT1-1.md, branched from main."
 ok "an off-list build row with no R1 item in the brief is refused (family id)" "$([ $r = 1 ] && echo "$out" | grep -q 'is for CS-NT1,' && echo 1)" "exit $r: $out"
-fc "$M /next runtime X-9. Done when: check-x.sh exits 0."
+fc "$M /next runtime X-9. Done when: check-x.sh exits 0; stop after 3 tries."
 ok "an off-list backlog row of a build area is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'is for X-9,' && echo 1)" "exit $r: $out"
 fc "$M Build J-37 (R1.37). Clash: the mail swap is shared with CS-NT1 and X-9; Duplicate check: BK-13 no."
 ok "a listed item's brief may name other rows as context (clash, duplicate check)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
@@ -51,7 +51,7 @@ fc "$M R1.76 notes, part 1, from main; J-37 is its neighbour."
 ok "what the brief names first is what it is for: an off-list item first is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'is for R1.76,' && echo 1)" "exit $r: $out"
 fc "$M After J-37 merges, build CS-NT1 part 1 from main."
 ok "a row after build is what the brief is for, wherever it stands" "$([ $r = 1 ] && echo "$out" | grep -q 'is for CS-NT1,' && echo 1)" "exit $r: $out"
-fc "$M J-37 is merged. /next runtime X-9. Done when: check-x.sh exits 0."
+fc "$M J-37 is merged. /next runtime X-9. Done when: check-x.sh exits 0; stop after 3 tries."
 ok "the row after /next is what the brief is for, whatever is named first" "$([ $r = 1 ] && echo "$out" | grep -q 'is for X-9,' && echo 1)" "exit $r: $out"
 fc "$M Build J-37 (R1.37), then CS-NT1 part 1 (R1.76 notes), back to back in one lane."
 ok "the second item of a chained line (then) is checked too" "$([ $r = 1 ] && echo "$out" | grep -q 'is for CS-NT1,' && echo 1)" "exit $r: $out"
@@ -108,7 +108,7 @@ ok "no focus list: a builder brief is refused, with the path it looked at" "$([ 
 fc "$M Run /next runtime ENF-733." "$T/none.md"
 ok "no focus list: a tooling brief still passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # The hook, fed the JSON Claude Code sends on start_session and create_session (lane-preflight.sh --hook).
-G4=$'\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0'
+G4=$'\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries'
 # B204: each hook brief carries its Item line; a throwaway waves list puts R1.37 and R1.76 in the active wave, so the focus list is what is tested here.
 printf '| # | Map row | Status |\n|---|---|---|\n| R1.37 | x | Partial |\n| R1.76 | x | Partial |\n| R1.1 | x | Partial |\n| R1.2 | x | Partial |\n' > "$T/caps.md"
 printf 'R1.37\t1\tJ5\nR1.76\t1\tJ7\nR1.1\t1\tJ0\nR1.2\t1\tJ0\n' > "$T/waves.tsv"; export WAVES_TSV="$T/waves.tsv" WAVES_CAPS="$T/caps.md"

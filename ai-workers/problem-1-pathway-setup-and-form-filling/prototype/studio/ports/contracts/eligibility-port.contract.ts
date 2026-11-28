@@ -3,7 +3,7 @@
 // tests/check_as1m_eligibility_move.ts. The port file's sentences: every answer has the port's shape; the three
 // outcomes; a missing fact gives Possibly eligible with the fact named, never Not eligible; a rule not met gives Not
 // eligible with the rule named; the same input gives the same result; an unknown release, or another workspace's, is a typed
-// not-found; a malformed input is refused; facts no rule reads change nothing; the result names its release and hash.
+// not-found; a malformed input is refused; facts no rule reads change nothing; the result names its release and hash; every rule read is a line with its state and source (AS-2a).
 import { z } from "zod";
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import { AssessableRelease, EligibilityRefused, EligibilityResult, RequiredFacts, type AssessInput, type EligibilityPort } from "../eligibility.port.ts";
@@ -63,6 +63,17 @@ export const eligibilityPortContract = defineContract("EligibilityPort", (make: 
       expect(p.missing_facts.every((m) => p.reasons.some((x) => x.kind === "FACT_MISSING" && x.ref === m.key && x.role === m.role)), "each missing fact has its reason", p);
       expect(n.reasons.some((x) => x.kind === "GATE_NOT_MET"), "the rule not met is named", n);
       expect(l.reasons.length === 0 && l.missing_facts.length === 0, "Likely eligible has no reason and nothing missing", l);
+    },
+  },
+  {
+    name: "AS-2a: every rule read is a line with its state and source; Likely's lines are all met; Not eligible's failed rule is a not-met line",
+    async run() {
+      const h = await make();
+      const l = await h.port.assess(h.profiles.likely), n = await h.port.assess(h.profiles.not), p = await h.port.assess(h.profiles.possibly);
+      expect(l.rules.length > 0 && l.rules.every((x) => x.state === "met"), "Likely eligible: every rule line is met", l.rules);
+      expect(n.reasons.filter((x) => x.kind === "GATE_NOT_MET").every((x) => n.rules.some((r) => r.ref === x.ref && r.role === x.role && r.state === "not_met")), "each rule not met is a not-met line", n);
+      expect(p.missing_facts.length === 0 || p.rules.some((r) => r.state === "not_answered"), "a missing fact leaves its rule not answered", p.rules);
+      expect(new Set(l.rules.map((r) => `${r.role}|${r.ref}`)).size === l.rules.length, "each rule once", l.rules);
     },
   },
   {

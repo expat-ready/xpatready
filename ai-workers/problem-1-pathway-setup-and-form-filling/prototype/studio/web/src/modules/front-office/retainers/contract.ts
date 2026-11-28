@@ -29,7 +29,8 @@ export const TemplateChecklist = z.object({
 });
 
 /** The keys (AG-05 C5, FO-5's routes). */
-export const R_KEY = { list: "agent/retainer:list", show: "agent/retainer:show", draft: "agent/retainer:draft", send: "agent/retainer:send", download: "agent/retainer:download" } as const;
+export const R_KEY = { list: "agent/retainer:list", show: "agent/retainer:show", draft: "agent/retainer:draft", send: "agent/retainer:send", download: "agent/retainer:download",
+  void: "agent/retainer:void", offline: "agent/retainer:offline-sign" } as const;   // FO-5s part 3a: Withdraw and Signed offline (AG-05 C5)
 /** The states in words, with the tooltip each status chip carries (BIC-14). */
 export const STATUS: Record<string, { label: string; tone: string; tip: string }> = {
   DRAFT: { label: "Draft", tone: "neutral", tip: "Not sent yet. Each saved change is a new version." },

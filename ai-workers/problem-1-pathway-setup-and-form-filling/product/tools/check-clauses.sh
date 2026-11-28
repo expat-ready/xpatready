@@ -67,6 +67,8 @@ ok "seed re-splits a changed row: unchanged clauses keep their status, a new or 
 unset CLAUSES_ROOT CLAUSES_TSV CLAUSES_CAPS
 if [ -f "$PH/qa/clauses.tsv" ]; then
   run check; ok "the real qa/clauses.tsv passes against qa/CAPABILITIES.md" "$([ $r = 0 ] && echo 1)" "$out"
-  n=$(cut -f1 "$PH/qa/clauses.tsv" | grep -E '^R1\.' | sort -u | wc -l | tr -d ' '); ok "the real file has clauses for all 101 R1 rows" "$([ "$n" = 101 ] && echo 1)" "$n"
+  # every R1 row of CAPABILITIES.md (101 at A389, 110 since P-842): counted, not written in, so a new row needs its clauses
+  n=$(cut -f1 "$PH/qa/clauses.tsv" | grep -E '^R1\.' | sort -u | wc -l | tr -d ' '); w=$(grep -cE '^\| R1\.[0-9]+ ' "$PH/qa/CAPABILITIES.md")
+  ok "the real file has clauses for all $w R1 rows of CAPABILITIES.md" "$([ "$w" -ge 101 ] && [ "$n" = "$w" ] && echo 1)" "$n of $w"
 else echo "SKIP  the real files: no qa/clauses.tsv here (a mutation copy)"; fi
 finish

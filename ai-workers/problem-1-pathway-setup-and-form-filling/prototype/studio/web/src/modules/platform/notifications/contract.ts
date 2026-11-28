@@ -32,6 +32,8 @@ const WHAT: Record<string, string> = {
   "case-stage-deadline": "A stage deadline",
   "case-milestone-deadline": "A government step is due",
   "payment-account-disconnected": "Payment account disconnected",
+  "retainer-declined": "A client declined a retainer",   // FO-5d (AG-5-68 r4)
+  "note-mention": "You were mentioned in a note",   // CS-NT1 part 4 (AG-13-22); the case is the row's label
 };
 /** What happened, from the kind; a kind this screen does not know yet reads "Something needs you" (never a blank row). */
 export const whatOf = (kind: string) => WHAT[kind] ?? "Something needs you";

@@ -50,7 +50,7 @@ try {
   const auto = new ArrivalAutoMerge(db, jobs, ports);
   await auto.register();   // the app's provider does this: the job on the runner, then the queue for arrive()
 
-  type P = { givenNames: string; familyName: string; email?: string; phone?: string };
+  type P = { givenNames: string; familyName: string | null; email?: string; phone?: string };
   const person = (p: P) => ({ givenNames: p.givenNames, familyName: p.familyName, email: p.email ?? null, phone: p.phone ? salesPhone(p.phone) : null });
   // The web form's arrival (public.ts: door WEB_FORM, actor system:web-form) and the hand-added lead's (leads.ts: MANUAL)
   const formOf = (firmId: string) => sql(`select id from fo_web_form where firm_id = '${firmId}' order by created_at limit 1`);
@@ -58,7 +58,7 @@ try {
   const web = async (p: P, firmId = A) => (await db.$transaction((tx) => arrive(tx as never, { ...webIn(firmId), source: "Website", actor: "system:web-form", payloadHash: randomUUID(), person: person(p) }, ports))).personId!;
   const manual = async (p: P) => (await db.$transaction((tx) => arrive(tx as never, { firmId: A, door: "MANUAL", intakeKey: `manual:${randomUUID()}`, source: "Phone call", actor: `staff:${R}`, payloadHash: randomUUID(), ownerStaffId: R, person: person(p) }, ports))).personId!;
   const booking = new PrismaArrival(ports);
-  const book = async (p: P & { email: string }) => (await db.$transaction((tx) => booking.bookingArrived(tx as never, { firmId: A, bookingId: randomUUID(), person: { givenNames: p.givenNames, familyName: p.familyName, email: p.email } }))).personId;
+  const book = async (p: P & { email: string }) => (await db.$transaction((tx) => booking.bookingArrived(tx as never, { firmId: A, bookingId: randomUUID(), person: { givenNames: p.givenNames, familyName: p.familyName ?? "", email: p.email } }))).personId;
   const pairOf = (a: string, b: string) => sql(`select id from fo_dup_review where low_id = least('${a}'::uuid, '${b}'::uuid) and high_id = greatest('${a}'::uuid, '${b}'::uuid)`);
   const live = (...ids: string[]) => Number(sql(`select count(*) from fo_person where id = any('{${ids.join(",")}}'::uuid[]) and merged_into_id is null`));
   const queued = (id: string) => jobs.jobs.filter((j) => j.name === AUTO_MERGE_QUEUE && j.payload.personId === id);
@@ -230,6 +230,71 @@ try {
   ok("FO-9b 2b fail (review m2): once the app's shutdown hook ran, arrive() queues nothing", queued(z1).length === 0);
   registerAutoMerge(auto);
   ok("FO-9b 2b fail (break m1): with no burst, the run stops at the person's own merge (one merge for the Ann pair)", sql(`select count(*) from fo_dup_merge where survivor_id = '${ann1}'`) === "1");
+
+  // ------------------------------------------------------------------- part 2b follow-ups (round-3 Minors on #3527)
+  {   // m-r3-3, R3-m1: an unchecked arrival never sets a name, not even an empty last name
+    const c1 = await web({ givenNames: "Cher", familyName: null, email: "cher@example.org" });
+    await jobs.runDue();
+    const c2 = await web({ givenNames: "Mallory", familyName: "Attacker", email: "cher@example.org" });
+    await jobs.runDue();
+    const names = sql(`select given_names || '|' || coalesce(family_name, '') from fo_person where id = '${c1}'`);
+    ok("FO-9b 2b follow-ups fail (review m-r3-3, break R3-m1): a stranger's arrival with her email merges, but her record keeps its own name: no last name \"Attacker\" is added",
+      live(c1, c2) === 1 && names === "Cher|", { names, live: live(c1, c2) });
+  }
+  {   // m-r3-4, R3-m2: two phones that differ only in their typed digits (one or both unreadable) are a conflict
+    const u1 = await web({ givenNames: "Una", familyName: "Phone", email: "una@example.org", phone: "555 0199 ext 4" });
+    await jobs.runDue();
+    const u2 = await web({ givenNames: "Una", familyName: "Phone", email: "una@example.org", phone: "0161 496 0000" });
+    const v1 = await web({ givenNames: "Vic", familyName: "Phone", email: "vic@example.org", phone: "+1 416 555 0188" });
+    await jobs.runDue();
+    const v2 = await web({ givenNames: "Vic", familyName: "Phone", email: "vic@example.org", phone: "555 0199 ext 4" });
+    const w1 = await web({ givenNames: "Wes", familyName: "Phone", email: "wes@example.org", phone: "555 0177 ext 9" });
+    await jobs.runDue();
+    const w2 = await web({ givenNames: "Wes", familyName: "Phone", email: "wes@example.org", phone: "555-0177 ext. 9" });
+    await jobs.runDue();
+    ok("FO-9b 2b follow-ups fail (review m-r3-4, break R3-m2): one email with two different unreadable phones, or a readable and a different unreadable one, is never merged by itself: both stay, the pair on To review",
+      live(u1, u2) === 2 && (await listedPair(db, A, pairOf(u1, u2))) === "OPEN" && live(v1, v2) === 2 && (await listedPair(db, A, pairOf(v1, v2))) === "OPEN", { u: live(u1, u2), v: live(v1, v2) });
+    const n1 = await web({ givenNames: "Nia", familyName: "Phone", email: "nia@example.org", phone: "ring the bell" });
+    await jobs.runDue();
+    const n2 = await web({ givenNames: "Nia", familyName: "Phone", email: "nia@example.org", phone: "call evenings" });
+    await jobs.runDue();
+    ok("FO-9b 2b follow-ups fail (review m1 on #3710): two phones with no digits at all, different in their text, are a conflict: both stay, the pair on To review",
+      live(n1, n2) === 2 && (await listedPair(db, A, pairOf(n1, n2))) === "OPEN", live(n1, n2));
+    ok("FO-9b 2b follow-ups pass: the same unreadable phone typed another way (the same digits) is no conflict: one record", live(w1, w2) === 1, live(w1, w2));
+  }
+  // m-r3-1, R3-m3: the burst window is measured from the job's own person, and ties go to the oldest partner first, so
+  // the outcome is fixed: S (on file since yesterday), X (arrived, its job never ran), then L → L into S, then X into S.
+  for (let t = 1; t <= 4; t++) {
+    const mail = `tie${t}@example.org`;
+    const s1 = await web({ givenNames: "Tia", familyName: "Tie", email: mail });
+    await jobs.runDue();
+    sql(`update fo_person set created_at = created_at - interval '1 day' where id = '${s1}'`);
+    registerAutoMerge(null); const x1 = await web({ givenNames: "Tia", familyName: "Tie", email: mail }); registerAutoMerge(auto);
+    const l1 = await web({ givenNames: "Tia", familyName: "Tie", email: mail });
+    await jobs.runDue();
+    ok(`FO-9b 2b follow-ups pass (review m-r3-1, break R3-m3), trial ${t} of 4: equal scores go to the oldest partner first: L merges into S (on file since yesterday), then X too: one record, S`,
+      live(s1, x1, l1) === 1 && live(s1) === 1 && sql(`select merged_into_id from fo_person where id = '${l1}'`) === s1, { into: sql(`select string_agg(coalesce(merged_into_id::text, '-'), ',') from fo_person where id in ('${s1}', '${x1}', '${l1}')`), ids: [s1, x1, l1] });
+  }
+  {   // the window never slides along a chain: O1, O2, O3 arrived 27, 18 and 9 minutes ago (no jobs), then O4
+    const ids: string[] = [];
+    registerAutoMerge(null);
+    for (const ago of [27, 18, 9]) { const o = await web({ givenNames: "Sly", familyName: "Slide", email: "sly@example.org" }); sql(`update fo_person set created_at = clock_timestamp() - interval '${ago} minutes' where id = '${o}'`); ids.push(o); }
+    registerAutoMerge(auto);
+    const o4 = await web({ givenNames: "Sly", familyName: "Slide", email: "sly@example.org" });
+    await jobs.runDue();
+    ok("FO-9b 2b follow-ups fail (break R3-m3, slides): the follow-up reaches only arrivals within 10 minutes of the job's person: O4 into O1, then O3 (9 min); O2 (18 min) stays, its pair with O1 on To review",
+      live(...ids, o4) === 2 && live(ids[1]) === 1 && (await listedPair(db, A, pairOf(ids[0], ids[1]))) === "OPEN", { into: sql(`select string_agg(coalesce(merged_into_id::text, '-'), ',' order by created_at) from fo_person where id in ('${[...ids, o4].join("','")}')`) });
+  }
+  {   // m-r3-2: only pairs written before the run, by the database's clock: a pair stamped after the run's start is not followed
+    const s1 = await web({ givenNames: "Rae", familyName: "Run", email: "rae@example.org" });
+    await jobs.runDue();
+    registerAutoMerge(null); const x1 = await web({ givenNames: "Rae", familyName: "Run", email: "rae@example.org" }); registerAutoMerge(auto);
+    const l1 = await web({ givenNames: "Rae", familyName: "Run", email: "rae@example.org" });
+    replica(`update fo_dup_review set first_seen_at = clock_timestamp() + interval '1 hour' where id = '${pairOf(s1, x1)}'`);
+    await jobs.runDue();
+    ok("FO-9b 2b follow-ups fail (review m-r3-2): a pair first seen after the run started is never followed: L into S, X stays, its pair with S on To review",
+      sql(`select merged_into_id from fo_person where id = '${l1}'`) === s1 && live(s1, x1) === 2 && (await listedPair(db, A, pairOf(s1, x1))) === "OPEN", { into: sql(`select string_agg(coalesce(merged_into_id::text, '-'), ',') from fo_person where id in ('${s1}', '${x1}', '${l1}')`) });
+  }
 
   // ------------------------------------------------------------------- firms never meet; no queue, no merge
   const f1 = await web({ givenNames: "Fay", familyName: "Firm", email: "fay.firm@example.org" });

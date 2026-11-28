@@ -32,6 +32,7 @@ import { emptyProblem, Studio } from "./studio.ts";
 import { conditionFactProblems } from "../../engine/coverage.ts";
 import { draftSourceProblems } from "./source-register.ts";
 import { filingProblems } from "../../engine/filing-modes.ts";
+import { assessmentOnlyRelease } from "../../engine/eligibility/gates.ts";
 import { attachedNotSetUp, removedLines } from "../../contracts/counts.ts";
 import { gatesOf, realBaseline, type Gate } from "./answer-key-gate.ts";
 import { libraryType } from "../../engine/form-type.ts";
@@ -200,7 +201,8 @@ export class Programs {
       const participants = c.participants as ParticipantLine[];
       const structure = await this.studio.structureProblems(c.id);
       // C11.12: a released snapshot is never re-judged for filing modes (pinned releases are kept, BR-7); the draft is.
-      const baseProblems = [...structure, ...filingProblems((snapshot.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], personRoles), ...validate(snapshot, library, derivedOf(snapshot), accepts)];
+      // AS-2a (P-650 (2)): nobody files on an assessment-only release, so no filing mode is asked of its people.
+      const baseProblems = [...structure, ...(assessmentOnlyRelease(snapshot) ? [] : filingProblems((snapshot.combination?.participants ?? []) as { role: string; label?: string; max: number; filingMode?: unknown }[], personRoles)), ...validate(snapshot, library, derivedOf(snapshot), accepts)];
       // Status is about what firms can use: the released snapshot when there is one; the draft only explains In setup.
       const relSnap = rel?.snapshot as unknown as Snapshot | undefined;
       const hasContent = snapshot.forms.length + snapshot.sections.length + snapshot.document_requirements.length + snapshot.rules.length > 0;
