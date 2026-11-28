@@ -114,6 +114,11 @@ fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead'
 # Lead's tool, so the Lead passes it: LEAD_WEEKLY=<pct>. switch.sh close-prep writes the ledger row and checks STATE and
 # RESUME are pushed; an ACT until it says done. An open switch with no baseline is an ACT too.
 if [ -n "${LEAD_WEEKLY:-}" ]; then cp=$(bash "$TOOLS/switch.sh" close-prep "$LEAD_WEEKLY" 2>&1) && say "$cp" || ACT "$cp"; fi
+
+# 1c3. LR-099 burn watch (P-440): the Lead's reading (LEAD_WEEKLY, LEAD_ACCOUNT) goes into cockpit/usage-log.tsv once an
+# hour through usage-log.sh; over 3%/h twice, over 4%/h after 22:00 IST, 85% (push alert) and a stopped log are ACTs.
+bw=$(python3 -I "$TOOLS/burn-watch.py" --log "${LEAD_WEEKLY:-}" "${LEAD_ACCOUNT:-}" 2>&1) || bw="ACT   burn: burn-watch.py did not run ($(head -1 <<<"$bw"))"
+echo "$bw"; act=$((act + $(grep -c '^ACT' <<<"$bw"))); seen "$bw"
 ss=$(bash "$TOOLS/switch.sh" status 2>&1); case "$ss" in *"baseline none"*) ACT "$ss: get_usage, then switch.sh baseline <pct> (AS-4)";; *open*) say "$ss";; esac
 fresh "switch.sh: LEAD_WEEKLY from the Lead's get_usage, the switch state in ~/.claude/xr-switch, git status of STATE and RESUME, now"
 # 1c3. LR-156 (founder A433/A434): the Lead copy's branch age, every check; stale (base over 24 h or 200 behind) is an
