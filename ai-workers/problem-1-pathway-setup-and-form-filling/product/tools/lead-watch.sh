@@ -426,8 +426,10 @@ tl=$(python3 -I "$TOOLS/cycle-timeline.py" 2>&1); echo "$tl"; act=$((act + $(gre
 fresh "cycle-timeline.py"
 
 # 13a. Lane-start watch (LR-171, founder A455): a lane in STATE "Lanes running" with no session activity (the saved app
-# view, step 10) and no push of a branch it names, both over 90 min, is an ACT: type its next step or restart it (A451).
-lsw=$(python3 -I "$TOOLS/lane-start-watch.py" --state "$RECS/STATE.md" --view "${APP_VIEW_FILE:-$TOOLS/../state/app-view-latest.txt}" --repo "$ROOT" 2>&1)
+# view, step 10) and no push of a branch or PR it names (#NNNN: its head branch), both over 90 min, is an ACT: type its next
+# step or restart it (A451). Each app view line now carries its session id, so step 10a's nudges (LR-146) can name lanes.
+gh api "repos/expat-ready/xpatready/pulls?state=open&per_page=100" > "$STATE_DIR/open-pulls.json" 2>/dev/null || rm -f "$STATE_DIR/open-pulls.json"   # a PR named in the line counts as a push
+lsw=$(python3 -I "$TOOLS/lane-start-watch.py" --state "$RECS/STATE.md" --view "${APP_VIEW_FILE:-$TOOLS/../state/app-view-latest.txt}" --repo "$ROOT" --pulls "$STATE_DIR/open-pulls.json" 2>&1)
 grep -qE '^(lanes running: |ACT   lane start: )' <<<"$lsw" || lsw="ACT   lane start: lane-start-watch.py did not run ($(head -1 <<<"$lsw"))"
 echo "$lsw"; act=$((act + $(grep -c '^ACT' <<<"$lsw"))); seen "$lsw"
 fresh "lane-start-watch.py: STATE.md in $RECS, the saved app view, origin/* as the last fetch saw it"

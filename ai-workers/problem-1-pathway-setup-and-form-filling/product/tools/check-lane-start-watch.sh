@@ -39,8 +39,24 @@ run; ok "... pushed 100 min ago and idle 200 min: an ACT saying both" "$(grep -q
 # no app view saved: one ACT for the unwatched lanes
 rm -f "$T/view.txt"; git -C "$T/repo" update-ref -d refs/remotes/origin/claude/cleanup-x
 run; ok "no saved app view: one ACT naming the lanes not watched" "$([ "$(grep -c '^ACT' <<<"$out")" = 1 ] && grep -q 'no app view saved, so 3 lane(s)' <<<"$out" && echo 1)" "$out"
+# review of LR-171: the same session as cse_ in the view; a PR named in the line counts as a push; a label with a comma
+# in brackets; a lane in the view with no idle time
+view 0 "$(ln fast-route 5 cse_01AAAAAAAAAAAAAAAAAAAAAA)" "$(ln ship-security 10 session_01BBBBBBBBBBBBBBBBBBBBBB)" "$(ln cleanup 5 session_01CCCCCCCCCCCCCCCCCCCCCC)"
+run; ok "a view line with the cse_ form of a lane's session id matches it (no false alarm)" "$(! grep -q '^ACT' <<<"$out" && echo 1)" "$out"
+cat > "$T/STATE.md" <<'S'
+**Lanes running (cloud):** review (#4019, rescue) session_01DDDDDDDDDDDDDDDDDDDDDD, prover (x, y) session_01EEEEEEEEEEEEEEEEEEEEEE.
+S
+git -C "$T/repo" update-ref refs/remotes/origin/claude/rescue "$(GIT_COMMITTER_DATE="@$((NOW - 600)) +0000" git -C "$T/repo" commit-tree "$(git -C "$T/repo" rev-parse HEAD^{tree})" -m p)"
+echo '[{"number": 4019, "head": {"ref": "claude/rescue"}, "updated_at": "2026-01-01T00:00:00Z"}]' > "$T/pulls.json"
+view 0 "$(ln review 300 session_01DDDDDDDDDDDDDDDDDDDDDD)" "$(echo "ok    prover · cloud · running · needs: none · no detail · idle ? · context ? · id session_01EEEEEEEEEEEEEEEEEEEEEE")"
+out=$(python3 -I "$W" --state "$T/STATE.md" --view "$T/view.txt" --repo "$T/repo" --pulls "$T/pulls.json" --now "$NOW")
+ok "a PR named in the lane's part of the line (#4019) whose head branch was pushed 10 min ago: not quiet" "$(! grep -q 'lane start: review' <<<"$out" && echo 1)" "$out"
+ok "a label with a comma inside brackets is kept whole" "$(grep -q 'lane start: prover (x, y) (session_01EEEEEEEEEEEEEEEEEEEEEE)' <<<"$out" && echo 1)" "$out"
+ok "a lane in the view with no idle time says so (not \"not in the app view\")" "$(grep -q 'prover (x, y) .* has no idle time in the app view and shows no push' <<<"$out" && echo 1)" "$out"
+out=$(python3 -I "$W" --state "$T/STATE.md" --view "$T/view.txt" --repo "$T/repo" --now "$NOW")
+ok "... without the open pulls, the same review lane is quiet 300 min: an ACT" "$(grep -q 'lane start: review (#4019, rescue) (session_01DDDDDDDDDDDDDDDDDDDDDD) quiet 300 min' <<<"$out" && echo 1)" "$out"
 # lead-watch runs it and counts its ACT lines; app-view.js writes the id it matches
-ok "lead-watch.sh runs lane-start-watch.py and counts its ACT lines" "$(grep -q 'lsw=$(python3 -I "$TOOLS/lane-start-watch.py"' "$TOOLS/lead-watch.sh" && grep -q '^echo "$lsw"; act=$((act + $(grep -c .^ACT. <<<"$lsw")))' "$TOOLS/lead-watch.sh" && echo 1)"
+ok "lead-watch.sh runs lane-start-watch.py with the open pulls and counts its ACT lines" "$(grep -q 'lsw=$(python3 -I "$TOOLS/lane-start-watch.py" .* --pulls "$STATE_DIR/open-pulls.json"' "$TOOLS/lead-watch.sh" && grep -q '^echo "$lsw"; act=$((act + $(grep -c .^ACT. <<<"$lsw")))' "$TOOLS/lead-watch.sh" && echo 1)"
 if command -v node >/dev/null; then
   l=$(node -e 'const v=require(process.argv[1]); console.log(v.lines({data:[{id:"session_01AAAAAAAAAAAAAAAAAAAAAA",title:"fast-route",status:"running",last_event_at:new Date(1800000000000-5*60000).toISOString(),post_turn_summary:{status_category:"working"}}]}, 1800000000000, 0, 1))' "$TOOLS/app-view.js" 2>&1)
   ok "app-view.js ends each session line with its id (what lane-start-watch.py matches)" "$(grep -q ' · id session_01AAAAAAAAAAAAAAAAAAAAAA$' <<<"$l" && echo 1)" "$l"
