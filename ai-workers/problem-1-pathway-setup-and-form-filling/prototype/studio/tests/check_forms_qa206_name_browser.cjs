@@ -17,7 +17,7 @@ const step = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "P
 const PART_NAMES = /^(Page wrapper|Nat id|Us card|Contacts row2|Background info2?|Consent1|Five|Seven|App details|Table1)$/i;
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   const errors = []; p.on("pageerror", (e) => errors.push(e.message));
   const shot = async (name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await p.screenshot({ path: `${SHOTS}/${name}.png` }); } };

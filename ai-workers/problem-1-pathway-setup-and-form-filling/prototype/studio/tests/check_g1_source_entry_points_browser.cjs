@@ -14,7 +14,7 @@ let fail = 0, pass = 0;
 const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail !== undefined ? ` — ${String(typeof detail === "string" ? detail : JSON.stringify(detail)).replace(/\s+/g, " ").slice(0, 300)}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" })).newPage();
   const errs = []; p.on("pageerror", (e) => errs.push(e.message));
   const api = async (method, u, data, actor = "user-A") => { const r = await p.request.fetch(`${BASE}/api${u}`, { method, headers: { "x-actor": actor, "content-type": "application/json" }, data: data === undefined ? undefined : JSON.stringify(data) }); return { status: r.status(), body: await r.json().catch(() => null) }; };

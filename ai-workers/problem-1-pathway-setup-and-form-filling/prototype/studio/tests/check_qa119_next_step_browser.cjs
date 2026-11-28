@@ -4,7 +4,6 @@
 // nothing answers). Also the two X1 C3 follow-ups: the strip's "could not be loaded · Retry" state and the sure/not-sure
 // tooltip. Walked in a real browser as the configuration author and the immigration expert; axe (WCAG 2.2 AA). US$0.
 //   zsh studio/tools/isolated.sh screens_q119 4442 start && node studio/tests/check_qa119_next_step_browser.cjs 4442 xr_studio_screens_q119
-const fs = require("node:fs");
 const { stepsBeforeForms } = require("./fixtures/steps-before-forms.cjs");
 const { chromium } = require("../node_modules/playwright");
 const AxeBuilder = require("../node_modules/@axe-core/playwright").default;
@@ -22,7 +21,7 @@ const step = (name, ok, detail) => { ok ? pass++ : fail++; console.log(`${ok ? "
   step("C11.10 QA-119 fail (rule): an item that has a landing place keeps its ?focus= (Official pages, people, documents, gaps)", nextStepHref("c1", nx("confirm_pages", "pages:record", "pages"), "forms") === itemHref("c1", "pages", "forms", { kind: "confirm_pages", focus: "pages:record" }) && nextStepHref("c1", nx("confirm_people", "people:card", "people"), "forms").endsWith("?focus=people%3Acard") && nextStepHref("c1", nx("unasked", "questionnaires:gaps", "questions_documents"), "documents") === "/c/c1/questionnaires?focus=questionnaires%3Agaps");
   step("C11.10 QA-119 fail (rule): a proposal still opens the review queue, never a tab", nextStepHref("c1", nx("review_proposals", "review:forms", "forms"), "forms") === "/review/proposals?c=c1&step=3");
 
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message)); p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|status of [45]\d\d/.test(m.text())) errs.push(m.text()); });

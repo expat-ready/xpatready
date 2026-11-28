@@ -11,7 +11,7 @@
 // on the copy, the newest case; with no case at all, the case screens are skipped and said so (a reset demo is not broken).
 //   node studio/tools/demo-smoke.mjs [--base http://localhost:4400] [--shots <dir>] [--timeout-ms 20000]
 // Exit 0 every screen worked · 1 a screen broke (named) · 2 the walk could not run (no browser). US$0, no model call.
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { createRequire } from "node:module";

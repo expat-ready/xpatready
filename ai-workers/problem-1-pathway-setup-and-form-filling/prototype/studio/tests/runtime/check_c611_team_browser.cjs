@@ -4,7 +4,6 @@
 // officer off; the case officer reads the team without change controls; the solo firm does not see the case. axe-core
 // (WCAG 2.2 A/AA) on every state; 1440 and 1024 px without sideways scroll; every wait fails loudly. Sample data, US$0.
 //   zsh studio/tools/isolated.sh runtime_r1 4430 start && tsx studio/tests/runtime/setup_visitor_visa.ts 4430 xr_studio_runtime_r1 && node studio/tests/runtime/check_c611_team_browser.cjs 4430
-const fs = require("node:fs");
 const { chromium } = require("../../node_modules/playwright");
 const AxeBuilder = require("../../node_modules/@axe-core/playwright").default;
 

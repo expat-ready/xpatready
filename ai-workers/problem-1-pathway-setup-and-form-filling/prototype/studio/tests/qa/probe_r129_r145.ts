@@ -2,7 +2,6 @@
 // wrong role by URL, reload mid-dialog. Runs after j_29 and j_45 on the same isolated copy (their data). Never :4400.
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
 import { chromium, type Page } from "playwright";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const [NAME, PORT, OUT] = [process.argv[2], Number(process.argv[3]), process.argv[4]];

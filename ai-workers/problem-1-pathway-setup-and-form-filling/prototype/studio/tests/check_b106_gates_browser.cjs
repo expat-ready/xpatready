@@ -42,7 +42,7 @@ const setup = (file) => { try { return { code: 0, out: execFileSync(TSX, [file, 
   const openCase = async (ref) => (await call("POST", "/runtime/cases", { combinationId: vv, reference: ref, clientActor: "user-P", principal: { displayName: "Sample Client A" } }, OFFICER)).body?.id;
   const before = await gates();
 
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium/chrome-linux/chrome") ? { executablePath: "/opt/pw-browsers/chromium/chrome-linux/chrome" } : fs.statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false })?.isFile() ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const as = async (actor, width = 1440) => { const c = await b.newContext({ viewport: { width, height: 900 } }); c.setDefaultNavigationTimeout(180_000); c.setDefaultTimeout(30_000); await c.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* blocked */ } }, actor); return c.newPage(); };
   const errors = [];
   const axeOf = async (p, what, scope) => { const r = await new AxeBuilder({ page: p }).include(scope).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze(); ok(`axe (WCAG 2.2 AA): ${what}`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`)); };

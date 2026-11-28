@@ -32,7 +32,7 @@ const tsx = (f) => spawnSync(path.join(STUDIO, "node_modules", ".bin", "tsx"), [
   const d = JSON.parse(String(s.stdout).trim().split("\n").pop() || "{}");
   ok("setup: a case with round 1 (one filing approved, one sent back) and round 2 sent, through the product's routes", !!d.caseId && !!d.r1 && !!d.r2, { exit: s.status, err: String(s.stderr).slice(-400) });
   const shotsDir = SHOTS ? path.resolve(SHOTS) : null;
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: shotsDir ? 2 : 1, reducedMotion: "reduce" });
   let actor = d.officer;
   await ctx.addInitScript((a) => { if (!localStorage.getItem("xr-actor")) localStorage.setItem("xr-actor", a); }, actor);

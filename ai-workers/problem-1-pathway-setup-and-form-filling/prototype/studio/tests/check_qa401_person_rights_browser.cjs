@@ -28,7 +28,7 @@ const ok = (name, cond, detail) => { if (cond) { pass++; console.log(`PASS  ${na
   const s = tsx("tests/runtime/setup_c83_walk.ts");
   const d = JSON.parse(String(s.stdout).trim().split("\n").pop() || "{}");
   ok("setup: a case with round 2 sent for review, through the product's routes", !!d.caseId && !!d.r2 && !!d.officer && !!d.rep, { exit: s.status, err: String(s.stderr).slice(-400) });
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   await ctx.addInitScript((a) => { if (!localStorage.getItem("xr-actor")) localStorage.setItem("xr-actor", a); }, d.officer);
   const p = await ctx.newPage();

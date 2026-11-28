@@ -43,7 +43,7 @@ const run = Date.now().toString(36), ADDRESS = `partner.${run}@example.com`;
   const byA = pq ? await call("PUT", `/runtime/cases/${id}/answers/${S}/${pq.fact}`, { value: "SAMPLE-BY-CLIENT-A", expectedId: null }, "user-P") : { status: 0 };
   ok("C6.16 walk setup: a fresh case with Client A, Partner, a child of 19 and a child of 10; Client A answered one of Partner's questions", !!id && !!S && !!C19 && !!C10 && byA.status === 200, { case: c.status, byA: byA.status });
 
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const axe = async (p, name) => {
     const r = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

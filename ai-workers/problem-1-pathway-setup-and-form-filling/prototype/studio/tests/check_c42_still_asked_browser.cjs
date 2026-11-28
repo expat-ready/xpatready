@@ -18,7 +18,7 @@ const SEC = "personal_details";
 (async () => {
   if (PORT === 4400) { console.error("refused: never the shared demo on :4400"); process.exit(2); }
   if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message));

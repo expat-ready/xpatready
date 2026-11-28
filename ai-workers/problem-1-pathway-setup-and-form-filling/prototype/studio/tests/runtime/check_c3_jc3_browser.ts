@@ -10,7 +10,7 @@
 // Adobe's Validate is simulated (tests/runtime/validated.ts). Sample data, US$0, no model call.
 //   zsh studio/tools/isolated.sh rtc3 4431 start, then Demo › Reset and Demo › Load the configured checkpoint as the author
 //   tsx studio/tests/runtime/check_c3_jc3_browser.ts 4431 xr_studio_rtc3 [shots folder]
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";

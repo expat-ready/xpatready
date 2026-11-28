@@ -42,8 +42,7 @@ let failed = 0; const ok = (name, pass, detail) => { if (!pass) failed++; consol
   const after = (await call("GET", `/runtime/cases/${fam.id}/forms`)).body.forms.flatMap((f) => f.copies).find((c) => c.id === keptCopy?.id);
   ok("QA-391 fail: the refused copy stays as it was (not locked)", !!after && !after.locked, after?.locked);
   // The screen, at 1440 px, as the case officer.
-  const exe = process.platform === "darwin" ? { channel: "chrome" } : fs.statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false }) ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {};
-  const b = await chromium.launch({ headless: true, ...exe }); const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true })); const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });   // LR-183: the shared browser rule
   await ctx.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch {} }, OFFICER);
   const p = await ctx.newPage(); await p.goto(`${base}/cases/${fam.id}`);
   await p.locator("li[data-row-form]").first().waitFor({ timeout: 60_000 });

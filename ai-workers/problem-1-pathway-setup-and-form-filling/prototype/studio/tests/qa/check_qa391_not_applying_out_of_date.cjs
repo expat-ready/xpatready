@@ -9,7 +9,7 @@
 // Fails today; passes when fixed. US$0, live AI off.
 //   zsh tools/isolated.sh qa_391 4472 start && node tests/qa/check_qa391_not_applying_out_of_date.cjs 4472
 //   (loads the finished story itself when the copy has not, about 4 min; never :4400)
-const fs = require("fs"); const { chromium } = require("playwright");
+const { chromium } = require("playwright");
 const port = process.argv[2]; if (!port || port === "4400") { console.log("usage: <port of an isolated copy>, never 4400"); process.exit(2); }
 const base = `http://localhost:${port}`;
 const get = async (path, actor = "user-A") => (await fetch(base + path, { headers: { "x-actor": actor } })).json();

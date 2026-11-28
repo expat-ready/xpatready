@@ -18,7 +18,7 @@ const step = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "P
 const NAME = "Proof of hotel booking (Sample)", QUOTE = "Sample: a hotel booking for the whole stay (not an official quote).";
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const person = async (actor, width = 1280) => {
     const ctx = await b.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
     await ctx.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* ignore */ } }, actor);

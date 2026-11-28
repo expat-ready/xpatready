@@ -36,7 +36,7 @@ const takeKey = (role, key) => { const n = sql(`with d as (delete from platform_
 const putBack = () => { for (const [role, key] of removed.splice(0)) sql(`insert into platform_role_permission (role, permission_key) values ('${role}', '${key}') on conflict do nothing`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   try {
     const http = await (await b.newContext()).request;

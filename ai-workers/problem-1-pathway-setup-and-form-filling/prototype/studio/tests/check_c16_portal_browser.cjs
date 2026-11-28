@@ -21,7 +21,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LEAKS = /\(P-\d{2,3}[^)]*\)|\bP-\d{2,3}\b|IRCC_SECURE_ACCOUNT|PDF_UPLOAD|NOT_NEEDED/;
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" || !fs.existsSync("/opt/pw-browsers/chromium") ? { channel: "chrome" } : { executablePath: "/opt/pw-browsers/chromium" }) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message));

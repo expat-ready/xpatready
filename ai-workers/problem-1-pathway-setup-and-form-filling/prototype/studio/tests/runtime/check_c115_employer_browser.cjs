@@ -3,7 +3,6 @@
 // the same, read from the pinned release. axe-core (WCAG 2.2 A/AA) on both states; 1440 and 390 px without sideways
 // scroll; every wait fails loudly. Sample data, US$0.
 //   zsh studio/tools/isolated.sh runtime_m3a2 4437 start && tsx --tsconfig studio/api/tsconfig.json studio/tests/runtime/setup_visitor_visa.ts 4437 xr_studio_runtime_m3a2 && node studio/tests/runtime/check_c115_employer_browser.cjs 4437
-const fs = require("node:fs");
 const { chromium } = require("../../node_modules/playwright");
 const AxeBuilder = require("../../node_modules/@axe-core/playwright").default;
 

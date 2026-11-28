@@ -13,7 +13,7 @@
 // view says is next not done (the first later part not done; the overview when none), never the part just left.
 //   zsh tools/isolated.sh qa_445 4472 start && node tests/qa/check_qa445_save_and_continue.cjs 4472 [database] [shots dir] [width]
 //   (loads the configured checkpoint itself when the copy has no released Visitor visa, about 2 min; never :4400)
-const fs = require("fs"); const path = require("path"); const { chromium } = require("playwright");
+const path = require("path"); const { chromium } = require("playwright");
 const port = process.argv[2]; if (!port || port === "4400") { console.log("usage: <port of an isolated copy>, never 4400"); process.exit(2); }
 const SHOTS = process.argv[4], W = Number(process.argv[5] ?? 1440), PRESSES = Number(process.env.QA445_PRESSES ?? 10);
 const base = `http://localhost:${port}`;

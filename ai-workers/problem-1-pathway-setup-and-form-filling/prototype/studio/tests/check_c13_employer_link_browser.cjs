@@ -32,7 +32,7 @@ const LMIA = "case.lmia_or_offer_number";
   if (!(await openable())) { await call("POST", "/demo/reset", { confirm: "RESET" }, "user-A"); const l = await call("POST", "/demo/load", { sample: "configured" }, "user-A"); ok("setup: the configured checkpoint loads", l.status === 201 || l.status === 200, l.status); }
   const wp = await openable();
   if (!wp) { ok("setup: With an LMIA – inside Canada is released and startable", false); process.exit(2); }
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const axe = async (p, name) => {
     const r = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

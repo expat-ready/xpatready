@@ -9,7 +9,7 @@
 // US$0, live AI off. Headless.
 //   zsh tools/isolated.sh qa_447 4472 start && node tests/qa/check_qa447_self_review_record.cjs 4472
 //   (loads the configured checkpoint itself when Study permit is not released; never :4400)
-const fs = require("fs"); const { chromium } = require("playwright");
+const { chromium } = require("playwright");
 const port = process.argv[2]; if (!port || port === "4400") { console.log("usage: <port of an isolated copy>, never 4400"); process.exit(2); }
 const base = `http://localhost:${port}`;
 const call = async (method, path, actor, body) => { const r = await fetch(base + "/api" + path, { method, headers: { "x-actor": actor, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined }); let b = null; try { b = await r.json(); } catch { /* not JSON */ } return { status: r.status, body: b }; };

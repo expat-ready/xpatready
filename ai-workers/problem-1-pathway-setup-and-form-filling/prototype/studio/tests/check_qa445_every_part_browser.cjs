@@ -57,7 +57,7 @@ const nextNotDone = (parts, from) => { for (let k = 1; k < parts.length; k++) { 
 (async () => {
   const has = sql("select count(distinct c.combination_key) from config_release r join combination c on c.id=r.combination_id where c.combination_key in ('vv.single','sp.outside')");
   if (Number(has) < 2) { const l = await call("POST", "/demo/load", "user-A", { sample: "configured" }); if (l.status >= 300) { console.log("STOP the configured checkpoint did not load", l.status); process.exit(1); } }
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errs = [];
   // QA445_ONLY=shift runs only the last scenario (a quick before/after of review M1 and M2).
   for (const [key, label, family] of process.env.QA445_ONLY === "shift" ? [] : [["vv.single", "Visitor visa", [["spouse_or_partner", "Sample Spouse W"], ["child", "Sample Child W"]]], ["sp.outside", "Study permit (outside Canada)", [["spouse_or_partner", "Sample Spouse W"], ["child", "Sample Child S"], ["child", "Sample Child V"]]]]) {

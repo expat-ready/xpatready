@@ -20,7 +20,7 @@
 // Fails on main b26ad9430 (before #1678): step 4 reads "Values confirmed: none yet" / "1 fact" and step 2 confirms one.
 // US$0, live AI off, never :4400.
 //   zsh tools/isolated.sh qa_446 4477 start && node tests/qa/check_qa446_confirm_rule.cjs 4477 xr_studio_qa_446 <shots dir> [width]
-const fs = require("fs"); const path = require("path"); const { execFileSync } = require("child_process");
+const path = require("path"); const { execFileSync } = require("child_process");
 const { chromium } = require("../../node_modules/playwright");
 const port = process.argv[2], DB = process.argv[3], SHOTS = process.argv[4], W = Number(process.argv[5] ?? 1024);
 if (!port || port === "4400" || !/^xr_studio_(?!demo)/.test(DB ?? "")) { console.log("usage: <port of an isolated copy, never 4400> <its database> [shots] [width]"); process.exit(2); }

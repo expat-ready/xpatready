@@ -7,7 +7,6 @@
 // state; no sideways scroll; every wait fails loudly. Sample data, US$0, no model call.
 //   zsh studio/tools/isolated.sh rt611 4431 start, then Demo › Reset and Demo › Load the configured checkpoint as the author
 //   node studio/tests/runtime/check_c611_imm5476_browser.cjs 4431
-const fs = require("node:fs");
 const { chromium } = require("../../node_modules/playwright");
 const AxeBuilder = require("../../node_modules/@axe-core/playwright").default;
 

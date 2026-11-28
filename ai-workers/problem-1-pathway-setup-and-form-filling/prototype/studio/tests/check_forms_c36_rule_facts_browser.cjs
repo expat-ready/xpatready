@@ -3,7 +3,6 @@
 // plain words, a complete add becomes a proposal that waits on To review › Proposals, and the panel is gone once nothing
 // is missing; "Add a fact a rule needs" names a rule and proposes a new fact under a built key (Day-0 acceptance). axe (WCAG 2.2 AA) on the open form; no sideways scroll at 400 px. US$0, no model call.
 //   zsh studio/tools/isolated.sh forms_c36b 4463 start && node studio/tests/check_forms_c36_rule_facts_browser.cjs 4463 xr_studio_forms_c36b
-const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const { chromium } = require("../node_modules/playwright");
 const AxeBuilder = require("../node_modules/@axe-core/playwright").default;
@@ -14,7 +13,7 @@ let pass = 0, failed = 0;
 const step = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 300)}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) }); const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true })); const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();
   const errors = []; p.on("pageerror", (e) => errors.push(e.message));
   const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": "user-A", "content-type": "application/json" }, data: init.json }); return { status: r.status(), body: await r.json().catch(() => null) }; };
   await api("/demo/reset", { method: "POST", json: { confirm: "RESET" } });

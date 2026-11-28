@@ -3,7 +3,6 @@
 // list is proposed with the fact, and the second person reads it on To review › Proposals. A non-choice shows no values
 // box. axe (WCAG 2.2 AA) on the open form. US$0, no model call. Values are Sample (AGENTS rule 4).
 //   zsh studio/tools/isolated.sh forms_c36w 4469 start && node studio/tests/check_forms_c36_answer_values_browser.cjs 4469 xr_studio_forms_c36w
-const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const { chromium } = require("../node_modules/playwright");
 const AxeBuilder = require("../node_modules/@axe-core/playwright").default;
@@ -14,7 +13,7 @@ let pass = 0, failed = 0;
 const step = (name, c, detail) => { c ? pass++ : failed++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 300)}` : ""}`); };
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   const errors = []; p.on("pageerror", (e) => errors.push(e.message));
   const api = async (pth, init = {}) => { const r = await p.request.fetch(`${BASE}/api${pth}`, { method: init.method ?? "GET", headers: { "x-actor": "user-A", "content-type": "application/json" }, data: init.json }); return { status: r.status(), body: await r.json().catch(() => null) }; };
