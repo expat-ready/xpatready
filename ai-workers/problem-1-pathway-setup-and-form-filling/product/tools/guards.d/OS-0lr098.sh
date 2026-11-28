@@ -27,5 +27,6 @@ LR098 qbdata|product/tools/queue-blocked.py|s/        if not isinstance(out, dic
 LR098 qbfiles|product/tools/queue-blocked.py|s/    if e.get("files") is not None:/    if e.get("files"):/|check-gh-graphql.sh
 LR098 qbcomments|product/tools/queue-blocked.py|s/    if e.get("comments_complete") and all(/    if e.get("comments") and all(/|check-gh-graphql.sh
 LR098 edited|product/tools/gh_graphql.py|s/"created_at": c.get("createdAt"), "updated_at": c.get("updatedAt"),/"created_at": c.get("createdAt"),/|check-gh-graphql.sh
-LR098 edittime|product/tools/queue-blocked.py|s/    if e.get("comments_complete") and all("updated_at" in c for c in e\["comments"\]):/    if e.get("comments_complete"):/|check-gh-graphql.sh
-LR098 readonly|product/tools/gh_graphql.py|s/    if not query.lstrip().startswith("query {"):/    if False:/|check-gh-graphql.sh'
+LR098 edittime|product/tools/queue-blocked.py|s/    if e.get("comments_complete") and all(c.get("updated_at") for c in e\["comments"\]):/    if e.get("comments_complete") and all("updated_at" in c for c in e["comments"]):/|check-gh-graphql.sh
+LR098 readonly|product/tools/gh_graphql.py|s/    if not query.lstrip().startswith("query {"):/    if False:/|check-gh-graphql.sh
+LR098 askedit|product/tools/gh_graphql.py|s/databaseId createdAt updatedAt body/databaseId createdAt body/|check-gh-graphql.sh'

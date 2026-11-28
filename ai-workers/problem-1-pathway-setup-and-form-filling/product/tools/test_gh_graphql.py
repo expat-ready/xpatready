@@ -297,7 +297,7 @@ class QueueBlockedBundle(unittest.TestCase):
         try:
             self.assertEqual(qb.files_of("o/r", 7, {"files": []}), [])                     # an empty list is an answer
             self.assertEqual(qb.files_of("o/r", 7, {"files": None}), ["new.sh", "old.sh"])
-            c = {"body": "c", "updated_at": None}
+            c = {"body": "c", "updated_at": "2026-11-28T08:00:00Z"}
             self.assertEqual(qb.comments_of("o/r", 7, {"comments": [c], "comments_complete": True}), [c])
             qb.comments_of("o/r", 8, {"comments": [c], "comments_complete": False}); qb.comments_of("o/r", 9, {})
             self.assertEqual(calls, ["repos/o/r/pulls/7/files?per_page=100", "repos/o/r/issues/8/comments?per_page=100",
@@ -319,9 +319,16 @@ class QueueBlockedBundle(unittest.TestCase):
         qb.pages = lambda path, cap, enough=None: calls.append(path) or []
         try:
             qb.comments_of("o/r", 7, {"comments": [{"body": "x"}], "comments_complete": True})
-            self.assertEqual(calls, ["repos/o/r/issues/7/comments?per_page=100"])
+            qb.comments_of("o/r", 8, {"comments": [{"body": "x", "updated_at": None}], "comments_complete": True})
+            nodate = {k: v for k, v in C1.items() if k != "updatedAt"}                         # an answer without updatedAt
+            b = g.pr_bundle("o/r", [9], run=lambda q: {"repository": {"p9": node(9, [nodate])}})
+            qb.comments_of("o/r", 9, b[9])
+            self.assertEqual(calls, ["repos/o/r/issues/%d/comments?per_page=100" % n for n in (7, 8, 9)])
         finally:
             qb.pages = real
+
+    def test_the_query_asks_for_each_comments_edit_time(self):
+        self.assertIn("createdAt updatedAt body", g.query_for("o", "r", [7], True, False, False))
 
     def test_only_queries_are_sent(self):
         self.assertTrue(g.query_for("o", "r", [7], True, True, True).startswith("query {"))

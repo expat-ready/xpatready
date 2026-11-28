@@ -228,7 +228,7 @@ def files_of(repo, n, e):
 def comments_of(repo, n, e):
     """Every comment of PR n: the bundle's when it holds them all and each says when it was last edited (lead_read's
     never-edited rule, P-423, needs updated_at), else REST, every page."""
-    if e.get("comments_complete") and all("updated_at" in c for c in e["comments"]):
+    if e.get("comments_complete") and all(c.get("updated_at") for c in e["comments"]):   # a real edit time, never None
         return e["comments"]
     return pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
 
