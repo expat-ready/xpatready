@@ -1,7 +1,7 @@
 {
  "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
- "version": "1.8.0",
- "date": "2026-11-26",
+ "version": "1.9.0",
+ "date": "2026-11-28",
  "owner": "the tech lead",
  "change_log": [
   {
@@ -63,6 +63,12 @@
    "date": "2026-11-26",
    "change": "OS-83: ci.yml may also have workflow_dispatch with inputs exactly pr and head (the CI-PRE full run, \"/run full\", P-731, added 19 Nov in 207619aca; the manifest never allowed it, so ci.triggers failed and the heartbeat was red on all 23 scheduled runs from 18 Nov, e.g. run 45727547952); any other extra trigger still fails. The heartbeat workflow must also start on push and workflow_run (events_required): GitHub ran its 30-minute schedule only every 8-11 hours. Event runs save no state, so only a scheduled run (whose red mails the owner) marks an alarm seen; no issue_comment (anyone can comment; a red run mails its starter).",
    "approval": "the tech lead, 26 Nov (OS-PM 4 brief, founder ask A400: every watcher runs inside the pipeline): fix the expectation where workflow_dispatch on ci.yml is intended, and add event triggers to the heartbeat"
+  },
+  {
+   "version": "1.9.0",
+   "date": "2026-11-28",
+   "change": "P-861 (LR-172): P-827's one-time \"pipeline first\" ends; the queue pipeline moves back after product. queue_order becomes verdicts > product > pipeline > records. product's own pipeline-path clause (files ~= ^(?!(...)), the same pattern pipeline selects with) keeps a pipeline-only PR out of product, so it falls through to pipeline; the top-level priority rules near-proven and fixes-main are unchanged; pipeline still never sets allow_checks_interruption.",
+   "approval": "founder, P-861 (records PR #4073), passed on by the tech lead (Lead 13, 28 Nov): product ahead of pipeline, verdicts and the fixes-main priority kept"
   }
  ],
  "settings": {
@@ -201,7 +207,7 @@
   "mode": "parallel",
   "capacities_required": {"money": 1, "mig-*": 1, "pipeline": 1},
   "barrier_files_required": ["**/package.json", "**/package-lock.json", ".nvmrc", "tsconfig.base.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/base.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/links.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"],
-  "queue_order": ["verdicts", "pipeline", "product", "records"],
+  "queue_order": ["verdicts", "product", "pipeline", "records"],
   "queues": {
    "verdicts": {
     "batch_size": 2,
