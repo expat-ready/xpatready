@@ -6,7 +6,7 @@
 # "Item: R1.x" (several: "Item: R1.4, R1.8") or "Item: none (tooling|qa|records|lead)" (only when its own row has that
 # BACKLOG area, or it names no row), and each item must be in a wave open
 # for lane starts (waves.py allow; B204, P-745), else "OUTSIDE WAVE: ...". Reads the text on stdin; exit 1 with what is
-# missing. Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Tests: check-g4-rules.sh, check-review-converges.sh (LR-121), check-focus-list.sh, check-touch-overlap.sh; the Item line and waves: check-lane-preflight.sh.
+# missing. With --brief also a "Do it yourself" section naming the lane's own tools (LR-177). Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Tests: check-g4-rules.sh, check-review-converges.sh (LR-121), check-focus-list.sh, check-touch-overlap.sh; the Item line and waves: check-lane-preflight.sh.
 set -u
 # LR-121 (founder A425; Loops article: "specific completion criteria and explicit turn caps"): a start brief that carries a
 # "Done when" also carries a stop rule, e.g. "stop after 3 tries", "at most two rounds", "a two-round cap". PR bodies are
@@ -53,6 +53,13 @@ elif ! printf '%s\n' "$done_when" | grep -qiE 'test|check|exit|pass|fail|\.(sh|t
 [ "$row" = 0 ] || printf '%s\n' "$txt" | grep -qE '^[[:space:]*>-]*Duplicate check:[[:space:]]*[^[:space:]]' || bad="$bad no \"Duplicate check:\" line;"
 if [ "${1:-}" = --brief ]; then
   bad="$bad$(stop_bad)"
+  # LR-177 (c) (founder A455, 15:5x IST: agents wait instead of doing steps themselves): every lane brief has a "Do it
+  # yourself" section (its heading or bold line, then lines up to a blank line or heading) naming the tools the lane uses
+  # for its own steps (gh, git, the GitHub tools or API, claude.ai, the built-in browser, the CLI, Playwright, ...).
+  diy=$(printf '%s\n' "$txt" | awk 'f && (/^[[:space:]]*$/ || /^#/) {exit} !f && tolower($0) ~ /^[[:space:]#*>-]*do it yourself/ {f = 1} f {print}')
+  if [ -z "$diy" ]; then bad="$bad no \"Do it yourself\" section naming the tools the lane uses for its own steps (LR-177, founder A455);"
+  elif ! printf '%s\n' "$diy" | grep -qiE '(^|[^a-z])(gh|git|github|mcp|api|claude\.ai|claude -p|browser|cli|curl|bash|playwright|mergify)([^a-z]|$)'; then
+    bad="$bad a \"Do it yourself\" section that names no tool (e.g. gh, git, the GitHub API, claude.ai, the built-in browser; LR-177);"; fi
   printf '%s\n' "$txt" | grep -iE '(opus|fable|sonnet|haiku)' | grep -qiE 'effort[ :=*]*(low|medium|high|xhigh|max)|(low|medium|high|xhigh|max)[ -]effort' \
     || bad="$bad no model and effort line (one line naming both, e.g. \"Model: Opus 5.5, effort: medium\", P-608);"
   # One model rule (P-788): the line names Opus at medium, unless the brief names why with "P-788 exception:".

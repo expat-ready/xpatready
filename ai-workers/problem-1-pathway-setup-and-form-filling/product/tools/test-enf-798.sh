@@ -98,7 +98,7 @@ out=$(python3 -I "$TOOLS/flow-buffer.py" --design "$T/d2" --caps "$T/caps.md"); 
 ok "P-800 a \"Buffer: 3 days\" line is text, never counted" "$([ $rc = 1 ] && has "$out" 'board-lead-b-2026-11-23.md lists 1 day' && echo 1)" "exit $rc: $out"
 
 # ---------- P-801: sources (brief-check.sh) ----------
-B='Model: Opus 5.5, effort: medium'
+B=$'Model: Opus 5.5, effort: medium\nDo it yourself: gh, git and the built-in browser.'
 bc() { out=$(printf '%s\n' "$1" | bash "$TOOLS/brief-check.sh" ${2:-}); rc=$?; }
 bc "$B
 Build the study permit intake: IMM 1294 asks for the passport." --brief

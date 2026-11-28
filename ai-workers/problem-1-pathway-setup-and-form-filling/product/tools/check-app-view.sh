@@ -91,7 +91,7 @@ check() { NOW=$1 bash "$TOOLS/app-view-check.sh" "${@:2}"; echo "rc=$?"; }
 o=$(check $NOW); ok "no file yet: ACT never read" "$(grep -q '^rc=1' <<< "$o" && grep -q 'ACT   app view never read' <<< "$o" && echo 1)" "$o"
 printf '%s\n' "$view" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null
 ok "app-view-save.sh writes the IST time and the lines" "$(head -1 "$APP_VIEW_FILE" | grep -qE '^saved [0-9]{2} [A-Z][a-z]{2} [0-9:]{5} IST epoch '"$NOW"'$' && [ "$(grep -c '^FLAG' "$APP_VIEW_FILE")" = 5 ] && echo 1)" "$(head -2 "$APP_VIEW_FILE")"
-o=$(check $((NOW + 10 * 60))); ok "a 10-min-old view: one ACT per flagged session (5)" "$(grep -q '^rc=5' <<< "$o" && grep -q '^ACT   app view: Lane asks' <<< "$o" && grep -q '^ACT   app view: Lane full' <<< "$o" && echo 1)" "$o"
+o=$(check $((NOW + 10 * 60))); ok "a 10-min-old view: one ACT per flagged session (5), plus one for the finished lane not archived (LR-177)" "$(grep -q '^rc=6' <<< "$o" && grep -q '^ACT   app view: finished lane not archived: Lane quiet' <<< "$o" && grep -q '^ACT   app view: Lane asks' <<< "$o" && grep -q '^ACT   app view: Lane full' <<< "$o" && echo 1)" "$o"
 o=$(check $((NOW + 15 * 60)) --stale-only); ok "15 min is still fresh" "$(grep -q '^rc=0' <<< "$o" && echo 1)" "$o"
 o=$(check $((NOW + 16 * 60))); ok "a 16-min-old view: ACT app view not read in 16 min" "$(grep -q '^rc=1' <<< "$o" && grep -q '^ACT   app view not read in 16 min' <<< "$o" && echo 1)" "$o"
 printf '%s\n' "$(lv "$(cat "$T/sessions.json")")" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null

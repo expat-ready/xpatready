@@ -18,3 +18,5 @@ esac
 ist=$(TZ=Asia/Kolkata date -d "@$now" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -r "$now" '+%d %b %H:%M IST')
 mkdir -p "$(dirname "$f")" && printf 'saved %s epoch %s\n%s\n' "$ist" "$now" "$body" > "$f.$$" && mv -f "$f.$$" "$f"
 echo "saved $(printf '%s\n' "$body" | grep -c '^FLAG') flagged of $(printf '%s\n' "$body" | grep -cE '^(FLAG|ok) ') sessions at $ist to $f"
+# LR-177 (a): the same view as data, beside it (app-view.json: each lane's state, last message time, what it waits for).
+python3 -I "$TOOLS/app-view-json.py" "$f" "${APP_VIEW_JSON:-${f%.txt}.json}" >/dev/null || echo "app-view.json not written (app-view-json.py failed): the text view above stands" >&2
