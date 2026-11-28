@@ -17,6 +17,15 @@ bad "a form number joined, lower case" "forms.ts" 'const isRep = (code: string) 
 bad "a form number with a hyphen, after code on the line" "runtime/x.tsx" 'const k = 1; const form = "EMP-5602";'
 bad "a combination key compared with a literal" "runtime/checklist.ts" 'if (c.combinationKey === "e1-mother-visit") return [];'
 bad "a program key compared the other way round" "programs2.ts" 'const only = "visitor-visa" !== row.programKey;'
+bad "a switch on the combination key" "runtime/sw.ts" "$(printf 'switch (c.combinationKey) {\n  case "e1-mother-visit": return 1;\n}')"
+bad "a literal list looked up by program key" "runtime/inc.ts" 'const only = ["visitor-visa"].includes(c.programKey);'
+bad "a nested program key compared with a literal" "runtime/nest.ts" 'if (c.program.key === "visitor-visa") return [];'
+bad "a form number after a block comment closes on the same line" "runtime/after.ts" "$(printf '/* fees\n   end */ const f = "IMM 5709";')"
+good "a list read from data looked up by the key" "runtime/data.ts" 'if (!src.applies_to || src.applies_to.includes(combinationKey)) return src;'
+good "a form in a //comment with no space" "runtime/a2.ts" '//canada.ca on IMM 5484'
+good "a form in a trailing /* */ comment after code" "runtime/a3.ts" 'const x = 1; /* IMM 5257 cited */'
+good "a form in a trailing //comment after code" "runtime/a4.ts" 'const x = 1; //IMM 5257'
+good "a block comment opened after code covers its next lines" "runtime/a5.ts" "$(printf 'const x = 1; /* the guide,\n   IMM 5257, says so */\nconst y = 2;')"
 good "a form cited in a // comment" "runtime/a.ts" '// canada.ca on IMM 5484 (recorded 19 Oct): the guide says so'
 good "a form cited in a block comment" "runtime/b.ts" "$(printf '/** BR-20: a change asks for a new IMM 5476,\n *  as IMM 5476 says. */\nexport const b = 1;')"
 good "a form number in a test file" "runtime/c.test.ts" 'expect(form("IMM 5257")).toBe(1);'
