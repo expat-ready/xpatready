@@ -36,7 +36,6 @@ export const SnsNotice = z.object({
   SignatureVersion: z.enum(["1", "2"]), Signature: z.string().max(1024), SigningCertURL: z.string().max(2048),
   SubscribeURL: z.string().max(2048).optional(), UnsubscribeURL: z.string().max(2048).optional(), Token: z.string().max(2048).optional(),
 });
-const CERT_HOST = /^sns\.[a-z]{2}-[a-z]+-[0-9]\.amazonaws\.com$/;
 
 export class NoticeRefused extends Error { constructor(m: string) { super(m); this.name = "NoticeRefused"; } }
 export type CertFetch = (url: string) => Promise<string>;
@@ -49,7 +48,28 @@ const KINDS = new Set(["Bounce", "Complaint", "Delivery"]);
 /** The states a hard bounce or complaint may move to BOUNCED (a sent message; BOUNCED again is a no-op). */
 const FORWARD_TO_BOUNCED = new Set(["SENT", "DELIVERED", "BOUNCED"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const snsUrl = (s: unknown) => { try { const u = new URL(String(s)); return u.protocol === "https:" && CERT_HOST.test(u.hostname) && !u.port && !u.username ? u : null; } catch { return null; } };
+/** CodeQL alerts 33-34 (request forgery): the only hosts an address from a notice is ever fetched on, written out: SNS in
+ *  each region of AWS's commercial partition (the AWS SDK's own partition list, @aws-sdk/core 3.979.1, partition "aws",
+ *  read 28 Nov 2026). A region missing here refuses its notices (400, SNS retries), never fetches an unknown host. */
+const SNS_REGIONS = ["af-south-1", "ap-east-1", "ap-east-2", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3", "ap-south-1", "ap-south-2", "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-southeast-5", "ap-southeast-6", "ap-southeast-7", "ca-central-1", "ca-west-1", "eu-central-1", "eu-central-2", "eu-north-1", "eu-south-1", "eu-south-2", "eu-west-1", "eu-west-2", "eu-west-3", "il-central-1", "me-central-1", "me-south-1", "mx-central-1", "sa-east-1", "us-east-1", "us-east-2", "us-west-1", "us-west-2"] as const;
+const SNS_HOSTS: readonly string[] = SNS_REGIONS.map((r) => `sns.${r}.amazonaws.com`);
+/** The list's own host for an https address on one of SNS_HOSTS (no port, user or password), else null. */
+const snsHost = (u: URL) => (u.protocol === "https:" && !u.port && !u.username && !u.password ? SNS_HOSTS.find((h) => h === u.hostname) ?? null : null);
+const parsed = (s: unknown) => { try { return new URL(String(s)); } catch { return null; } };
+/** The certificate address to fetch, rebuilt only from checked pieces: the list's host and one file name ending .pem
+ *  (SNS's own shape, /SimpleNotificationService-<id>.pem), URI-encoded; anything else is null. */
+const certUrl = (s: unknown) => {
+  const u = parsed(s), host = u && snsHost(u), name = u && !u.search && /^\/([A-Za-z0-9._-]+\.pem)$/.exec(u.pathname)?.[1];
+  return host && name ? `https://${host}/${encodeURIComponent(name)}` : null;
+};
+/** The SubscribeURL to visit, rebuilt only from checked pieces: the list's host, path "/", Action=ConfirmSubscription and
+ *  its TopicArn and Token, each URI-encoded (SNS's own shape); anything else is null. */
+const subscribeUrl = (s: unknown) => {
+  const u = parsed(s), host = u && snsHost(u);
+  if (!u || !host || u.pathname !== "/" || u.searchParams.get("Action") !== "ConfirmSubscription") return null;
+  const arn = u.searchParams.get("TopicArn"), confirmCode = u.searchParams.get("Token");
+  return arn && confirmCode ? `https://${host}/?Action=ConfirmSubscription&TopicArn=${encodeURIComponent(arn)}&Token=${encodeURIComponent(confirmCode)}` : null;
+};
 
 const FIELDS: Record<string, string[]> = {
   Notification: ["Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type"],
@@ -71,19 +91,19 @@ export class SesNotices {
   /** Throws NoticeRefused unless SNS signed this notice. */
   async verify(n: Record<string, unknown>): Promise<void> {
     const url = typeof n.SigningCertURL === "string" ? n.SigningCertURL : "";
-    const u = snsUrl(url);
-    if (!u || !u.pathname.endsWith(".pem")) throw new NoticeRefused("certificate not from Amazon SNS");
+    const certAt = certUrl(url);
+    if (!certAt) throw new NoticeRefused("certificate not from Amazon SNS");
     const alg = n.SignatureVersion === "1" ? "RSA-SHA1" : n.SignatureVersion === "2" ? "RSA-SHA256" : null;
     if (!alg || typeof n.Signature !== "string") throw new NoticeRefused("no signature");
     // Outside a local server a notice must come from one of our topics: any AWS account can sign its own (review n1).
     if (this.d.requireTopics && !this.d.topics?.length) throw new NoticeRefused("no notice topic is set");
     if (this.d.topics?.length && !this.d.topics.includes(String(n.TopicArn))) throw new NoticeRefused("not our topic");
     const text = snsStringToSign(n);
-    let cert = this.certs.get(u.href);
+    let cert = this.certs.get(certAt);
     if (!cert) {
       // A certificate that cannot be fetched is a notice we cannot verify (400), never a server error (break m4).
-      try { cert = await (this.d.fetchCert ?? fetchCert)(u.href); } catch { throw new NoticeRefused("certificate not fetched"); }
-      if (this.certs.size < 20) this.certs.set(u.href, cert);
+      try { cert = await (this.d.fetchCert ?? fetchCert)(certAt); } catch { throw new NoticeRefused("certificate not fetched"); }
+      if (this.certs.size < 20) this.certs.set(certAt, cert);
     }
     let good = false;
     try { good = createVerify(alg).update(text, "utf8").verify(cert, n.Signature, "base64"); } catch { good = false; }
@@ -99,10 +119,10 @@ export class SesNotices {
     // Break M3: SNS sends notices only after its SubscribeURL is visited. A verified confirmation for one of our topics is
     // confirmed here (SNS's own address only); with no topic list set, the URL is logged for our team to visit once.
     if (n.Type === "SubscriptionConfirmation") {
-      const sub = snsUrl(n.SubscribeURL);
+      const sub = subscribeUrl(n.SubscribeURL);
       if (!sub) throw new NoticeRefused("subscribe address not from Amazon SNS");
-      if (this.d.topics?.length) await (this.d.confirm ?? confirmUrl)(sub.href);
-      else (this.d.log ?? console.warn)(`messages: SNS subscription for ${String(n.TopicArn).slice(0, 256)} waits for confirmation: visit ${sub.href.slice(0, 2048)}`);
+      if (this.d.topics?.length) await (this.d.confirm ?? confirmUrl)(sub);
+      else (this.d.log ?? console.warn)(`messages: SNS subscription for ${String(n.TopicArn).slice(0, 256)} waits for confirmation: visit ${sub.slice(0, 2048)}`);
       return "confirmation";
     }
     if (n.Type !== "Notification") return "confirmation";

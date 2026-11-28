@@ -14,7 +14,7 @@ ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$(cd "
 cd "$ROOT" || exit 0
 PH=ai-workers/problem-1-pathway-setup-and-form-filling/product; APP=ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
 reasons=""; notes=""
-LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null)
+LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null | sed "s/^lead-stale$/lead/")
 # (1) The tech lead's files: a builder proposes changes in its PR; it never edits them.
 base=""; touched=""
 if [ "$LANE" != lead ]; then
@@ -45,7 +45,7 @@ docs_files() {  # $1 a check-docs line -> the paths (extended regexes, from the 
     "RULES REGISTER:"*|"RULES TOO BIG"*) printf '%s\n' "^$PH/RULES\.md$";;
     "RULE MAP:"*) printf '%s\n' "^$PH/RULES\.md$" "^$PH/rules/";;
     "STATE TOO BIG"*) printf '%s\n' "^$PH/STATE\.md$";;
-    "CURRENT LEAD:"*) printf '%s\n' "^$PH/STATE\.md$" "^$PH/tools/current-lead\.sh$";;
+    "CURRENT LEAD:"*) printf '%s\n' "^$PH/STATE\.md$" "^$PH/CURRENT-LEAD\.md$" "^$PH/tools/current-lead\.sh$";;   # PS-1b
     "TOO LONG ("*|"TOO BIG ("*) printf '^%s$\n' "$(printf '%s' "${1#*): }" | sed 's/[.[\*^$()+?{|]/\\&/g')";;
     "MISSING LINK in "*) f=${1#MISSING LINK in }; r=${f#*: }; f=${f%%: *}
       printf '^%s$\n' "$(printf '%s' "$f" | sed 's/[.[\*^$()+?{|]/\\&/g')"

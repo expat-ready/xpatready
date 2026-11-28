@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-842**, 25 Nov 22:2x IST; earlier: `history/RULES-2026-11-25-2210-lead10-as-of-P-838.md` + older)
+# Rule register (Lead keeps it; as of **P-853**, 27 Nov 19:35 IST; earlier: `history/RULES-2026-11-27-1935-lead8-as-of-P-849.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -9,23 +9,27 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
+| G-847 | Product stops until the lab is done (P-847); the restart line is P-853 (amends P-852), word for word in DECISIONS. | prose (STATE) | P-853, 27 Nov |
+| IDX-30 | P-850, P-851 stand in their DECISIONS rows. | prose | 27 Nov |
+| G-848 | A bot may write the "Batch failures covered" line from run data; word for word in DECISIONS P-848 (amends P-731 (4)). | CI: queue-gate.sh (owed, lab-automation) | P-848, 27 Nov |
+| G-849 | Claude Approvals is the GitHub approver (no machine account); risky paths need Code Review pass; Lead after-read stays (P-823); amends P-845 (1). | prose (approvals.yml owed, lab-ship-security) | P-849, 27 Nov |
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | IDX-27 | IDX-15, IDX-23 and P-690 stand, word for word in `rules/tech-lead.md` › IDX-27. | prose | 25 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
 | IDX-18 | Factory and finish-by-capability rows P-724, P-719 stand: word for word in `rules/goal-and-order.md` › Moved 20 Nov. | prose | 20 Nov |
 | P-418 | Pick order each check: red main, merged work awaiting qa, blockers, Partials, drafted, new. Full row: `rules/tech-lead.md`. | prose | P-612 |
-| P-464 | XFA reuse: ours and theirs head to head per functionality, the better wins, a tie keeps ours; adopt and improve theirs when it is the better base (P-465, P-467). | prose | 11 Nov |
-| P-470 | The XFA code is ours: small fixes in PATCHES.md, extended only where our pathways use the form; never read the ER v2 repository. | prose | 11 Nov |
 | P-462 | A cloud lane for every ready independent row; lanes push after each step; Mac starts under the preflight caps (P-468). | hook: lane-preflight.sh --hook (part: Mac caps) | 11 Nov |
 | P-468 | Stale copies are deleted only when the work is on GitHub, nothing is uncommitted, untracked files are in `archive/`, no session uses them; databases via prune-test-dbs.sh. | prose | 11 Nov |
-| IDX-2 | One-time or standing process directions (with P-508, P-512, P-514, P-547, P-566, P-580, P-583, P-589, P-592); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
+| P-464 | XFA reuse: ours and theirs head to head per functionality, the better wins, a tie keeps ours; adopt and improve theirs when it is the better base (P-465, P-467). | prose | 11 Nov |
+| P-470 | The XFA code is ours: small fixes in PATCHES.md, extended only where our pathways use the form; never read the ER v2 repository. | prose | 11 Nov |
 | P-473 | UX style: calm work app, plain second-person client questions with "Why we ask", quiet surfaces, no motion library. | prose | 11 Nov |
+| IDX-2 | One-time or standing process directions (with P-508, P-512, P-514, P-547, P-566, P-580, P-583, P-589, P-592); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
 | P-558 | Two Leads: Lead B holds platform and front office in fenced modules; the release Lead holds release, Bake, case side, join, DB-SPLIT, firm walls, shared records (P-559). | prose | 13 Nov |
 | IDX-5 | Product and Release 1 scope rulings stand as recorded (+P-698, P-700 to P-702, P-704); list in `rules/goal-and-order.md`. | prose | 15 Nov |
 | IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 14 Nov |
 | P-488 | Gate B on a PR runs the REGRESSION-HELD checkpoint packs; records never claim Works that an open Major contradicts. | CI: ci.yml gate B (part) | 12 Nov |
 | F-12Nov | Every change is judged on value against cost; no over-engineering; never compromise compliance, money or quality (founder, 12 Nov). | prose | 12 Nov |
-| P-500 | The right sample for the purpose in every analysis, named beside the number; speed = app-code PRs or qa-confirmed Works. | script: cockpit-data.py (part: board numbers carry source and class, P-596) | 12 Nov |
+| P-500 | Word for word in `rules/tech-lead.md` › P-500 line (moved 27 Nov). | script: cockpit-data.py (part: board numbers carry source and class, P-596) | 27 Nov |
 | P-501 | lead-watch and flow-watch count only app-code PRs (by files) and Works across M2, M3, M4 and T. | script: lead-watch.sh, flow-watch.sh, app-code-prs.sh | 12 Nov |
 | P-502 | No hit-and-trial: measured evidence, root cause, a named framework, standard libraries first; a guess is a labelled hypothesis with its test. | prose | 12 Nov |
 | P-503 | Lead reports carry decided (up to five), doing (3-4) and the one thing needing the founder; planners' documents are challenged first. | prose | 12 Nov |
@@ -49,7 +53,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-605 | Opus 5.5 is the working model; Fable 5.2 only for the desk and challenges; no model switch mid-session. | hook: agent-model-guard.sh --hook (part; `rules/tokens-money-account.md`) | 15 Nov |
 | P-606 | Finish whole: Done when names its test; no new capability while one has parts missing. Full row: `rules/goal-and-order.md`. | CI: pr-rules (part) | 15 Nov |
 | P-607 | Trust never negative; fail-closed audit; support sessions read-only; no guessing, times only from the clock (A73). | prose | 15 Nov |
-| P-610 | Fix each problem the narrowest way; a row's PR under 800 changed lines; re-review reads only new commits. | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 15 Nov |
+| P-610 | Word for word in `rules/tech-lead.md` › P-610 line (moved 27 Nov). | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 27 Nov |
 | P-611a | Each Lead rule has a script, hook or CI enforcer where one can be written; this register names it. | script: check-docs.sh (register field; test check-rule-register.sh) | 15 Nov |
 | P-611b | One queue for reports, questions, blockers, approvals (owner, ack, timeout); no hand-over with an un-acked item. Full row: `rules/tech-lead.md`. | script: items.py | 15 Nov |
 | P-609 | Release 1 = all 110 together (P-842), 12 Dec, aim 6-7 Dec (P-815); re-decide 1 Dec if under 72 proven. | prose | 24 Nov |
@@ -64,7 +68,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 ## When a capability counts as Works (detail: `rules/works.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
-| P-339 | Works = pack green on main's head on GitHub's runners on the counted data, run id in qa's row, an independent re-run, a fresh Opus reader's verdict (P-322, P-290, P-303, P-432). | CI: ci.yml gate B (part) | P-612 |
+| P-339 | Word for word in `rules/tech-lead.md` › P-339 line (moved 27 Nov). | CI: ci.yml gate B (part) | 27 Nov |
 | P-348c | Gate A: qa walks the capability by screens to the next one's first step. | prose (qa skill) | P-612 |
 | P-317 | Gate B: CI fails a PR naming a capability with an open Major or Critical unless it fixes it; never drop a capability id (P-330 (7)). | CI: ci.yml gate B (gate-b.mjs) | P-612 |
 | P-442 | Adobe Validate proves Paper PDF copies only; a capability with no PDF is never held on it. | prose | P-612 |
@@ -176,6 +180,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-295b | Every paid run: usual and worst cost first, worst reserved in the ledger, one attempt, an independent check, one PR per result, qa labels; job cap US$5 (P-232). | script: p2/ledger.ts (part) | P-612 |
 | P-377 | Live runs from a Terminal tab (sandbox network); a paid run on the data Works counts on, never fixture-only. | prose | 9 Nov |
 | P-461 | Use the plan to its limit (P-344; P-431 replaced); the weekly meter is not a stop line; at 98% tell the founder; lanes push after every step (P-458). | prose | 11 Nov |
+| P-845 | Word for word in `rules/tech-lead.md` › P-845 line (moved 27 Nov). | prose | 27 Nov |
 | P-458 | On an account switch: get_usage first, then `RESUME-ON-NEW-ACCOUNT.md`. | prose | 11 Nov |
 
 ## The compass (P-312)

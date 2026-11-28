@@ -61,3 +61,49 @@ Journey score: **6.5/10 (fail, one criterion at 0)**, API level. See `journey-te
 **Verdict: Block**. Fix M1, M2 and M3, each with a pass and a fail test. m1 to m5 are recommended.
 
 Reviewer: Block 984a9219af06dedbe7ed79b8b51e7d4a7a04c535
+
+## Round 2 db4b82e (diff only)
+
+Scope: `git diff 984a9219a..db4b82e91`. Code: `person.ts` (+28), `routes.ts` (+5), `check_pf10t_targets.ts` (+40); the rest is records (this review, the journey report, the break report). I weighed the breaker's report (`break-report.md`) as well. Reviewer: a session that did not build it.
+
+**Evidence run**
+* `check_pf10t_targets.ts`: **26 passed, 0 failed**, exit 0. `check_pf10b_import_engine.ts`: **46 passed, 0 failed**, exit 0. Both on scratch databases.
+* I re-ran the round-1 probe (`probe10t/probe.mts`, Nest on :4436, scratch database dropped), with no :4400 and no paid call (US$0). Results:
+  * P1: `x@ex_ample.com` and `josé@example.com` are row errors ("Email: is not an email address"). The preview answers 201, not 500, and Nest logs no ZodError.
+  * P11: the merged-away email that had withdrawn now SKIPs onto the survivor, with no new person and no consent.
+  * P6: the tombstone email SKIPs onto the survivor.
+  * P2: S, U and the new person N at a suppressed address all have 0 consent rows, and the gate says SUPPRESSED.
+  * P4, P5, P7 to P10: unchanged from round 1.
+
+**Round-1 findings**
+| # | Status | Evidence |
+|---|---|---|
+| M1 tombstone revives consent | Fixed | `find` follows a merged-away hit through `livePersonId` to the survivor, and consent is "kept" through a tombstone. Probe P11 gives SKIP. The test "merged-away person's email follows to the survivor" would fail without the follow, since the row would CREATE. |
+| M2 bare 500 and the address logged | Fixed | `EMAIL_KEPT` is checked in `check()`. `consentState` returns "kept" for an address outside it without calling `allows()`. Probe P1 and P1c answer 201, and no log line appears. There are tests for both (a row error in words, and a known odd address matched without a throw). |
+| M3 missing fail tests | Fixed | New tests cover a suppressed known person and a suppressed new person, the tombstone, the unsubscribe and no-consent mapping, firm B on the list and on origin, origin 403, and origin `?x=1` 422. |
+| m1 consent at a suppressed address | Fixed | `create` asks `consentState` first. Probe P2 shows N with 0 consent rows. |
+| m2 origin 200 for another firm | Kept, accepted | The same answer is given for every id, so nothing leaks; the breaker agrees. Now tested. |
+| m3 no possible-duplicate warning | Open | Covered under breaker M3 below. |
+| m4 lock on the row's own key, m5 nit | Open | Minor. |
+
+**New in round 2 (Minor)**
+* **n1, from reading the code.** For a subject with no consent, the real `ConsentStore.allows` returns `NO_CONSENT`. It computes `ADDRESS_UNSUBSCRIBED` only after it finds a live consent. So a person, new or known, at an address someone one-click unsubscribed still gets an `IMPORT_DECLARED` row. Nothing can be sent: `liftsAddressOptOut` needs EXPRESS and SELF_SERVICE, so the gate still answers ADDRESS_UNSUBSCRIBED. The unit test's fake returns `ADDRESS_UNSUBSCRIBED`, which the real store never returns for such a subject. That test proves the mapping, not the real path. Fix later: ask for the address opt-out directly, or test it with a real outbox row and an unsubscribe.
+
+**Breaker findings**
+* Breaker M1, M2 and m1 are the same as my M1, M2 and m1, and are fixed (above). Breaker m3 (origin ignored unknown query keys) is fixed and tested (`?x=1` gives 422).
+* **Breaker M3: an email row whose phone matches another person makes two people, and in the reverse order the preview's CREATE becomes SKIP in the run.** In my judgement this does **not** block this part, provided the Lead records it as a follow-up row before R1.35 closes.
+  * It follows the approved shape and the backlog row word for word ("natural key email, else phone").
+  * AG-18-13 calls a phone-only match with a different email a *non-exact possible duplicate*, to be flagged and never merged automatically. So CREATE is the required outcome; what is missing is the warning. The engine (part 1, approved) has no warning channel yet.
+  * Consent lands on a different address under the importer's declaration. No withdrawal at that address is overridden.
+  * The reverse-order mismatch fails safe: the run makes fewer people than the preview, never more.
+  * The follow-up row should name both: AG-18-13 warnings for a same-phone match, and preview totals that match the run when rows in the file share a phone.
+* Breaker m2 (a name made only of symbols is dropped without a reason) and m4 (a dry run of 5,000 matched rows takes about 10 s inside the request) are still open, both Minor. Carry them with the follow-up.
+
+**Verdict: Approve.** No Blocker or Major is open. Carry for the Lead: breaker M3 as a follow-up row (the AG-18-13 warning and preview/run totals), n1, round-1 m3 to m5, breaker m2 and m4. Journey score at API level, re-scored: **8/10**.
+* Error recovery is now ½: bad addresses are row errors in words.
+* Correct data is now 1: tombstone and suppression hold.
+* Task completed is now 1.
+* Next step obvious stays ½: same-phone duplicates are not flagged.
+* Accessibility and visual quality stay ½ each (no screen).
+
+Reviewer: Approve db4b82e91088431a38352db8865dae696c36f510

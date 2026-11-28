@@ -719,7 +719,7 @@ const nameOf = (id: string | null) => { if (!id) return "someone"; try { return 
 @Controller("api/runtime")
 export class CaseDocumentsController {
   constructor(@Inject(CaseDocuments) private readonly x: CaseDocuments) {}
-  @Post("cases/:id/documents") @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES + 1, files: 1 } }))
+  @Post("cases/:id/documents") @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
   upload(@Headers("x-actor") a: H, @Param("id") id: string, @UploadedFiles() files: Upload[], @Body() b: unknown) { return this.x.upload(actorOf(a), id, files, b); }
   @Post("cases/:id/sections/:s/fill-from-documents/plan") @HttpCode(200) plan(@Headers("x-actor") a: H, @Param("id") id: string, @Param("s") s: string, @Body() b: unknown) { return this.x.plan(actorOf(a), id, s, b); }
   @Post("cases/:id/sections/:s/fill-from-documents") @HttpCode(200) fill(@Headers("x-actor") a: H, @Param("id") id: string, @Param("s") s: string, @Body() b: unknown) { return this.x.fill(actorOf(a), id, s, b); }

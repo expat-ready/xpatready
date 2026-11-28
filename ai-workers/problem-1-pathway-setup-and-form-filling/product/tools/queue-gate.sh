@@ -7,7 +7,8 @@
 #            line naming that head (a later "Changes needed" on it wins); (b) the check "ci" on that head is green; (b2) the
 #            check "pr-suites" (pr-suites.yml's job, the PR's affected suites; P-822) is "success" on that exact head, from
 #            pr-suites.yml's own pull_request run: missing, pending, skipped, neutral, cancelled or red all refuse (a PR
-#            whose plan picks no suite gets "success" from that job, so "skipped" is never needed; SUITES_GATE below
+#            whose plan picks no suite gets "success" from that job, so "skipped" is never needed; a head whose only run
+#            predates that job counts when its job "parts" was skipped, noparts below, OS-82; SUITES_GATE below
 #            blocks on landing: the founder's ruling of 25 Nov 11:3x IST waives P-717 (b)'s 24 h warn for it); (c) no changed path
 #            matches lead-read-paths.txt (.github/, .mergify.yml, the guards, schema, migrations, money,
 #            permissions; a screenshot, an image or .txt under product/, or a records-only PR sets off only the guard
@@ -43,6 +44,8 @@
 #            After a failed merge batch (a mergify[bot] batch PR naming this PR whose ci ended failure; the newest one),
 #            the label goes on again only when a PR comment line by someone with write access,
 #            "Batch failures covered: <that run's id>: <part>, <part>", names every failed job of that run.
+#            OS-05 (Lead 3, 27 Nov): or, from run data, every failed part of that run passed in a green full run on the
+#            PR's head; the gate then writes that line itself (autocover). A person writes it only for a part still red.
 #   proof  — for label-guard.sh: exit 0 when the full-run rule holds for one of HEADS (the head, back to its approved
 #            commit) and, with RELABEL=1 (the label was just put on) or on a PR carrying "dequeued", the batch rule too;
 #            with RELABEL=1, pr-suites green on the head too (P-822: a person's label as the gate's own);
@@ -106,7 +109,53 @@ suites() {  # a commit → suites_state (success | missing | pending | <the conc
       [ "$(jq -r '.status + " " + (.conclusion // "")' <<< "$r")" = "completed success" ] && { suites_state=success; suites_why="green on ${s:0:9}"; return; }
       suites_state=pending; suites_why="its run $rid has not ended green ($url)"; return; fi
     [ "$st" = completed ] && suites_state=$co || suites_state=pending; suites_why="$suites_state on ${s:0:9} ($url)"; return   # the newest decides (breaker m2)
-  done < <(jq -r '[.check_runs[]? | select(.app.slug == "github-actions")] | sort_by(.started_at) | reverse | .[] | [.status, (.conclusion // "none"), (.details_url // ""), (.check_suite.id // "" | tostring)] | @tsv' <<< "$c"); }
+  done < <(jq -r '[.check_runs[]? | select(.app.slug == "github-actions")] | sort_by(.started_at) | reverse | .[] | [.status, (.conclusion // "none"), (.details_url // ""), (.check_suite.id // "" | tostring)] | @tsv' <<< "$c")
+  [ "$suites_state" = missing ] && noparts "$s"
+  case "$suites_state" in missing|skipped) dispatched "$s";; esac; return 0; }
+dispatched() {  # OS-87 (Lead 2, 26 Nov): a head with no pr-suites run of its own, or a skipped one (pushed while a draft),
+  # counts the run suitesstart below started: pr-suites.yml by workflow_dispatch on main (so main's copy of the file, never
+  # a branch's), named "pr-suites PR #<n> <head>" from its inputs. The newest such run decides: unfinished → pending; its
+  # job "pr-suites" decides how it ended. A run on another ref, of another PR or head, is not this one.
+  local s=$1 rs r="" rid jj p=1
+  while [ "$p" -le 5 ] && [ -z "$r" ]; do   # up to 500 dispatch runs, newest first (review m2 of #3843: never only the newest 50)
+    rs=$(api "$API/repos/$REPO/actions/workflows/pr-suites.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=$p") || { suites_state=unread; suites_why="its dispatched pr-suites runs cannot be read"; return; }
+    r=$(jq -c --arg t "pr-suites PR #$PR $s" '[.workflow_runs[]? | select(.display_title == $t and ((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml"
+      and .event == "workflow_dispatch" and .head_branch == "main")] | sort_by(.created_at // "") | last // empty' <<< "$rs" 2>/dev/null)
+    [ "$(jq '.workflow_runs | length' <<< "$rs" 2>/dev/null)" = 100 ] || break; p=$((p + 1))
+  done
+  [ -n "$r" ] || return 0
+  rid=$(jq -r '.id // empty' <<< "$r"); [[ "$rid" =~ ^[0-9]+$ ]] || return 0
+  [ "$(jq -r .status <<< "$r")" = completed ] || { suites_state=pending; suites_why="its pr-suites run $rid (started by the queue gate) has not ended"; return; }
+  jj=$(api "$API/repos/$REPO/actions/runs/$rid/jobs?filter=latest&per_page=100") || { suites_state=unread; suites_why="the jobs of pr-suites run $rid cannot be read"; return; }
+  suites_state=$(jq -r '[.jobs[]? | select(.name == "pr-suites")] | first | .conclusion // "missing"' <<< "$jj" 2>/dev/null)
+  [ -n "$suites_state" ] || suites_state=missing
+  [ "$suites_state" = success ] && suites_why="green on ${s:0:9}: its pr-suites run $rid (started by the queue gate, OS-87)" \
+    || suites_why="$suites_state on ${s:0:9}: its pr-suites run $rid (started by the queue gate, OS-87)"; }
+NOPARTS_BEFORE="2026-11-25T19:16:45Z"   # #3632 (the job "pr-suites" in pr-suites.yml) merged into main
+noparts() {  # OS-82 (OS-PM 4, 26 Nov; #3693 lost its label at 05:43 UTC): a commit with no "pr-suites" check run → success
+  # when its newest pr-suites.yml run is this PR's own pull_request run into main on this very commit, ended success, and
+  # holds no job "pr-suites" (the run predates #3632, which added that job), its job "plan" succeeded with no "pr-suites"
+  # warning (the old plan's only way to say it failed), and every job "parts" was skipped: the change reaches no suite.
+  # A run with a job "pr-suites", parts that ran, a red or unfinished run, another PR or head: stays missing (fails closed).
+  # Review round 1 (#3810): the old plan could also end green with parts skipped when change-kind.sh crashed (it read
+  # "unknown" as no suite) or the step died before its warning, so: no changed app file (under prototype/ or packages/,
+  # not a doc), no warning or failure annotation of any title on plan, and only a run created before #3632 merged
+  # (NOPARTS_BEFORE): every later run has the job "pr-suites", so this fallback retires itself.
+  local s=$1 rs rid j pid a
+  [ -z "$(grep -E '/prototype/|^packages/' <<< "${files:-}" | grep -viE "$DOCS"; true)" ] || return 0
+  rs=$(api "$API/repos/$REPO/actions/workflows/pr-suites.yml/runs?event=pull_request&head_sha=$s&per_page=100") || { suites_state=unread; suites_why="its pr-suites runs cannot be read"; return; }
+  rid=$(jq -r --arg s "$s" --argjson n "$PR" '[.workflow_runs[]? | select(((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml" and .event == "pull_request"
+    and .head_sha == $s and any(.pull_requests[]?; .number == $n and .base.ref == "main"))] | sort_by(.run_started_at // .created_at // "") | last
+    | select(.status == "completed" and .conclusion == "success" and (.created_at // "9") < $before) | .id // empty' --arg before "$NOPARTS_BEFORE" <<< "$rs" 2>/dev/null)
+  [[ "$rid" =~ ^[0-9]+$ ]] || return 0
+  j=$(api "$API/repos/$REPO/actions/runs/$rid/jobs?filter=latest&per_page=100") || { suites_state=unread; suites_why="the jobs of pr-suites run $rid cannot be read"; return; }
+  pid=$(jq -r '[.jobs[]?] as $j | if ($j | any(.name == "pr-suites")) then empty
+    elif ([$j[] | select(.name | test("^parts( |$)"))] | length > 0 and all(.conclusion == "skipped")) | not then empty
+    else ([$j[] | select(.name == "plan" and .conclusion == "success")] | first | .id // empty) end' <<< "$j" 2>/dev/null)
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  a=$(api "$API/repos/$REPO/check-runs/$pid/annotations?per_page=100") || { suites_state=unread; suites_why="the plan of pr-suites run $rid cannot be read"; return; }
+  jq -e 'type == "array" and (any(.[]; ((.title // "") | startswith("pr-suites")) or .annotation_level == "warning" or .annotation_level == "failure") | not)' <<< "$a" >/dev/null 2>&1 || return 0
+  suites_state=success; suites_why="green on ${s:0:9}: its pr-suites run $rid picked no suite (job parts skipped, OS-82)"; }
 suitesok() {  # a commit → 0 when pr-suites is green on it, or SUITES_GATE=warn (suites_warn says why); 1 with why.
   # suites_retry=1 (eligible exits 3: the sweep keeps the label, tries again) only when this refusal is an unreadable or
   # unfinished pr-suites (review m2, m3: a re-run in progress never strips a good label; warn never leaks into exit 3).
@@ -194,7 +243,7 @@ full() {  # $@ commits → full_state (success|failure|pending|none), full_why
       # An ancestor is not enough: an intermediate commit of any merged PR is one, with its own ci.yml (breaker R3-M2).
       [ -s "$H.m" ] || git rev-list --first-parent "$MAIN_REF" > "$H.m" 2>/dev/null
       grep -qx "$sha" "$H.m" || continue
-      if [ "$st $co" = "completed success" ]; then full_state=success; full_why="full run $id green on ${c:0:9}"; return; fi
+      if [ "$st $co" = "completed success" ]; then full_state=success; full_rid=$id; full_why="full run $id green on ${c:0:9}"; return; fi
       [ -n "$first" ] || first="$id"$'\t'"$st"$'\t'"$url"$'\t'"$c"
     done < <(jq -r --arg t "$t" 'select(.title == $t) | [.id, .status, (.conclusion // "none"), .html_url, .head_sha] | @tsv' "$H.f")
   done
@@ -251,12 +300,42 @@ covered() {  # 0 when no failed merge batch held this PR, or a comment line cove
   comments || { why="its comments cannot be read"; return 1; }
   names=$(failing "$rid" all | sort -u); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
   lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | sanl | grep -E "^ *Batch failures covered: *$rid *:"; true)
+  autocover "$rid" "$names" && return 0   # OS-05: every failed part passed in a green full run on the head
   [ -n "$lines" ] || { why="it was in the failed merge batch run $rid (failed: $(tick <<< "$names" | paste -sd ';' - | sed 's/;/; /g')) and no PR comment line \"Batch failures covered: $rid: <every failed part>\" by someone with write access names them (P-731 (4))"; return 1; }
   # A whole name: "kindly" does not name the part "kind", nor "shard (30)" the part "shard (3)".
   while IFS= read -r n; do [ -z "$n" ] || grep -qE -- "(^|[^A-Za-z0-9_-])$(sed 's/[().]/\\&/g' <<< "$n")([^A-Za-z0-9_-]|\$)" <<< "$lines" || miss="$miss${miss:+; }\`$n\`"; done <<< "$names"
   [ -z "$miss" ] || { why="the line \"Batch failures covered: $rid:\" does not name every failed part of that merge batch run: missing $miss (P-731 (4))"; return 1; }
   return 0; }
 
+# OS-05 (Lead 3's ruling on #3902 and #3898, 27 Nov; the founder gave the lab its approvals, A420): the covered line is
+# valid from run data when every part that failed the merge batch run $1 passed in a green full run on this PR's head:
+# the full run (full(): main's ci.yml by /run full, on main's first-parent chain, titled for this PR and head) ended
+# success and each failed part's job in it ended success. Then the gate counts it covered itself, and `label` posts the
+# line "Batch failures covered: <run>: `<part>` (<job link>), ..." once. A person writes the line only when a part is
+# still red, missing from the full run, or needs judgment. $2: the failed parts, one a line. 0 and $auto_line, else 1.
+autocover() {
+  local rid=$1 names=$2 h="${head:-}" js n url line=""; auto_line=""
+  [ -n "$h" ] || h=$(awk '{print $1}' <<< "${HEADS:-}")
+  [[ "$h" =~ ^[0-9a-f]{40}$ ]] || return 1
+  full_rid=""; full "$h"; [ "$full_state" = success ] && [ -n "$full_rid" ] || return 1
+  js=$(api "$API/repos/$REPO/actions/runs/$full_rid/jobs?filter=latest&per_page=100" 2>/dev/null) || return 1
+  while IFS= read -r n; do [ -n "$n" ] || continue
+    url=$(jq -r '.jobs[]? | select(.conclusion == "success") | [.name, (.html_url // "")] | @tsv' <<< "$js" 2>/dev/null \
+      | while IFS=$'\t' read -r jn ju; do [ "$(printf '%s' "$jn" | san | cut -c1-120)" = "$n" ] && { printf '%s\n' "${ju:-run $full_rid}"; break; }; done)
+    [ -n "$url" ] || return 1   # this part did not pass in the full run: a person decides
+    line="$line${line:+, }\`$n\` ($url)"
+  done <<< "$names"
+  [ -n "$line" ] || return 1
+  auto_line="Batch failures covered: $rid: $line"; return 0; }
+autoline() {  # label: post the gate's own covered line once (never twice: the comments already hold it)
+  [ -n "${auto_line:-}" ] || return 0
+  grep -qF -- "$auto_line" <<< "$(jq -r '.[].body // ""' <<< "${cs:-[]}")" && return 0
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "$auto_line
+
+**Queue gate (OS-05):** written from run data: every part that failed merge batch run ${auto_line#Batch failures covered: } passed in the green full run $full_rid on \`${head:0:9}\` (the Lead's ruling of 27 Nov on P-731 (4)). A person writes the line only when a part is still red or needs judgment.
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null || true; }
 why=""
 approved() {  # the last "Reviewer:" verdict about $head by the owner's account or a known reviewer is an Approve naming it; else 1 with $why
   local who; cs=""; comments || { why="its comments cannot be read"; return 1; }
@@ -340,14 +419,15 @@ fresh() {
 
 label() {
   load || return 2
-  has "$LABEL" && { echo "#$PR: already labelled"; return 0; }
+  has "$LABEL" && { echo "#$PR: already labelled"; [ "${TRIGGER:-}" = approve ] && { kick || return $?; }; return 0; }
   # CI-PRE: a relabel after a failed merge batch needs its failed parts named (decided here, as the label goes on).
   if ! { judge && covered; }; then
     echo "#$PR: not labelled: $why"
     # B206 part 2: a reviewer's Approve on a head of a PR a failed batch held starts its full run (no "/run full" by hand),
     # whatever else the label waits for; start() checks the PR, the Approve and the head's full runs itself.
     local w=$why src=0
-    if [ "${TRIGGER:-}" = approve ] && held && [ "$held_state" = failed ]; then start || src=$?; fi; why=$w
+    # OS-87: and a head with no pr-suites run of its own gets one (kick)
+    if [ "${TRIGGER:-}" = approve ]; then kick || src=$?; fi; why=$w
     # A full run that just ended says how it ended, whatever else the label waits for (CI-PRE (c)).
     if [ "${TRIGGER:-}" = full ]; then full "$head"; [ "$full_state" = success ] && why="$full_why; the label waits: $why" || why=$full_why; fi
     [[ "${TRIGGER:-}" =~ ^(approve|full)$ ]] && api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` not put on by itself: $why. A person labels it after the Lead's read where P-423 asks for one.
@@ -355,6 +435,7 @@ label() {
 ---
 _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null
     return $src; fi
+  autoline   # OS-05: the covered line the gate wrote itself, for the record
   LABELLING=1 fresh || return 2; did_fresh=1   # review M2: queue-fresh is decided before the label goes on
   afterlabel || return 2   # P-823: the after-read label first, so a PR owing a read never carries review: approved without it
   api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || { echo "#$PR: could not label"; return 2; }
@@ -400,6 +481,27 @@ start() {  # the full run (comment-run.yml's "/run full": main's ci.yml by workf
 ---
 _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null || true; }
 
+suitesstart() {  # OS-87 (b): a head with no pr-suites run of its own (or a skipped one) gets one, once per head, logged on the PR
+  [ "$(echo "$pr" | jq -r '.head.repo.full_name // ""')" = "$REPO" ] || { echo "#$PR: a fork's head: no pr-suites run started"; return 0; }
+  [ "$(echo "$pr" | jq -r .state)" = open ] && [ "$(echo "$pr" | jq -r .draft)" = false ] && [ "$(echo "$pr" | jq -r .base.ref)" = main ] || return 0
+  [[ "$head" =~ ^[0-9a-f]{40}$ && "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || return 0
+  records && return 0   # a records-only PR runs no suite (P-822 does not ask it)
+  suites "$head"
+  case "$suites_state" in missing|skipped) ;; unread) echo "#$PR: no pr-suites run started: $suites_why"; return 2;; *) return 0;; esac
+  approved || { echo "#$PR: no pr-suites run started: $why"; [ "$why" = "its comments cannot be read" ] && return 2; return 0; }   # as start(): only a reviewed head's code runs in a run of main
+  api -X POST "$API/repos/$REPO/actions/workflows/pr-suites.yml/dispatches" -d "$(jq -n --arg p "$PR" --arg h "$head" '{ref: "main", inputs: {pr: $p, head: $h}}')" >/dev/null \
+    || { echo "#$PR: the pr-suites run could not be started (GitHub refused the dispatch)"; return 2; }
+  local i=0; while [ "$i" -lt "${QG_POLL:-10}" ]; do sleep 3; suites "$head"; case "$suites_state" in missing|skipped) ;; *) break;; esac; i=$((i + 1)); done
+  echo "#$PR: pr-suites run started on ${head:0:9} (OS-87)"
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (OS-87):** the head ${head:0:9} has no pr-suites run of its own (pushed while a draft, or before the gate), so one started by itself: \"pr-suites PR #$PR $head\" on [pr-suites' page](https://github.com/$REPO/actions/workflows/pr-suites.yml). P-822 reads it as this head's pr-suites; when it ends the queue gate judges the label again (the result is on that page).
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null || true; }
+kick() {  # OS-87 (a) and (b), on a reviewer's Approve or a review label: start what the label will need and nobody starts by
+  # hand (lanes cannot post "/run full"): the full run when a failed merge batch held the PR (P-743), and a missing pr-suites run
+  local w=${why:-} rc=0
+  if held && [ "$held_state" = failed ]; then start || rc=$?; fi
+  suitesstart || rc=$?; why=$w; return $rc; }
 both() {  # label, then fresh unless label already decided it; any error → 2 (review m6)
   local rc=0; did_fresh=0; label || rc=$?; [ "$did_fresh" = 1 ] || fresh || rc=$?; return $rc; }
 event() {
@@ -408,6 +510,12 @@ event() {
     issue_comment) jq -e '.issue.pull_request != null and (.comment.body | test("reviewer:\\s*approve|batch failures covered:"; "i"))' "$e" >/dev/null || { echo "not an Approve or covered comment on a PR"; return 0; }
       PR=$(jq -r .issue.number "$e"); TRIGGER=approve both || rc=$?;;
     workflow_run)
+      if [ "$(jq -r '.workflow_run.event // ""' "$e")" = workflow_dispatch ] && [ "$(jq -r '.workflow_run.path // ""' "$e" | cut -d@ -f1)" = .github/workflows/pr-suites.yml ]; then
+        # OS-87: a pr-suites run the gate started ended; its PR from its name
+        n=$(jq -r '.workflow_run.display_title // ""' "$e" | sed -nE 's/^pr-suites PR #([1-9][0-9]{0,6}) [0-9a-f]{40}$/\1/p')
+        [ -n "$n" ] || { echo "a pr-suites run by hand that is not the gate's"; return 0; }
+        PR=$n; TRIGGER=suites both || rc=$?; return $rc
+      fi
       if [ "$(jq -r '.workflow_run.event // ""' "$e")" = workflow_dispatch ]; then   # CI-PRE: a full run ended; its PR from its name
         n=$(jq -r '.workflow_run.display_title // ""' "$e" | sed -nE 's/^full-run PR #([1-9][0-9]{0,6}) [0-9a-f]{40}$/\1/p')
         [ -n "$n" ] || { echo "a run by hand that is not a full run"; return 0; }
@@ -426,6 +534,8 @@ event() {
         fi
         start || rc=$?; return $rc
       fi
+      # OS-87 (a): a review label put on (a person's, after the Lead's read): start what the label guard will ask for
+      if [ "$(jq -r '.action + " " + (.label.name // "")' "$e")" = "labeled $LABEL" ]; then load || return 2; TRIGGER=label kick || rc=$?; fi
       fresh || rc=$?;;
     push|schedule|workflow_dispatch) local ns; ns=$(pages "repos/$REPO/issues?state=open&labels=review%3A%20approved") || { echo "queue-gate: cannot list the labelled PRs"; return 2; }
       for n in $(echo "$ns" | jq -r '.[] | select(.pull_request) | .number'); do PR=$n; fresh || rc=$?; done;;

@@ -23,6 +23,8 @@ import { NotificationsPage } from "./settings/notifications-page";
 import { AllNotificationsPage } from "./notifications/all-page";
 import { ActivityLogPage } from "./audit/activity-log-page";
 import { TemplatePage, TemplatesPage } from "./messages/templates/templates-page";
+import { ImportsPage } from "./import/imports-page";
+import { ImportPage, NewImportPage } from "./import/import-flow";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
@@ -51,4 +53,7 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/activity-log", element: <ActivityLogPage /> },   // AUD-4s: the firm's Activity log (agent/audit:read)
   { path: "/platform/templates", element: <TemplatesPage /> },   // PF-19s (R1.46): Templates (agent/template:list)
   { path: "/platform/templates/:key", element: <TemplatePage /> },   // PF-19s: one template's editor and preview
+  { path: "/platform/import", element: <ImportsPage /> },   // PF-10s (R1.35): Import (agent/import:view-report)
+  { path: "/platform/import/new", element: <NewImportPage /> },   // PF-10s: New import, step 1 (agent/import:run)
+  { path: "/platform/import/:id", element: <ImportPage /> },   // PF-10s: one import at its step (columns, preview, running, result)
 ];
