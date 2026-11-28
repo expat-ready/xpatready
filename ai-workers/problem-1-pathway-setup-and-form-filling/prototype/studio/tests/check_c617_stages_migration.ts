@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CSW1_PART2, SAMPLE_FIRMS_SQL } from "./runtime/sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261109130000_c617_case_stages";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", DB = `xr_studio_c617_mig_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
@@ -41,7 +42,7 @@ try {
     insert into case_task (id, workspace_id, case_id, kind, words, created_by, filing_id) values ('${TASK}', '${W}', '${K1}', 'after_filing_change', 'w', 't', '${FIL}');
     insert into filing_item (id, workspace_id, case_id, filing_id, kind, item_key, subject_id) values ('${u(80)}', '${W}', '${K1}', '${FIL}', 'form', 'IMM 5476', '${PRIN1}');`);
   const before = sql(`select (select count(*) from filing) || ',' || (select count(*) from submission_group) || ',' || (select count(*) from checklist_line) || ',' || (select count(*) from review_finding) || ',' || (select count(*) from case_task)`);
-  for (const d of all.filter((x) => x >= NEW)) file(join(MIG, d, "migration.sql"));
+  for (const d of all.filter((x) => x >= NEW)) { if (d.startsWith(CSW1_PART2)) sql(SAMPLE_FIRMS_SQL); file(join(MIG, d, "migration.sql")); }   // CS-W1 part 2 needs the cases' firm
 
   // ---------------------------------------------------------------- the backfill
   ok("C6.17 M5: each case made before the migration has exactly one stage, CURRENT, on its own combination, started from BEGIN, with its own application subject",

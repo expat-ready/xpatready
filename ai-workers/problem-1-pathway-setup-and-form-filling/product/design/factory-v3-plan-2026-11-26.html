@@ -1,0 +1,307 @@
+<title>Factory v3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one column. Decisions first (the founder decides), then target factory, futuristic test, safety, production maturity, switch-over, cost, corrections. */
+:root{
+  --bg:#f5f7f8; --panel:#ffffff; --fg:#17212b; --muted:#59667a; --line:#d8dee6;
+  --accent:#1f6f8b; --accent-soft:#e0f0f5;
+  --yes:#12805c; --yes-soft:#dcf2e8; --part:#a56300; --part-soft:#fbeed6; --no:#8a93a3; --no-soft:#eceff3; --risk:#b3261e; --risk-soft:#fbe4e2;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10161c; --panel:#17202a; --fg:#e6ebf0; --muted:#98a5b6; --line:#2a3542;
+  --accent:#6cc3de; --accent-soft:#183440;
+  --yes:#4fd1a1; --yes-soft:#123a2c; --part:#f0ad4e; --part-soft:#3b2c14; --no:#7d8798; --no-soft:#222a35; --risk:#ff8a80; --risk-soft:#3d1c1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161c; --panel:#17202a; --fg:#e6ebf0; --muted:#98a5b6; --line:#2a3542;
+  --accent:#6cc3de; --accent-soft:#183440;
+  --yes:#4fd1a1; --yes-soft:#123a2c; --part:#f0ad4e; --part-soft:#3b2c14; --no:#7d8798; --no-soft:#222a35; --risk:#ff8a80; --risk-soft:#3d1c1a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1040px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:clamp(28px,4.4vw,42px)} h2{font-size:24px} h3{font-size:17px}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section,.hero{display:grid;gap:16px}
+.thesis{font-size:19px;max-width:66ch} .thesis b{color:var(--accent)}
+.decisions{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.dec{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:12px;padding:16px;display:grid;gap:8px;align-content:start;min-width:0}
+.dec .q{font-family:var(--display);font-weight:700;font-size:17px}
+.rec{background:var(--yes-soft);border-radius:8px;padding:8px 10px;font-size:14px}
+.rec b{color:var(--yes)}
+.alt{font-size:13.5px;color:var(--muted)}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+.s{flex:1 1 104px;min-width:100px;border-radius:8px;padding:8px 9px;font-size:12.5px;font-weight:600;display:grid;gap:3px;color:var(--fg)}
+.s span{font-weight:400;font-size:11.5px;opacity:.85}
+.s.claude{background:var(--accent-soft)} .s.gh{background:var(--part-soft)} .s.ours{background:var(--yes-soft)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.board{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.chip.do{background:var(--yes-soft);color:var(--yes)} .chip.later{background:var(--part-soft);color:var(--part)} .chip.dont{background:var(--risk-soft);color:var(--risk)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:grid;gap:10px;align-content:start;min-width:0}
+.card.now{border-top:4px solid var(--yes)} .card.later{border-top:4px solid var(--part)}
+ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.lock{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;gap:6px}
+.lock b{font-family:var(--display)}
+ol.steps{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:st}
+ol.steps>li{counter-increment:st;display:grid;grid-template-columns:44px 1fr;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+ol.steps>li::before{content:counter(st);font-family:var(--display);font-size:20px;font-weight:700;color:var(--accent);width:38px;height:38px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center}
+.who{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.you{color:var(--risk);font-weight:600}
+.gate{border:2px dashed var(--accent)!important}
+.mea{background:var(--risk-soft);border-radius:12px;padding:16px;display:grid;gap:8px}
+.mea b{color:var(--risk)}
+.src{font-size:13px;color:var(--muted)} .src a{color:var(--accent)} .src ol{padding-left:18px;display:grid;gap:3px}
+code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+@media (max-width:560px){ol.steps>li{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Plan v3 for the founder · after an independent deep review · 26 Nov 2026</div>
+  <h1>Factory v3: Claude's agents on top of what already works</h1>
+  <p class="thesis">An independent reviewer (Opus, high effort) checked v2 against the real code on <code>main</code> and against Claude's and GitHub's documentation. Its verdict was <b>adopt with changes</b>. In short: let Claude's agents do <b>reviewing, fixing and approving</b>. <b>Keep Mergify</b>, because it is more capable than GitHub's queue, and drop only the approval label. <b>Cap spend before anything switches on</b>, add the standard <b>security basics</b>, and <b>measure before deleting</b>. Product work never pauses.</p>
+</header>
+
+<section>
+  <div class="mea">
+    <div class="eyebrow">Urgent, before anything else (found by Lead 4, 26 Nov)</div>
+    <p><b>Your Mac can be reached through the public repository.</b> The Mac's test runner (<code>xr-mac</code>) serves this public repository directly. Anyone outside can open a pull request from a copy of the repository and edit a workflow to run their own code on the Mac. The fix takes one setting, a few minutes, and is your click (repository settings): <b>require approval before workflows run for all outside contributors</b>. Then limit the Mac runner to the one workflow that needs it, or move that workflow to GitHub's own machines. Lead 4 can give you the exact page and button.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Your three decisions</div>
+  <div class="decisions">
+    <div class="dec">
+      <div class="q">1 · Who approves risky changes?</div>
+      <p>Every pull request is opened from your GitHub account, and GitHub doesn't count the author as an approver. Today, "the Lead approves" is really the same account approving itself.</p>
+      <div class="rec"><b>Recommended:</b> a separate GitHub account for the Lead (a "machine user"). It approves money, schema, migration and pipeline changes. Your own account keeps an emergency override only.</div>
+      <div class="alt">Alternative: openly accept that Claude approves Claude, with no separate approver.</div>
+    </div>
+    <div class="dec">
+      <div class="q">2 · How much may the agents spend in month one?</div>
+      <p>We merge about 93 pull requests a day. Code Review has no published price per review. Reviewing every push on every pull request could reach five figures a month.</p>
+      <div class="rec"><b>Recommended:</b> a cap for the first month (for example $1,000). Code Review runs only on risky paths, about 10–15% of pull requests. We measure the real average, then resize.</div>
+      <div class="alt">Alternative: Code Review on every pull request, with a much higher cap.</div>
+    </div>
+    <div class="dec">
+      <div class="q">3 · Which merge queue?</div>
+      <p>Our Mergify setup runs 4 checks side by side, keeps 40+ areas apart, merges one database-migration area at a time, and uses batches of 2. GitHub's queue is a single line with none of that.</p>
+      <div class="rec"><b>Recommended:</b> keep Mergify. Replace only its "approved" label with GitHub's own approval. That alone retires the whole label-guard family.</div>
+      <div class="alt">Alternative: move to GitHub's queue and accept slower, all-or-nothing batches.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Your six questions (A412), answered from research</div>
+  <h2>Split the factory from the product, mix plans sensibly, keep what is ours</h2>
+  <div class="board"><table>
+    <thead><tr><th>Your question</th><th>Answer</th><th>Grounding</th></tr></thead>
+    <tbody>
+      <tr><td><b>1 · Take the factory's files out of the product pipeline?</b></td><td><span class="chip do">Yes, into your private repository</span><br>Records and decisions move first: no workflow reads them. The evidence (screenshots, qa files, about 1 GB) moves next. The tools move last, because 72 scripts are called from 20 workflows. A few files must stay in the product repository to work: workflows, CODEOWNERS, the approvals file, the review checklist (<code>REVIEW.md</code>), <code>CLAUDE.md</code> and <code>.mergify.yml</code>. Local-only is a no: the private repository keeps a backup and the history (our rule P-557).</td><td>Measured on <code>main</code>: the repository is 1.45 GB and the app is only about 164 MB of it. In the last 7 days, 261 of 651 merges touched only records or tooling. Those leave the product queue and test runs, which is the speed gain.</td></tr>
+      <tr><td><b>2 · A fresh best-in-class pipeline on what Claude ships</b></td><td>The target factory below. Claude's agents review, fix and approve. GitHub locks main and scans for problems. Mergify merges. Our qa proves "Works".</td><td>Designed from scratch, then checked rule by rule against today (question 6).</td></tr>
+      <tr><td><b>3 · Mix your Ultra with Team or API credits?</b></td><td><span class="chip do">Yes, it works</span><br>Your Ultra and a Team account can share one email, and you switch between them. Builders in the cloud always run on a subscription (Ultra or a Team seat), never on API credits. Claude's agents are paid from the Team organisation's credits. API credits fit only the GitHub Action in CI.</td><td>Claude help pages and authentication docs. Team seats belong to one named person each, and logins can't be shared.</td></tr>
+      <tr><td><b>4 · What we do today, what changes, why, industry fit</b></td><td>The "futuristic test" table below gives this per change. Industry fit: one product repository with server-side locks, required checks, code owners, dependency and secret scanning, and a merge queue is the standard setup at mature software companies.</td><td>GitHub's own guidance on rulesets, CODEOWNERS and security features.</td></tr>
+      <tr><td><b>5 · The public repository shows our way of working</b></td><td><span class="chip do">Keep the product public, move the factory private</span><br>Making the whole repository private would cost about $10,700 a month in GitHub test machines at today's load, plus $19 + $30 per active committer for secret and code scanning. All of that is free while public. Moving the factory's files private hides how we work at no cost.</td><td>GitHub billing docs: Enterprise includes $300 of compute (50,000 minutes); our load is about 1.84 million minutes a month. This is an estimate.</td></tr>
+      <tr><td><b>6 · Use built-ins where they truly cover a rule</b></td><td>We checked <b>241 rules</b>: 16 are fully covered by a built-in, 45 partly, 174 not at all. About 110 of the 174 are product or immigration decisions no tool could enforce. <b>4 new swaps</b>: lock main on GitHub, block force-pushes on GitHub, make <code>ci</code> a required check, and use Dependabot for package alerts. 4 rules are obsolete and get dropped. The rest stay ours.</td><td>Full table with citations: the shared notes file <code>rule-coverage-table-2026-11-26.md</code>.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="two">
+    <div class="card now"><h3>"The model and harness are tuned, so built-ins are better": where it holds</h3><ul>
+      <li>The locks underneath: GitHub rulesets, required checks, secret scanning, Dependabot. They are enforced on the server, so no client or token can skip them, and they are free.</li>
+      <li>Claude Code's own mechanisms: permissions, hooks, subagents, sandbox, managed settings.</li>
+      <li>Code-level review and fixing red checks, once we have a Team organisation.</li>
+    </ul></div>
+    <div class="card later"><h3>Where it doesn't hold</h3><ul>
+      <li>About 70% of our rules are product and immigration decisions ("only qa moves a row to Works", "values only from canada.ca"). No tuning covers these.</li>
+      <li>Approval flows assume separate people. Ours all run from one GitHub account, so decision 1 is the key that unlocks GitHub's native approvals and CODEOWNERS.</li>
+      <li>Public repository: GitHub's file-blocking push rules work only on private repositories, so our push guard stays.</li>
+      <li>Beta (Steward, Approvals), Team-only gates, per-use billing, and GitHub's queue missing Mergify's scopes (P-715).</li>
+    </ul><p><b>Verdict:</b> built-ins as the locks underneath, our rules as the policy on top.</p></div>
+  </div>
+  <p class="alt">Terms note: Claude's consumer terms forbid sharing a login, and limit automated use except through an API key or where Anthropic explicitly permits it. They say nothing about rotating between your own accounts. Unconfirmed: no counsel. A Team organisation avoids the question for the agents.</p>
+</section>
+
+<section>
+  <div class="eyebrow">A414 · The factory model: two repositories</div>
+  <h2>The product stays public; the factory moves to your private repository</h2>
+  <p>You decided the product repository stays public, which keeps the free test machines and the free security scanning. Only the factory moves out. I checked every standard mechanism against GitHub's, Claude's and Mergify's documentation, and kept only the ones that work from a public repository to a private one. Nothing here is home-made.</p>
+  <div class="two">
+    <div class="card now"><h3>expat-ready/xpatready · public · the product</h3><ul>
+      <li>The app, its tests, and the CI scripts the required checks run</li>
+      <li>The config files GitHub, Mergify and Claude only read from here: workflows, <code>.mergify.yml</code>, CODEOWNERS, <code>dependabot.yml</code>, <code>REVIEW.md</code>, <code>.claude/approvals.yml</code>, <code>CLAUDE.md</code></li>
+      <li>The builders' skills and agents: build, review, breaker, journey test, qa. Cloud builders only see what is in this repository.</li>
+      <li>Short proof summaries per row (the "Works" record)</li>
+    </ul></div>
+    <div class="card later"><h3>expat-ready/private · private · the factory</h3><ul>
+      <li>Records and memory: STATE, DECISIONS, BACKLOG, history, lanes, inbox, reports, research notes, design pages. Rule P-557 still holds: always committed and pushed, just here.</li>
+      <li>The Lead's own skills and tools: lead, lead-watch, strategy desk, CTO review, the board, flow measures</li>
+      <li>Bulky evidence (about 1 GB of screenshots and qa files), once the 3 checks that read it are rewired</li>
+      <li>The Lead works from a clone of both repositories, side by side</li>
+    </ul></div>
+  </div>
+  <div class="board"><table>
+    <thead><tr><th>Standard mechanism</th><th>Works public → private?</th><th>What the documentation says</th><th>Use it?</th></tr></thead>
+    <tbody>
+      <tr><td>Keep the factory in a separate private repository; the Lead clones both</td><td>Yes</td><td>The ordinary multi-repository setup. Nothing in the product depends on it.</td><td><span class="chip do">Yes: the core of the model</span></td></tr>
+      <tr><td>A CI job checks out the private repository using a GitHub App token</td><td>Yes, for our own branches</td><td>GitHub: "secrets are not passed to the runner" for pull requests from forks. Dependabot pull requests count as forks.</td><td><span class="chip later">Only for jobs that aren't required checks</span></td></tr>
+      <tr><td>Reusable workflows or actions stored in the private repository</td><td>No</td><td>GitHub: "Access is allowed only from private repositories."</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>Organisation "required workflows" stored in the private repository</td><td>No</td><td>GitHub: "a private workflow can only run on private repositories."</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>Mergify sharing its config from the private repository</td><td>No</td><td>Mergify: "The source repository must be at least as visible as yours."</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>A git submodule pointing at the private repository</td><td>No, for forks and Dependabot</td><td>They can't fetch it without secrets. Claude Approvals never auto-approves a submodule change.</td><td><span class="chip dont">No</span></td></tr>
+      <tr><td>Claude Code plugin marketplace in the private repository</td><td>Yes, on the Mac</td><td>Claude: "The repository can be private." For cloud sessions it works only through a Team organisation's plugin sync.</td><td><span class="chip later">Later, for the Lead's skills, once there is a Team organisation</span></td></tr>
+      <tr><td>A cloud session working on both repositories</td><td>Yes, if both are attached</td><td>With several repositories, the project's hooks and settings aren't loaded.</td><td><span class="chip later">Lead only; builders stay single-repo</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="mea"><b>One honest limit:</b> moving files hides them from now on, but past commits stay visible in the public repository's history. Rewriting history is forbidden by our own rule (AGENTS.md rule 1) and would break every open clone, so we don't do it. Nothing secret is in those files. They show how we work, which becomes invisible going forward.</div>
+  <h3>Steps, effort and rollback</h3>
+  <div class="board"><table>
+    <thead><tr><th>#</th><th>Step</th><th>Who · effort</th><th>Product impact</th><th>Rollback</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Limit the Mac runner to the one workflow that needs it (security, already flagged)</td><td>You · 10 min</td><td>None</td><td>Change the setting back</td></tr>
+      <tr><td>1</td><td>Set up the folder layout in <code>expat-ready/private</code> and give the Lead a clone of it</td><td>Lead · 1 h</td><td>None</td><td>Nothing to undo</td></tr>
+      <tr><td>2</td><td>Move the records (STATE, DECISIONS, BACKLOG, history, lanes, inbox, reports, notes, design). Point the Lead's local checks and stop hooks at the new place. Update the paths in CLAUDE.md and AGENTS.md.</td><td>Lead · 3–4 h</td><td>None: no workflow reads these files</td><td>One revert pull request in each repository</td></tr>
+      <tr><td>3</td><td>Move the Lead-only skills and tools (lead, lead-watch, board, flow measures)</td><td>Lead · 3–4 h</td><td>None: builders don't use them</td><td>Revert</td></tr>
+      <tr><td>4</td><td>Evidence: keep a short proof summary per row in public, move the bulky screenshots and qa files private, and rewire the 3 checks that read them (pr-rules, item-proof, test-graph)</td><td>1 builder · 1–2 days</td><td>Small: one row of tooling work</td><td>Revert the rewiring pull request</td></tr>
+      <tr><td>5</td><td>CI scripts stay public. Required checks must work for Dependabot and fork pull requests, so they can't depend on the private repository. They shrink through the Factory v3 deletions instead.</td><td>Within Factory v3</td><td>None extra</td><td>n/a</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Total:</b> about 1–1.5 days of Lead time plus 1–2 builder days, done alongside product work. <b>Speed gain:</b> about 40% of merges last week (261 of 651) were records or tooling only. After steps 2 and 3, most of them stop using the product queue and its test machines.</p>
+</section>
+
+<section>
+  <div class="eyebrow">The target factory</div>
+  <div class="legend"><span><i class="dot" style="background:var(--accent-soft)"></i>Claude provides</span><span><i class="dot" style="background:var(--part-soft)"></i>GitHub or Mergify provides</span><span><i class="dot" style="background:var(--yes-soft)"></i>Ours, kept because it's unique</span></div>
+  <div class="lane"><div class="row">
+    <div class="s ours">Lead shapes row<span>your decisions</span></div>
+    <div class="s ours">Cloud builders<span>Ultra accounts, one row each</span></div>
+    <div class="s claude">Code Review<span>risky paths, advisory</span></div>
+    <div class="s ours">Reviewer journey score + breaker<span>screens, money, schema</span></div>
+    <div class="s claude">PR Steward<span>fixes red CI, conflicts, comments</span></div>
+    <div class="s claude">Claude Approvals<span>approval rules in one file</span></div>
+    <div class="s gh">Main locked<span>ruleset, <code>ci</code> required</span></div>
+    <div class="s gh">Mergify queue<span>scopes, batches of 2</span></div>
+    <div class="s ours">qa proof<span>"Works"</span></div>
+  </div></div>
+  <p>Builders stay on your Ultra accounts. Switching accounts hurts less, because each builder session is one row long, and the organisation's agents keep fixing its pull request after a switch.</p>
+</section>
+
+<section>
+  <div class="eyebrow">The futuristic test, per change</div>
+  <h2>Each change either passes the test or doesn't happen</h2>
+  <div class="board"><table>
+    <thead><tr><th>Change</th><th>Futuristic?</th><th>Why</th><th>Do it?</th></tr></thead>
+    <tbody>
+      <tr><td>Claude Code Review on risky paths</td><td>Yes</td><td>A hosted agent tied to the organisation. It gets better without our work and survives account switches.</td><td><span class="chip do">Do, capped</span></td></tr>
+      <tr><td>PR Steward fixes red pull requests</td><td>Mostly</td><td>The right direction, but it is three days old (beta). It needs our test setup to run our suites.</td><td><span class="chip do">Pilot on 3 lanes</span></td></tr>
+      <tr><td>Claude Approvals policy file</td><td>Yes</td><td>One readable file of rules instead of about 500 lines of label scripts. Beta, so it starts in watch-only mode.</td><td><span class="chip do">Watch mode first</span></td></tr>
+      <tr><td>GitHub ruleset locking main</td><td>Yes</td><td>A standard platform feature that lasts. We should have had it already.</td><td><span class="chip do">Do now</span></td></tr>
+      <tr><td>Dependabot, CodeQL, pinned actions, CODEOWNERS</td><td>Yes</td><td>The industry baseline for any production repository, and free.</td><td><span class="chip do">Do now</span></td></tr>
+      <tr><td>Move from Mergify to GitHub's queue</td><td>No</td><td>Less capable than what we run today. It would bring back failures that reset whole batches.</td><td><span class="chip dont">Don't</span></td></tr>
+      <tr><td>Code Review on every push of every pull request</td><td>No</td><td>The bill grows with output (about 2,100 code pull requests a month), and it repeats work our reviewer already does.</td><td><span class="chip dont">Don't</span></td></tr>
+      <tr><td>Ultra extra usage to stop switching</td><td>No</td><td>Pay-as-you-go with no organisation-level spend controls, and builder sessions still end at a switch.</td><td><span class="chip dont">Don't, except a small capped buffer for the Lead</span></td></tr>
+      <tr><td>Delete flaky-test quarantine now</td><td>No</td><td>At 93 merges a day we would lose test coverage or get more failed batches. First measure 2 weeks of flake rate.</td><td><span class="chip later">Later</span></td></tr>
+      <tr><td>Replace the 8,000-line board with a small page</td><td>Yes</td><td>A view of state shouldn't be our biggest program, but the new page has to be live first.</td><td><span class="chip later">After the replacement is live</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="eyebrow">How safe it is</div>
+  <div class="grid3">
+    <div class="lock"><b>Main is locked</b><span>A GitHub ruleset allows changes only through pull requests, requires <code>ci</code>, forbids force-pushes, and keeps the Claude app off the bypass list.</span></div>
+    <div class="lock"><b>A real second approver</b><span>The Lead's own GitHub account approves risky files, never the author. This needs your decision 1.</span></div>
+    <div class="lock"><b>Claude can't merge</b><span>PR Steward is built never to approve or merge. Only Mergify merges, and only when <code>ci</code> is green and the change is approved.</span></div>
+    <div class="lock"><b>Spend is capped first</b><span>Organisation, Code Review and Steward caps are set before the repository is even added. The repository is added with "Not now".</span></div>
+    <div class="lock"><b>Our guards stay</b><span>The push guard (no names, PDFs or source files) stays in CI. The repository is public, so GitHub's server-side push rules aren't available to replace it.</span></div>
+    <div class="lock"><b>Real rollback</b><span>The switch is one small pull request that can be reverted. Deletions come only after the measured go decision.</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Mature, production-like setup</div>
+  <h2>Basics now; the production layer becomes a hand-over contract</h2>
+  <div class="two">
+    <div class="card now"><h3>Now: cheap, no slowdown</h3><ul>
+      <li>Ruleset on main (above)</li>
+      <li>Dependabot: security fixes plus a weekly grouped update, including our CI actions</li>
+      <li>CodeQL code scanning and secret push protection</li>
+      <li>CI actions pinned to exact versions (commit hashes)</li>
+      <li>CODEOWNERS for pipeline and migration files</li>
+      <li>Approval required before outside contributors' pull requests run CI. Our Mac runner currently serves a public repository, so this matters. Also put the Mac runner in a runner group limited to <code>queue-gate.yml</code> on main, or move that workflow to GitHub's machines.</li>
+      <li>A check that refuses destructive database migrations</li>
+    </ul></div>
+    <div class="card later"><h3>At production hand-over (partner team)</h3><ul>
+      <li>Staging and production environments with protection rules</li>
+      <li>Deploys without stored passwords (OIDC), and a rollback runbook</li>
+      <li>Restores from backup that are actually tested (the runbook exists; the tests don't)</li>
+      <li>Error alerts and tracing, feature flags, service targets</li>
+      <li>Delivery metrics from GitHub deployments, an incident runbook, access reviews</li>
+    </ul><p>We write these down as a contract now and don't build them yet, so product work isn't slowed.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Switch-over</div>
+  <h2>About two weeks, product never pauses, no queue drain</h2>
+  <ol class="steps">
+    <li><div><h3>Measure today</h3><p class="who">Lead, 2 h</p><p>Re-audit on <code>main</code> and read the current ruleset. Record a 7-day baseline: approval to merge, failed batches, Lead labels per day, bugs found after merge.</p></div></li>
+    <li><div><h3>Sign up and set caps</h3><p class="who"><span class="you">You, 30 min</span> (links are ready in <code>design/factory-v2-step1-founder-links-2026-11-26.md</code>)</p><p>Claude Team with 2 standard seats (about $50 a month), you as Owner, usage credits on, every cap set, the repository added with "Not now". Create the Lead's GitHub machine user if you choose decision 1A.</p></div></li>
+    <li><div><h3>Security basics and the main ruleset</h3><p class="who">Lead, day 1, half a day</p><p>Everything in the "Now" list.</p></div></li>
+    <li><div><h3>Shadow run</h3><p class="who">Days 1–3</p><p>Code Review on risky paths only, PR Steward on 3 lanes, Approvals in watch-only mode. Mergify and labels stay exactly as they are.</p></div></li>
+    <li class="gate"><div><h3>Go or no-go</h3><p class="who">Day 4, you and the Lead</p><p>Compare against the baseline. Go only if the waits are shorter, failures aren't higher, Lead clicks are fewer and spend is within the cap.</p></div></li>
+    <li><div><h3>The switch</h3><p class="who">Day 5</p><p>One revertible pull request: Mergify waits for an approval instead of the label, Steward goes on for all lanes, the label scripts go off. Rollback takes minutes.</p></div></li>
+    <li><div><h3>Delete what is replaced</h3><p class="who">Days 6–9</p><p>Small pull requests, each rewired first: the label-guard family, the records label, the watch scripts. The board goes only once its replacement page is live.</p></div></li>
+    <li><div><h3>Trim the rules, review spend</h3><p class="who">Day 10</p><p>RULES shrinks to what the tools don't enforce. Set the month-two cap from the real average.</p></div></li>
+  </ol>
+</section>
+
+<section>
+  <div class="eyebrow">Monthly cost</div>
+  <div class="board"><table>
+    <thead><tr><th>Option</th><th>Cost</th><th>What you get</th></tr></thead>
+    <tbody>
+      <tr><td><b>Recommended</b></td><td>Today's Ultra accounts + about $50 Team + capped agent use (month-one cap of your choice, e.g. $1,000)</td><td>Code Review on risky paths, PR Steward, Approvals, organisation analytics</td></tr>
+      <tr><td>v2 as written</td><td>Today + $50 + review on every push of about 2,100 pull requests + uncapped extras: likely five figures, unknown</td><td>The same, with far more spend</td></tr>
+      <tr><td>No Team</td><td>API tokens only (the official Claude GitHub Action on an organisation key)</td><td>Reviews on risky paths that survive switches. No PR Steward.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="mea">
+    <div class="eyebrow">What v2 got wrong (my mistakes, now corrected)</div>
+    <ul>
+      <li><b>Stale numbers.</b> v2 counted an old copy (8 workflows, 98 tool files). The real <code>main</code> has 28 workflows and 298 tool files. The removal list is redone on <code>main</code> before anything is deleted.</li>
+      <li><b>Replacing Mergify.</b> Our own research said keep it, and v2 dropped it anyway. v3 keeps it.</li>
+      <li><b>Cost.</b> v2 contradicted itself on seats and ignored volume. v3 uses standard seats, caps first and risky paths only.</li>
+      <li><b>Approver.</b> v2 assumed "the Lead approves" counts as a second person. It doesn't today, so v3 makes that your decision 1.</li>
+      <li><b>Delete before measure.</b> v3 measures first, with a go/no-go gate.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="src">
+  <div class="eyebrow">Sources (read 26 Nov 2026)</div>
+  <ol>
+    <li><a href="https://code.claude.com/docs/en/claude-ship">Claude Ship</a>, <a href="https://code.claude.com/docs/en/pr-steward-setup">PR Steward setup</a>, <a href="https://code.claude.com/docs/en/approvals-policy">Approvals policy</a>, <a href="https://code.claude.com/docs/en/approvals-github-rules">Approvals and GitHub rules</a>, <a href="https://code.claude.com/docs/en/code-review-costs">Code Review costs</a></li>
+    <li><a href="https://claude.com/pricing">Claude pricing</a>: standard and premium seats; usage credits without organisation controls on individual plans</li>
+    <li><a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue">GitHub merge queue</a>, <a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets">rulesets</a></li>
+    <li>Our side: <code>origin/main</code> on 26 Nov: <code>.mergify.yml</code> (parallel mode, 4 checks, batch 2, P-715), 28 workflows, 298 tool files; 653 merges in the last 7 days</li>
+  </ol>
+  <p>Still to check with one test pull request: that the organisation's agents act on pull requests from builders on personal accounts, and that linking the Claude GitHub App to a Team organisation doesn't disturb today's setup. The docs suggest both are fine. The current ruleset on <code>main</code> is read at step 1.</p>
+</section>
+
+</div>
