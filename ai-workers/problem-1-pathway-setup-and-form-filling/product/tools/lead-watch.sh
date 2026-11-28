@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
-# Read-only, except step 6b's private sync (P-678) and the last step's check stamp push (LR-168). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
+# Read-only, except step 6b's private sync (P-678), step 1c4's hourly line in cockpit/usage-log.tsv (LR-099; the Lead commits it) and the last step's check stamp push (LR-168). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines; step 15 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 #        bash product/tools/lead-watch.sh app-view-read <<'EOF' (app-view.js's answer) EOF   saves the app view (step 10)
@@ -114,12 +114,19 @@ fresh "lead-upkeep.py context: STATE.md in $RECS and LEAD_CONTEXT from the Lead'
 # Lead's tool, so the Lead passes it: LEAD_WEEKLY=<pct>. switch.sh close-prep writes the ledger row and checks STATE and
 # RESUME are pushed; an ACT until it says done. An open switch with no baseline is an ACT too.
 if [ -n "${LEAD_WEEKLY:-}" ]; then cp=$(bash "$TOOLS/switch.sh" close-prep "$LEAD_WEEKLY" 2>&1) && say "$cp" || ACT "$cp"; fi
+
 ss=$(bash "$TOOLS/switch.sh" status 2>&1); case "$ss" in *"baseline none"*) ACT "$ss: get_usage, then switch.sh baseline <pct> (AS-4)";; *open*) say "$ss";; esac
 fresh "switch.sh: LEAD_WEEKLY from the Lead's get_usage, the switch state in ~/.claude/xr-switch, git status of STATE and RESUME, now"
 # 1c3. LR-156 (founder A433/A434): the Lead copy's branch age, every check; stale (base over 24 h or 200 behind) is an
 # ACT with the recut command (lead-age.sh; the fetch is step 1d's, so this reads the previous check's origin/main).
 la=$(bash "$TOOLS/lead-age.sh" line 2>&1) && say "$la" || ACT "$la"
 fresh "lead-age.sh: this copy's branch and origin/main as last fetched"
+# 1c4. LR-099 burn watch (P-440): the Lead's reading (LEAD_WEEKLY; LEAD_ACCOUNT, else the log's last account) goes into
+# cockpit/usage-log.tsv once an hour through usage-log.sh (the Lead commits it with the records). Over 3%/h twice, over
+# 4%/h in an interval ending 22:00-06:00 IST, 85% (push alert, once per account) and a stopped log are ACTs, each once.
+bw=$(python3 -I "$TOOLS/burn-watch.py" --state "$STATE_DIR" --log "${LEAD_WEEKLY:-}" "${LEAD_ACCOUNT:-}" 2>&1) || bw="ACT   burn: burn-watch.py did not run ($(tail -1 <<<"$bw"))"
+echo "$bw"; act=$((act + $(grep -c '^ACT' <<<"$bw"))); seen "$bw"
+fresh "burn-watch.py: cockpit/usage-log.tsv, LEAD_WEEKLY and LEAD_ACCOUNT from the Lead's get_usage, its memory in \$STATE_DIR"
 
 # 1d. Proof number first (A348, founder 24 Nov): Proven today (net since 00:00 IST), last 24 h and the forecast, above merges.
 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || ACT "proven: origin/main not fetched, the number below may be old"
