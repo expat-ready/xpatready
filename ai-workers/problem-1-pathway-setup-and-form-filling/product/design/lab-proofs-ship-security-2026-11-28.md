@@ -12,12 +12,13 @@ Done when (register): "One cloud session in the environment runs tools/cloud-set
   limited network with package registries, repository expat-ready/xpatready, `is_current: true` for this session).
   The register's Status line says this lane's predecessor ran in Default; this session ran in `xpatready`.
 * **Session (the run link):** https://claude.ai/code/session_01Ln6TiRnYiVgWdC8gBD5G6e, on main b7f16accf.
-* **Step 1, 28 Nov ~13:05 IST:** `bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/cloud-setup.sh`
+* **Step 1, finished 28 Nov 13:04 IST:** `bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/cloud-setup.sh`
   → exit 0 in 1 min 7 s: Node 24.21.0, `npm ci` (688 packages), PostgreSQL 18.3 "from the npm registry (checksum
   verified)" (apt.postgresql.org is not on the environment's allow-list, the script's fallback took it), "cluster created",
   "cluster started", "migrations applied, client generated", "web app built", "cloud setup done".
-* **Step 2, 28 Nov 13:18 IST:** a PostgreSQL suite on an isolated copy, as its own usage line says:
-  `zsh studio/tools/isolated.sh runtime_aud1a 4606 start --ttl 60 && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_aud1a_insert_only.ts 4606 xr_studio_runtime_aud1a`
+* **Step 2, 28 Nov 13:18 IST:** a PostgreSQL suite on an isolated copy, as its own usage line says, run from
+  `ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/`:
+  `zsh tools/isolated.sh runtime_aud1a 4606 start --ttl 60 && node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_aud1a_insert_only.ts 4606 xr_studio_runtime_aud1a`
   → "42 passed, 0 failed", exit 0 (scratch databases, the insert-only audit trigger, the demo reset); then
   `isolated.sh runtime_aud1a 4606 stop` → "database and files removed".
 * **Supports the Status:** "Proven 28 Nov 13:18 IST: cloud-setup.sh exit 0 and check_aud1a_insert_only.ts 42/0 in the
