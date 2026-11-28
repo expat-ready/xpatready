@@ -63,6 +63,18 @@ ok "lead-watch: the first line is the GitHub budget" "$(head -1 <<<"$out" | grep
 ok "lead-watch over budget: one ACT, then the lite check instead of any full-check step (LR-175), nothing but /rate_limit asked of curl" "$([ $r -ge 2 ] && grep -q '^ACT   github budget: 100 remaining is under lead-watch-full.s budget 2800 .*the lite check runs instead' <<<"$out" && grep -q 'mode lite' <<<"$out" && ! grep -q '^tools  ' <<<"$out" && [ ! -s "$T/unexpected.log" ] && echo 1)" "exit $r: $out"
 st=$(cat "$T/state/last-check" 2>/dev/null); ok "... and it still writes the check stamp, so the standbys' gap alarm stays quiet" "$([ -n "$st" ] && [ $(( $(date +%s) - st )) -lt 60 ] && echo 1)" "stamp: ${st:-none}"
 
+# LR-168 met LR-174 (review of the main merge on #4092): the budget-short path (here the lite check, LR-175) pushes the stamp too, so GitHub's gap
+# alarm (lead-gap.yml) stays quiet while the Lead checks. A copy of the tools with lane.sh and lead-stamp.sh stand-ins.
+C="$T/toolscopy"; cp -R "$TOOLS" "$C"; printf '#!/bin/sh\n[ "$1" = whoami ] && echo lead\n' > "$C/lane.sh"
+printf '#!/bin/sh\necho "push $*" >> "%s/stamp.log"; [ -e "%s/stamp-fail" ] && { echo "check stamp not pushed: refused"; exit 1; }; echo "check stamp pushed"\n' "$T" "$T" > "$C/lead-stamp.sh"
+echo 4900 > "$T/used"; rm -f "$T/state/last-check"
+out=$(cd "$TOOLS" && GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null); r=$?
+ok "budget-short in the Lead's copy: the lite check runs and pushes the stamp (LR-168); exit = every ACT + 1" "$(grep -q 'mode lite' <<<"$out" && grep -q '^push ' "$T/stamp.log" && grep -q '^check stamp pushed$' <<<"$out" && ! grep -q 'not pushed' <<<"$out" && [ $r = "$(( $(grep -c '^ACT' <<<"$out") + 1 ))" ] && echo 1)" "exit $r: $out | $(cat "$T/stamp.log" 2>&1)"
+touch "$T/stamp-fail"; out=$(cd "$TOOLS" && GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null); r=$?
+ok "... a push that fails is an ACT, counted in the exit" "$(grep -q '^ACT   check stamp not pushed' <<<"$out" && [ $r = "$(( $(grep -c '^ACT' <<<"$out") + 1 ))" ] && echo 1)" "exit $r: $out"
+rm -f "$T/stamp-fail" "$T/stamp.log"; out=$(cd "$TOOLS" && LEAD_STAMP_PUSH=off GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null)
+ok "... LEAD_STAMP_PUSH=off pushes nothing" "$([ ! -s "$T/stamp.log" ] && echo 1)" "$(cat "$T/stamp.log" 2>&1)"
+
 # The Lead's machine: the live meter log is judged against the real budget lines (skipped where there is none, as in CI).
 LIVE="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}/github-meter/meter.tsv"
 if [ -s "$LIVE" ]; then out=$(GITHUB_BUDGET_FILE="$TOOLS/github-budget.tsv" bash "$M" budget "$LIVE" 2>&1); r=$?

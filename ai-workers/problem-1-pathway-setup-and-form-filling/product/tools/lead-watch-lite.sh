@@ -79,6 +79,10 @@ for n, (sha, t) in sorted(ready.items()):
   else while read -r n sha t; do ACT "#$n waits for the Lead's read of $sha (Ready for Lead read at $t)"; done <<<"$owed"; fi
 fi
 
+# LR-168: the stamp is pushed too (lead/check-stamp, judged by lead-gap.yml with no Mac running), as at the end of the full
+# check: in the Lead's copy only; a git push, no REST request; a failed push is an ACT.
+if [ "${LEAD_STAMP_PUSH:-on}" != off ] && case "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" in lead|lead-stale) true;; *) false;; esac; then
+  sp=$(bash "$TOOLS/lead-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
 ms=$(bash "$TOOLS/github-meter.sh" stop lead-watch-lite "$MS" 2>&1); echo "$ms"
 gb=$(bash "$TOOLS/github-meter.sh" budget 2>&1) || ACT "github budget: $(grep '^FAIL' <<<"$gb" | sed 's/^FAIL  //' | paste -sd ';' -) (github-budget.tsv)"
 exit "$act"
