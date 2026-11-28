@@ -1,0 +1,37 @@
+# Workflow lint (lab bundle A9, LR-059): actionlint over .github/workflows on every PR that changes a workflow, report-only
+# (continue-on-error; the findings go to the job summary). Technology gate (STANDARDS §1): design/a9-gate-actionlint.md.
+# The binary is a pinned release whose sha256 is checked before it runs; no secrets, read-only token, seconds, US$0.
+# The Mac's custom runner labels are listed in .github/actionlint.yaml. A later PR may make it blocking after 10 clean runs.
+name: workflow-lint
+on:
+  pull_request:
+    paths: [".github/workflows/**", ".github/actionlint.yaml"]
+permissions: {}
+concurrency:
+  # SPD-2 item 5 (P-802): a newer push to the same PR supersedes its older run; a merge-queue batch is never cancelled.
+  group: workflow-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+jobs:
+  actionlint:
+    if: ${{ !startsWith(github.head_ref, 'mergify/merge-queue/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - name: actionlint 1.7.9 (sha256 checked), report-only
+        continue-on-error: true
+        env:
+          V: "1.7.9"
+          SUM: 233b280d05e100837f4af1433c7b40a5dcb306e3aa68fb4f17f8a7f45a7df7b4
+        run: |
+          # A failed download or checksum says so in the summary, never a silent green (review r1 nit 4).
+          trap '[ -x "$RUNNER_TEMP/actionlint" ] || echo "### actionlint $V not run: download or checksum failed" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          curl -sSfL -o "$RUNNER_TEMP/al.tgz" "https://github.com/rhysd/actionlint/releases/download/v$V/actionlint_${V}_linux_amd64.tar.gz"
+          echo "$SUM  $RUNNER_TEMP/al.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/al.tgz" -C "$RUNNER_TEMP" actionlint
+          rc=0; "$RUNNER_TEMP/actionlint" -no-color -shellcheck= > "$RUNNER_TEMP/al.txt" 2>&1 || rc=$?
+          { echo "### actionlint $V (report-only)"; echo '```'; cat "$RUNNER_TEMP/al.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/al.txt"
+          exit "$rc"

@@ -57,14 +57,14 @@ o=$(echo | python3 -I "$PY" report --suites '' --out "$T/out" 2>&1; echo "rc=$?"
 # The workflow, read as YAML: report only, once per PR, one machine, the base's code, history, the named suites only
 Y="$TOOLS/../../../../.github/workflows/red-on-old.yml"; python3 -c 'import yaml' 2>/dev/null || { echo "PyYAML is missing; nothing was checked"; exit 2; }
 o=$(python3 - "$Y" "$TOOLS/../../../../.mergify.yml" "$TOOLS/../../../../.github/workflows/guards.yml" <<'P' 2>&1
-import sys, yaml
+import re, sys, yaml
 t = open(sys.argv[1]).read(); w = yaml.safe_load(t); on = w.get("on", w.get(True)); J = w["jobs"]; j = J["red-on-old"]; s = j["steps"]; by = {x.get("id"): x for x in s}
 def p(k, v): print("%s=%d" % (k, bool(v)))
 p("once", on == {"pull_request": {"types": ["opened", "ready_for_review"]}})
 p("read_only", w["permissions"] == {} and j["permissions"] == {"contents": "read"} and "secrets." not in t)
 p("one_machine", len(J) == 1 and "strategy" not in j and j["timeout-minutes"] == 45 and j["runs-on"] == "ubuntu-latest")
 p("no_batch", j["if"] == "${{ !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}")
-p("report_only", s[0]["uses"] == "actions/checkout@v4" and all(x.get("continue-on-error") is True for x in s[1:]))
+p("report_only", re.fullmatch(r"actions/checkout@[0-9a-f]{40}", s[0]["uses"]) and re.search(re.escape(s[0]["uses"]) + r" # v4\.\d+\.\d+", t) and all(x.get("continue-on-error") is True for x in s[1:]))
 p("history", s[0]["with"]["fetch-depth"] == 0 and s[0]["with"]["persist-credentials"] is False)
 p("plan_base", '"$P/tools/red-on-old.py" plan --base HEAD^1)' in by["p"]["run"])
 p("old_base", by["old"]["run"] == 'python3 -I "$P/tools/red-on-old.py" old --base HEAD^1' and by["old"]["if"] == "steps.p.outputs.suites != ''")

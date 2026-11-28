@@ -41,7 +41,7 @@ ok("PF-8r nightly fail: the earlier wiring (needs plan, the plan job's output) i
   && runsOn(old.replace(/^ {4}needs: plan\n/m, ""), SCHEDULE) === "unknown", { needs: runsOn(old, SCHEDULE), output: runsOn(old.replace(/^ {4}needs: plan\n/m, ""), SCHEDULE) });
 ok("PF-8r nightly: the job builds the image, runs the drill's test, fails red with it and keeps the evidence as the run's artefact",
   /docker compose -f "\$S\/deploy\/compose\.test\.yml" build/.test(job) && /^ {10}st=0$/m.test(job) && /tests\/check_pf8r_restore\.ts > drill\.txt 2>&1 \|\| st=\$\?$/m.test(job) && /exit "\$st"/.test(job)
-  && /if: always\(\)\n\s+uses: actions\/upload-artifact@v4/.test(job) && /name: restore-drill-evidence/.test(job) && /path: .*\/var\/restore-drill\//.test(job));
+  && /if: always\(\)\n\s+uses: actions\/upload-artifact@[0-9a-f]{40} # v4\.\d+\.\d+/.test(job) && /name: restore-drill-evidence/.test(job) && /path: .*\/var\/restore-drill\//.test(job));
 const list = spawnSync("bash", [runSuites, "--list"], { encoding: "utf8" });
 const listed = (list.stdout ?? "").split("\n");
 ok("PF-8r nightly: run-suites.sh skips the docker-only suite (never in a PR, queue or nightly part) and still lists this one",
