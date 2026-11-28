@@ -27,7 +27,13 @@ const CORRECTIONS = JSON.parse(readFileSync(join(STUDIO, "samples", "review-corr
 const PY = join(ROOT, ".tools", "solution-1-prototype", ".venv", "bin", "python");
 for (const form of ["imm0008e", "imm1294e", "imm1295e", "imm5710e"]) {
   const file = join(PROTO, "p1", "inventory", `${form}.lists.json`);
-  if (!existsSync(PY)) { console.log(`WAIT  BK-26: ${form}.lists.json read again from the official file: the prototype's Python is not set up here`); continue; }
+  // LR-186: in CI (CI set; cloud-setup.sh makes the venv and stops there if it cannot) a missing venv is a FAIL, never a
+  // skip: the re-read is the only proof the lists file is current. In a session without the venv it stays a WAIT line.
+  if (!existsSync(PY)) {
+    if (process.env.CI) ok(`BK-26: ${form}.lists.json read again from the official file (CI must have the prototype's Python at ${PY})`, false, "no venv");
+    else console.log(`WAIT  BK-26: ${form}.lists.json read again from the official file: the prototype's Python is not set up here`);
+    continue;
+  }
   const again = execFileSync(PY, ["-I", "-c", `import importlib.util,sys;s=importlib.util.spec_from_file_location("x",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);sys.stdout.write(m.lists_json(m.dependent_lists(sys.argv[2])))`, join(PROTO, "p1", "xfa_inventory.py"), `${form}.pdf`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
   ok(`BK-26: ${form}.lists.json is what the official file's own script and datasets say (read again, same text)`, again === readFileSync(file, "utf8"));
 }
