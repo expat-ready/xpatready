@@ -22,7 +22,7 @@ GitHub requires one check, `ci`. The merge queue also needs `pr-rules` in every 
 | Check | What it asks | Where it is defined |
 |---|---|---|
 | `ci` | every suite your change can affect, and the push guard: no `sources/`, `code/`, `archive/`, PDFs, databases, logs, secrets or personal names | [`ci.yml`](.github/workflows/ci.yml), [`push-guard.sh`](ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/push-guard.sh), [`.githooks/pre-push`](.githooks/pre-push) |
-| `pr-rules` | the body has a **Done when** naming its test and a `Duplicate check:` line; the size rule above or a `Size exception: P-NNN` line; a readable `Completes: R1.n` line if it has one; a `STANDARDS §1:` line for a new package | [`pr-rules.yml`](.github/workflows/pr-rules.yml) |
+| `pr-rules` | the body has a **Done when** naming its test and a `Duplicate check:` line; the size rule above or a `Size exception: P-NNN` line; a readable `Completes: R1.n` line if it has one; a `STANDARDS §1:` line for a new package; no personal name in the title or body (AGENTS rule 5) | [`pr-rules.yml`](.github/workflows/pr-rules.yml) |
 | module cards | a changed module's card is updated, or the body says `Card unchanged: <reason>` | [`module-cards.yml`](.github/workflows/module-cards.yml) |
 | `queue-fresh` | an app PR is re-tested when `main` changed its files after its `ci` started | [`queue-gate.yml`](.github/workflows/queue-gate.yml) |
 

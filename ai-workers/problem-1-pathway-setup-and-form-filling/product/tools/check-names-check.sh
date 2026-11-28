@@ -25,5 +25,11 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/nc.XXXXXXXX"); trap 'rm -rf "${T:?}"' EXIT
 cp "$C" "$T/"; printf '#!/bin/bash\n# no pattern here\n' > "$T/push-guard.sh"
 out=$(printf 'x\n' | bash "$T/names-check.sh" 2>&1); r=$?
 ok "no NAMES_RE in push-guard.sh: fails closed, exit 2, never a pass" "$([ $r = 2 ] && grep -q 'fails closed' <<<"$out" && echo 1)" "exit $r: $out"
+printf '#!/bin/bash\nNAMES_RE='"'"'\\b(Unbalanced\\b'"'"'\n' > "$T/push-guard.sh"
+out=$(printf 'x\n' | bash "$T/names-check.sh" 2>&1); r=$?
+ok "a malformed NAMES_RE: fails closed, exit 2, never a pass (review I1)" "$([ $r = 2 ] && grep -q 'grep exit' <<<"$out" && echo 1)" "exit $r: $out"
+out=$(t "x
+$N and $N again, $N"); r=$?
+ok "several names on one line are reported as that line once" "$([ $r = 1 ] && grep -q '(line 2;' <<<"$out" && ! grep -q 'line 2, line 2' <<<"$out" && echo 1)" "exit $r: $out"
 ok "pr-rules runs names-check on the title and body of every PR, records too" "$(f="$TOOLS/../../../../.github/workflows/pr-rules.yml"; grep -qF 'run: printf '"'"'%s\n%s\n'"'"' "$TITLE" "$BODY" | bash "$T/names-check.sh"' "$f" && ! grep -B2 -F 'bash "$T/names-check.sh"' "$f" | grep -q "records != 'yes'" && echo 1)"
 finish

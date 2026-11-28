@@ -4,5 +4,6 @@ TESTS="$TESTS check-names-check.sh"
 MUT="$MUT"'
 LR155N refuse|product/tools/names-check.sh|s/^exit 1$/exit 0/|check-names-check.sh
 LR155N closed|product/tools/names-check.sh|s/(fails closed). Fix: restore the NAMES_RE=.\.\.\.. line in push-guard.sh."; exit 2; }/(fails closed). Fix: restore it."; exit 0; }/|check-names-check.sh
-LR155N case|product/tools/names-check.sh|s/grep -noiE/grep -noE/|check-names-check.sh
+LR155N case|product/tools/names-check.sh|s/grep -niE -e/grep -nE -e/|check-names-check.sh
+LR155N grep|product/tools/names-check.sh|s/^  \*) echo "Rule AGENTS-5: names-check could not run/  *) exit 0; echo "Rule AGENTS-5: names-check could not run/|check-names-check.sh
 LR155N wired|../../.github/workflows/pr-rules.yml|s/bash "$T\/names-check.sh"/true/|check-names-check.sh'
