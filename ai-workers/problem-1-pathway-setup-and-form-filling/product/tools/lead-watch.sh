@@ -56,6 +56,7 @@ if [ "$gfrc" = 1 ]; then ACT "github budget: ${gf#meter: }: a full check would n
   now=$(date +%s); stamp="$STATE_DIR/last-check"; rm -f "$GH_METER_START"
   echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"; exit $(( act + 1 )); fi   # +1: never the "only the constraint" exit 1
 [ "$gfrc" = 2 ] && say "github budget unknown: the full check runs (${gf#meter: })"
+fresh "github-meter.sh: the x-ratelimit headers of GET /rate_limit (free), now"
 
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.
 fr=$(python3 -I "$TOOLS/tools-fresh.py" 2>&1); grep -qE '^(tools  |ACT   tools)' <<<"$fr" || fr="ACT   tools: tools-fresh.py did not run ($(head -1 <<<"$fr"))"
