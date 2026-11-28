@@ -40,5 +40,5 @@ fi
 [ -n "$msg" ] || exit 0
 hits=$(printf '%s' "$msg" | judge)
 [ -n "$hits" ] || exit 0
-reason="P-771 (ENF-771): this message blames machines, runners or capacity with no measured number: ${hits//$'\n'/ | }. Measure before you claim it: tools/runs-waiting.py (runs waiting for a machine), the last batch's job created→started seconds (actions/runs/<id>/jobs), df -h, get_usage. Quote the number and its run id, or drop the claim. A machine shortage is rare here (Enterprise Cloud, 500 jobs); prove it twice before you say it."
+reason="Rule P-771: (ENF-771) this message blames machines, runners or capacity with no measured number: ${hits//$'\n'/ | }. Fix: measure before you claim it: tools/runs-waiting.py (runs waiting for a machine), the last batch's job created→started seconds (actions/runs/<id>/jobs), df -h, get_usage. Quote the number and its run id, or drop the claim. A machine shortage is rare here (Enterprise Cloud, 500 jobs); prove it twice before you say it."
 jq -nc --arg r "$reason" '{decision:"block",reason:$r}'

@@ -12,6 +12,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHA = "0123456789abcdef0123456789abcdef01234567"
+SHA2 = "fedcba9876543210fedcba9876543210fedcba98"
 
 
 def c(body, assoc="MEMBER", login="builder", typ="User", cid=1):
@@ -31,7 +32,7 @@ def run(comments):
 
 R1 = c("Reviewer: Changes\n\nMajor: the ETA ignores the cycle end.", cid=1)
 R2 = c("**Reviewer: Approve %s**\n\nRe-review read only the diff." % SHA, cid=2)
-R3 = c("Reviewer: Approve %s" % SHA, cid=3)
+R3 = c("Reviewer: Approve %s" % SHA2, cid=3)                      # a new head: a real third round
 
 
 class ReviewRounds(unittest.TestCase):
@@ -74,6 +75,48 @@ class ReviewRounds(unittest.TestCase):
     def test_one_comment_is_one_round(self):
         self.assertEqual(run([c("Reviewer: Changes\nReviewer: Changes\nReviewer: Approve x")])[0], 0)
 
+    # Lanes' "Ready for Lead read" status comments repeat the reviewer's verdict (#3506, #3819; Lead 12, 28 Nov).
+    def test_3819_ready_comments_repeating_an_approve_are_not_rounds(self):
+        a, b, p = "4b2d7ccbf318a11c5bf280bfb4f180f7f3bf6aec", "771fec06570e164af8a2b24b989132cef6e1821c", \
+            "759dab35482513d12bcbd5817849f2e152c353ef"
+        cs = [c("Reviewer: Approve %s\n\n* Blocker: fixed." % a, cid=1),
+              c("Independent review (fresh context): diff-only.\n\nReviewer: Approve %s\n\n* Scope: 5 files." % b, cid=2),
+              c("Ready for Lead read %s\n\n**Checks:** green.\n\n**Reviewer:** Approve %s (fresh Opus, diff-only)."
+                % (b, b), cid=3),
+              c("Reviewer: Approve %s\n\n1. Diff scope: 1 file." % p, cid=4),
+              c("Lead allows round 3: the diff-only re-review of the pin commit.", assoc="OWNER", login="lead"),
+              c("Ready for Lead read %s\n\n**Checks:** 24/0.\n\n**Reviewer:** Approve %s" % (p, p[:9]), cid=5)]
+        rc, out = run(cs)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("OK: 3 reviewer round(s), limit 3", out)
+
+    def test_3506_ready_comment_after_changes_and_reapprove(self):
+        shas = ["672da5809b5925113a65e5d434ee7b627b9dba5e", "986e4137e2af1993e59a94284bd5415d8759f270"]
+        last = "75aa210069b87ca6d20be120b248af0a3f4d9cd7"
+        cs = [c("Reviewer: Approve %s\n\nFresh Opus reviewer." % s, cid=i) for i, s in enumerate(shas)]
+        cs += [c("Lead allows round 4: merge-of-main checks only.", assoc="OWNER", login="lead"),
+               c("Reviewer: Changes requested\n\n* git diff: only the PR's files.", cid=7),
+               c("Reviewer: Approve %s" % last, cid=8),
+               c("Ready for Lead read %s\n\n**Reviewer:** Approve %s" % (last, last), cid=9)]
+        rc, out = run(cs)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("OK: 4 reviewer round(s), limit 4", out)
+        self.assertEqual(run(cs[:2] + cs[3:])[0], 1)             # without the allowance, round 4 is still refused
+
+    def test_repeats_still_count_when_they_are_real_rounds(self):
+        a = "a" * 40
+        self.assertEqual(run([c("Reviewer: Approve %s" % a), c("Ready for Lead read\nReviewer: Approve %s" % a)])[0], 0)
+        self.assertIn("1 reviewer round(s)", run([c("Reviewer: Approve %s" % a), c("Reviewer: Approve %s" % a[:7])])[1])
+        new = run([c("Reviewer: Approve %s" % a), c("Reviewer: Approve %s" % ("b" * 40)), c("Reviewer: Approve")])
+        self.assertIn("REFUSED: 3 reviewer rounds", new[1])         # a new SHA, or no SHA, is a new round
+        back = run([c("Reviewer: Approve %s" % a), c("Reviewer: Changes"), c("Reviewer: Approve %s" % a)])
+        self.assertIn("REFUSED: 3 reviewer rounds", back[1])        # re-approving after Changes is a round
+        out = run([c("Reviewer: Approve %s" % a), c("Reviewer: Approve %s" % a, assoc="NONE", login="stranger"),
+                   c("Reviewer: Approve %s" % ("c" * 40))])[1]
+        self.assertIn("2 reviewer round(s)", out)                 # outsiders neither count nor seed a SHA
+        mixed = run([c("Reviewer: Approve %s" % a), c("Reviewer: Approve %s\nReviewer: Changes" % a)])[1]
+        self.assertIn("2 reviewer round(s)", mixed)
+
     def ci(self, comments, labels=()):
         """--pr N --status against a stand-in curl: returns (exit, output, statuses posted)."""
         d = tempfile.mkdtemp()
@@ -91,7 +134,10 @@ class ReviewRounds(unittest.TestCase):
         env = dict(os.environ, PATH=d + ":" + os.environ["PATH"], FX=d, GH_TOKEN="x", REPO="o/r")
         r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "review-rounds.py"), "--pr", "7", "--status"],
                            capture_output=True, text=True, env=env)
-        log = open(os.path.join(d, "log")).read() if os.path.exists(os.path.join(d, "log")) else ""
+        log = ""
+        if os.path.exists(os.path.join(d, "log")):
+            with open(os.path.join(d, "log")) as f:
+                log = f.read()
         return r.returncode, r.stdout, log
 
     def test_ci_sets_the_status_on_the_head(self):

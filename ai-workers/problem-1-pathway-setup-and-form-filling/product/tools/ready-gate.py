@@ -89,7 +89,7 @@ def leading(title):
 def jrow_parts():
     """{item: {part ids}} from each J-row's "Parts it joins:" line in BACKLOG*.md."""
     m = {}
-    for f in sorted(glob.glob(os.path.join(BACKLOG_DIR, "BACKLOG*.md"))):
+    for f in sorted(glob.glob(os.path.join(BACKLOG_DIR, "BACKLOG*.md"))) + sorted(glob.glob(os.path.join(BACKLOG_DIR, "history", "BACKLOG-done-*.md"))):   # LR-091
         for l in open(f, encoding="utf-8").read().split("\n"):
             c = l.split("|")
             if len(c) < 5 or not re.fullmatch(r"J-[0-9]+", c[1].strip()):

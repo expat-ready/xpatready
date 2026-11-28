@@ -31,7 +31,10 @@ be reached from the cloud container on 27 Nov, so the Lead re-checks the wording
   deploy job                      demo-update.yml runs on main in the window: success / failure / cancelled (a cancelled
                                   run was superseded by a newer merge).
 Usage: python3 -I product/tools/measures.py [--days 7] [--until <ISO time>] [--ref origin/main] [--no-github] [--line]
+                                           [--usage-root ~/.claude/projects]
   --line prints one tab-separated line (the daily line for the job summary or a log); default is a readable block.
+  --usage-root (LR-128; the Lead's daily line on the Mac, where the transcripts are): adds one field, tokens by skill and
+  by subagent over the window (usage-by.py). Without it the output is as before (CI has no transcripts).
 History: fetch main deep enough (git fetch --shallow-since=<window start minus 30 days> origin main, or fetch-depth 0).
 Test: test_measures.py (no network)."""
 import argparse, importlib.util, json, os, re, statistics, subprocess, sys
@@ -183,6 +186,7 @@ def main():
     a = argparse.ArgumentParser()
     a.add_argument("--days", type=float, default=7); a.add_argument("--until"); a.add_argument("--ref", default="origin/main")
     a.add_argument("--repo", default=ROOT); a.add_argument("--no-github", action="store_true"); a.add_argument("--line", action="store_true")
+    a.add_argument("--usage-root", help="Claude Code's transcripts folder: add tokens by skill and subagent (LR-128)")
     o = a.parse_args()
     until = (datetime.fromisoformat(o.until) if o.until else datetime.now(timezone.utc)).astimezone(timezone.utc)
     since = until - timedelta(days=o.days)
@@ -213,6 +217,11 @@ def main():
             runs = str(e)[:120]
     r = compute(ms, hist, usage, since, until, runs)
     d = r["days"]
+    by = None
+    if o.usage_root:
+        _s = importlib.util.spec_from_file_location("usage_by", os.path.join(HERE, "usage-by.py"))
+        ub = importlib.util.module_from_spec(_s); _s.loader.exec_module(ub)
+        by = ub.line(os.path.expanduser(o.usage_root), since, until)
     if o.line:
         print("\t".join([until.astimezone(fm.IST).strftime("%Y-%m-%d %H:%M IST"), f"{d:g}d",
                          f"deploys {r['deploys']} ({fmt(r['deploy_freq'], '/day')}), app {r['app_deploys']} ({fmt(r['app_freq'], '/day')})",
@@ -221,7 +230,7 @@ def main():
                          f"recovery median {fmt(r['recovery_median_h'], ' h')} (n {r['recovery_n']}, open {len(r['open_fails'])})",
                          f"rework rate {fmt(None if r['rework'] is None else 100 * r['rework'], '%', 0)} ({r['rework_n']}/{r['deploys']})",
                          f"newly Works {r['newly_works']} ({r['newly_works'] / d:.1f}/day), net {r['works_net']:+d}, {r['works_now']}/{r['rows']}",
-                         f"tokens {r['tokens']}", f"deploy job {r['deploy_job']}"]))
+                         f"tokens {r['tokens']}", f"deploy job {r['deploy_job']}"] + ([by] if by else [])))
         return
     ist = lambda t: t.astimezone(fm.IST).strftime("%d %b %H:%M IST")
     print(f"Measures, {ist(since)} → {ist(until)} ({d:g} days), main {git(o.repo, 'rev-parse', '--short=9', o.ref).strip()}")
@@ -235,6 +244,8 @@ def main():
     print(f"  works                    {r['newly_works']} newly Works ({r['newly_works'] / d:.1f}/day; target 10/day), net {r['works_net']:+d}, now {r['works_now']} of {r['rows']}")
     print(f"  tokens per capability    {r['tokens']}")
     print(f"  deploy job               demo-update.yml on main: {r['deploy_job']}")
+    if by:
+        print(f"  usage by skill/subagent  {by}")
 
 
 def _origin(repo):
