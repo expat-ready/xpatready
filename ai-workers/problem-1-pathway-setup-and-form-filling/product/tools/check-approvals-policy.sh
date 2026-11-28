@@ -13,6 +13,8 @@
 #       rule `mode`; a "!" item takes the path out) and is strict: claude comments or blocks, and approves only through
 #       an override whose `if` is exactly "claude/code_review = pass". Each protected path must exist in the checkout.
 #   A6  verdict and override keys and values are the documented ones (claude: approves|comments|blocks).
+#   A8  every studio API file that declares a no-sign-in route (@OpenRead, @StaffSignIn, @SystemSignIn, or a controller
+#       under api/public) is covered strictly as in A5: found from the code at each run, so a new door fails here.
 #   Patterns with {a,b} or [ab] are refused (this check does not read them, so it cannot vouch for them).
 # First proves on fixtures that each rule fails when broken, then checks this checkout. Runs in ci (the tools step).
 #   bash product/tools/check-approvals-policy.sh [repo-root]
@@ -40,6 +42,18 @@ SAMPLE = {f"{S}/prisma/migrations/20990101000000_x/migration.sql"}
 VERDICT = {"claude", "seats", "max_age"}
 OVERRIDE = {"if", "verdict", "reuse", "findings", "purpose", "use"}
 GATE = "claude/code_review = pass"
+DOOR = re.compile(r'@(?:OpenRead|StaffSignIn|SystemSignIn)\(|@Controller\(\s*["\']api/public')
+def doors(root):
+    """Studio API files declaring a no-sign-in route, read from the code (None when the folder is missing)."""
+    api = os.path.join(root, S, "api", "src")
+    if not os.path.isdir(api): return None
+    out = []
+    for d, _, files in os.walk(api):
+        for n in files:
+            if n.endswith(".ts") and not n.endswith(".d.ts"):
+                p = os.path.join(d, n)
+                if DOOR.search(open(p, encoding="utf-8", errors="replace").read()): out.append(os.path.relpath(p, root))
+    return sorted(out)
 
 def rx(g):
     out, i = "", 0
@@ -98,6 +112,12 @@ def check(p):
             errs.append(f"A5 {path} is not in this checkout: the protected list (check-approvals-policy.sh) is stale"); continue
         if not any(covers(r, path) and strict(r) for r in rules if isinstance(r, dict)):
             errs.append(f"A5 {path}: no rule gives it a strict verdict (comments, approves only after claude/code_review)")
+    found = doors(ROOT)
+    if found is None: errs.append(f"A8 {S}/api/src is missing: no-sign-in doors could not be read")
+    elif not found: errs.append("A8 no file declares a no-sign-in route: the door pattern no longer matches the code")
+    for path in found or []:
+        if not any(covers(r, path) and strict(r) for r in rules if isinstance(r, dict)):
+            errs.append(f"A8 {path} declares a no-sign-in route and no rule gives it a strict verdict")
     return errs
 
 root = ROOT = sys.argv[1]
@@ -125,6 +145,7 @@ fixtures = [
     ("an override on a failed review", m(lambda p: risky(p)[0]["override"][0].update({"if": "claude/code_review != pass"})), "A5"),
     ("a misspelt verdict", m(lambda p: p["rules"][0]["verdict"].update(claude="aproves")), "A6"),
     ("a brace pattern", m(lambda p: risky(p)[0]["paths"].append("**/{a,b}.ts")), "A0"),
+    ("the no-sign-in doors rule removed", m(lambda p: p.update(rules=[r for r in p["rules"] if not r["purpose"].startswith("No-sign-in doors")])), "A8"),
 ]
 bad = 0
 for name, p, want in fixtures:
@@ -132,5 +153,5 @@ for name, p, want in fixtures:
     ok = want in got
     print(("ok    " if ok else "FAIL  ") + f"fixture: {name} -> {got or 'clean'}"); bad += not ok
 if bad: print(f"FAIL  {bad} self-test fixture(s): the check cannot be trusted"); sys.exit(1)
-print(f"PASS  {F}: observe mode, a catch-all rule, no seat for people, Code Review only on risky rules, {len(PROTECTED)} protected paths strict")
+print(f"PASS  {F}: observe mode, a catch-all rule, no seat for people, Code Review only on risky rules, {len(PROTECTED)} protected paths and {len(doors(ROOT))} no-sign-in door files strict")
 PY

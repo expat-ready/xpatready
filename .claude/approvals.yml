@@ -109,6 +109,28 @@ rules:
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
 
+  - purpose: "No-sign-in doors (a route a person reaches signed out: public pages, sign-in, links, sign-up, health) and the logic behind them: Claude approves only after Code Review passes. check-approvals-policy.sh A8 finds every file that declares such a route and fails until a strict rule covers it."
+    paths:
+      - "**/front-office/booking/consultation-agreement/**"
+      - "**/front-office/booking/tokens.ts"
+      - "**/front-office/sales/embed.ts"
+      - "**/front-office/signing/door*"
+      - "**/front-office/signing/fake-page.ts"
+      - "**/platform/branding/routes.ts"
+      - "**/platform/firms/routes.ts"
+      - "**/platform/firms/signup*"
+      - "**/platform/messages/demo-inbox.ts"
+      - "**/*unsubscribe*"
+      - "**/platform/web-address/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/health.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/screen02.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-*.ts"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
   - purpose: "The pipeline, deploy and the rules agents follow (workflows, merge queue, hooks and the scripts they run, guards, review rules): Claude approves only after Code Review passes; no PR loosens its own judge."
     paths:
       - ".github/**"
