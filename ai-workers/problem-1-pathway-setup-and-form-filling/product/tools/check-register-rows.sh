@@ -24,6 +24,8 @@ reg "$(row LR-001 DROP 'exists elsewhere:' Intended)"; chk
 ok "\"exists elsewhere:\" with nothing after it still fails" "$([ $r = 1 ] && echo 1)" "rc=$r $out"
 reg "$(row LR-002 'DEFERRED (trigger:)' 'later' Intended)"; chk
 ok "\"trigger:\" with nothing after it still fails" "$([ $r = 1 ] && echo 1)" "rc=$r $out"
+reg "$(row LR-001 'DROP (exists elsewhere: LR-072)' x Intended)" "<<<<<<< HEAD" "$(row LR-009 DO x Intended)" "=======" ">>>>>>> main"; chk
+ok "a register with merge conflict markers fails, naming each marker's line" "$([ $r = 1 ] && [ "$(grep -c 'merge conflict marker' <<<"$out")" = 3 ] && echo 1)" "rc=$r $out"
 # DEFERRED
 reg "$(row LR-002 DEFERRED 'later' Intended)"; chk
 ok "a DEFERRED row naming no trigger fails" "$([ $r = 1 ] && grep -q '^FAIL  LR-002: DEFERRED names no trigger' <<<"$out" && echo 1)" "rc=$r $out"

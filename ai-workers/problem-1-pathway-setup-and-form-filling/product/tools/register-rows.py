@@ -58,7 +58,8 @@ def dates(cells):
 
 
 def check(t):
-    bad = []
+    bad = [f"FAIL  line {i}: a merge conflict marker is left in the register (LR-173)"
+           for i, l in enumerate(t.split("\n"), 1) if re.match(r"^(<{7}|={7}|>{7})( |$)", l)]
     for rid, verdict, reason, notes in rows(t):
         cells = (verdict, reason, notes)   # each cell on its own: a marker never borrows the next cell's words
         if verdict.startswith("DROP") and not any(HOME.search(x) for x in cells):
@@ -102,7 +103,7 @@ def main(argv):
     if mode == "lines":
         b = check(t)
         if b:
-            ids = [x.split()[1].rstrip(":") for x in b]
+            ids = [" ".join(x.split()[1:3]).rstrip(":") if x.split()[1] == "line" else x.split()[1].rstrip(":") for x in b]
             print(f"ACT   register rows: {len(b)} DROP/DEFERRED row(s) without a home or trigger: {', '.join(ids)} (register-rows.py check; LR-173)")
         for x in due(t, today): print(x)
         return 0
