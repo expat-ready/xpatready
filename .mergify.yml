@@ -464,7 +464,7 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
-      # LR-181: as records (a verdict PR is a records PR): pr-rules passes it with the rule steps skipped.
+      # LR-181: as records (a verdict PR is a records PR): pr-rules skips its body and size rules; the always-on steps hold it when red.
       - check-success = pr-rules
       - label = records
       - "title ~= ^qa:"
@@ -572,8 +572,9 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
-      # LR-181: pr-rules gates records too. A records-only PR passes it with its rule steps skipped (pr-rules.yml,
-      # records-only.sh on the file list), so this holds only a PR whose pr-rules run is red or missing.
+      # LR-181: pr-rules gates records too. A records-only PR skips its body and size rules (pr-rules.yml, records-only.sh
+      # on the file list); the always-on steps (LR-156 stale base, the model rule, clean-up, comment filter, waves, deps line)
+      # still run, so a stale or otherwise red records PR is held.
       - check-success = pr-rules
       - label = records
     merge_conditions:
