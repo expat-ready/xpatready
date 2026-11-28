@@ -2,7 +2,7 @@
 
 current_lead: local_20a76d0f-c047-4dfa-aee7-38e1522df78c Lead 12 · 28 Nov 10:20 IST (after Lead 11 local_574cc0be at ~190k beyond start, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-28 11:20 IST (clock): **Lead 12 current since 10:21 (took over from Lead 11, P-446). Lab 🔴 Built 57/146, Proven 41/146 (after #4025).** Lead 11's updated line and hand-over block word for word: `history/STATE-2026-11-28-1120-lead12-lead11-handover-block.md`.
+updated: 2026-11-28 12:42 IST (clock): **Lead 12 current since 10:21. Lab 🔴 Built 58/147, Proven 41/147; A453: five lab lanes started 12:4x.** Lead 11's updated line and hand-over block word for word: `history/STATE-2026-11-28-1120-lead12-lead11-handover-block.md`.
 
 ## Now (Lead 12, 11:20 IST 28 Nov)
 **A453 (founder, 12:4x IST 28 Nov, word for word):** "Are we properly managing? Did you log it into Claude.ai and made everything functional and everything working as expected? Can we fast track further because are we on progress on tip? You have to tell me, and we have to catch up and meet our plan this time. And don't do stuff blindly or assume thing or from the stale copy, right? Let's build it for best in class factory."
