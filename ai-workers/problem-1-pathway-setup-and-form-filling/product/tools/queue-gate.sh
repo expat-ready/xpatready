@@ -64,7 +64,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
 H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m" "$H.hard" "$H.soft" "$H.fj" "$H".k.*' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
-api() { curl -sS --fail-with-body -H @"$H" "$@"; }
+api() { curl -sSL --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
   while [ "$p" -le 30 ]; do one=$(api "$API/$1${sep}per_page=100&page=$p") || return 1
     all=$(jq -s '.[0] + .[1]' <(echo "$all") <(echo "$one")); [ "$(echo "$one" | jq length)" -lt 100 ] && break; p=$((p + 1))

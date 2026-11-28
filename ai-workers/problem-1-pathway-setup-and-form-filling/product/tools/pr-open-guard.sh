@@ -15,7 +15,7 @@ REPO="${REPO:-$(git remote get-url "${2:-origin}" 2>/dev/null | sed -E 's#^.*git
 H=$(mktemp "${TMPDIR:-/tmp}/prog.XXXXXXXX"); trap 'rm -f "$H"' EXIT; chmod 600 "$H"
 tok="${GH_TOKEN:-$(gh auth token 2>/dev/null)}"; echo 'Accept: application/vnd.github+json' > "$H"
 [ -n "$tok" ] && echo "Authorization: Bearer $tok" >> "$H"
-prs=$(curl -fsS --max-time 10 -H @"$H" "$API/repos/$REPO/pulls?state=all&per_page=30&head=${REPO%%/*}:$b" 2>/dev/null) \
+prs=$(curl -fsSL --max-time 10 -H @"$H" "$API/repos/$REPO/pulls?state=all&per_page=30&head=${REPO%%/*}:$b" 2>/dev/null) \
   && echo "$prs" | jq -e 'type == "array"' >/dev/null 2>&1 || { echo "warn  pr-open-guard: GitHub unreadable, $b not checked"; exit 0; }
 echo "$prs" | jq -e 'length == 0 or any(.[]; .state == "open")' >/dev/null && exit 0
 echo "Push to $b refused (P-611, G-4 (1)): its PR is no longer open ($(echo "$prs" | jq -r '[.[] | "#\(.number) \(if .merged_at then "merged" else "closed" end)"] | join(", ")')). Start a new branch from origin/main for new work."

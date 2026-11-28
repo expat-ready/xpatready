@@ -146,7 +146,7 @@ function postComment(n, body, tok, repo, api) {
   try {
     writeFileSync(f, JSON.stringify({ body }));
     // Short limits (review m4): up to 6 PRs of a batch must fit the job's time.
-    execFileSync("curl", ["-fsS", "--retry", "1", "--max-time", "8", "-o", "/dev/null", "-X", "POST", "-H", "@-", "-H", "Accept: application/vnd.github+json",
+    execFileSync("curl", ["-fsSL", "--retry", "1", "--max-time", "8", "-o", "/dev/null", "-X", "POST", "-H", "@-", "-H", "Accept: application/vnd.github+json",
       "--data-binary", `@${f}`, `${api}/repos/${repo}/issues/${n}/comments`], { timeout: 25e3, input: `Authorization: Bearer ${tok}\n` });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }

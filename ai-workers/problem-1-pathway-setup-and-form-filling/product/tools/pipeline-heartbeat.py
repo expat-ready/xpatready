@@ -84,7 +84,7 @@ def curl(args, what):
     tok = os.environ.get("GITHUB_TOKEN")
     if not tok:
         raise RuntimeError("GITHUB_TOKEN not set")
-    cmd = ["curl", "-sS", "--fail-with-body", "--max-time", "25", "-H", "@-", "-H", "X-GitHub-Api-Version: 2022-11-28"]
+    cmd = ["curl", "-sSL", "--fail-with-body", "--max-time", "25", "-H", "@-", "-H", "X-GitHub-Api-Version: 2022-11-28"]
     for attempt in (1, 2):
         r = subprocess.run(cmd + args, input=f"Authorization: Bearer {tok}\n", capture_output=True, text=True)
         if r.returncode == 0:

@@ -73,6 +73,15 @@ for l in "RULES REGISTER: git could not list this copy's files, so no enforcer f
 done
 unreg
 # 3. Nothing to compare with: every line still blocks (fail closed).
+# OS-29 (P-557, LR-046): push before stop. An unpushed commit is a note, never a block; a branch with no upstream does not crash.
+lane runtime/unpushed; git -C "$C" config branch.runtime/unpushed.remote .; git -C "$C" config branch.runtime/unpushed.merge refs/remotes/origin/main
+echo 'export const os29a = 1;' > "$C/$APPREL/web/src/os29a.ts"; git -C "$C" add -A; git -C "$C" commit -qm unpushed; stop
+ok "OS-29: an unpushed commit gives the note, not a block" "$([ "$blocked" = none ] && jq -r '.systemMessage // ""' <<< "$out" | grep -q '1 unpushed commit(s) on runtime/unpushed' && echo 1)" "$out"
+lane runtime/noupstream; echo 'export const os29b = 1;' > "$C/$APPREL/web/src/os29b.ts"; git -C "$C" add -A; git -C "$C" commit -qm none
+out=$(printf '{"cwd":"%s"}' "$C" | bash "$P/tools/stop-check.sh" 2>/dev/null); rc=$?
+ok "OS-29: a branch with no upstream stops without a crash (exit 0, no unpushed note)" "$([ $rc = 0 ] && ! grep -q unpushed <<< "$out" && echo 1)" "exit $rc $out"
+cp "$TOOLS/hook-fail-closed.sh" "$TOOLS/hook-fail-closed.py" "$P/tools/"; printf '{"cwd":"%s"}' "$C" | bash "$P/tools/hook-fail-closed.sh" 50 stop-check.sh >/dev/null 2>&1
+ok "OS-29: ... and so does the fail-closed wrapper around it (exit 0)" "$([ $? = 0 ] && echo 1)"
 lane screens/app2; echo 'export const a = 3;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app
 git -C "$C" update-ref -d refs/remotes/origin/main; git -C "$C" branch -q -m main old-main 2>/dev/null; stop
 ok "with no origin/main to compare with, the Lead's records lines still block" \

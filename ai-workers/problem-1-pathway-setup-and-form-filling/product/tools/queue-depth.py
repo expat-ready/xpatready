@@ -35,7 +35,7 @@ def token():
 def get(url):
     with tempfile.NamedTemporaryFile("w") as a:
         a.write("Authorization: Bearer " + token() + "\n"); a.flush()   # in a file, not on the command line
-        r = subprocess.run(["curl", "-sS", "--fail-with-body", "--max-time", "30", "-H", "@" + a.name,
+        r = subprocess.run(["curl", "-sSL", "--fail-with-body", "--max-time", "30", "-H", "@" + a.name,
                             "-H", "Accept: application/vnd.github+json", url], capture_output=True, text=True)
     if r.returncode != 0:
         raise Unreadable("GET %s failed: %s %s" % (url, r.stderr.strip()[:120], r.stdout.strip()[:120]))

@@ -104,7 +104,7 @@ class GitHub:
     def get(self, path):
         if self.down:
             raise OSError(self.down)
-        r = subprocess.run(["curl", "-s", "--max-time", "20", "-H", "Authorization: Bearer " + self.token,
+        r = subprocess.run(["curl", "-sL", "--max-time", "20", "-H", "Authorization: Bearer " + self.token,
                             "-H", "Accept: application/vnd.github+json", "https://api.github.com/repos/%s/%s" % (REPO, path)],
                            capture_output=True, text=True)
         if r.returncode != 0:

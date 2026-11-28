@@ -77,7 +77,11 @@
       "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__update_file",
       "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__copy_file",
       "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__trash_file",
-      "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__share_file"
+      "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__share_file",
+      "Bash(*curl *-X P*api.github.com*)",
+      "Bash(*curl *api.github.com*-X P*)",
+      "Bash(*curl *-X DELETE*api.github.com*)",
+      "Bash(*curl *api.github.com*-X DELETE*)"
     ],
     "allow": [
       "Bash(gh pr edit * --add-label \"review: approved\")",
@@ -104,22 +108,33 @@
           {
             "type": "command",
             "if": "Bash(gh pr merge*)",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
-            "timeout": 15,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 merge-guard.sh",
+            "timeout": 20,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(gh pr close*)",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
-            "timeout": 15,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 merge-guard.sh",
+            "timeout": 20,
             "onFailure": "block"
           },
           {
             "type": "command",
             "if": "Bash(gh pr review*)",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
-            "timeout": 15,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 merge-guard.sh",
+            "timeout": 20,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 10 github-write-guard.py",
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -129,8 +144,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane-preflight.sh --hook",
-            "timeout": 15,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 lane-preflight.sh --hook",
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -140,8 +155,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/agent-model-guard.sh --hook",
-            "timeout": 15,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 agent-model-guard.sh --hook",
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -151,8 +166,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-check-guard.sh",
-            "timeout": 15,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 12 lead-check-guard.sh",
+            "timeout": 20,
             "onFailure": "block"
           }
         ]
@@ -163,13 +178,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/stop-check.sh",
-            "timeout": 20
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 50 stop-check.sh",
+            "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-check-guard.sh",
-            "timeout": 15
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/hook-fail-closed.sh 50 lead-check-guard.sh",
+            "timeout": 60
           }
         ]
       }
