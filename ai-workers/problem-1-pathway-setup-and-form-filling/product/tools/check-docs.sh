@@ -15,6 +15,12 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
 {
   check 100 10 "$ROOT"/.claude/skills/*/SKILL.md "$ROOT"/.claude/agents/*.md
   check 60 0 "$ROOT/CLAUDE.md" "$ROOT/AGENTS.md"
+  # LR-152: a rule file under .claude/rules/ loads only for its paths (never at every start), each pattern still matches a
+  # file, and a register row copied into conventions/ is word for word in RULES.md; the check proves itself first.
+  if [ -f "$PH/tools/path-rules.py" ]; then
+    python3 -I "$PH/tools/path-rules.py" --self-test >/dev/null 2>&1 || echo "PATH RULES: path-rules.py --self-test fails: the check itself is broken"
+    python3 -I "$PH/tools/path-rules.py" "$ROOT"
+  fi
   # STATE.md (or else the newest origin/lead/* branch's) names the current Lead on exactly one line, so every lane can
   # find whom to report to (founder, 6 Nov ~03:00 IST: "a hard rule and it never messes up"; tools/current-lead.sh reads it; test: check-current-lead.sh).
   # Since PS-1b the line lives in CURRENT-LEAD.md (public: lanes read it when STATE.md is private); when that file is
