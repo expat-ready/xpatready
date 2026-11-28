@@ -59,5 +59,12 @@ A="AKIA""ABCDEFGHIJKLMNOP"
 s1 "S1 fail: an all-capitals key with no underscore (an AWS key ID) under the key is refused" "  secret: $A," refused
 s1 "S1 fail: a constant on the line does not hide a real secret after it" "  $K: $C, secret: $V" refused
 
+# LR-174: any .pem (the org App's private key belongs outside the repository) is refused by path, whatever its contents
+# (here plain text, so only the path rule can refuse it); a .md beside it is admitted.
+printf 'not a key, only a name\n' > "$SRC"
+v=$(verdict "$(printf '%s\t%s\n' "config/expat-ready-lead.private-key.pem" "$SRC")"); ok "LR-174 fail: a .pem file is refused" "$([ "$v" = refused ] && echo 0 || echo 1)" "$v"
+v=$(verdict "$(printf '%s\t%s\n' "config/KEY.PEM" "$SRC")"); ok "LR-174 fail: a .PEM in capitals is refused" "$([ "$v" = refused ] && echo 0 || echo 1)" "$v"
+v=$(verdict "$(printf '%s\t%s\n' "config/pem-notes.md" "$SRC")"); ok "LR-174 pass: a file that only names pem is admitted" "$([ "$v" = clean ] && echo 0 || echo 1)" "$v"
+
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

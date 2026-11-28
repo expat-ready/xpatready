@@ -45,5 +45,7 @@ if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md";
 else w="product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository)"; cl=$(grep -m1 '^current_lead:' "$PH/CURRENT-LEAD.md" 2>/dev/null | cut -c1-240); fi
 page="Start read (P-545): product/RULES.md and $w (\"Start here\"), then your own backlog row. Not pasted here (LR-052: session start under 1.5 KB)."
 [ -n "$cl" ] && page="$page"$'\n'"$cl"
-ctx=$([ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
+# LR-174 (founder A455): every session knows the GitHub budget (5,000/h on the user token; one full lead-watch ~2,650).
+ghl="GitHub budget (LR-174): read product/rules/github-limits.md before any loop of GitHub calls (user token: 5,000/h, shared)."
+ctx=$([ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; echo "$ghl"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
