@@ -159,7 +159,7 @@ jobs:
           HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
         run: |
           set -o pipefail
-          gh api --paginate "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | .body | @json' \
+          gh api --paginate "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | (.body // "") | @json' \
             | python3 -I "$T/ready-approve.py" --head "$HEAD_SHA"
   # ENF-782a part 1 (P-782 (2), founder 21 Nov): a PR saying "Completes: R1.n" fails unless every part listed for R1.n
   # (its focus-list.md line, its J-row's "Parts it joins:", its CAPABILITIES.md packs and suites) has merged on main or

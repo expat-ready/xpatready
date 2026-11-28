@@ -44,5 +44,6 @@ EOF
 chmod +x "$T/bin/gh"; js "Reviewer: Approve $H" > "$T/c.jsonl"
 st() { o=$(cd "$ROOTD" && PATH="$T/bin:$PATH" CJ="$T/c.jsonl" DOWN="${1:-}" T="$TOOLS" HEAD_SHA="$H" bash -c "$S" 2>&1); r=$?; }
 st; ok "(6) the step passes an approved head" "$([ $r = 0 ] && grep -q 'APPROVE OK' <<<"$o" && echo 1)" "exit $r: $o"
+grep -F -A12 -- "- name: $PAT" "$W" | grep -qF -- "--jq '.[] | (.body // \"\") | @json'"; ok "(6) a comment with a null body is read as empty text, not a failure" "$([ $? = 0 ] && echo 1)"
 st down; ok "(6) a failed comment read fails the step (LR-043)" "$([ $r != 0 ] && echo 1)" "exit $r: $o"
 finish
