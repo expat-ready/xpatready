@@ -1,5 +1,5 @@
 // PF-4b (contracts §1.2, §7): staff reads, web session, invitation acceptance. The provider's admin side follows
-// PLATFORM_IDENTITY: local → the stand-in; otherwise the Cognito admin adapter (it refuses, saying why, until PF-4bc).
+// PLATFORM_IDENTITY: local → the stand-in; otherwise the Cognito admin adapter (PF-4bc; 503 when no pool is configured).
 // PF-19r: MAIL_PORT is the app's MailPort over MessagePort (MESSAGES_MAIL, features/platform-messages.ts), so the
 // invitation and the two-step reset notice get the one layout, the firm's sender name, the consent gate and the daily cap.
 import type { Feature } from "../features.ts";

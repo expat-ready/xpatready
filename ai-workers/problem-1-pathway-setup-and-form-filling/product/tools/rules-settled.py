@@ -17,7 +17,7 @@ KINDS = [
 ]
 HEAD = re.compile(r"^[\s>*_-]*Rules settled[*_]*\s*:[*_]*\s*(.*)$", re.I)
 CITE = re.compile(r"(?<![\w-])(?:P|QA|A)-\d{1,4}\b|(?<![\w-])A[1-9]\d{2}\b|(?<![\w-])[A-Z]{2,3}-\d+[A-Z]?-\d+@[0-9a-f]{7,40}\b|domain/requirements-\S+/\S+|https://([a-z0-9-]+\.)*(canada\.ca|gc\.ca)/\S+")
-FIELD = re.compile(r"(?i)^[\s*_]*(before and after|on the demo|checks and results|plan|done when|duplicate check|items?|completes|size exception|cost|sources?( checked)?|touches|why|what|kind|tests?|risk|model|standards §1|questions? for the founder)\b[^:\n]{0,40}:")
+FIELD = re.compile(r"(?i)^[\s*_]*(before and after|on the demo|checks and results|plan|done when|duplicate check|items?|completes|size exception|cost|sources?( checked)?|touches|why|what|kind|tests?|risk|how to revert|explainer|model|standards §1|questions? for the founder)\b[^:\n]{0,40}:")
 BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
 
@@ -86,10 +86,11 @@ def main():
             print(f"ok    rules settled: {what}, {len(r)} rules, each naming a decision or requirement")
 
 
-try:
-    main()
-except SystemExit:
-    raise
-except Exception as e:
-    print(f"::warning title=Rules settled (A348)::not checked ({type(e).__name__}: {str(e)[:120]})")
-    sys.exit(2)
+if __name__ == "__main__":   # explainer-check.py imports KINDS (LR-141)
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"::warning title=Rules settled (A348)::not checked ({type(e).__name__}: {str(e)[:120]})")
+        sys.exit(2)

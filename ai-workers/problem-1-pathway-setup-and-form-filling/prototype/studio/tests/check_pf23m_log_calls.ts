@@ -39,7 +39,9 @@ export const leaks = (raw: string) => { const line = raw.replace(CODES, "CODE");
  *  logger's own module. Each is named in the PR; anything new is a failure. */
 const EXCEPT: { file: string; has: string }[] = [
   { file: "case-clients/prospect-won.ts", has: "console.log(JSON.stringify({ error: String(e)" },
-  { file: "front-office/firm-seed.ts", has: "console.log(JSON.stringify({ error: String(e)" },
+  // LR-058: the seed command's stdout answer names the database's own words through seedError (Prisma 7.10's message
+  // buries them); still a one-shot command's answer to its caller, so still listed here.
+  { file: "front-office/firm-seed.ts", has: "console.log(JSON.stringify({ error: seedError(e" },
   { file: "platform/web-address/firm-created.ts", has: "console.log(JSON.stringify({ error: String(e)" },
   // Not a leak: d.why is one of three fixed sentences (sample-seed.ts 19-21); the file is open PR #2001's, left as it is.
   { file: "platform/identity/sample-seed.ts", has: "console.warn(`platform: Sample seed ${d.why}`)" },

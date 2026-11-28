@@ -4,7 +4,7 @@
 # reuses>, whose threshold is the regex of a line proving that source ran: reused lines are counted, never printed again).
 id	test	threshold	act	incident
 size-rules	size:RULES.md	24576	RULES.md is near its 25 KB wall: move long text word for word to product/rules/<topic>.md before the next records PR	16 Nov: records batches #1930 and #1939 failed on the size walls
-size-state	size:STATE.md	11776	STATE.md is near its 12 KB wall: move the earlier page to product/history/ before the next records PR	16 Nov: records batches #1930 and #1939 failed on the size walls
+size-state	size:STATE.md	11776	STATE.md is near its 12 KB wall: move the earlier page to history/ beside it (the private copy since the split) before the next records commit	16 Nov: records batches #1930 and #1939 failed on the size walls
 records-pr	records-pr-lines	700	a records PR is near the 800-line wall: split it before it is labelled	16 Nov: records batches #1930 and #1939 failed on the size walls
 records-pr-age	records-pr-age	24	a records PR has been open over 24 h: merge it or close it, so no ruling lives only in an unmerged PR (P-526c)	full-power #145 (20 Nov): records PRs sat open for days; OS-17
 questions	reuse:^ACT   (SLE Q |#[0-9]+ has a new question|#[0-9]+ has a lane report|.*not acked)	^(sle |ACT   SLE )	answer each question and Lead read now (10 min target, sle-watch Q, P-798)	16 Nov: six questions and Lead reads waited up to 2.7 h
