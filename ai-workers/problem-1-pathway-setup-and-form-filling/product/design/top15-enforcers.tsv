@@ -1,11 +1,11 @@
 # The memory-enforcement audit's top 15 (design/memory-enforcement-audit-2026-11-27.md section 2) and the enforcer of each
-# on main (LR-155). A row's enforcer is a file on main that must contain the text in "must contain"; empty = owed by the
-# row named. Whoever lands an enforcer fills its row in the same PR. tools/top15-watch.py counts them. Tab-separated.
+# on main (LR-155). A row's enforcer is a file on main that must contain the text in "must contain" (several: " && " in
+# both fields, paired in order; each must hold); empty = owed by the row named. Whoever lands an enforcer fills its row in the same PR. tools/top15-watch.py counts them. Tab-separated.
 #	rule	enforcer	must contain	row
-1	The Lead works on a fresh lead/<today> branch from origin/main (P-388)	ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh	copy-age.sh	LR-032 (#3506)
+1	The Lead works on a fresh lead/<today> branch from origin/main (P-388)	ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/session-start.sh && ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh	bash "$PH/tools/lead-age.sh" recut && bash "$TOOLS/copy-age.sh"	LR-032 (#3506)
 2	Built hooks are wired: ist-time-guard, wip-guard, queued-push-guard, lead-read-guard, lead-act-check			LR-004 / LR-046 (settings: founder OK, P-387)
 3	A missed Lead check is caught within about 40 min (P-388/P-389)			LR-105
-4	claude.ai lanes waiting or failed are seen (P-339b, P-789 (2))	ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh	app-view-check.sh	LR-160 / LR-146 / LR-147
+4	claude.ai lanes waiting or failed are seen (P-339b, P-789 (2)); folding the Mac's claude-lanes.js in is still open	.claude/settings.json && ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-check-guard.sh	ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-check-guard.sh && app-view-check.sh" --stale-only	LR-160 (#3920) / LR-146 / LR-147
 5	No personal names in PR bodies and comments (AGENTS 5, P-504)			LR-046
 6	No unapproved paid AI: spend ledger growth seen (P-175)			LR-066
 7	Burn watch: over 3% of the weekly plan an hour, twice, is an ACT (P-440d)			LR-099 (#4049)

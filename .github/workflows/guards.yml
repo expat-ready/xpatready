@@ -32,6 +32,7 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/night-checklist.json"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/full-power-plan-2026-11-17.md"   # check-plan-watch.sh
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/engineering-approved-setup.json"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/top15-enforcers.tsv"   # check-top15-watch.sh (LR-155)
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
       - "packages/xfa-engine/fixtures/synthetic/*.pdf"   # guard 11 reads the real bytes
       - "packages/xfa-engine/src/__tests__/fixtures/*.pdf"

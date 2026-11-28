@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Top 15 enforcers (LR-155, lab automation-measures; founder A432: "provisioning and tooling ... enforce"). Reads
 design/top15-enforcers.tsv: the memory-enforcement audit's 15 most harmful text-only or partly enforced rules, each with
-its enforcer on main (a file that must contain a given text) or empty (owed by the row named). Prints
+its enforcer on main (a file that must contain a given text; several pairs joined by " && ", each must hold) or empty
+(owed by the row named). Prints
   top15  N/15 enforced on <ref>; owed: #2 (LR-004 / LR-046), ...
 and one "lost" line per row whose enforcer is listed but is gone from the ref (file missing or text not in it).
 Exit 0 when nothing is lost (owed rows are progress, not a failure); 1 when an enforcer was lost; 2 when the table
-cannot be read or has not exactly 15 rows.
+cannot be read, has not exactly 15 rows, or has an enforcer with no text (or unpaired), or the ref cannot be read.
   python3 -I product/tools/top15-watch.py [--ref origin/main] [--table FILE]
 Test: check-top15-watch.sh.
 """
@@ -18,7 +19,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 def arg(name, default=None):
     a = sys.argv
-    return a[a.index(name) + 1] if name in a[:-1] else default
+    if name in a and a.index(name) == len(a) - 1:
+        raise SystemExit("top15  %s needs a value" % name)
+    return a[a.index(name) + 1] if name in a else default
 
 
 def show(ref, path):
@@ -38,16 +41,27 @@ def main():
     if len(rows) != 15 or any(len(r) < 5 for r in rows):
         print("top15  %s must hold 15 rows of 5 tab-separated fields (has %d rows)" % (os.path.basename(table), len(rows)))
         return 2
+    if subprocess.run(["git", "rev-parse", "-q", "--verify", ref + "^{commit}"], cwd=HERE, capture_output=True).returncode:
+        print("top15  ref %s not readable: nothing checked" % ref)
+        return 2
     done, owed, lost = [], [], []
-    for no, rule, path, text, row in (r[:5] for r in rows):
-        if not path.strip():
+    for no, rule, path, text, row in ([x.strip() for x in r[:5]] for r in rows):
+        if not path:
             owed.append("#%s (%s)" % (no, row))
             continue
-        body = show(ref, path.strip())
-        if body is None:
-            lost.append("lost   #%s %s: %s is not on %s" % (no, rule[:60], path, ref))
-        elif text not in body:
-            lost.append("lost   #%s %s: %s on %s no longer contains \"%s\"" % (no, rule[:60], path, ref, text))
+        paths, texts = [x.strip() for x in path.split(" && ")], [x.strip() for x in text.split(" && ")]
+        if len(paths) != len(texts) or not all(texts) or not all(paths):
+            print("top15  #%s: each enforcer file needs its own non-empty text (\" && \" pairs them)" % no)
+            return 2
+        miss = []
+        for pa, tx in zip(paths, texts):
+            body = show(ref, pa)
+            if body is None:
+                miss.append("%s is not on %s" % (pa, ref))
+            elif tx not in body:
+                miss.append("%s on %s no longer contains \"%s\"" % (pa, ref, tx))
+        if miss:
+            lost.append("lost   #%s %s: %s" % (no, rule[:60], "; ".join(miss)))
         else:
             done.append(no)
     print("top15  %d/15 enforced on %s%s" % (len(done), ref, ("; owed: " + ", ".join(owed)) if owed else ""))
