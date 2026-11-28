@@ -48,7 +48,84 @@ a{color:var(--accent)}a:focus-visible{outline:2px solid var(--accent);outline-of
 </header>
 
 <section class="verdict">
-  <div class="eyebrow">Verdict</div>
+  <div class="eyebrow">Added 28 Nov, after decision P-857</div>
+  <h2 style="border:0;padding:0">After the changes</h2>
+  <p>You approved all five recommendations as P-857: the restart line is frozen, with a hard date of 1 Dec 23:59 IST; the 5 critical code-scanning alerts are fixed or dismissed before restart (a lane started at 08:1x IST); no new <code>check-*</code> scripts or workflows unless they protect customer data or money or stop a measured repeat incident, GitHub settings first; 3 to 5 lanes, one per module, and the lab capped at about 20%; records capped (private repository through A7, BACKLOG with open rows only, size exceptions as a pull request label, RULES cut to enforced rules, target 40). Also in flight: A9 pins all 100 action references to commit SHAs and fences the Mac runner (#4000); A11 adds idle-lane, register and open-PR checks (#4003); an hourly lane-starter routine (P-856); nightlies 2 of 7 green (runs 46060471639, 46095811580).</p>
+
+  <h3>Projected score once all of this is done</h3>
+  <div class="tbl"><table>
+    <tr><th>Lens</th><th>Today</th><th>After P-857 and in-flight work</th><th>Why it moves, and why not further</th></tr>
+    <tr><td>Standards</td><td class="n">6</td><td class="n">7.5</td><td>Actions pinned to SHAs, critical alerts handled, fewer custom workflows, guards required. Still no human second approver, no Scorecard, <code>pull_request_target</code> in 6 workflows, no production.</td></tr>
+    <tr><td>Value</td><td class="n">6</td><td class="n">7</td><td>Fewer lanes and a fixed date cut the waiting that made up about 90% of open time. Not proven until one measured week after restart.</td></tr>
+    <tr><td>Sceptic</td><td class="n">4</td><td class="n">6</td><td>No new scripts and a records cap stop the growth. But 118 home-made scripts and about 474,000 lines of records stay until a retirement plan removes them.</td></tr>
+    <tr><td><strong>Single score</strong></td><td class="n"><strong>5</strong></td><td class="n"><strong>6.5</strong></td><td>Reaching 8 needs the items in the next table: mainly GitHub-native controls replacing home-made ones, a human approver seat, and a first production slice.</td></tr>
+  </table></div>
+  <p><strong>What still holds it back:</strong> (1) one identity, your account plus agents, authors and approves everything, so no approval is independent; (2) home-made guards are not retired, so the lab stays large; (3) there is no production, so speed measures, monitoring and incident handling are untested; (4) one Lead agent is still the bottleneck for every pipeline read; (5) a self-hosted Mac runner is fenced but still runs public pull request work.</p>
+
+  <h3>What else is missing</h3>
+  <div class="tbl"><table>
+    <tr><th>Item</th><th>Today (checked on main)</th><th>Recommendation</th><th>When</th></tr>
+    <tr><td>Separate approver identity in a ruleset</td><td>A ruleset exists with required checks. The Claude Approvals app approves (P-849); your account authors and administers.</td><td>Keep P-849 now. Before the first customer, or at the first hire, a person's account takes the approver seat on money, schema, permission and pipeline paths; your account becomes emergency override only.</td><td>Before customers <span class="tag dec">needs your decision</span></td></tr>
+    <tr><td>CODEOWNERS</td><td>None</td><td>Add one file mapping money, schema, permissions, <code>.github/</code> and the push guard to the approver seat; make code-owner review required in the ruleset.</td><td>First week after restart</td></tr>
+    <tr><td>OpenSSF Scorecard</td><td>None</td><td>Add the standard Scorecard action (weekly, report only). It scores pinning, branch protection, token permissions and dangerous workflows from outside.</td><td>First week after restart</td></tr>
+    <tr><td>Secret scanning push protection</td><td>Not checked in this review</td><td>Confirm it is on (a GitHub setting); then the home-made secret part of the push guard can retire.</td><td>Before restart, a settings check</td></tr>
+    <tr><td><code>pull_request_target</code></td><td>6 workflows</td><td>Move each to <code>pull_request</code> or a ruleset rule; keep it only where no pull request code is checked out, and say so in the file.</td><td>Part of the retirement plan</td></tr>
+    <tr><td>Self-hosted Mac runner</td><td>demo-update and queue-gate; fenced by #4000</td><td>Move both to GitHub-hosted runners (free on a public repository); keep the Mac for local work only.</td><td>After restart</td></tr>
+    <tr><td>Retirement plan for home-made guards (LR-073)</td><td>Register row LR-073: retire the label-guard family, watch scripts and records label after two measured weeks</td><td>Make it a dated list: each home-made guard names the GitHub control that replaces it (ruleset, CODEOWNERS, push protection, required check) and is deleted after two clean measured weeks. Aim to halve the 118 scripts.</td><td>Starts at restart, review 15 Dec</td></tr>
+    <tr><td>Production deploy and real speed measures</td><td>The cloud setup is written as code and checked (deploy-synth) with no cloud account, so nothing is deployed</td><td>A first staging slice in a Canadian region, deployed by the pipeline; speed measures (deploy frequency, lead time, failure rate, recovery time) counted from deploys, not merges.</td><td>Before the 12 Dec internal date <span class="tag dec">needs your decision (account and budget)</span></td></tr>
+    <tr><td>Feature flags</td><td>No flag service found in the app</td><td>A simple flag table in the app's own database is enough for Release 1; it lets unfinished work merge switched off.</td><td>With the first staging slice</td></tr>
+    <tr><td>Backups and restore drills</td><td>The nightly includes a restore drill on test data (LR-110)</td><td>Keep it; add the same drill against staging once it exists, with a measured restore time.</td><td>With staging</td></tr>
+    <tr><td>Monitoring</td><td>None for a running service, since none runs</td><td>Error tracking, uptime checks and an alert to one channel on staging.</td><td>With staging</td></tr>
+    <tr><td>Incident runbook</td><td>Only an account-switch runbook; nothing for an outage or a data incident</td><td>One page: who is told, how to roll back, how to restore, how to tell affected clients. Data-incident duties are a legal point: Unconfirmed, no counsel.</td><td>Before customers</td></tr>
+  </table></div>
+
+  <h3>The target lab after restart</h3>
+  <div class="cols">
+    <div class="col"><h3 class="ok">GitHub-native (standard)</h3><ul>
+      <li>Ruleset on main: pull request only, required checks (<code>ci</code>, <code>guards</code>), code-owner review, no force-push</li>
+      <li>CODEOWNERS on risky paths</li>
+      <li>Merge queue (Mergify today; GitHub's own queue is an option)</li>
+      <li>CodeQL on every pull request; high alerts gate risky paths</li>
+      <li>Secret scanning push protection, Dependabot, Scorecard</li>
+      <li>Actions pinned to SHAs; GitHub-hosted runners</li>
+    </ul></div>
+    <div class="col"><h3 class="dec">Kept home-made (only this business needs them)</h3><ul>
+      <li>Push guard for sources, code captures, archive, PDFs, databases</li>
+      <li>No personal names check</li>
+      <li>Cited immigration values check</li>
+      <li>Agent hooks and short instruction files</li>
+      <li>Claude Code Review on risky paths plus a separate reviewer</li>
+      <li>Nightly full suite with restore drill</li>
+      <li>Short STATE hand-over in the private repository</li>
+    </ul></div>
+    <div class="col"><h3 class="wrong">Retired over two measured weeks (LR-073)</h3><ul>
+      <li>label-guard, records-label, review-rounds, lead-read, parts of queue-gate</li>
+      <li>Watch scripts that duplicate ruleset rules</li>
+      <li>Reporting workflows nobody acts on, measured first</li>
+      <li>Guards that only police many parallel lanes</li>
+    </ul></div>
+  </div>
+  <div class="tbl"><table>
+    <tr><th>Setting</th><th>Target</th></tr>
+    <tr><td>Lanes</td><td>3 to 5, one per module (screens, forms, runtime, evidence), plus qa; the hourly lane starter (P-856) keeps them busy</td></tr>
+    <tr><td>Lab capacity</td><td>At most about 20% of merges and lane time; new mechanisms only for customer data, money or a measured repeat incident</td></tr>
+    <tr><td>Records</td><td>Private repository; BACKLOG open rows only; RULES 40 enforced rules; size exceptions as a label; DECISIONS in short form</td></tr>
+    <tr><td>Gates</td><td>Green required checks, an approver (agent now, a person before customers), Claude Code Review on risky paths, the Lead's after-merge read; a red nightly stops product merges</td></tr>
+    <tr><td>Measures</td><td>Approve-to-merge median under 45 min; red main under 30 min; after staging, the four speed measures from real deploys</td></tr>
+  </table></div>
+
+  <h3>What we need from you (only you can do these)</h3>
+  <ol>
+    <li>Decide who holds the human approver seat before the first customer (a second person, or a separate account of yours with your main account kept for emergencies only).</li>
+    <li>Create the cloud account for a Canadian staging slice and approve its monthly budget. Creating accounts and spending money are yours.</li>
+    <li>Approve the GitHub repository setting changes as one batch: code-owner review in the ruleset, push protection, Scorecard, moving off the Mac runner.</li>
+    <li>On 1 Dec, if the restart line is not met by 23:59 IST, choose: restart with what is proven, or hold.</li>
+  </ol>
+  <p class="small">Everything else above is the tech lead's to run under P-857.</p>
+</section>
+
+<section class="verdict">
+  <div class="eyebrow">Verdict (round 2, before P-857)</div>
   <div class="score"><b>5 / 10</b><span>Right destination, overbuilt road.</span></div>
   <p><strong>One line:</strong> the backbone is standard and good, but about half the custom layer fences the way we run agents (about 20 parallel lanes, one Lead agent changing about 5 times a day) rather than protecting customers, and the lab now causes much of its own delay while a standard security scanner's findings sit unread.</p>
   <ul>
