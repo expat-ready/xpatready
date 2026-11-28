@@ -77,7 +77,9 @@ o=$(pl '{"cycle_start":"2026-11-21"}' 2026-11-24T09:00:00+05:30); r=$?; ok "the 
 o=$(pl '{"cycle_start":"2026-11-24"}' 2026-11-25T06:59:00+05:30); r=$?; ok "06:59 the next morning is still the same cycle" "$([ $r = 0 ] && echo 1)" "$o"
 o=$(pl '{"cycle_start":"2026-11-24"}' 2026-11-25T07:00:00+05:30); r=$?; ok "... and 07:00 is not" "$([ $r = 1 ] && echo 1)" "$o"
 nb=""; for b in '' '[]' '{}' '{"cycle_start":7}' '{"cycle_start":"soon"}'; do o=$(pl "$b" 2026-11-24T09:00:00+05:30); [ $? = 1 ] && grep -q '^ACT   plan: cycle-plan.json unreadable' <<<"$o" || nb="$nb [$b]"; done; ok "an unreadable plan is an ACT" "$([ -z "$nb" ] && echo 1)" "$nb"
-o=$(cd "$L" && python3 -I "$TOOLS/founder-report.py" --needs nothing 2>&1); r=$?; ok "founder-report.py from a working copy prints no report, exit 2" "$([ $r = 2 ] && [ "$(has 'NO REPORT. ACT   tools' "$o")" = 1 ] && ! grep -q 'Proven this cycle' <<<"$o" && echo 1)" "exit $r: $o"
+# The copy's own founder-report.py: tools-fresh.py judges the copy its file is in, so "$TOOLS/..." judged this checkout
+# instead, passing only where it is behind main (CI on a PR head) and failing on one equal to main (check-tools-fresh follow-up).
+o=$(cd "$L" && python3 -I "$L/$D/founder-report.py" --needs nothing 2>&1); r=$?; ok "founder-report.py from a working copy prints no report, exit 2" "$([ $r = 2 ] && [ "$(has 'NO REPORT. ACT   tools' "$o")" = 1 ] && ! grep -q 'Proven this cycle' <<<"$o" && echo 1)" "exit $r: $o"
 fr() { python3 -I - "$TOOLS" "$1" <<'PY'
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("fr", os.path.join(sys.argv[1], "founder-report.py")); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -91,8 +93,10 @@ echo '{"cycle_start":"2026-11-24","rows":[]}' > "$T/p.json"; o=$(fr "$T/p.json")
 echo '{"cycle_start":"2026-11-21","rows":[]}' > "$T/p.json"; o=$(fr "$T/p.json"); ok "... with the 21 Nov plan: no forecast, and it says whose plan it is" "$(grep -q 'Forecast by 07:00  unknown' <<<"$o" && grep -q '🔴 The plan is of 2026-11-21' <<<"$o" && echo 1)" "$o"
 
 # lead-watch.sh: the block before everything else, cut out and run
-W="$TOOLS/lead-watch.sh"; sed -n '/^# 00\. /,/^say "time  /p' "$W" | grep -v '^say "time' > "$T/block.sh"; first=$(grep -nE '^# [0-9]+[a-z]?\. ' "$W" | head -1)
-ok "it is lead-watch.sh's first section" "$(has '# 00. ' "$first")" "$first"
+W="$TOOLS/lead-watch.sh"; sed -n '/^# 00\. /,/^say "time  /p' "$W" | grep -v '^say "time' > "$T/block.sh"; first=$(grep -nE '^# [0-9]+[a-z]?\. ' "$W" | grep -vE '^[0-9]+:# 000\. ' | head -1)
+# LR-174 (founder A455): the GitHub budget line (section 000: GET /rate_limit, which costs no request) is the one thing
+# allowed above it, so a check that cannot afford GitHub says so before anything else; no other section may come first.
+ok "it is lead-watch.sh's first section (only LR-174's GitHub budget, section 000, may come before it)" "$([ "$(has '# 00. ' "$first")" = 1 ] && [ -z "$(grep -nE '^# [0-9]+[a-z]?\. ' "$W" | sed -n "1,/^${first%%:*}:/p" | grep -vE '^[0-9]+:# 000?\. ')" ] && echo 1)" "$first"
 blk() { mkdir -p "$T/b"; printf 'import sys; print("%s"); sys.exit(%s)\n' "$1" "$2" > "$T/b/tools-fresh.py"; printf 'echo "%s"; exit %s\n' "$3" "$4" > "$T/b/copy-age.sh"; printf 'print("%s")\n' "$5" > "$T/b/plan-fresh.py"
   ( cd "$L"; TOOLS="$T/b"; act=0; seen() { :; }; say() { echo "$1"; }; fresh() { :; }; . "$T/block.sh"; echo "acts=$act" ) 2>&1; }
 o=$(blk 'tools  ok' 0 'copy   ok' 0 'plan   ok'); ok "all three right: three lines, no ACT" "$(has 'acts=0' "$o")" "$o"

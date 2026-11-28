@@ -99,6 +99,13 @@ ok "\"migration — runtime: FO-7k part 1 — ...\" leads with FO-7k1" "$([ $rc 
 ok "a fixed bug id in a title's brackets counts (QA-510 in #111, review m6)" "$(has 'part QA-510 merged in #111')" "$out"
 sed -i 's/QA-510\. Walk/QA-511. Walk/' "$F/bl/BACKLOG.md"; run "x" "Completes: R1.9"
 ok "...a bug id named only by a qa: verdict PR does not" "$([ $rc = 1 ] && echo 1 || echo 0)$(has 'part QA-511 (listed in its J-row)')" "rc=$rc $out"
+# LR-091: a J-row moved word for word to history/BACKLOG-done-*.md still gives its parts; deleted, it gives none.
+J9=$(grep '^| J-9 |' "$F/bl/BACKLOG.md"); grep -v '^| J-9 |' "$F/bl/BACKLOG.md" > "$F/bl/b.tmp" && mv "$F/bl/b.tmp" "$F/bl/BACKLOG.md"
+run "x" "Completes: R1.9"
+ok "LR-091 control: a J-row in no BACKLOG file gives no part list" "$(has 'R1.9 has no line in focus-list.md and no J-row')" "rc=$rc $out"
+mkdir -p "$F/bl/history"; printf '| Row | Area | What | Done when |\n|---|---|---|---|\n%s\n' "$J9" > "$F/bl/history/BACKLOG-done-2026-11-28.md"; run "x" "Completes: R1.9"
+ok "LR-091: a J-row moved to history/BACKLOG-done-*.md still gives its parts" "$([ $rc = 1 ] && echo 1 || echo 0)$(has 'part QA-511 (listed in its J-row)')" "rc=$rc $out"
+rm -rf "$F/bl/history"; printf '%s\n' "$J9" >> "$F/bl/BACKLOG.md"
 run "x" "Completes: R1.7"
 ok "no part list: a warning names the gap, journey present passes" "$([ $rc = 0 ] && echo 1 || echo 0)$(has 'R1.7 has no line in focus-list.md and no J-row')" "$out"
 run "x" "Done when: no claim"

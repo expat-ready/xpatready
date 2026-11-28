@@ -13,7 +13,7 @@ const { execFileSync, spawnSync } = require("node:child_process");
 const launch = async () => {
   const opts = { headless: !process.env.QA_HEADED };
   for (const from of [null, ...(process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean), "/opt/node-tools/node_modules"]) {
-    try { const pw = from ? require(require.resolve("playwright", { paths: [from] })) : require("playwright"); return await pw.chromium.launch(opts); } catch { /* try the next */ }
+    try { const pw = from ? require(require.resolve("playwright", { paths: [from] })) : require("playwright"); return await pw.chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions(opts)); } catch { /* try the next */ }
   }
   throw new Error("no playwright with a browser found");
 };

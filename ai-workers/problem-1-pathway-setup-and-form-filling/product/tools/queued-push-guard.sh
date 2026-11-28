@@ -49,7 +49,7 @@ esac
 [ -n "$repo" ] && [ "$repo" != / ] && export GH_REPO="$repo"
 [ -n "$cwd" ] && cd "$cwd" 2>/dev/null
 deny() {  # $1 branch or PR, $2 PR number
-  jq -n --arg b "$1" --arg n "$2" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("#" + $n + " (" + $b + ") is labelled queued: a push now throws Mergify'"'"'s batch out and resets the queue (19:13 IST 15 Nov; B193). Wait until it merges or leaves the queue, or remove review: approved first and say why on the PR.")}}'; exit 0; }
+  jq -n --arg b "$1" --arg n "$2" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Rule B193: #" + $n + " (" + $b + ") is labelled queued: a push now throws Mergify'"'"'s batch out and resets the queue (19:13 IST 15 Nov). Fix: wait until it merges or leaves the queue, or remove review: approved first and say why on the PR.")}}'; exit 0; }
 warn() { jq -n --arg w "$1" '{systemMessage:("queued-push-guard: could not read " + $w + "; allowed. Check it is not labelled queued (B193).")}'; exit 0; }
 for n in $prs; do
   out=$(gh pr view "$n" --json number,labels 2>/dev/null) || warn "#$n"

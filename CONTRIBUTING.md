@@ -17,7 +17,7 @@ This page is for anyone, person or agent, who wants to change this repository. I
 - Builders never edit `STATE.md`, `DECISIONS.md` or `qa/CAPABILITIES.md`: status goes in the PR body.
 
 ## 3. The checks on your PR
-GitHub requires one check, `ci`. The merge queue also needs `queue-fresh` for app code, and `xfa-engine` and `skeleton` where their files change. The reviewer expects every other check green as well.
+GitHub requires one check, `ci`. The merge queue also needs `pr-rules` in every queue (LR-181), `queue-fresh` for app code, and `xfa-engine` and `skeleton` where their files change. The reviewer expects every other check green as well.
 
 | Check | What it asks | Where it is defined |
 |---|---|---|

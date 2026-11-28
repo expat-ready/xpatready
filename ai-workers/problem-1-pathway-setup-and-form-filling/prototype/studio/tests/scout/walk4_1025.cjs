@@ -3,7 +3,7 @@ const path = require("node:path"); const { chromium } = require(process.cwd()+"/
 const OUT = path.join(process.cwd(), "..", "..", "product", "scout", "reports", "2026-10-25-firm-admin-day-one");
 const BASE = "http://localhost:4480"; const CID = "00f7ceaf-3fb8-478d-8837-420d5cd1c09d";
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions()); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   const shot = (n) => p.screenshot({ path: `${OUT}/w4-${n}.png`, fullPage: true });
   // 1. approve as the author: server must refuse it AND the UI should not offer it
   await p.goto(`${BASE}/c/${CID}/review`, { waitUntil: "networkidle" }); await p.waitForTimeout(400);
