@@ -1,0 +1,50 @@
+# LR-168 (founder A455, 28 Nov: the gap alarm must not depend on a Mac session; Lead 12's root cause (2): the watchdog was
+# "lead-watch.sh gap" and lead-heartbeat.sh on a Mac standby, which die with the Mac). Every 10 min GitHub reads the check
+# stamp the Lead's lead-watch.sh pushes at the end of each run (branch lead/check-stamp, file lead-check-stamp.json;
+# product/tools/check-stamp.sh) and sets the commit status "lead-check-gap" on main's tip: failure when the stamp is over
+# 20 min old (or missing or unreadable), success otherwise. One signal the founder sees on main (the red cross by the newest
+# commit on the repository's front page); a merge moves main's tip, so each run sets it again on the new tip. The run itself
+# never fails (a red scheduled run mails its owner: no email, A455), and it writes the verdict to its summary.
+# Risk: GitHub ran a 30-minute schedule only every 8-11 hours from 18 to 26 Nov (pipeline-heartbeat.yml, OS-83), so the
+# alarm can be late by that much. A push to lead/check-stamp cannot start this workflow: that branch holds only the stamp,
+# and GitHub reads a push's workflows from the pushed commit. Read-only but for the one status; US$0. Test: check-check-stamp-push.sh.
+name: lead-gap
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: lead-gap
+  cancel-in-progress: false
+jobs:
+  gap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read, statuses: write }
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
+      - name: judge the Lead's pushed check stamp; set lead-check-gap on main's tip (never fails the run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e
+          api="https://api.github.com/repos/$REPO"
+          curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw+json" \
+            "$api/contents/lead-check-stamp.json?ref=lead/check-stamp" -o "$RUNNER_TEMP/stamp.json" || rm -f "$RUNNER_TEMP/stamp.json"
+          v=$(bash "$P/tools/check-stamp.sh" judge "$RUNNER_TEMP/stamp.json"); state=${v%% *}; desc=${v#* }
+          case "$state" in success|failure) ;; *) state=failure; desc="the stamp could not be judged (LR-168)";; esac
+          echo "**lead-check-gap:** $state: $desc" >> "$GITHUB_STEP_SUMMARY"
+          sha=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/main" | jq -r '.sha // empty')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::warning title=lead-check-gap::main's tip could not be read: no status set ($state: $desc)"; exit 0; }
+          body=$(jq -n --arg s "$state" --arg d "${desc:0:140}" --arg u "$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID" '{state: $s, context: "lead-check-gap", description: $d, target_url: $u}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" "$api/statuses/$sha" -d "$body" >/dev/null || echo "::warning title=lead-check-gap::the status could not be set on $sha ($state: $desc)"
+          [ "$state" = failure ] && echo "::warning title=lead-check-gap::$desc"
+          exit 0

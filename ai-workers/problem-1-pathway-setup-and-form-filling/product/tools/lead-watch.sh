@@ -452,4 +452,8 @@ cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-wait
   --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
 fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board as step 11 accepted it (over $FRESH_MAX_MIN min: not measured)"
 echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
+# LR-168 (founder A455): the Lead's copy pushes this check's stamp to lead/check-stamp, which .github/workflows/lead-gap.yml
+# judges every 10 min with no Mac running (a red lead-check-gap status on main over 20 min). Not pushed is an ACT.
+if [ "${LEAD_STAMP_PUSH:-on}" != off ] && [ "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" = lead ]; then
+  sp=$(bash "$TOOLS/check-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
 exit "$act"
