@@ -15,7 +15,8 @@
 #     tests/check_walk_plan.ts checks the rule and this file's shape.
 #   * On merge (ENF-733, P-733, P-728 (3)): each push to main that is a PR's merge commit walks, on that commit, the
 #     journey of each R1 item the PR's title names or its "Completes:" line names (walk-plan.mjs --event push; none, or
-#     a PR that changes nothing under studio/, contracts/, p2/, p5/: skipped with a reason). No fixtures. The plan (every
+#     a PR that changes nothing under studio/, contracts/, p2/, p5/: skipped with a reason, except a qa PR, title "qa:",
+#     whose named items walk on main as it stands, LR-055). No fixtures. The plan (every
 #     push, so a missing plan is a fault) and each walk.json are kept as small artifacts; walk-report.yml (main's code,
 #     the only write token) then posts one comment on the merged PR: the run id, each journey's PASS or FAIL and its step
 #     counts. qa reads it there. On a push a FAIL step never fails the walk job (ENF-733 review M1): journeys of items
