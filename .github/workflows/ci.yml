@@ -406,6 +406,7 @@ jobs:
           node "$P/tools/suite-exit.mjs"
           node "$P/tools/static-sweeps.mjs" --self-test   # ENF-782a part 2: the sweep rule and the base comparison
           bash "$P/tools/check-flaky.sh"
+          bash "$P/tools/check-approvals-policy.sh"   # LR-144 (P-849): approvals.yml observe, catch-all, no people seat, Code Review only on risky rules
           bash "$P/tools/check-write-token.sh"
           bash "$P/tools/check-steward-skill.sh"   # LR-149: PR Steward house rules (switches, never-touch paths, protected path)
           bash "$P/tools/live-ai-off.sh"   # OS-33 (P-175): no STUDIO_*_LIVE switch on by default
