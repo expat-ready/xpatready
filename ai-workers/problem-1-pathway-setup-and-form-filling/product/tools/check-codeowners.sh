@@ -18,7 +18,7 @@
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="${1:-$(cd "$TOOLS/../../../.." && pwd)}"
 python3 -I - "$ROOTD" <<'PY'
-import os, re, sys, tempfile
+import os, re, shutil, sys, tempfile
 P = "ai-workers/problem-1-pathway-setup-and-form-filling"
 GUARDED = [  # (sample path, its folder that must exist; "" = the root)
     (".github/workflows/ci.yml", ".github/workflows"),
@@ -40,7 +40,9 @@ def rx(pat):
     p = pat.strip("/") if pat != "/" else ""
     out, i = "", 0
     while i < len(p):
-        if p.startswith("**", i): out += ".*"; i += 2
+        # "**/" matches zero or more folders ("**/x" owns a root x too; "a/**/b" owns a/b).
+        if p.startswith("**/", i): out += "(?:.*/)?"; i += 3
+        elif p.startswith("**", i): out += ".*"; i += 2
         elif p[i] == "*": out += "[^/]*"; i += 1
         elif p[i] == "?": out += "[^/]"; i += 1
         else: out += re.escape(p[i]); i += 1
@@ -85,7 +87,8 @@ def check(root):
 cases = [("/.github/", ".github/workflows/ci.yml", True), ("/.github/", "x/.github/a", False),
          ("*.js", "a/b/c.js", True), ("docs/*", "docs/a.md", True), ("docs/*", "docs/a/b.md", False),
          ("/docs/**/x.md", "docs/a/b/x.md", True), ("apps/", "z/apps/y", True), ("*", "any/thing", True),
-         ("/REVIEW.md", "REVIEW.md", True), ("/REVIEW.md", "a/REVIEW.md", False)]
+         ("/REVIEW.md", "REVIEW.md", True), ("/REVIEW.md", "a/REVIEW.md", False),
+         ("**/.github/", ".github/a", True), ("/docs/**/x.md", "docs/x.md", True)]
 bad = [c for c in cases if bool(rx(c[0]).match(c[1])) != c[2]]
 if bad:
     print("FAIL  matcher:", bad); sys.exit(1)
@@ -108,14 +111,17 @@ fixtures = [
     ("negation", FULL + "!/x\n", "C0"),
 ]
 failed = 0
+def check_tmp(d):
+    try: return check(d)
+    finally: shutil.rmtree(d, ignore_errors=True)
 for name, text, want in fixtures:
-    errs = check(tree(text))
+    errs = check_tmp(tree(text))
     got = sorted({e[:2] for e in errs})
     ok = (not errs) if want is None else (want in got)
     print(("ok    " if ok else "FAIL  ") + f"fixture: {name} -> {got or 'clean'}")
     failed += not ok
 d = tree(FULL); os.rmdir(os.path.join(d, P, "prototype/studio/prisma/schema"))
-errs = check(d); ok = any(e.startswith("C3") for e in errs)
+errs = check_tmp(d); ok = any(e.startswith("C3") for e in errs)
 print(("ok    " if ok else "FAIL  ") + "fixture: a guarded folder moved away -> C3"); failed += not ok
 if failed:
     print(f"FAIL  {failed} self-test fixture(s): the check cannot be trusted"); sys.exit(1)
