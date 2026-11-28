@@ -39,6 +39,8 @@ export const ANOTHER_DEVICE = "You signed in on another device";
 const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
 /** PF-11c: the words a closed firm's staff see at sign-in (our own fact only, SA-2-38). */
 export const FIRM_CLOSED = "This firm's ExpatReady account is closed. Sign-in is no longer possible.";
+/** PF-27 (SA-2-34): a locked firm's staff, at sign-in and on every request (the reason is never said). */
+export const FIRM_LOCKED = "This firm's ExpatReady account is locked, so sign-in is not possible at the moment. ExpatReady will contact the firm's Owner.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
 /** PF-28 part 2a: the local sign-in door's body (untrimmed: emailOf reads spaces). Read after the door's gate. */
@@ -138,11 +140,16 @@ export class PlatformIdentity implements OnModuleInit {
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
     // PF-11c (SA-2-21): a firm closed on day 90 refuses every sign-in, whatever the session.
     if (staff.firm.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
+    // PF-27 (SA-2-34): a security lock ends every staff session at once: the guard refuses the next request.
+    if (staff.firm.status === "SECURITY_LOCK") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
-    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)
-      && (await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs))) === "inactive") return unauthorized(NOT_ACTIVE_NOW, "STAFF_NOT_ACTIVE");
+    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)) {
+      const r = await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs));
+      if (r === "inactive") return unauthorized(NOT_ACTIVE_NOW, "STAFF_NOT_ACTIVE");
+      if (r === "locked") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });   // locked while signing in (round 3 breaker M1)
+    }
     const rev = await this.db.platformSessionRevocation.findFirst({ where: firmScope(staff.firmId, { staffId: staff.id }), orderBy: { revokedAt: "desc" } });
     // A session that started at or before the person's last revocation is refused (deactivation, a newer sign-in).
     if (rev && authMs <= rev.revokedAt.getTime()) return unauthorized(rev.reason === "another-device" ? ANOTHER_DEVICE : "This session was ended. Sign in again.", rev.reason === "another-device" ? "SIGNED_IN_ELSEWHERE" : "SESSION_REVOKED");
@@ -161,12 +168,17 @@ export class PlatformIdentity implements OnModuleInit {
    *  deadlock and a stream of sign-ins never starves a staff change (re-break R1: an explicit key share here did). They
    *  meet only on the person's row; under that lock the person must still be active, so a sign-in that raced a
    *  deactivation is refused ("inactive") rather than dated after it, where reactivation would bring its token back. */
-  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive"> {
+  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive" | "locked"> {
     return this.db.$transaction(async (tx) => {
       const fid = firmScope(firmId).firmId;
       const [row] = await tx.$queryRaw<{ last: Date | null; status: string }[]>`select last_sign_in_at as last, status::text as status from platform_staff where id = ${staffId}::uuid and firm_id = ${fid}::uuid for update`;
       if (!row) return null;
       if (row.status !== "ACTIVE") return "inactive" as const;
+      // PF-27 (round 3 breaker M1): the firm's status again, under the person's row lock. A sign-in that passed the door's
+      // check before a lock committed is refused here, not dated after the lock's revocation (a plain read: the lock holds
+      // this row before it commits, so its status is seen; no lock on the firm row, so J-5 B1's order is kept).
+      const [firm] = await tx.$queryRaw<{ status: string }[]>`select status::text as status from platform_firm where id = ${fid}::uuid`;
+      if (firm?.status === "SECURITY_LOCK" || firm?.status === "DELETED") return "locked" as const;
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       const atMs = atOf(row.last?.getTime() ?? null, rev?.revokedAt.getTime() ?? null);
       if (atMs === null) return null;   // another request recorded this sign-in already
@@ -192,6 +204,7 @@ export class PlatformIdentity implements OnModuleInit {
     const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true, status: true } })) : null;
     // PF-11c (break m1): a closed firm's door issues no token and writes no sign-in line.
     if (firm?.status === "DELETED") return problem(401, "Account closed", FIRM_CLOSED, { code: "FIRM_CLOSED" });
+    if (firm?.status === "SECURITY_LOCK") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
@@ -201,6 +214,7 @@ export class PlatformIdentity implements OnModuleInit {
     // The new session starts after the last sign-in and the last revocation (a deactivation in the same millisecond).
     const authMs = await this.recordSignIn(firm.id, firm.key, staff.id, "local stand-in", (last, revoked) => Math.max(this.clock.now(), (last ?? 0) + 1, (revoked ?? 0) + 1));
     if (authMs === "inactive") return unauthorized("This staff account is not active. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");   // deactivated while signing in (J-5 B2)
+    if (authMs === "locked") return problem(401, "Account locked", FIRM_LOCKED, { code: "FIRM_LOCKED" });   // locked while signing in (round 3 breaker M1)
     if (authMs === null) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");
     return { token: this.port.issue(staff.id, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600, staffId: staff.id, firmKey: firm.key };
   }

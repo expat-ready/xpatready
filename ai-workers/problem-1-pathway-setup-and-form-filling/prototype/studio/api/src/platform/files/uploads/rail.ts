@@ -34,7 +34,7 @@ import type { JobPort } from "../../../../../ports/jobs.ts";
 import type { LegalHoldPort } from "../../../../../ports/legal-hold.ts";
 import { withFirm } from "../../firm-scope.ts";
 import { logPort } from "../../observability/log.ts";
-import { checkDeclared, checkFile, type RefusalReason } from "../file-type.ts";
+import { checkDeclared, checkFile, correctedName, KINDS, type FileKind, type RefusalReason } from "../file-type.ts";
 import { holdSubjectsOf, type UploadContext, type UploadDoor, type UploadDoors, type UploadedFile, type UploadTarget } from "./doors.ts";
 
 export const UPLOADS_PATH = "/api/platform/files/uploads";
@@ -51,6 +51,9 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 type Refusal = { status_code: number; body: string };
 const refusal = (status_code: number, body: string): Refusal => ({ status_code, body: `${body}\n` });
 const actorWord = (c: UploadContext) => `${c.door}:${c.actorId}`;
+/** The status a thrown answer carries (a refusal, an HttpException), else 500. */
+const statusOf = (e: unknown) => e instanceof HttpException ? e.getStatus() : typeof (e as Refusal)?.status_code === "number" ? (e as Refusal).status_code : 500;
+const tooLarge = (max: number) => `This file is too large: at most ${Math.round(max / (1024 * 1024))} MB here. Nothing was stored.`;
 
 export type UploadRailDeps = { db: PrismaClient; files: FilesPort; doors: UploadDoors; holds: LegalHoldPort<Tx>; now: () => number; dir?: string; expiryMs?: number; off?: boolean };
 export type SweepResult = { removed: number; kept: { uploadId: string; firmId: string; holdIds: string[] }[] };
@@ -63,12 +66,25 @@ export class UploadRail {
   /** Finishes running in this process, by upload id (rule 4: a second finish waits for the first and gets its file). */
   readonly #finishing = new Map<string, Promise<UploadedFile>>();
   /** One request: the session and the upload id the rail checked (the only id tus may act on, break F1). */
-  readonly #ctx = new AsyncLocalStorage<{ ctx: UploadContext; id: string | null }>();
+  readonly #ctx = new AsyncLocalStorage<{ ctx: UploadContext; id: string | null; headRes?: ServerResponse }>();
 
   constructor(private readonly d: UploadRailDeps) {
     this.dir = d.dir ?? process.env.PLATFORM_UPLOADS_DIR ?? join(process.env.STUDIO_VAR ?? join(import.meta.dirname, "..", "..", "..", "..", "..", "var"), "upload-staging");
     this.expiryMs = d.expiryMs ?? UPLOAD_EXPIRY_MS;
     this.store = new FileStore({ directory: this.dir, expirationPeriodInMilliseconds: this.expiryMs });
+    // Rule 4 (review m4, part 1b): a HEAD of an upload whose bytes are all in finishes it inside tus's own read, under tus's
+    // lock (review M1 of #3640: a check before tus raced the last chunk and let tus answer "complete" with no file). Only a
+    // HEAD's tus.handle carries headRes, so the rail's own reads and every other method are unchanged. A failure answers its
+    // status (a HEAD has no body; the words were the PATCH's), never 200 "complete"; a success names the file.
+    const read = this.store.getUpload.bind(this.store);
+    this.store.getUpload = async (uploadId: string) => {
+      const up = await read(uploadId), res = this.#ctx.getStore()?.headRes;
+      if (res && up.size !== undefined && up.offset === up.size) {
+        const f = await this.finish(up).catch((e: unknown) => { throw this.#words(e as Error) ?? e; });
+        res.setHeader("Upload-File-Id", f.id);
+      }
+      return up;
+    };
     this.tus = new Server({
       path: UPLOADS_PATH, datastore: this.store, relativeLocation: true,   // no maxSize: PF-F4 judges the declared size, in its words; tus refuses bytes past Upload-Length
       allowedOrigins: () => false,   // same origin only: no Access-Control-Allow-Origin
@@ -97,7 +113,9 @@ export class UploadRail {
       if (!up || up.metadata?.xr_firm !== ctx.firmId.toLowerCase() || up.metadata?.xr_actor !== actorWord(ctx)) return answer(404, "Not found");
       if (this.#expired(up)) return answer(410, EXPIRED_WORDS);
     }
-    await this.#ctx.run({ ctx, id: id && method !== "OPTIONS" ? id : null }, () => this.tus.handle(req, res));
+    // A HEAD without Tus-Resumable is tus's 412 and finishes nothing (review n1 of #3640).
+    const headRes = method === "HEAD" && id && req.headers["tus-resumable"] ? res : undefined;
+    await this.#ctx.run({ ctx, id: id && method !== "OPTIONS" ? id : null, headRes }, () => this.tus.handle(req, res));
   }
 
   /** Break F3: an answer in plain words, never an internal message. The rail's refusals and tus's own answers (each with a
@@ -131,6 +149,7 @@ export class UploadRail {
     if (upload.sizeIsDeferred || upload.size === undefined) throw refusal(400, "Say the file's size when the upload starts (Upload-Length).");
     const declared = checkDeclared({ size: upload.size, name: meta.filename ?? undefined, mediaType: meta.filetype ?? undefined }, door.allowedKinds);
     if (!declared.ok) throw refusal(REFUSAL_STATUS[declared.reason], declared.message);
+    if (door.maxBytes !== undefined && upload.size > door.maxBytes) throw refusal(413, tooLarge(door.maxBytes));
     const target = await door.authorize(ctx, meta);
     if (!target) throw refusal(404, "Not found");
     return { metadata: { ...meta, xr_firm: ctx.firmId.toLowerCase(), xr_door: ctx.door, xr_actor: actorWord(ctx), xr_target: JSON.stringify(target), xr_born: String(this.d.now()) } };
@@ -153,14 +172,24 @@ export class UploadRail {
     const firmId = meta.xr_firm!, doorName = meta.xr_door as UploadDoor, door = this.d.doors.get(doorName);
     if (!firmId || !door) throw refusal(404, "Not found");
     const target = JSON.parse(meta.xr_target ?? "{}") as UploadTarget;
+    const key = this.d.doors.keyFor(doorName, target, upload.id);
+    // Rule 4: finished before (a retry, a HEAD): the same file, no second onComplete, and no second read of the bytes.
+    const before = await this.#stored(firmId, key, doorName, target, meta.filename ?? undefined);
+    if (before) return before;
     const chunks: Buffer[] = [];
     for await (const c of this.store.read(upload.id)) chunks.push(c as Buffer);
     const bytes = new Uint8Array(Buffer.concat(chunks));
     const checked = checkFile({ bytes, name: meta.filename ?? undefined, mediaType: meta.filetype ?? undefined }, door.allowedKinds);
     if (!checked.ok) { await this.store.remove(upload.id); throw refusal(REFUSAL_STATUS[checked.reason], checked.message); }
-    const key = this.d.doors.keyFor(doorName, target, upload.id);
+    if (door.maxBytes !== undefined && bytes.length > door.maxBytes) { await this.store.remove(upload.id); throw refusal(413, tooLarge(door.maxBytes)); }
     const name = checked.name;
-    const already = await this.#stored(firmId, key, doorName, target, name);
+    // The door's own checks, before any byte is stored and outside the transaction (review round 1 on #3698): a refusal
+    // removes the staging copy; a 5xx keeps it, so a retry checks again.
+    if (door.check) {
+      try { await door.check(bytes, { firmId, name, mediaType: checked.mediaType, target }); }
+      catch (e) { if (statusOf(e) < 500) await this.store.remove(upload.id); throw e; }
+    }
+    const already = await this.#stored(firmId, key, doorName, target, meta.filename ?? undefined);
     if (already) return already;   // rule 4: finished before (a retry); the same file, no second onComplete
     await this.d.files.put(firmId, key, bytes, checked.mediaType);
     const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -173,16 +202,24 @@ export class UploadRail {
       }));
     } catch (e) {
       // Another process finished the same upload first (the unique key): its file is this one.
-      const other = (e as { code?: string })?.code === "P2002" ? await this.#stored(firmId, key, doorName, target, name) : null;
+      const other = (e as { code?: string })?.code === "P2002" ? await this.#stored(firmId, key, doorName, target, meta.filename ?? undefined) : null;
       if (other) return other;
+      // The bytes are stored but no row names them. A refusal (4xx: the door said no) is final: the key and the staging
+      // copy go, so "Nothing was stored." is true. Anything else keeps both for a retry, which stores the same bytes under
+      // the same key; an upload never finished is removed with its key by the expiry cleanup (sweep).
+      if (statusOf(e) < 500) { await this.d.files.delete(firmId, key).catch(() => undefined); await this.store.remove(upload.id).catch(() => undefined); }
       throw e;
     }
   }
 
   /** The upload's file if it was stored before (plat_file by its firm and key). */
-  async #stored(firmId: string, key: string, door: UploadDoor, target: UploadTarget, name: string): Promise<UploadedFile | null> {
+  /** The name is the client's, corrected from the stored bytes' kind as the first finish did (review m1 of #3640). */
+  async #stored(firmId: string, key: string, door: UploadDoor, target: UploadTarget, clientName: string | undefined): Promise<UploadedFile | null> {
     const r = await withFirm(firmId, () => this.d.db.platFile.findUnique({ where: { firmId_key: { firmId, key } }, select: { id: true, sha256: true, sizeBytes: true, mediaType: true } }));
-    return r ? { id: r.id, firmId, key, door, sha256: r.sha256, sizeBytes: r.sizeBytes, mediaType: r.mediaType, target, name } : null;
+    if (!r) return null;
+    const kind = (Object.keys(KINDS) as FileKind[]).find((k) => KINDS[k].mediaType === r.mediaType);
+    const name = kind ? correctedName(clientName, kind) : (clientName ?? "document");
+    return { id: r.id, firmId, key, door, sha256: r.sha256, sizeBytes: r.sizeBytes, mediaType: r.mediaType, target, name };
   }
 
 
@@ -208,6 +245,9 @@ export class UploadRail {
         await withFirm(firmId, () => this.d.db.$transaction(async (tx) => {
           const held = await this.d.holds.isHeld(tx, firmId, holdSubjectsOf(target));
           if (held.held) { out.kept.push({ uploadId: id, firmId, holdIds: held.holds.map((h) => h.holdId) }); return; }
+          // Bytes a failed finish stored that no plat_file row names go with the upload (review round 1 on #3698).
+          const door = this.d.doors.get(up.metadata?.xr_door), key = door ? this.d.doors.keyFor(up.metadata!.xr_door as UploadDoor, target, id) : null;
+          if (key && !(await tx.platFile.findUnique({ where: { firmId_key: { firmId, key } }, select: { id: true } }))) await this.d.files.delete(firmId, key);
           await this.store.remove(id); out.removed++;
         }));
       } catch (e) { logPort.error("upload_cleanup_failed", e, { firmId }); }

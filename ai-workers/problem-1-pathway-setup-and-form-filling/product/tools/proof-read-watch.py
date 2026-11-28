@@ -80,8 +80,14 @@ class Source:
 
 
 def read_paths():
+    out = []
     with open(os.path.join(HERE, "lead-read-paths.txt")) as fh:
-        return [re.compile(l.strip(), re.I) for l in fh if l.strip() and not l.lstrip().startswith("#")]
+        for l in fh:
+            if l.startswith("# --- read-after public"):   # P-823: queue-gate.sh's after-read only, never a read before the label
+                break
+            if l.strip() and not l.lstrip().startswith("#"):
+                out.append(re.compile(l.strip(), re.I))
+    return out
 
 
 def proof(closed, openp, now):

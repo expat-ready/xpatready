@@ -187,6 +187,15 @@ export class Messages implements MessagePort<Tx>, MessageWordsPort {
     for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${firmId}:${id}`, firmId });
   }
 
+  /** PF-20 (R1.36, break M2): withdraws a firm's rows still QUEUED (held by the daily limit or not yet sent) inside the
+   *  caller's transaction: each becomes SUPPRESSED with `reason`, so the worker and the sweep, which send only QUEUED rows,
+   *  never send it. A row already sent, or another firm's, is left as it is. Answers how many were withdrawn. */
+  async withdrawQueued(tx: Tx, firmIdIn: string, outboxIds: string[], reason: string): Promise<number> {
+    if (!outboxIds.length) return 0;
+    const { firmId } = firmScope(firmIdIn);
+    return (await tx.msgOutbox.updateMany({ where: firmScope(firmId, { id: { in: outboxIds }, state: "QUEUED" as const }), data: { state: "SUPPRESSED", stateReason: reason.slice(0, 200) } })).count;
+  }
+
   /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests); `null`: a platform account row (PF-19p). */
   async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
     if (firmIdIn === null) return this.deliverPlatform(outboxId);

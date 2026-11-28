@@ -106,6 +106,7 @@ if not co or co[0]["with"].get("ref") != "main" or co[0]["with"].get("persist-cr
 txt = open(sys.argv[1]).read()
 if "refs/pull" in txt or "head.sha" in txt: bad.append("fetches PR code")
 if "author_association" not in j.get("if", ""): bad.append("any commenter starts it")
+if "comment.body, 'lead')" not in j.get("if", "") or "comment.body, 'reviewer:')" not in j.get("if", ""): bad.append("every writer's comment starts it (OS-78 (a): no comment-text filter)")
 if "pipeline-watch.py" not in txt or "--post" not in txt: bad.append("does not run pipeline-watch.py --post")
 print("; ".join(bad) or "ok")
 PY

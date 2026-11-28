@@ -23,24 +23,29 @@ ok "(1) the tech lead's lead/* branch is not checked (its records go through rec
 po '[]' down; ok "(1) GitHub unreadable: a warning, not a block" "$([ $r = 0 ] && echo "$out" | grep -q '^warn' && echo 1)" "exit $r: $out"
 grep -q 'pr-open-guard.sh' "$ROOTD/.githooks/pre-push"; ok "(1) .githooks/pre-push runs pr-open-guard.sh" "$([ $? = 0 ] && echo 1)"
 
-# (2) Reviewers and breakers on Opus high: the agent files, and launches.
-mkdir "$T/ag"; printf -- '---\nname: screen-reviewer\nmodel: opus\neffort: high\n---\nbody model: sonnet\n' > "$T/ag/screen-reviewer.md"
-out=$(AGENTS_DIR="$T/ag" bash "$TOOLS/agent-model-guard.sh"); ok "(2) a reviewer file pinned to Opus high passes" "$([ $? = 0 ] && echo 1)" "$out"
-printf -- '---\nname: screen-breaker\ntools: Read\n---\nmodel: opus\neffort: high\n' > "$T/ag/screen-breaker.md"
+# (2) One model rule (P-788): every agent file and launch on Opus 5.5 medium; another only with "P-788 exception:".
+mkdir "$T/ag"; printf -- '---\nname: screen-reviewer\nmodel: opus\neffort: medium\n---\nbody model: sonnet\n' > "$T/ag/screen-reviewer.md"
+out=$(AGENTS_DIR="$T/ag" bash "$TOOLS/agent-model-guard.sh"); ok "(2) a reviewer file pinned to Opus medium passes" "$([ $? = 0 ] && echo 1)" "$out"
+printf -- '---\nname: screen-breaker\ntools: Read\n---\nmodel: opus\neffort: medium\n' > "$T/ag/screen-breaker.md"
 out=$(AGENTS_DIR="$T/ag" bash "$TOOLS/agent-model-guard.sh"); r=$?
-ok "(2) a breaker file with model and effort only outside its front matter fails" "$([ $r = 1 ] && echo "$out" | grep -q 'screen-breaker.md has no "model: opus"' && echo "$out" | grep -q 'no "effort: high"' && echo 1)" "exit $r: $out"
-out=$(bash "$TOOLS/agent-model-guard.sh"); ok "(2) this repository's reviewer and breaker files pass" "$([ $? = 0 ] && echo 1)" "$out"
-ah() { out=$(jq -n --arg s "$1" --arg d "$2" --arg m "$3" --arg e "$4" '{tool_name:"Agent",tool_input:({subagent_type:$s,description:$d}+(if $m=="" then {} else {model:$m} end)+(if $e=="" then {} else {effort:$e} end))}' | bash "$TOOLS/agent-model-guard.sh" --hook); }
+ok "(2) a breaker file with model and effort only outside its front matter fails" "$([ $r = 1 ] && echo "$out" | grep -q 'screen-breaker.md has model "none"' && echo "$out" | grep -q 'effort "none"' && echo 1)" "exit $r: $out"
+printf -- '---\nname: helper\nmodel: opus\neffort: high\n---\n' > "$T/ag/screen-breaker.md"
+out=$(AGENTS_DIR="$T/ag" bash "$TOOLS/agent-model-guard.sh"); r=$?
+ok "(2) any agent file at effort high fails (P-788 supersedes P-608 (2))" "$([ $r = 1 ] && echo "$out" | grep -q 'effort "high"' && echo 1)" "exit $r: $out"
+out=$(bash "$TOOLS/agent-model-guard.sh"); ok "(2) this repository's agent files pass" "$([ $? = 0 ] && echo 1)" "$out"
+ah() { out=$(jq -n --arg s "$1" --arg d "$2" --arg m "$3" --arg e "$4" --arg p "${5:-}" '{tool_name:"Agent",tool_input:({subagent_type:$s,description:$d,prompt:$p}+(if $m=="" then {} else {model:$m} end)+(if $e=="" then {} else {effort:$e} end))}' | bash "$TOOLS/agent-model-guard.sh" --hook); }
 ah screen-reviewer "Review screen 41" sonnet ""; ok "(2) hook: a reviewer launched on Sonnet is denied" "$(deny)" "$out"
-ah general-purpose "Breaker for PF-25" opus medium; ok "(2) hook: a breaker launched at medium effort is denied" "$(deny)" "$out"
-ah screen-reviewer "Review screen 41" opus high; ok "(2) hook: a reviewer on Opus high passes" "$([ -z "$out" ] && echo 1)" "$out"
-ah Explore "Break down the routes" haiku ""; ok "(2) hook: other agents keep their model" "$([ -z "$out" ] && echo 1)" "$out"
+ah general-purpose "Breaker for PF-25" opus high; ok "(2) hook: a launch at high effort is denied" "$(deny)" "$out"
+ah Explore "Find the routes" haiku ""; ok "(2) hook: any agent on Haiku is denied (one rule)" "$(deny)" "$out"
+ah screen-reviewer "Review screen 41" opus medium; ok "(2) hook: a reviewer on Opus medium passes" "$([ -z "$out" ] && echo 1)" "$out"
+ah screen-reviewer "Review screen 41" "" ""; ok "(2) hook: a launch naming no model or effort passes (inherits)" "$([ -z "$out" ] && echo 1)" "$out"
+ah general-purpose "Desk challenger" fable high "P-788 exception: founder asked for Fable here"; ok "(2) hook: a named P-788 exception passes" "$([ -z "$out" ] && echo 1)" "$out"
 jq -e '[.hooks.PreToolUse[] | select(.matcher == "^(Agent|Task)$") | .hooks[].command | select(test("agent-model-guard.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "(2) settings.json runs the hook on Agent and Task" "$([ $? = 0 ] && echo 1)"
-grep -q 'agent-model-guard.sh"' "$W"; ok "(2) pr-rules.yml checks the agent files" "$([ $? = 0 ] && echo 1)"
+grep -q 'model-rule-check.py"' "$W"; ok "(2) pr-rules.yml runs the model-rule check" "$([ $? = 0 ] && echo 1)"
 
 # (3) "Done when" naming its test, and "Duplicate check:", in every PR body and brief.
-GOOD=$'## What\nRow X-1.\nDuplicate check: searched BACKLOG, open PRs; none\n\nDone when: check-x.sh exits 0 with a pass and a fail'
+GOOD=$'## What\nRow X-1.\nDuplicate check: searched BACKLOG, open PRs; none\n\nDone when: check-x.sh exits 0 with a pass and a fail; stop after 3 tries'
 bc() { out=$(printf '%s' "$1" | bash "$TOOLS/brief-check.sh" ${2:-}); r=$?; }
 bc "$GOOD"; ok "(3) a body with a testable Done when and a Duplicate check passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 bc "${GOOD/Duplicate check:/Duplicates}"; ok "(3) a body with no Duplicate check line fails" "$([ $r = 1 ] && echo "$out" | grep -q 'no "Duplicate check:"' && echo 1)" "exit $r: $out"
@@ -86,9 +91,17 @@ printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"
 lp() { out=$(jq -n --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" bash "$TOOLS/lane-preflight.sh" --hook); }
 lp mcp__claude-code-remote__create_session "$GOOD"; ok "(7) a brief with no model and effort line is refused" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "${GOOD/Duplicate check: /Duplicate check: $FRESH_DUP }"$'\nModel: Opus 5.5, effort: medium\nItem: R1.2'; ok "(7) a brief naming model and effort starts (R1.2 is Proven: wave 0, always open)" "$([ -z "$out" ] && echo 1)" "$out"
+lp mcp__claude-code-remote__create_session "$(printf '%s' "${GOOD/Duplicate check: /Duplicate check: $FRESH_DUP }" | sed 's/; stop after 3 tries//')"$'\nModel: Opus 5.5, effort: medium\nItem: R1.2'; ok "(7) ... and is refused with no stop rule next to its Done when (LR-121)" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a start naming no row (qa, standby) needs only the model and effort line" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session $'/next screens B124\nModel: Opus 5.5, effort: medium'; ok "(7) a /next brief naming a row (B124) still needs Done when and Duplicate check" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | test("create_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "(7) settings.json runs the preflight hook on create_session too" "$([ $? = 0 ] && echo 1)"
+
+# (8) P-388 as a hook (LR-105): AskUserQuestion is refused while the away flag exists, and only then.
+aw() { out=$(echo '{"tool_name":"AskUserQuestion","tool_input":{}}' | AWAY_FLAG="$T/away" bash "$TOOLS/away-guard.sh" --hook); }
+rm -f "$T/away"; aw; ok "(8) no away flag: the question goes through" "$([ -z "$out" ] && echo 1)" "$out"
+touch "$T/away"; aw; ok "(8) away flag set: the question is refused, naming STATE and P-388" "$([ "$(deny)" = 1 ] && echo "$out" | grep -q 'P-388' && echo "$out" | grep -q 'STATE' && echo 1)" "$out"
+jq -e '[.hooks.PreToolUse[] | select(.matcher == "^AskUserQuestion$") | .hooks[].command | select(test("away-guard.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
+ok "(8) settings.json runs the away hook on AskUserQuestion" "$([ $? = 0 ] && echo 1)"
 finish

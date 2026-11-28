@@ -30,7 +30,7 @@ done
 r=$(guard lead "" 'gh pr merge 12'); ok "no session folder is never the Lead (fails closed)" "$([ "$r" = deny ] && echo 1)" "got $r"
 r=$(guard screens "$T/copy" 'git status && gh pr view 12'); ok "other commands pass untouched" "$([ "$r" = allow ] && echo 1)" "got $r"
 # The real lane.sh in this copy: a cloud machine or any branch but the Mac's main is never the Lead.
-if [ "$(bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)" != lead ]; then
+if [ "$(bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null | sed "s/^lead-stale$/lead/")" != lead ]; then
   r=$(guard "" "$ROOT" 'gh pr comment 1 --body q')
   ok "this copy (not the Lead): comment allowed" "$([ "$r" = allow ] && echo 1)" "got $r"
   r=$(guard "" "$ROOT" 'gh pr merge 1')

@@ -285,6 +285,7 @@ export async function unmergeRecords(tx: Tx, ctx: StaffContext, ref: string, por
   const later = await tx.foDupMerge.findFirst({ where: firmScope(firmId, { id: { not: m.id }, undoneAt: null, at: { gt: m.at }, OR: [{ survivorId: { in: ids } }, { loserId: { in: ids } }] }), select: { id: true } });
   if (later) refuse("UNDO_REFUSED", "A later merge involves one of these records; undo that one first.");
   const snap = m.loserSnapshot as unknown as MergeSnapshot, s = m.survivorId, l = m.loserId;
+  if ((snap as unknown as { erased?: boolean })?.erased) refuse("UNDO_REFUSED", "These records were erased under a deletion request; the merge cannot be undone.");   // PF-21d 2b-2
   if (!snap?.changes?.every((c) => UNDOABLE.has(`${c.t}.${c.c}`) && UUID.test(c.id)) || !snap.survivorAfter || !Array.isArray(snap.present)) refuse("UNDO_REFUSED", "This merge record was not written by the merge; it cannot be undone.");
   // Every lock NOWAIT with back-off (lockPairFor, Lead 5's ruling): a writer adding to these records either finished
   // before (and is seen below) or waits for the Undo, which never waits itself.

@@ -184,8 +184,11 @@ try {
     const at = Date.parse(`${day}T15:00:00Z`), noAudit = { audit: async () => undefined };   // 10:00 Toronto; approve and cancel write the audit lines, a run writes steps
     const clock = new (class extends PlatformClock { override now() { return at; } })();
     const registry = new regM.ErasureRegistry(); for (const e of erasers) registry.register(e);
-    const svc = new erM.Erasure(db, noAudit, clock, new swM.PlatSwitches(db, noAudit), registry, new PgLegalHolds());
-    try { return { result: await svc.run(), error: "" }; } catch (e) { return { result: null, error: String(e).slice(0, 200) }; }
+    // Review M1 on #3713: the job runs as the app does, on the walled client (xr_app in each order's firm), never the owner's.
+    const { walledPool } = await import("../../api/src/platform/firm-scope.ts");
+    const appDb = new PrismaClient({ adapter: new PrismaPg(walledPool(`postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`), { disposeExternalPool: true }) });
+    const svc = new erM.Erasure(appDb, noAudit, clock, new swM.PlatSwitches(appDb, noAudit), registry, new PgLegalHolds());
+    try { return { result: await svc.run(), error: "" }; } catch (e) { return { result: null, error: String(e).slice(0, 200) }; } finally { await appDb.$disconnect().catch(() => undefined); }
   };
   let standInCalls = 0;
   const day7 = await runOn(plus7, [{ module: "qa.stand-in", erase: async () => { standInCalls++; return { outcome: "NOTHING", note: "J-85 stand-in eraser" }; } }]);
@@ -194,17 +197,19 @@ try {
   ok("J-85 W5 (part missing: PF-21d part 1b; the daily job's Erasure.run called in this process on day 7 on a fake clock, one stand-in eraser, said; its 07:40 Toronto schedule is not proven here): the held person's order is carried out as HELD: no eraser called, the hold's reason on the request's step, the person's row stays",
     !!day7.result && day7.result.held.includes(delId) && standInCalls === 0 && statusAfter === "HELD" && steps.includes("Sample litigation (J-85)") && sql(`select count(*) from fo_person where id = '${personId}'`) === "1",
     { error: day7.error, held: day7.result?.held, calls: standInCalls, status: statusAfter, steps: steps.slice(-300) });
-  // The same for a person with no hold, with the app's own erasers (part 2). Until part 2 merges the registry here is
-  // empty and the run says "No module has registered an eraser yet" (SKIPPED, never a false COMPLETED); qa registers
-  // part 2's erasers here when it lands.
+  // The same for a person with no hold, with the app's own erasers (part 2). PF-21d part 2b-1 registers the front
+  // office's eraser (imported when present; without it the registry is empty and the run says "No module has registered
+  // an eraser yet", SKIPPED, never a false COMPLETED). This person holds no kept class, so the end is COMPLETED.
   const del2 = await j("POST", "/api/system/register/requests", { type: "DELETION", requester: `Other${run} Sample`, requesterEmail: `j85.other.${run}@example.com`, receivedOn: torontoToday, firmId, subject: { kind: "PERSON", id: otherPerson } }, ourTok);
   const del2Id = typeof del2.body === "object" ? del2.body?.id : undefined;
   const approved2 = del2Id ? await j("POST", `/api/system/erasure/requests/${del2Id}/approve`, undefined, ourTok) : { status: 0, body: null };
-  const day7b = await runOn(plus7, []);
-  const other2 = sql(`select coalesce((select given_names from fo_person where id = '${otherPerson}'), 'gone')`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- present only once PF-21d part 2b-1 merges
+  const foM: any = await import("../../api/src/front-office/erase/eraser.ts").catch(() => null);
+  const day7b = await runOn(plus7, foM ? [foM.frontOfficeEraser] : []);
+  const other2 = sql(`select coalesce((select family_name from fo_person where id = '${otherPerson}'), 'gone')`);   // review M1: the name is replaced, the given names emptied
   ok("J-85 W5 (part missing: PF-21d part 2, the platform and front-office erasers): an approved DELETION for a person with no hold is carried out on day 7: the request Completed and the person's record anonymised in place",
-    approved2.status === 200 && !!day7b.result && day7b.result.erased.includes(del2Id) && sql(`select status::text from plat_data_request where id = '${del2Id ?? "00000000-0000-0000-0000-000000000000"}'`) === "COMPLETED" && other2 !== "gone" && other2 !== `Other${run}`,   // the row stays, its name replaced (reviewer m3, #3533)
-    { approved: approved2.status, error: day7b.error, erased: day7b.result?.erased, skipped: day7b.result?.skipped, givenNames: other2 });
+    approved2.status === 200 && !!day7b.result && day7b.result.erased.includes(del2Id) && sql(`select status::text from plat_data_request where id = '${del2Id ?? "00000000-0000-0000-0000-000000000000"}'`) === "COMPLETED" && other2 !== "gone" && /^Erased person \d+$/.test(other2),   // the row stays, its name replaced (reviewer m3, #3533)
+    { approved: approved2.status, error: day7b.error, erased: day7b.result?.erased, skipped: day7b.result?.skipped, familyName: other2 });
 
   // ---------------------------------------------------------------------------------------------- W6 roles
   const firmReg = await j("GET", "/api/system/register/requests", undefined, firmTok), firmHold = await j("POST", "/api/system/register/holds", { firmId, scope: { kind: "FIRM" }, reason: "x" }, firmTok);
