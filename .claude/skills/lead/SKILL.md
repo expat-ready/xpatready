@@ -42,7 +42,6 @@ In WAY-OF-WORKING "Questions and stuck" (with `tools/flow-measure.py`, P-371); r
 ## Habits
 * A lane is working only if it pushed in the last 90 minutes; never trust "still pushing" in STATE. `flow-watch.sh` 4b/4c flag labelled PRs with red CI and unfinished M2 rows nobody is on; act on each at that check.
 * Before pushing to a PR's branch, check that the PR is still open (it may have merged itself).
-* **A watch ends when its work does (LR-127):** prefer an event (`subscribe_pr_activity`, a workflow_run trigger) to a timer; a polling watch (Monitor, /loop) runs `until python3 -I P/tools/watch-done.py --pr N` (or `--queue`), which ends it on merge, close or an empty queue and logs the end (`~/.claude/xr-watch-ends.tsv`); never let one run to its timeout.
 * Base advice on all the history there is, never one sample.
 * Before deleting a cache or tool, search the repository for paths into it.
 * Context: `get_usage` gives each Mac session's share; report all of them when asked, with what to do.
