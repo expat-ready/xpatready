@@ -210,7 +210,8 @@ PY
 # HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
 # STATE.md has uncommitted changes); an "updated:" line in neither form fails too. It fails when this branch wrote the
 # time: STATE.md uncommitted, or changed by a commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
-# A time already on main only warns, so one bad merge never stops every lane. Test: check-state-page.sh.
+# A time already on main only warns, so one bad merge never stops every lane, with one exception (OS-35, P-302): a time
+# more than 30 minutes ahead of the clock fails wherever it came from, since no clock ever read it. Test: check-state-page.sh.
 if [ -n "$RD" ] && [ -f "$RD/STATE.md" ] && grep -q '^updated:' "$RD/STATE.md"; then
   ul=$(grep -m1 '^updated:' "$RD/STATE.md")
   u=$(printf '%s\n' "$ul" | sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-5][0-9x]) IST.*/\1/p')
@@ -230,8 +231,12 @@ if [ -n "$RD" ] && [ -f "$RD/STATE.md" ] && grep -q '^updated:' "$RD/STATE.md"; 
 ist = d.timezone(d.timedelta(hours=5, minutes=30))
 lo = d.datetime.strptime(sys.argv[1].replace("x", "0"), "%Y-%m-%d %H:%M").replace(tzinfo=ist)
 hi = lo + d.timedelta(minutes=9 if sys.argv[1].endswith("x") else 0); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
+now = d.datetime.fromtimestamp(int(sys.argv[3]), ist); ahead = (lo - now).total_seconds() / 60
 m = max((lo - c).total_seconds(), (c - hi).total_seconds(), 0) / 60
-if m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"); fi
+if ahead > 30: print("STATE TIME: STATE.md says updated %s IST, %d min ahead of the clock (now %s IST): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], ahead, now.strftime("%Y-%m-%d %H:%M")))
+elif m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c" "$(date +%s)"); fi
+  # OS-35: a time ahead of the clock fails even when it is already on the base; any other gap on the base only warns.
+  case "$msg" in *" min ahead of the clock "*) mine=1;; esac
   if [ -n "$msg" ]; then [ "$mine" = 1 ] && echo "$msg" >> "$out" || echo "WARN  ${msg#STATE TIME: } (already on ${STATE_TIME_BASE:-origin/main})"; fi
 fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0
