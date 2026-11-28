@@ -23,6 +23,7 @@ PATCH /api/front-office/booking-types/:id/timings # agent/booking-event-type:lis
 POST /api/front-office/bookings/:id/attendance # AnyStaff: the host answers their own (AG-4-39); others need agent/booking:edit (service)
 PUT /api/front-office/bookings/:id/consult-record # AnyStaff: the booking's own staff; checked by the service
 POST /api/front-office/consultation-agreements/:id/host-link # AnyStaff (SIGNS): the host's own signing link; checked by the service
+POST /api/front-office/retainers/:id/firm-signing-link # agent/retainer:show, own or all: records the representative's consent and an audit line; the service refuses anyone but the representative (403 NOT_THE_REPRESENTATIVE)
 POST /api/platform/complaints/:id/acknowledge # AnyStaff (HANDLES): the complaint's handler; checked by the service
 POST /api/platform/complaints/:id/steps # AnyStaff (HANDLES): the complaint's handler; checked by the service
 POST /api/platform/complaints/:id/response-sent # AnyStaff (HANDLES): the complaint's handler; checked by the service
@@ -34,7 +35,6 @@ POST /api/platform/reports/query # AnyStaff (NEEDS): each report's own key is ch
 POST /api/front-office/consultation-agreements/:id/signed-copy/download-link # the read key: a download link to a signed copy
 POST /api/front-office/identity-checks/:id/copy/download-link # agent/document:show: a download link
 POST /api/front-office/signature-requests/:id/download-link # agent/document:show, own or all: a download link
-POST /api/front-office/retainers/:id/firm-signing-link # agent/retainer:show, own or all: the firm's signing link
 POST /api/front-office/duplicates/check # agent/prospect:show: a duplicate check that changes nothing
 POST /api/platform/support/tickets/:id/files/:n/link # the support list key: a download link
 # Support (any member may raise and follow a ticket):

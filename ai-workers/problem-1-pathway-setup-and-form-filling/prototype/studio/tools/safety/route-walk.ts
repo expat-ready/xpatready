@@ -114,6 +114,7 @@ function selfTest(): number {
     ["an unlisted platform write READ_ONLY gets past the guard is reported", pastGuardJudge("POST", "/api/front-office/leads", 422, readPast("PUT /api/platform/me/account # own\n").allowed) !== null],
     ["a listed past-guard write is fine", pastGuardJudge("PUT", "/api/platform/me/account", 422, readPast("PUT /api/platform/me/account # own\n").allowed) === null],
     ["a guard refusal (403) is never reported as past the guard", pastGuardJudge("POST", "/api/front-office/leads", 403, new Set()) === null],
+    ["a past-guard line the guard now refuses is stale", stale(readPast("PUT /api/platform/me/account # own\n").allowed, new Set()).includes("PUT /api/platform/me/account")],
     ["a past-guard line without a reason is refused", readPast("PUT /api/x\n").errors.length === 1],
     ["parameters are filled", fill("/api/cases/:id/files/:fileId?") === `/api/cases/${ID}/files/${ID}`],
   ];
@@ -192,7 +193,7 @@ async function walk(port: number, db: string): Promise<number> {
       if (why) reported.push(`${why} (${r.file}:${r.line})`);
     }
   }
-  if (token) for (const s of [...past.allowed].filter((k) => !seenPast.has(k))) reported.push(`listed but the guard now refuses READ_ONLY (take it off route-walk-past-guard.txt): ${s}`);
+  if (token) for (const s of stale(past.allowed, seenPast)) reported.push(`listed but the guard now refuses READ_ONLY (take it off route-walk-past-guard.txt): ${s}`);
   for (const s of stale(allowed, seen2xx)) reported.push(`listed but no longer 2xx (take it off route-walk-reviewed.txt): ${s}`);
   for (const line of reported) console.log(`::warning::${line}`);
   console.log(`${all.length} routes walked; answers: ${[...counts].sort().map(([k, n]) => `${k} ×${n}`).join(", ")}`);
