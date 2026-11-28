@@ -38,24 +38,38 @@ for l in open(sys.argv[1], encoding="utf-8"):
 print(last)' "$tp" 2>/dev/null)
   case "$(norm "$turn")" in *"$(norm "$CANON")"*) ;; *) exit 0;; esac
   # LR-167 (founder A455, 28 Nov: "You have written this script, you have enforced it, but you are not running it"; a
-  # 154-min gap): a check turn cannot end until `lead-watch.sh 30` finished this run's stamp (full-check, written at its
-  # end) under FULL_MAX (12) min ago from a copy at most FULL_BEHIND (20) commits behind origin/main. question-gate.py's
-  # "SLE dump ... old; nothing refused, run lead-watch" note stays a note on other turns; here it is this block. After
-  # 3 blocks in one turn it lets the stop through with a message (never a loop when lead-watch cannot finish).
+  # 154-min gap): a check turn cannot end until `lead-watch.sh 30` (a minutes argument of 30 or more) finished a run, its
+  # full-check stamp written at its end, under FULL_MAX (12) min ago from a copy at most FULL_BEHIND (20) commits behind
+  # origin/main. question-gate.py's "SLE dump ... old; nothing refused, run lead-watch" note stays a note on other turns;
+  # here it is this block. After 3 blocks in one turn (the counter keyed by the turn's prompt line in the transcript,
+  # cleared when the turn passes) the stop goes on with a message to tell the founder, to the app-view checks below
+  # (never a loop when lead-watch cannot finish).
   fc="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}/full-check"; now=${NOW:-$(date +%s)}; why=""
   if [ ! -s "$fc" ]; then why="no lead-watch run has finished (no stamp at $fc)"
   else read -r ft fbh _ fs < "$fc"
-    case "$ft$fbh" in ''|*[!0-9]*) why="the stamp at $fc is unreadable";; *)
+    case "$ft$fbh${fs:-x}" in *[!0-9]*) why="the stamp at $fc is unreadable";; *)
       age=$(( (now - ft) / 60 ))
       if [ "$age" -ge "${FULL_MAX:-12}" ] || [ "$age" -lt 0 ]; then why="the last finished lead-watch run is $age min old (${FULL_MAX:-12} min at most)"
-      elif [ "$fbh" -gt "${FULL_BEHIND:-20}" ]; then why="the last lead-watch run came from a copy $fbh commits behind origin/main (${FULL_BEHIND:-20} at most)"; fi;; esac
+      elif [ "$fbh" -gt "${FULL_BEHIND:-20}" ]; then why="the last lead-watch run came from a copy $fbh commits behind origin/main (${FULL_BEHIND:-20} at most)"
+      elif [ "$fs" -lt 30 ]; then why="the last lead-watch run looked back $fs min only (the check is lead-watch.sh 30)"; fi;; esac
   fi
-  if [ -n "$why" ]; then
-    key=$(printf '%s' "$tp|$turn" | cksum | cut -d' ' -f1); cnt="${fc%/*}/lr167-blocks.$key"; n=$(( $(cat "$cnt" 2>/dev/null || echo 0) + 1 ))
-    mkdir -p "${fc%/*}" 2>/dev/null; echo "$n" > "$cnt" 2>/dev/null
-    if [ "$n" -gt 3 ]; then jq -n --arg w "$why" '{systemMessage:("LR-167: this check turn ends without a finished lead-watch run after 3 blocks (" + $w + "). Tell the founder now: checks are not running (P-388).")}'; exit 0; fi
-    jq -n --arg w "$why" '{decision:"block",reason:("This is the 30-minute check and " + $w + " (LR-167, founder A455). Run `bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh 30` to its end now (exit 3 = a stale copy: run the command it prints, then run it again), act on its ACT lines, then stop.")}'
-    exit 0; fi
+  pos=$([ -f "$tp" ] && python3 -I -c 'import json,sys
+n=0
+for i,l in enumerate(open(sys.argv[1], encoding="utf-8")):
+    try: e=json.loads(l)
+    except Exception: continue
+    if e.get("type")!="user" or e.get("isMeta"): continue
+    c=(e.get("message") or {}).get("content")
+    t=(c if isinstance(c,str) else " ".join(x.get("text","") for x in (c or []) if isinstance(x,dict) and x.get("type")=="text")).strip()
+    if t and not t.startswith(("Stop hook feedback","<system-reminder>","<task-notification","[SYSTEM NOTIFICATION")): n=i
+print(n)' "$tp" 2>/dev/null)
+  cnt="${fc%/*}/lr167-blocks.$(printf '%s' "$tp" | cksum | cut -d' ' -f1).${pos:-0}"
+  if [ -z "$why" ]; then rm -f "$cnt" 2>/dev/null
+  else n=$(( $(cat "$cnt" 2>/dev/null || echo 0) + 1 )); mkdir -p "${fc%/*}" 2>/dev/null; echo "$n" > "$cnt" 2>/dev/null
+    if [ "$n" -gt 3 ]; then gave="LR-167: this check turn ends without a finished lead-watch run after 3 blocks ($why). Tell the founder now: checks are not running (P-388)."
+    else jq -n --arg w "$why" '{decision:"block",reason:("This is the 30-minute check and " + $w + " (LR-167, founder A455). Run `bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh 30` to its end now (if it refuses a stale copy, run the command it prints, then run it again), act on its ACT lines, then stop.")}'
+      exit 0; fi
+  fi
   out=$(bash "$(dirname "$0")/app-view-check.sh" --stale-only 2>&1)
   if [ -n "$out" ]; then
     jq -n --arg r "$out" '{decision:"block",reason:("This is a 30-minute check and the app view is stale (B197, founder A110): read every lane before you stop.\n" + $r + "\nIf the page cannot be read, save its UNREADABLE line and ask the founder to sign in.")}'
@@ -64,7 +78,8 @@ print(last)' "$tp" 2>/dev/null)
   # says UNREADABLE (signed out, the call refused, the browser not reached) needs a PushNotification to the founder in this
   # same turn, with the sign-in URL. The turn's tool calls are read from the transcript after the turn's prompt.
   av="${APP_VIEW_FILE:-$(dirname "$0")/../state/app-view-latest.txt}"
-  sed -n 2p "$av" 2>/dev/null | grep -q '^UNREADABLE' || exit 0
+  passed() { [ -n "${gave:-}" ] && jq -n --arg m "$gave" '{systemMessage:$m}'; exit 0; }   # LR-167's escape says so on a pass
+  sed -n 2p "$av" 2>/dev/null | grep -q '^UNREADABLE' || passed
   pushed=$(python3 -I - "$tp" <<'PY' 2>/dev/null
 import json, re, sys
 ev = []
@@ -83,7 +98,7 @@ print("yes" if any(isinstance(x, dict) and x.get("type") == "tool_use" and re.se
                    for e in ev[start + 1:] if e.get("type") == "assistant" for x in (e.get("message") or {}).get("content") or []) else "no")
 PY
 )
-  [ "$pushed" = yes ] && exit 0
+  [ "$pushed" = yes ] && passed
   jq -n --arg l "$(sed -n 2p "$av" | cut -c1-160)" '{decision:"block",reason:("The app view says \"" + $l + "\": send the founder a PushNotification 🔴 in this check with the sign-in URL (https://claude.ai/login; GitHub: https://github.com/login), then stop (LR-154, founder A430: \"You should be reminding me\").")}'
   exit 0
 fi

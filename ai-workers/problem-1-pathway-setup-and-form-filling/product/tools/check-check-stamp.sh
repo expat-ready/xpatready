@@ -29,6 +29,22 @@ tr "$C" h; stop screens h; ok "a builder's copy is never blocked" "$([ $v = pass
 tr "  Run lead-watch;  read STATE Start here." i; stop lead i; ok "the prompt matched like the cron guard (case, spacing, full stop)" "$([ $v = block ] && echo 1)" "$out"
 tr "$C" j; for k in 1 2 3; do stop lead j; done; ok "three stops in one turn are blocked" "$([ $v = block ] && echo 1)" "$out"
 stop lead j; ok "the fourth stop goes through with a message to tell the founder (no loop)" "$([ $v = pass ] && jq -e '.systemMessage | test("Tell the founder")' <<<"$out" >/dev/null && echo 1)" "$out"
+# the counter belongs to one turn: a later check turn in the same transcript is blocked again (review of LR-167, Important 1)
+jq -cn --arg p "$C" '{type:"assistant", message:{content:[{type:"text", text:"next"}]}}, {type:"user", message:{role:"user", content:$p}}' >> "$T/j.jsonl"
+stop lead j; ok "a later check turn in the same transcript is blocked again (the counter is per turn)" "$([ $v = block ] && echo 1)" "$out"
+stamp $((NOW - 60)) 0; stop lead j; ok "... and passes once lead-watch finished" "$([ $v = pass ] && echo 1)" "$out"
+ok "... which clears that turn's counter" "$([ -z "$(ls "$T/lw" | grep "lr167-blocks.*\.$(($(wc -l < "$T/j.jsonl") - 1))$")" ] && echo 1)" "$(ls "$T/lw")"
+rm -f "$T/lw/full-check"
+# the escape still runs the app-view check after it (review of LR-167, Important 1)
+printf 'saved epoch %s\napp view rows=3\n' "$((NOW - 40 * 60))" > "$APP_VIEW_FILE"
+tr "$C" k; for k in 1 2 3 4; do stop lead k; done
+ok "after the escape a stale app view still blocks (B197 is not skipped)" "$(jq -e '.decision == "block" and (.reason | test("app view"))' <<<"$out" >/dev/null && echo 1)" "$out"
+printf 'saved epoch %s\napp view rows=3\n' "$NOW" > "$APP_VIEW_FILE"
+# the minutes argument: lead-watch.sh 30 (or more), not a 1-minute look
+stamp $((NOW - 60)) 0; echo "$((NOW - 60)) 0 abc 1" > "$T/lw/full-check"; tr "$C" m; stop lead m
+ok "a fresh stamp from lead-watch.sh 1 is refused (the check is lead-watch.sh 30)" "$([ $v = block ] && grep -q 'looked back 1 min' <<<"$out" && echo 1)" "$out"
+echo "$((NOW - 60)) 0 abc 45" > "$T/lw/full-check"; tr "$C" n; stop lead n; ok "... one from lead-watch.sh 45 passes" "$([ $v = pass ] && echo 1)" "$out"
+rm -f "$T/lw/full-check"
 # lead-watch.sh writes the stamp at its very end, after every step, with this copy's behind count
 lw="$TOOLS/lead-watch.sh"
 last=$(grep -n 'full-check.\$\$" \&\& mv -f' "$lw" | cut -d: -f1); ex=$(grep -n '^exit "\$act"' "$lw" | cut -d: -f1)
