@@ -148,6 +148,19 @@ jobs:
       - name: a new package in any package.json carries a "STANDARDS §1:" line (E16)
         if: "${{ !cancelled() }}"
         run: printf '%s\n' "$BODY" | bash "$T/deps-line-check.sh" --base HEAD^1
+      # LR-047, OS-30 (P-683): a builder PR leaves draft only after the reviewer's "Reviewer: Approve <full head SHA>"
+      # comment line (/next §5 step 4). A ready PR with none gets a warning, never a failure (P-214); a bot's PR and a
+      # records-only PR are not checked. Comments that cannot be read fail the step (LR-043, fail closed); the head
+      # reaches the tool only through env. Test: product/tools/check-ready-approve.sh.
+      - name: a ready PR carries the reviewer's Approve comment line (LR-047, OS-30; a warning, never a failure)
+        if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' && !github.event.pull_request.draft && github.event.pull_request.user.type != 'Bot' }}"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          set -o pipefail
+          gh api --paginate "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | .body | @json' \
+            | python3 -I "$T/ready-approve.py" --head "$HEAD_SHA"
   # ENF-782a part 1 (P-782 (2), founder 21 Nov): a PR saying "Completes: R1.n" fails unless every part listed for R1.n
   # (its focus-list.md line, its J-row's "Parts it joins:", its CAPABILITIES.md packs and suites) has merged on main or
   # is this PR, and its journey tests/journeys/j_<n>.ts exists on main or in this PR; the failure names each missing
