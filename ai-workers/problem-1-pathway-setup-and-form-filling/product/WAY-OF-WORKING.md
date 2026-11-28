@@ -56,6 +56,13 @@ Every PR and every merge-queue batch runs its affected suites on 4 GitHub Linux 
 
 **A test failing without a code cause is quarantined at once** in `tools/run-suites.sh` (`QUARANTINE`) with its evidence and fix row; nightly still runs it (P-205).
 
+## Milestone gate checklist (LR-068; register citations [C16], [C17])
+At each milestone gate (Release 1 included), after `/qa milestone` and before the Lead calls the gate, in this order:
+1. **Deep review (ultra):** the deepest Claude code review on the diff since the last gate's tag. The source calls it `/code-review ultra` (US$5-25 a run); in this Claude Code build the deepest level is `/code-review max`. It is a paid run (P-295b): usual and worst cost first, worst reserved in the ledger, approved by the Lead inside the day cap (P-295), one attempt.
+2. **Security pass:** `/security-review` on the same range (and the Claude Security plugin where it is installed).
+3. Each finding goes to qa (`qa/BUGS.md`, qa's own file) or to a fix PR; an open Important or a security finding holds the gate.
+4. The gate's records line links both runs. Gates only, never per PR ([C17]): the PR reviewer and breaker stay as they are (P-303).
+
 ## Questions and stuck
 Never wait for a human: put the question in the PR under "Questions" with your recommendation and carry on with what is not blocked; stuck for 10 minutes, ask rather than retry blindly. The tech lead answers in batches, product questions going to the founder one at a time. Disagree with evidence in the PR or in `screens/<item>/challenge.md`; never deviate silently.
 

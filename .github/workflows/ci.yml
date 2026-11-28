@@ -408,6 +408,7 @@ jobs:
           bash "$P/tools/check-flaky.sh"
           bash "$P/tools/check-write-token.sh"
           bash "$P/tools/live-ai-off.sh"   # OS-33 (P-175): no STUDIO_*_LIVE switch on by default
+          bash "$P/tools/check-gate-checklist.sh"   # LR-068: the milestone gate names the ultra review and the security pass
           bash "$P/tools/engine-hardcode.sh"   # OS-32 (P-319, P-425): no new form number or key-literal branch in engine code
           bash "$P/tools/change-route.sh" --self-test   # fast route (P-847): docs, tooling, full
           bash "$P/tools/tooling-checks.sh" --self-test
