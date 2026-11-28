@@ -15,20 +15,27 @@ part is done and passes: #4000, `check-workflow-security.sh`, 24 passed.
 1. github.com/expat-ready/xpatready › Settings › Actions › General ›
    "Approval for running fork pull request workflows from contributors" › choose
    "Require approval for all external contributors" (older label: "all outside collaborators") › Save.
-2. Organization › Settings › Actions › Runners.
-   * Only organization runners can be grouped; a repository runner cannot join a group. If xr-mac and xr-mac-light are
-     repository runners, remove them and register them again at the organization.
-   * Then Runner groups › New runner group › name `mac-fenced` › Repository access: Selected repositories ›
+2. Organization › Settings › Actions › Runner groups.
+   * Create the group first: New runner group › name `mac-fenced` › Repository access: Selected repositories ›
      expat-ready/xpatready.
    * Workflow access: Selected workflows › add
      `expat-ready/xpatready/.github/workflows/queue-gate.yml@refs/heads/main` and
      `expat-ready/xpatready/.github/workflows/demo-update.yml@refs/heads/main` › Create group.
-   * Move both runners into the group.
-   * The alternative in the row's Done when: set the repository variable `GATE_RUNNER` to `ubuntu-latest` and keep the
-     Mac for demo-update only.
-3. Proof for the register: either a screenshot of both pages, or the Lead's API reads of
-   `repos/expat-ready/xpatready/actions/permissions/fork-pr-contributor-approval` and
-   `orgs/expat-ready/actions/runner-groups`.
+   * Then put both runners in it. Only organization runners can be grouped; a repository runner cannot join a group.
+     If xr-mac and xr-mac-light are repository runners, remove them and register them again at the organization,
+     straight into `mac-fenced` (so they never sit in the Default group, which no workflow limit covers). Keep their
+     labels exactly: `self-hosted`, `macOS` and `xr-mac` or `xr-mac-light`. queue-gate.yml and demo-update.yml pick
+     their runner by these labels.
+   * If the screen offers no "Selected workflows" limit (it depends on the plan), use the alternative below.
+   * The alternative in the row's Done when: repository › Settings › Secrets and variables › Actions › Variables ›
+     New repository variable `GATE_RUNNER` with the value `"ubuntu-latest"`, WITH the double quotes. queue-gate.yml
+     reads it as JSON (`runs-on: ${{ fromJSON(vars.GATE_RUNNER || ...) }}`, its comment says "(JSON, with the quotes)"),
+     and a bare `ubuntu-latest` would stop the merge gate from starting. The Mac then serves demo-update only.
+3. Proof for the register: either a screenshot of the pages, or the Lead's API reads of
+   `repos/expat-ready/xpatready/actions/permissions/fork-pr-contributor-approval`, then
+   `orgs/expat-ready/actions/runner-groups` (the group and its workflow list) and
+   `orgs/expat-ready/actions/runner-groups/<id>/runners` (both runners in it), or, for the alternative,
+   `repos/expat-ready/xpatready/actions/variables/GATE_RUNNER`.
 
 ## LR-063: a second organization owner and recovery codes (deferred by P-859)
 
@@ -53,7 +60,9 @@ The policy is built: #4058 (`.claude/approvals.yml`, observe mode; `check-approv
    * Volume: 155 of the last 300 merges to main touched a risky path (the reviewer's replay on #4058; 91 of them through
      the pipeline rule). So about half of PRs, at every push.
    * Price per review: not known until LR-067's 20 reviews. The caps set on 27 Nov bound the spend: Code Review
-     US$100, organization US$200 (LR-066).
+     US$100, organization US$200 (LR-066; the period is the one set with the caps, read it on the same page). When a
+     cap or the credit balance runs out, Code Review skips reviews without a warning (LR-066, [C7]): with about half of
+     PRs starting one at every push, read the balance weekly in the observe week.
    * US$0 until connected.
 3. Read the first day's Code Review bills. No review should run on a PR that touches only routine paths.
 4. Before the policy enforces:
