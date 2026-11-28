@@ -42,7 +42,7 @@ jobs:
     env:
       T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2   # the merge commit and its first parent (main), for cleanup-pr-check.sh
       # LR-043: BODY and TITLE for every later step, read now (a re-run replays the old event's body: #2282's false
@@ -188,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # main's PR merge commits: which parts have merged, and when the gate reached main
           filter: blob:none
@@ -210,7 +210,7 @@ jobs:
       contents: read
       pull-requests: write   # the label outside-wave only
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base

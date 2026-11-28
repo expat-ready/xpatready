@@ -106,7 +106,7 @@ jobs:
     env:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0, filter: "blob:none" }
       - name: push guard (excluded paths, PDFs, secrets, personal names); the full check runs when the PR is ready
         run: |
@@ -142,7 +142,7 @@ jobs:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0, filter: "blob:none" }
       - id: b
         name: the test merge on today's main (D6, tools/pr-base.sh; a batch keeps GitHub's merge)
@@ -209,7 +209,7 @@ jobs:
           else q=""; cat flaky.err; echo "::warning::flaky.mjs could not read the retry records: no automatic quarantine this run"; fi
           echo "autoq=$q" >> "$GITHUB_OUTPUT"
           [ -z "$q" ] || { echo "**Quarantined automatically (B122):**"; sed 's/^/- /' flaky.err; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.k.outputs.kind == 'code' && steps.k.outputs.suites == 'true'
         with: { node-version-file: .nvmrc }
       - id: d
@@ -282,7 +282,7 @@ jobs:
       QUEUE: ${{ needs.kind.outputs.queue }}
       SUITES: ${{ needs.kind.outputs.suites }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - name: the test merge on main (D6, tools/pr-base.sh; kind's main in its own attempt, today's main on a re-run)
         env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
@@ -308,7 +308,7 @@ jobs:
         # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in
         # tools/route-has-screen-allow.txt. The self-test first proves a new route with neither fails.
         run: node "$P/tools/route-has-screen.mjs" --self-test && node "$P/tools/route-has-screen.mjs"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
@@ -476,7 +476,7 @@ jobs:
       N: ${{ needs.kind.outputs.n }}
       SUITES_QUARANTINE_AUTO: ${{ needs.kind.outputs.autoq }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - name: the batch's base at run time (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge); a full run rebuilds the test merge (CI-PRE)
         env: { HEAD_SHA: "${{ inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
@@ -484,7 +484,7 @@ jobs:
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
           else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
@@ -514,7 +514,7 @@ jobs:
         run: '[ -f suites.md ] && cat suites.md >> "$GITHUB_STEP_SUMMARY" || true'
       - name: logs (only when something failed)
         if: failure() && env.KIND == 'code'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: suite-logs-shard-${{ matrix.shard }}-a${{ github.run_attempt }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
@@ -529,7 +529,7 @@ jobs:
       - name: test output (the images collected above; only when a suite failed)
         if: failure() && env.KIND == 'code'
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: suite-shots-shard-${{ matrix.shard }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/shots/
@@ -537,7 +537,7 @@ jobs:
           retention-days: 7
       - name: retry records (B122; only when a suite was retried; tools/flaky.mjs reads them)
         if: always() && env.KIND == 'code'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: suite-retries-${{ matrix.shard }}
           # The records, each retried suite's first-try log and api.log (the evidence its owner needs), and F5's bug
@@ -566,7 +566,7 @@ jobs:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - name: the batch's base (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge); a PR's test merge stays pinned to kind's main
         # Devin on #1337: "Re-run failed jobs" keeps kind's plan, so this job keeps kind's base too; "Re-run all jobs"
@@ -575,7 +575,7 @@ jobs:
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
@@ -602,7 +602,7 @@ jobs:
     env:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - name: the test merge on main (D6, tools/pr-base.sh; as the parts)
         env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", QUEUE: "${{ needs.kind.outputs.queue }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
@@ -610,7 +610,7 @@ jobs:
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
           else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
           echo "tested: $range"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
@@ -640,14 +640,14 @@ jobs:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0, filter: "blob:none" }
       - name: the batch's base at run time (D6, tools/pr-base.sh queue; git merge-base origin/main HEAD); a full run rebuilds the test merge (CI-PRE)
         env: { HEAD_SHA: "${{ inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
       - id: p
         name: the protected set (every Works row with a pack, all milestones, read at the base), in at most 5 groups
@@ -669,14 +669,14 @@ jobs:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - name: the batch's base at run time (D6, tools/pr-base.sh queue; git merge-base origin/main HEAD); a full run rebuilds the test merge (CI-PRE)
         env: { HEAD_SHA: "${{ inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
@@ -714,7 +714,7 @@ jobs:
         run: |
           echo "verdict: ${VERDICT% *} in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/${VERDICT#* }"; [ "${VERDICT% *}" = success ]
       # ---- notes only (P-292 (2)): the two notes checks, and the push guard
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.MODE != 'same' && (env.ROUTE == 'docs')
         with: { fetch-depth: 0, filter: "blob:none" }
       - name: the test merge on main, then the push guard (D6; the notes checks below read the rebuilt tree)
@@ -729,7 +729,7 @@ jobs:
         if: env.MODE != 'same' && (env.ROUTE == 'docs')
         run: bash "$P/tools/check-mergify-scopes.sh"
       # ENF-746c: the two notes checks judge records, so a merge-queue batch skips them (each PR passed them); the push guard stays.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: env.MODE != 'same' && env.ROUTE == 'docs' && env.KIND == 'records'
         with:
           node-version-file: .nvmrc
@@ -805,7 +805,7 @@ jobs:
           echo "green verdict remembered for ${MHEAD:0:12} on ${MBASE:0:12}"
       - name: upload the verdict
         if: success() && env.MODE != 'same' && needs.kind.outputs.queue != 'true' && needs.kind.outputs.mbase != '' && needs.kind.outputs.battempt == format('{0}', github.run_attempt)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: memory-verdict-a${{ github.run_attempt }}
           path: memory/
@@ -824,7 +824,7 @@ jobs:
     continue-on-error: true
     permissions: { contents: read, pull-requests: write }
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with: { pattern: "suite-retries-*", path: retries }
       - id: b
@@ -834,7 +834,7 @@ jobs:
           if [ ${#f[@]} -eq 0 ]; then echo "no pass on retry in this run"; echo "post=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           for x in "${f[@]}"; do d=$(basename "$(dirname "$x")"); echo "**Part ${d#suite-retries-}**"; echo; cat "$x"; echo; done > retry-bugs.md
           echo "post=true" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.b.outputs.post == 'true'
         with:
           ref: ${{ github.event.pull_request.base.sha }}
