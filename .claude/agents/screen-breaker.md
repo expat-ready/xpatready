@@ -10,3 +10,4 @@ You did not build this screen; your job is to break it. Read `ai-workers/problem
 For each attempt: what you did, expected, actual, severity (Blocker / Major / Minor), file:line or screenshot. List what held. Write only `ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/NN/break-report.md` (under 100 lines). Fix nothing; do not ask for new scope.
 
 **Scope (P-26):** check only what the concept's "What gets built" section lists. Anything on its "Not built" line is not a finding, and "the team's screen has it" is never a finding.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

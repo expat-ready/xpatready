@@ -179,6 +179,49 @@ class Fixture(unittest.TestCase):
         b = backlog(["| FO-2 | runtime | Leads | a test | Source: AG-2-2@00000000 |"])
         self.assertIn("is stale", self.run_tool("--brief", "FO-2", backlog_text=b)[1])
 
+    def test_brief_finds_a_row_moved_to_a_done_file(self):
+        # LR-091: done rows move word for word to history/BACKLOG-done-*.md beside BACKLOG.md and still resolve
+        (self.d / "history").mkdir(exist_ok=True)
+        (self.d / "history" / "BACKLOG-done-2026-11-28.md").write_text(
+            backlog([f"| FO-2 | runtime | Leads | a pass and a fail | Source: {self.cite('AG-2-2')} |"]))
+        try:
+            code, out = self.run_tool("--brief", "FO-2", backlog_text=backlog(["| FO-3 | runtime | Book | a test | waits on: none |"]))
+            self.assertEqual(code, 0, out)
+            self.assertIn("A lead always has a source", out)
+        finally:
+            (self.d / "history" / "BACKLOG-done-2026-11-28.md").unlink()
+
+    def test_check_passes_rows_moved_to_a_done_file(self):
+        row = "| FO-1 | runtime | Old | a test | waits on: none |"
+        old = self.d / "old.md"
+        old.write_text(backlog([row, "| FO-3 | runtime | Book | a test | waits on: none |"]))
+        (self.d / "history").mkdir(exist_ok=True)
+        (self.d / "history" / "BACKLOG-done-2026-11-28.md").write_text(backlog([row]))
+        try:
+            code, out = self.run_tool("--check", str(old), backlog_text=backlog(["| FO-3 | runtime | Book | a test | waits on: none |"]))
+            self.assertEqual(code, 0, out)
+        finally:
+            (self.d / "history" / "BACKLOG-done-2026-11-28.md").unlink()
+
+    def test_check_after_the_move_reads_the_bases_done_rows(self):
+        # LR-091 (review B1): the PR after the move. Its base has the row only in history/BACKLOG-done-*.md (trace.yml
+        # writes the base's done files beside the base file); the head the same. Not a new row: passes. Without the
+        # base's done file it would read as new, shaped, with no Source: fails (the comparison can fail).
+        row = "| FO-1 | runtime | Old | a test | waits on: none |"
+        base = self.d / "base"
+        (base / "history").mkdir(parents=True, exist_ok=True)
+        (base / "old.md").write_text(backlog(["| FO-3 | runtime | Book | a test | waits on: none |"]))
+        (self.d / "history").mkdir(exist_ok=True)
+        (self.d / "history" / "BACKLOG-done-2026-11-28.md").write_text(backlog([row]))
+        head = backlog(["| FO-3 | runtime | Book | a test | waits on: none |"])
+        try:
+            self.assertEqual(self.run_tool("--check", str(base / "old.md"), backlog_text=head)[0], 1)
+            (base / "history" / "BACKLOG-done-2026-11-28.md").write_text(backlog([row]))
+            code, out = self.run_tool("--check", str(base / "old.md"), backlog_text=head)
+            self.assertEqual(code, 0, out)
+        finally:
+            (self.d / "history" / "BACKLOG-done-2026-11-28.md").unlink()
+
     # ---- check (CI)
     def test_check_fails_a_new_row_with_no_source_and_passes_one_with_it(self):
         base = backlog(["| FO-1 | runtime | Old | a test | waits on: none |"])

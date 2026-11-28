@@ -3,7 +3,7 @@ const path = require("node:path"); const { chromium } = require(process.cwd()+"/
 const OUT = path.join(process.cwd(), "..", "..", "product", "scout", "reports", "2026-10-25-firm-admin-day-one");
 const BASE = "http://localhost:4480"; const CID = "00f7ceaf-3fb8-478d-8837-420d5cd1c09d";
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions()); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   const shot = async (n, pg = p) => pg.screenshot({ path: `${OUT}/w3-${n}.png`, fullPage: true });
   // attach a sample form and a checklist
   await p.goto(`${BASE}/c/${CID}/sources`, { waitUntil: "networkidle" }); await p.waitForTimeout(400);
