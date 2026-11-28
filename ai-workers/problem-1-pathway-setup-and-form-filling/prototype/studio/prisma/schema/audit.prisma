@@ -3,6 +3,8 @@
 // AUD-1a (SA-11-1, SA-11-2, SA-11-3, AG-13-41): insert-only at the database. The migration's triggers fill actor_type
 // from the actor word when a writer leaves it out (aud_event_fill), and refuse every UPDATE and TRUNCATE and every DELETE
 // outside the demo reset's Sample lines (aud_event_no_change). A correction is a new reversing line, never an edit.
+// AUD-1c part 1 (SA-11-4, NFR5-08): a hash chain per firm, one for the platform and one per demo workspace. The insert
+// trigger aud_event_zchain (fires last, after every fill) sets chain_key, seq, prev_hash and entry_hash; a writer never does.
 
 /// Who wrote an audit line (SA-11-2; SA-11 BR-3: never inferred from a null user). SEED is a demo loader (a narrow
 /// departure from SA-11-2's four types, ruled by Lead 61 on #1870).
@@ -39,9 +41,38 @@ model AuditEvent {
   correlationId    String?        @map("correlation_id")
   /// AUD-1a (AUD-3b): the support session a line was written under; null otherwise.
   supportSessionId String?        @map("support_session_id") @db.Uuid
+  /// AUD-1c (SA-11-4, P-571 (1)): which chain a line is on: `sample:<workspace id>` for a demo-workspace line (or one
+  /// whose workspace is gone), else its firm id, else `platform`. Set by aud_event_zchain; any value a writer gives is
+  /// replaced. @ignore: not in the client, so no reader sees it (AUD-1c part 2's checker reads it in SQL).
+  chainKey         String         @default(dbgenerated()) @map("chain_key") @ignore
+  /// AUD-1c: the line's place in its chain, 1, 2, 3… with no gap, in commit order (per-chain lock until commit).
+  seq              BigInt         @default(dbgenerated()) @ignore
+  /// AUD-1c: the chain's previous entry_hash (32 zero bytes for the first line).
+  prevHash         Bytes          @default(dbgenerated()) @map("prev_hash") @ignore
+  /// AUD-1c: sha256(prev_hash || UTF-8 of aud_event_canonical(line)); api/src/platform/audit/canonical.ts mirrors it.
+  entryHash        Bytes          @default(dbgenerated()) @map("entry_hash") @ignore
 
+  @@unique([chainKey, seq])
   @@index([workspaceId, at])
   @@index([combinationId, at])
   @@index([firmId, at])
   @@map("audit_event")
+}
+
+/// AUD-1c (SA-11-6): the chain checker's last verified place per chain (part 2 writes it; part 1 makes the table).
+enum AuditChainStatus {
+  INTACT
+  BROKEN
+}
+
+model AuditChainCheck {
+  chainKey       String           @id @map("chain_key")
+  verifiedSeq    BigInt           @default(0) @map("verified_seq")
+  verifiedHash   Bytes?           @map("verified_hash")
+  checkedAt      DateTime?        @map("checked_at") @db.Timestamptz
+  status         AuditChainStatus @default(INTACT)
+  failingFromSeq BigInt?          @map("failing_from_seq")
+  failingToSeq   BigInt?          @map("failing_to_seq")
+
+  @@map("aud_chain_check")
 }
