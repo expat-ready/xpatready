@@ -13,8 +13,9 @@
 // replay fails instead of warning. Off by default: the packs keep STANDARDS §9's warning budget (P-717 (b)) until the
 // Lead rules it blocks. Every console error is collected in both modes (consoleErrors). Test:
 // tests/check_lr125_strict_browser.ts.
-import { existsSync } from "node:fs";
 import { chromium, type Browser, type Page } from "playwright";
+import launchLib from "./launch-options.cjs";
+const { launchOptions } = launchLib;
 
 export const LCP_BUDGET_MS = 2500, CLS_BUDGET = 0.1;
 const HANDLED_4XX = /Failed to load resource: the server responded with a status of 4\d\d\b/;
@@ -24,7 +25,8 @@ export type Walker = { browser: Browser; strict: boolean; errors: string[]; cons
 export async function walker(base: string, opts: { strict?: boolean } = {}): Promise<Walker> {
   const strict = opts.strict ?? process.env.JOURNEY_STRICT === "1";
   // The channel "chrome" as the suites use it (cloud-setup.sh links the image's Chromium there on Linux); else Chromium.
-  const browser = await chromium.launch(existsSync("/opt/google/chrome/chrome") || process.platform === "darwin" ? { channel: "chrome", headless: !process.env.QA_HEADED } : { headless: !process.env.QA_HEADED });
+  // One rule for every check since LR-179: acceptance/lib/launch-options.cjs.
+  const browser = await chromium.launch(launchOptions({ headless: !process.env.QA_HEADED }));
   const errors: string[] = [];
   const consoleErrors: string[] = [];
   const vitals: Vital[] = [];

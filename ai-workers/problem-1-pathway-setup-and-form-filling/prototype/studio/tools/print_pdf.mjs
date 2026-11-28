@@ -1,12 +1,14 @@
-// Prints one local HTML file to PDF with Playwright (the Studio's own package; no new tool). Its bundled browser build
-// is used when installed, else this computer's Google Chrome (channel "chrome").
+// Prints one local HTML file to PDF with Playwright (the Studio's own package; no new tool). The browser is chosen by the
+// studio's one rule (acceptance/lib/launch-options.cjs, LR-179): Google Chrome (channel "chrome") where it exists, else
+// Playwright's own build.
 // Used for the portal capture review document (P-66). JavaScript and network are off: the page is our own HTML.
 //   node studio/tools/print_pdf.mjs <in.html> <out.pdf>
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 const [input, output] = process.argv.slice(2);
-const browser = await chromium.launch().catch(() => chromium.launch({ channel: "chrome" }));
+const browser = await chromium.launch(createRequire(import.meta.url)("../acceptance/lib/launch-options.cjs").launchOptions());   // LR-179
 try {
   const page = await browser.newPage({ javaScriptEnabled: false });
   await page.route("**/*", (r) => r.abort());
