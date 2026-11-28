@@ -14,6 +14,7 @@ import { chromium } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 
 const [NAME, PORT, SHOTS] = [process.argv[2] ?? "qa9v", Number(process.argv[3] ?? 4477), process.argv[4] ?? "/tmp/r131"];
 mkdirSync(SHOTS, { recursive: true });
@@ -30,7 +31,7 @@ const tok = (await (await fetch(`${BASE}/api/platform/session/local`, { method: 
 const p = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Lena', 'Sample', 'qa9.lena@example.org', 'test', now()) returning id`);
 const leadId = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at, arrived_at) values (gen_random_uuid(), '${A}', '${p}', 'MANUAL', 'Phone call', '${rid}', 'test', now(), now()) returning id`);
 
-const browser = await chromium.launch(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {});
+const browser = await chromium.launch(launchLib.chromiumOptions());
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), tok);
 const pg = await ctx.newPage();

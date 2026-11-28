@@ -58,7 +58,7 @@ ok("R4: no revision is linked to another in cloud-setup.sh (the chrome channel l
 // call's closing parenthesis, across lines) and passes only when they name the shared options, a channel or an
 // executablePath (a caller's own exe object counts). Exempt by name: the journey fixtures (tests/journeys/fixtures/), which
 // record.ts loads first and whose launch it wraps with the same options, as it does for every journey.
-const GOOD = /launchOptions\(|channel|executablePath|\bexe\b/;
+const GOOD = /launchOptions\(|chromiumOptions\(|channel|executablePath|\bexe\b/;   // chromiumOptions: LR-183
 function launchCalls(text: string): { line: number; args: string }[] {
   const out: { line: number; args: string }[] = [];
   for (let i = text.indexOf("chromium.launch("); i >= 0; i = text.indexOf("chromium.launch(", i + 1)) {
@@ -71,7 +71,7 @@ function launchCalls(text: string): { line: number; args: string }[] {
 const bareIn = (text: string) => launchCalls(text).filter((c) => !GOOD.test(c.args)).map((c) => c.line);
 ok("S0: the sweep's own examples: bare launch(), launch(opts), launch({ headless, args }) over two lines are caught; launchOptions, a channel, an executablePath and an exe spread pass",
   JSON.stringify(bareIn("a = chromium.launch();\nb = chromium.launch(opts);\nc = chromium.launch({ headless: true,\n  args: [\"--x\"] });")) === "[1,2,3]"
-  && bareIn("chromium.launch(launchOptions({ headless: true }));\nchromium.launch({ channel: \"chrome\" });\nchromium.launch({\n  executablePath: p });\nchromium.launch({ headless: true, ...exe });").length === 0);
+  && bareIn("chromium.launch(chromiumOptions({ headless: true }));\nchromium.launch(launchOptions({ headless: true }));\nchromium.launch({ channel: \"chrome\" });\nchromium.launch({\n  executablePath: p });\nchromium.launch({ headless: true, ...exe });").length === 0);
 const files: string[] = [];
 const walk = (d: string) => {
   for (const n of readdirSync(d)) {
@@ -84,9 +84,36 @@ const walk = (d: string) => {
 for (const d of ["tests", "acceptance", "tools", "evidence"]) walk(join(STUDIO, d));
 const exempt = (f: string) => relative(STUDIO, f).startsWith(join("tests", "journeys", "fixtures")) || f.endsWith("launch-options.cjs") || f.endsWith("check_launch_options.ts");
 const bare = files.filter((f) => !exempt(f)).flatMap((f) => bareIn(readFileSync(f, "utf8")).map((n) => `${relative(STUDIO, f)}:${n}`));
-ok(`S1: every chromium.launch( in the studio's ${files.length} script files names the shared options, a channel or an executablePath`, bare.length === 0, bare);
+ok(`S1: every chromium.launch( in the studio's ${files.length} script files names the shared options (launchOptions, chromiumOptions), a channel or an executablePath`, bare.length === 0, bare);
 const fixtures = files.filter((f) => relative(STUDIO, f).startsWith(join("tests", "journeys", "fixtures")));
 ok("S2: the only exempt launches are the journey fixtures record.ts wraps (and the sweep does see them)", fixtures.length > 0 && fixtures.flatMap((f) => bareIn(readFileSync(f, "utf8"))).length >= 3);
+
+// LR-183: chromiumOptions(), the older checks' own order kept in one place (Mac chrome, Playwright's own Chromium, the
+// image's /opt/pw-browsers/chromium, the channel chrome), and no check names a Chromium revision.
+const OWN = "/pw/chromium-1248/chrome-linux64/chrome";
+const box = (platform: string, have: string[]) => ({ platform, own: OWN, exists: (p: string) => have.includes(p) });
+const co = (env: ReturnType<typeof box>, extra: Record<string, unknown> = { headless: true }) => JSON.stringify(lib.chromiumOptions(extra, env));
+ok("C1: CI (Playwright's own Chromium installed, runner Chrome present): nothing added, Playwright's own Chromium as before",
+  co(box("linux", [OWN, lib.CHROME])) === JSON.stringify({ headless: true }));
+ok("C1b: Playwright's own Chromium and the image's both present (a cloud session after playwright install): Playwright's own comes first",
+  co(box("linux", [OWN, lib.PW_IMAGE, lib.CHROME])) === JSON.stringify({ headless: true }));
+ok("C2: a cloud session (no Playwright Chromium of this release, the image's link present): the image's /opt/pw-browsers/chromium",
+  co(box("linux", [lib.PW_IMAGE, lib.CHROME])) === JSON.stringify({ executablePath: lib.PW_IMAGE, headless: true }));
+ok("C3: the Mac: the channel chrome, whatever is installed", co(box("darwin", [OWN])) === JSON.stringify({ channel: "chrome", headless: true }));
+ok("C4: Linux with neither Playwright's Chromium nor the image's but Google Chrome: the channel chrome (no bare launch)",
+  co(box("linux", [lib.CHROME])) === JSON.stringify({ channel: "chrome", headless: true }));
+ok("C5: nothing installed: nothing added (Playwright's own error says how to install)", co(box("linux", [])) === JSON.stringify({ headless: true }));
+ok("C6: a caller's executablePath or channel is kept as given", co(box("linux", [lib.PW_IMAGE]), { executablePath: "/x" }) === JSON.stringify({ executablePath: "/x" })
+  && co(box("linux", [OWN]), { channel: "msedge" }) === JSON.stringify({ channel: "msedge" }));
+ok("C7: the image path is the link, never a revision folder", lib.PW_IMAGE === "/opt/pw-browsers/chromium");
+const REV = /pw-browsers\/chromium[-_]\d+/;
+const pinned = files.filter((f) => !f.endsWith("check_launch_options.ts")).filter((f) => REV.test(readFileSync(f, "utf8"))).map((f) => relative(STUDIO, f));
+ok("S3: no script names a Chromium revision folder (/opt/pw-browsers/chromium-<n>): the image's revision changes under us", pinned.length === 0, pinned);
+// S4, a ratchet: checks that still write their own /opt/pw-browsers rule inline. 252 before LR-183; each later part lowers
+// MAX to its new count, so a new inline rule fails here and points at chromiumOptions().
+const MAX_INLINE = 206;
+const inline = files.filter((f) => !f.endsWith("launch-options.cjs") && !f.endsWith("check_launch_options.ts")).filter((f) => readFileSync(f, "utf8").includes("/opt/pw-browsers"));
+ok(`S4: at most ${MAX_INLINE} scripts still write their own /opt/pw-browsers rule (252 before LR-183; use chromiumOptions())`, inline.length <= MAX_INLINE, `${inline.length}: ${inline.slice(0, 5).map((f) => relative(STUDIO, f)).join(", ")}`);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

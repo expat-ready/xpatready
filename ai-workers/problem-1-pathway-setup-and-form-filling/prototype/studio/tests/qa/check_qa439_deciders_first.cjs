@@ -39,7 +39,7 @@ const before = (text, a, b) => { const i = text.indexOf(a), j = text.indexOf(b);
     for (const [role, name] of family) { const a = await call("POST", `/runtime/cases/${made.body?.id}/people`, "user-O", { role, displayName: name }); ids[role] = a.body?.subject_id; }
     return { id: made.body?.id, ids };
   };
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: W, height: 1000 }, reducedMotion: "reduce" });
   await ctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-P"); } catch { /* ignore */ } });
   const p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(e.message));

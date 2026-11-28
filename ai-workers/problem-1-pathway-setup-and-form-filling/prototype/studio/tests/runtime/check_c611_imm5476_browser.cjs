@@ -18,7 +18,7 @@ const T = { timeout: 20000 };
 const ago = (y) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - y); d.setUTCDate(d.getUTCDate() - 3); return d; };
 
 (async () => {
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await ctx.addInitScript(() => { localStorage.setItem("xr-actor", "user-R"); });

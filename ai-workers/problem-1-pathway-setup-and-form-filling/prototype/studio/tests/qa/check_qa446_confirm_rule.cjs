@@ -53,7 +53,7 @@ async function clientAnswersAll(caseId, dobs) {
   }
   const firm = (await call("GET", "/runtime/firm", "user-O")).body;
   const rep = (firm?.users ?? []).find((u) => (u.duties ?? []).includes("represent"))?.id ?? "user-R";
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errs = [];
   for (const [key, fam] of [["vv.single", "Visitor visa"], ["sp.outside", "Study permit"]]) {
     const ref = `QA446-${key}-${Date.now() % 1000000}`;

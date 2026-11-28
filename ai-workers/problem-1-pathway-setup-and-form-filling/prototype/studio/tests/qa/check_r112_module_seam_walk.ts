@@ -22,6 +22,7 @@ import { chromium, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4472), DBNAME = process.argv[3] ?? "xr_studio_qa_r112";
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
@@ -36,7 +37,7 @@ const fo = await seedSampleFirmsFrontOffice(db);
 ok("R1.12 setup: the Sample firm and its front office are seeded", fo.failed.length === 0, fo.failed);
 const cmEmail = sql(`select email from platform_staff where actor_id = 'user-T'`);   // Case Manager
 ok("R1.12 setup: the Sample firm's Case Manager has a work email", /@/.test(cmEmail), cmEmail);
-const browser = await chromium.launch({ headless: true, ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: true }));
 
 async function fresh(width: number): Promise<{ p: Page; errors: string[] }> {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });

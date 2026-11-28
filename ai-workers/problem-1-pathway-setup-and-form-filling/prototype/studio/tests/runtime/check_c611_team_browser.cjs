@@ -14,7 +14,7 @@ const ok = (name, pass, detail = "") => { results.push(pass); console.log(`${pas
 const T = { timeout: 15000 };
 
 (async () => {
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const open = async (actor, width = 1440) => {
     const ctx = await browser.newContext({ viewport: { width, height: 900 } });

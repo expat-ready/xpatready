@@ -18,6 +18,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type APIRequestContext } from "playwright";
 import { recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 
 const NAME = process.argv[2] ?? "qa777", PORT = Number(process.argv[3] ?? 4476), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
@@ -42,7 +43,7 @@ const j = async (method: string, path: string, body?: unknown, token?: string): 
   const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b };
 };
 
-const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: true }));
 try {
   // ------------------------------------------------------------------------------------------ set-up (as j_104, Sample)
   if (await db.platformFirm.findUnique({ where: { key: KEY } })) { console.error(`STOP  firm ${KEY} exists: start a fresh copy`); process.exit(2); }

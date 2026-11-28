@@ -47,7 +47,7 @@ const nextNotDone = (parts, from) => { for (let k = 1; k < parts.length; k++) { 
     const l = await call("POST", "/demo/load", "user-A", { sample: "configured" });
     if (l.status >= 300) { console.log("STOP the configured checkpoint did not load", l.status); process.exit(2); }
   }
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium-1243/chrome-linux64/chrome") ? { executablePath: "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   for (const [fam, combo] of [["Visitor visa", "Visitor visa"], ["Study permit", "Outside Canada"]]) {
     const row = await find(combo);
     const ref = `QA445-${fam.length}-${Date.now() % 100000}`;

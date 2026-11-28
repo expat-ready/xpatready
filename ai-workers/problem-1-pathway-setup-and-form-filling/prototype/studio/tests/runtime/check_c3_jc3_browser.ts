@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import AxeModule from "@axe-core/playwright";
 import { adobeValidated, answer, call, confirmAll, copyBytes, fillEverything, firms, itemsOf, main, needVisitorVisa, ok, openCase, prepare, yearsAgo } from "../../acceptance/lib/m3.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 
 const PORT = process.argv[2] ?? "4431", BASE = `http://localhost:${PORT}`, SHOTS = process.argv[4] ?? null;
 const T = { timeout: 30_000 };
@@ -31,7 +32,7 @@ await main("J-C3", "Validate on release 2 by screens (1440 px)", async () => {
   const ready = (await call("GET", `/runtime/cases/${c.id}/forms`, undefined, officer)).body?.forms?.find((x: { form: string; subject_id: string }) => x.form === "IMM 5257" && x.subject_id === P)?.readiness?.ready;
   ok("J-C3 setup (by route): every fact IMM 5257 reads for Client A is answered and confirmed", ready === true);
 
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(launchLib.chromiumOptions({ headless: true }));
   const errors: string[] = [];
   try {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });

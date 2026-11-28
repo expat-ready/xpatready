@@ -24,6 +24,7 @@ import { fakeAlerts } from "../../ports/alert.ts";
 import { FakeClock } from "../../ports/clock.ts";
 import { fakeJobs } from "../../ports/jobs.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const PORT = Number(process.argv[2] ?? 4474), DBNAME = process.argv[3] ?? "xr_studio_qa600", TRIES = 6;
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
 const { ok, summary } = recorder();
@@ -46,7 +47,7 @@ await here.register(); connectLocalNotices(null);
 const person = sql(`insert into fo_person (firm_id, given_names, family_name, email, created_by, updated_at) values ('${A}', 'Paged${run}', 'Sample', 'paged.${run}@example.com', 'seed:qa600', now()) returning id`);
 const lead = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${person}', 'MANUAL', 'Phone (Sample)', '${staff}', 'seed:qa600', now()) returning id`);
 for (let i = 0; i < 51; i++) await db.$transaction((t) => here.send(t, { firmId: A, person: { kind: "FO_PERSON", id: person }, channel: "EMAIL", class: "TRANSACTIONAL", address: `paged${i}.${run}@example.com`, content: { subject: "Paged (Sample)", text: "x" }, idempotencyKey: randomUUID() }));
-const browser = await chromium.launch(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {});
+const browser = await chromium.launch(launchLib.chromiumOptions());
 const lost: number[] = [];
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });

@@ -24,7 +24,7 @@ const ok = (name, cond, detail) => { if (cond) { pass++; console.log(`PASS  ${na
   const d = JSON.parse(String(s.stdout).trim().split("\n").pop() || "{}");
   ok("QA-376 setup: round 1 with the spouse's one withdrawn form (setup_c83_walk.ts)", !!d.caseId && !!d.r1 && !!d.fS, { exit: s.status, err: String(s.stderr).slice(-300) });
   if (!d.r1) process.exit(1);
-  const b = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await p.goto(`${BASE}/`); await p.evaluate((a) => localStorage.setItem("xr-actor", a), d.rep);
   const misses = [];
