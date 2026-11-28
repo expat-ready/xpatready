@@ -205,6 +205,12 @@ PY
       echo "MISSING LINK in ${f#$ROOT/}: $ref"
     done
   done
+  # LR-119: the files GitHub, Mergify and Claude read only in this repository stay in it (private split step 5); the
+  # check proves itself on a planted break first, so a broken check cannot pass quietly.
+  if [ -f "$PH/tools/stays-public.sh" ]; then
+    bash "$PH/tools/stays-public.sh" --self-test >/dev/null 2>&1 || echo "STAYS PUBLIC: stays-public.sh --self-test fails: the check itself is broken"
+    bash "$PH/tools/stays-public.sh" "$ROOT"
+  fi
 } | sort -u > "$out"
 # Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
 # HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
