@@ -7,7 +7,9 @@ AND an Important finding names a file that holds the bug. The rate is the review
 Commands (US$0 here: this script runs no model; the reviewers are plan subagents the runner starts, a pilot of 2 first,
 RULES pilot rule LR-128):
   check  [--repo DIR]           the set is 10-20 cases, each complete, its shas present, its bug file in its diff
-  brief  <id> [--repo DIR]      the blind brief for one case (no bug text): what to diff and how to answer
+  brief  <id> [--review FILE]   the blind brief for one case (no bug text): what to diff and how to answer; run the
+                                reviewer in a worktree at the case's merge commit (git worktree add --detach), so
+                                nothing later (fixes, this set) is on disk; --review: the REVIEW.md under test
   score  <results dir>          one <id>.md per case reviewed (the reviewer's answer; a "Tokens: N" line may be added);
                                 prints a line per case and "reviewer-eval: caught C of N (P%), tokens T" (exit 0)
 Set: reviewer-test-set.json beside this file. Runs: reviewer-test-runs.md (date, model, brief sha, result, tokens).
@@ -59,10 +61,11 @@ def check(cases, repo, lo=10, hi=20):
     return bad
 
 
-def brief(c):
-    """The blind brief: the diff and REVIEW.md, never the bug, the fix or the case's own words."""
-    return (f"You are a fresh, independent code reviewer. Read REVIEW.md at the repository root first and follow it "
-            f"exactly. Review pull request #{c['culprit_pr']} as it merged: the change is "
+def brief(c, review="REVIEW.md"):
+    """The blind brief: the diff and REVIEW.md, never the bug, the fix or the case's own words. review is the REVIEW.md
+    under test (an old commit may have none, or an older one)."""
+    return (f"You are a fresh, independent code reviewer. Read {review} first (the review rules under test) and follow "
+            f"it exactly. Review pull request #{c['culprit_pr']} as it merged: the change is "
             f"`git diff {c['base_sha']} {c['culprit_merge_sha']}` (read files at {c['culprit_merge_sha']} for context; "
             f"do not read anything committed after it, its later fixes or reverts, or the reviewer test set). Round 1, "
             f"full review. Each finding: its tag (Important, Nit, Pre-existing), file:line and the fix. Last line: "
@@ -104,6 +107,7 @@ def main():
     a.add_argument("cmd", choices=["check", "brief", "score"])
     a.add_argument("arg", nargs="?")
     a.add_argument("--set", default=SET)
+    a.add_argument("--review", default=None, help="the REVIEW.md under test (default: the repository's)")
     a.add_argument("--repo", default=os.path.abspath(os.path.join(HERE, "..", "..", "..", "..")))
     o = a.parse_args()
     try:
@@ -120,7 +124,7 @@ def main():
         c = next((c for c in cases if c.get("id") == o.arg), None)
         if not c:
             print(f"reviewer-eval: no case {o.arg}"); return 2
-        print(brief(c)); return 0
+        print(brief(c, o.review or os.path.join(o.repo, "REVIEW.md"))); return 0
     if not o.arg or not os.path.isdir(o.arg):
         print("reviewer-eval: score needs the results folder"); return 2
     rows, n, got, tok = score(cases, o.arg)
