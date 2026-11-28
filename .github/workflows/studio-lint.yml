@@ -40,7 +40,10 @@ jobs:
         run: |
           if [ "$CI_OUTCOME" != success ]; then echo "::warning title=eslint (LR-083, report only)::npm ci failed: nothing was linted" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           cd "$S"
-          rc=0; npx eslint . --format json --output-file "$RUNNER_TEMP/eslint.json" || rc=$?
+          # --pass-on-unpruned-suppressions (LR-083 M1, review of #4043): without it a finding the baseline holds that a PR
+          # fixes leaves a stale suppression, and eslint exits 2 even beside a new finding (exit 1), so "(exit 2)" said nothing.
+          # A stale suppression is now not reported; the summary says how to prune.
+          rc=0; npx eslint . --pass-on-unpruned-suppressions --format json --output-file "$RUNNER_TEMP/eslint.json" || rc=$?
           python3 -I - "$RUNNER_TEMP/eslint.json" "$rc" "$GITHUB_STEP_SUMMARY" <<'PY'
           import json, os, sys, collections
           out = open(sys.argv[3], "a")
@@ -53,6 +56,7 @@ jobs:
           print("### eslint (LR-083, report only)\n", file=out)
           print("%d new finding(s) in %d file(s) beyond eslint-suppressions.json (exit %s)." % (n, files, sys.argv[2]), file=out)
           for r, k in c.most_common(15): print("* `%s`: %d" % (r, k), file=out)
+          print("\nA held finding this PR fixed is not reported. To shrink the baseline: `npx eslint . --prune-suppressions` in the studio folder, then commit eslint-suppressions.json.", file=out)
           shown = 0   # the first 200 as annotations on the PR's files
           for f in d:
               for m in f["messages"]:
