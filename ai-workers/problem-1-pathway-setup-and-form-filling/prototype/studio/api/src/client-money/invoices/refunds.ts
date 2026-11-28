@@ -21,6 +21,7 @@ import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
 import { failClosed, invoiceInScope, type MoneyScope, type ScopeOf } from "../reads/visibility.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
+import { liveParty } from "../live-party.ts";
 
 type Tx = Prisma.TransactionClient;
 export const REFUND_KEY = "agent/refund:create";
@@ -40,7 +41,7 @@ export class Refunds {
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
       const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
-      const p = await this.lock(tx, ctx.firmId, id);
+      const p = await this.lock(tx, ctx.firmId, id, scope);
       const refundedOn = this.day("refundedOn", r.refundedOn);
       const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn: r.refundedOn ?? null });
       if (had) return this.refundView(tx, ctx.firmId, had, p, true);   // a double click or a retry: the one refund, never a second
@@ -78,7 +79,7 @@ export class Refunds {
     const scope = await this.scopeOf(ctx);   // C5 scope read before the transaction: a write never holds two connections (Lead 14, #3321 (4))
     return this.write(async (tx) => {
       const pre = await this.row(tx, ctx.firmId, id); if (pre) await this.seen(tx, ctx, pre, scope);   // C5 before the locks and any write (review m2)
-      const p = await this.lock(tx, ctx.firmId, id);
+      const p = await this.lock(tx, ctx.firmId, id, scope);
       const refundedOn = c.choice === "REFUND" ? this.day("refundedOn", c.refundedOn) : null;
       if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again (never a plain refund's key)
         const had = await this.replay(tx, ctx.firmId, c.idempotencyKey!, { paymentId: id, fromExtra: true, amountMinor: null, reason: c.reason!, method: c.method!, reference: c.reference ?? null, refundedOn: c.refundedOn ?? null });
@@ -131,10 +132,11 @@ export class Refunds {
     return p ?? null;
   }
   /** The payment (on an invoice of the firm), the party's trust lock, then the invoice row (FO-7lk's order). */
-  private async lock(tx: Tx, firm: string, id: string): Promise<Pay> {
+  private async lock(tx: Tx, firm: string, id: string, scope: MoneyScope): Promise<Pay> {
     const firmId = firmScope(firm).firmId, p = await this.row(tx, firm, id);
     if (!p) return notFound("payment");
     await tx.$executeRaw`select money_trust_lock(${firmId}::uuid, ${p.personId ?? p.companyId}::uuid, ${p.currency}::"MoneyCurrency")`;
+    await liveParty(tx, firmId, p.personId ?? p.companyId, scope);   // FO-9b part 2m, under the party's lock
     await tx.$queryRaw`select 1 from money_invoice where firm_id = ${firmId}::uuid and id = ${p.invoiceId}::uuid for update`;
     return p;
   }

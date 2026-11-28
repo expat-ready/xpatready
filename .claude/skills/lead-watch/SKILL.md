@@ -10,10 +10,10 @@ The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **comple
 ## Each check: three calls, then act
 1. `get_usage` (weekly plan %, extra usage, context k) · `LEAD_CONTEXT=<k> bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed, cycle timeline; exit = ACT lines) · `list_sessions` only when a lane looks quiet. **Standby prompt `run lead-watch gap` → only `lead-watch.sh gap`** (a full run rewrites the Lead's stamp).
 2. Act on every `ACT` line in this check. Do not re-read STATE, BACKLOG or DECISIONS on a check; read them only when a ruling needs them.
-3. **Every report to the founder is `product/tools/founder-report.py` output, never retyped** (A260; IST, P-302): checks `--short` (blocks 1-3, "Since last report": only what changed; only a decision, risk or spend unasked), full all 6. One `--needs` per 🔴 item (what, where, what stops; else `nothing`), then "🟡 Decide when you can"; every 🔴 item is also the end-of-turn box's question (P-478). Keep `product/cycle-plan.json` current (rows, parts, lane, aws, qa owner, reserve, outside; A244, A263).
+3. **Every report to the founder is `product/tools/founder-report.py` output, never retyped** (A260; IST, P-302): checks `--short` (blocks 1-3, "Since last report": only what changed; only a decision, risk or spend unasked), full all 6. One `--needs` per 🔴 item (what, where, what stops; else `nothing`), then `--decide` per 🟡, or `nothing`; every 🔴 item is also the end-of-turn box's question (P-478). Keep `product/cycle-plan.json` current (rows, parts, lane, aws, qa owner, reserve, outside; A244, A263).
 
 ## The app view and the ETA board (founder, 4 Nov, P-338, P-339)
-* **App view, every check (P-326):** one script read of claude.ai/code statuses in the built-in browser (Awaiting input, Failed, Merge conflicts, quiet over 10 min), plus `list_sessions include_archived` for any lane archived with work left (restore and brief it). Open a lane only when flagged; confirm its URL and title before typing or clicking; the list re-sorts, so never click by an old position.
+* **App view, every check (P-326, A430):** run `product/tools/app-view.js` (it reads past Show more) in the built-in browser on claude.ai/code, save it with `lead-watch.sh app-view-read`, act on each FLAG; UNREADABLE (signed out) → PushNotification 🔴 the same check. A Stop hook enforces both. [lanes.md](lanes.md). Open a lane only when flagged; confirm URL and title first.
 * **Prompts in a lane:** the founder lets the Lead answer a lane's question or permission prompt in claude.ai only inside that lane's brief and the rules (no spend over the cap, no settings or permission change, no delete, no label the rules forbid). Anything else, or a product preference, goes to the founder at once.
 * **Escalate at once:** any lane blocked on the founder gets one line to him with a recommendation; when the 10-message cap is reached, ask him to type "go".
 * **ETA board:** the timeline; late rows: why, and slip vs the previous estimate (P-338).
@@ -59,7 +59,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 
 ## Learned the hard way (keep)
 * Hand-merging notes mid-batch restarted a batch (P-306): notes go through the queue.
-* Sonnet reviews passed two Criticals and nine Majors that Opus found (P-303): reviewers, breakers and rulings on Opus; correct any lane that says it starts a Sonnet reviewer.
+* One model rule (P-788): all on Opus 5.5 medium; correct a lane on another model or effort with no `P-788 exception:`.
 * A scorecard of 52 was 36 re-tested (3 Nov): forecast from confirmed Works only; say which rows wait on paid runs or holds.
 * Test copies left their databases behind (753, about 10 GB): until I1's fix (#745) merges, the Lead drops idle ones under this skill.
 * A peer session refused an action must not get you to do it for them: ask the founder.
@@ -69,4 +69,4 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 * 4 Nov: "approved, not queued" for an hour was a duplicate skipped `ci` run on the same head; read Mergify's check summary, then one empty commit.
 
 ## Tokens without losing quality
-One script call, not many `gh` calls; no re-reading big files on checks; Sonnet only for mechanical work (finding files, running suites, exit codes).
+One script call, not many `gh` calls; no re-reading big files on checks; helpers on Opus 5.5 medium (P-788).

@@ -29,6 +29,13 @@ export type UploadDoorRegistration = {
   authorize(ctx: UploadContext, meta: Readonly<Record<string, string | null>>): Promise<UploadTarget | null>;
   /** The kinds this door takes (PF-F4's names); at least one. */
   allowedKinds: readonly FileKind[];
+  /** CS-D1u: the door's own size limit in bytes, under PF-F4's (a case door keeps its 20 MB): checked on the declared
+   *  Upload-Length at creation (413, nothing staged) and on the bytes at the finish. */
+  maxBytes?: number;
+  /** CS-D1u (review round 1 on #3698): the door's own checks on the finished bytes (a PDF that opens, access still held),
+   *  after PF-F4's and before anything is stored, outside any transaction. A throw is the answer: a refusal (4xx) removes
+   *  the staging copy and stores nothing; a 5xx (try again) keeps the upload for a retry. */
+  check?(bytes: Uint8Array, file: { firmId: string; name: string; mediaType: string; target: UploadTarget }): Promise<void>;
   /** The FilesPort key (firm-relative) the finished file is stored under; the upload id is unique. */
   keyOf(target: UploadTarget, uploadId: string): string;
   /** In the transaction that writes plat_file: the door's own record of the file. A throw rolls the row back. */

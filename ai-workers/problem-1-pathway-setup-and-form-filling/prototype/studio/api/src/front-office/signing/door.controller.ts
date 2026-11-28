@@ -12,6 +12,7 @@ import { z } from "zod";
 import { OpenRead } from "../../core.ts";
 import { parseInput, strict, text } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
+import { cleanReason, DECLINE_REASON_MAX, reasonLength } from "./decline.ts";
 import { NOT_WORK, SESSION_COOKIE, SESSION_MINUTES, sessionCookies, SigningDoor, TOKEN_SHAPE, type DoorAnswer } from "./door.ts";
 
 const WINDOW_MS = 60_000, PER_TOKEN = 30, MISSES_PER_ADDRESS = 300, MAX_KEYS = 50_000;   // Sample
@@ -50,6 +51,9 @@ const ipOf = (r: Rq) => String(r.ip ?? r.socket?.remoteAddress ?? "unknown");
 const CodeBody = strict({ resend: z.boolean().optional() });
 const VerifyBody = strict({ code: text(20) });
 const ConsentBody = strict({ agree: z.literal(true), consentTextVersion: text(40) });
+// FO-5d: at most 500 characters once cleaned (AG05-D4(7); counted in characters, review m2); empty is none.
+const DeclineBody = strict({ reason: z.string().max(8 * DECLINE_REASON_MAX).optional()
+  .refine((v) => v === undefined || reasonLength(cleanReason(v) ?? "") <= DECLINE_REASON_MAX, { message: `At most ${DECLINE_REASON_MAX} characters.` }) });
 
 @Controller("api/public/sign")
 export class SigningDoorController {
@@ -95,6 +99,13 @@ export class SigningDoorController {
   async consent(@Param("token") token: string, @Body() body: unknown, @Req() r: Rq, @Res({ passthrough: true }) res: Rs) {
     this.begin(r, res, token, true);
     return this.finish(res, token, await counted(ipOf(r), () => this.door.consent(token, parseInput(ConsentBody, body ?? {}), sessionCookies(r.headers.cookie))));
+  }
+
+  /** FO-5d (1): the client declines, with an optional reason of their own. */
+  @Post(":token/decline") @HttpCode(200)
+  decline(@Param("token") token: string, @Body() body: unknown, @Req() r: Rq, @Res({ passthrough: true }) res: Rs) {
+    this.begin(r, res, token, true);
+    return counted(ipOf(r), () => this.door.decline(token, parseInput(DeclineBody, body ?? {})));
   }
 
   @OpenRead("the client's signing session: the provider's embedded link, only for the browser that holds the session, FO-6 part 4b") @Get(":token/session")   // QA-53 REVIEWED

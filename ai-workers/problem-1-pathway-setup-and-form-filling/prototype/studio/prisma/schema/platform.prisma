@@ -128,6 +128,9 @@ model PlatformFirm {
   platImportMappings     PlatImportMapping[]
   platImportAttestations PlatImportAttestation[]
 
+  // back-relation slot: automation (PF-20, R1.36)
+  autoRecipes AutoRecipe[] // platform-automation.prisma
+
   @@map("platform_firm")
 }
 
@@ -263,6 +266,7 @@ model PlatformStaff {
   foTimeOff      FoTimeOff[]
   foAvailabilitySets FoAvailabilitySet[] // FO-3a part 1b: named sets of hours
   foBookings     FoBooking[]
+  foVideoPref    FoVideoPref? // FO-3v part 1: front-office-video.prisma (My account → Video, own record); trigger fo_video_drop_on_deactivate on this table drops it at deactivation (AG-4-58 §12)
 
   // back-relation slot: messages (PF-19a)
   msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma (the person's own in-app notifications)

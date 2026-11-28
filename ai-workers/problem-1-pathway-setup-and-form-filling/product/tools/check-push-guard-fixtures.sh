@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # L1 (B170a, Lead 16, 11 Nov): push-guard.sh admits the XFA engine's four made-up test PDFs by path AND SHA-256 only.
 # Each case commits into a throwaway git repository and runs the guard on that commit; the real repository is never
-# touched. Run by check-guards.sh (with --mutate: the allow-list check switched off, this test must fail). US$0, no network.
+# touched. S1 (OS-PM 3, 25 Nov): a key whose value is wholly an UPPER_SNAKE constant name (a Nest provider's injection
+# token) is not a secret; a real 16+ character value under the same key still refuses. Run by check-guards.sh (with --mutate: the allow-list check switched off, this test must fail). US$0, no network.
 #   bash product/tools/check-push-guard-fixtures.sh
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
@@ -33,13 +34,30 @@ ok "the four engine test PDFs are in this copy (the cases below need their real 
 ALL=$(while read -r f; do printf '%s\t%s\n' "$f" "$ROOTD/$f"; done <<< "$LIST")
 FIRST=$(head -1 <<< "$LIST")
 OTHER=$(mktemp "${TMPDIR:-/tmp}/pg-other.XXXXXXXX"); printf '%%PDF-1.4\n%% not the listed bytes\n' > "$OTHER"
-trap 'rm -f "$OTHER"' EXIT
 
 v=$(verdict "$ALL"); ok "pass: the four test PDFs at their listed paths with their listed bytes are admitted" "$([ "$v" = clean ] && echo 0 || echo 1)" "$v"
 v=$(verdict "$(printf '%s\t%s\n' "$FIRST" "$OTHER")"); ok "fail: other bytes at a listed path are refused" "$([ "$v" = refused ] && echo 0 || echo 1)" "$v"
 v=$(verdict "$(printf '%s\t%s\n' "packages/xfa-engine/fixtures/synthetic/copy.pdf" "$ROOTD/$FIRST")"); ok "fail: the listed bytes at another path in the package are refused" "$([ "$v" = refused ] && echo 0 || echo 1)" "$v"
 v=$(verdict "$(printf '%s\t%s\n' "docs/synthetic-form.pdf" "$ROOTD/$FIRST")"); ok "fail: the listed bytes outside the package are refused" "$([ "$v" = refused ] && echo 0 || echo 1)" "$v"
 v=$(verdict "$(printf '%s\t%s\n' "packages/xfa-engine/fixtures/new-sample.pdf" "$OTHER")"); ok "fail: a new, unlisted PDF in the package is refused" "$([ "$v" = refused ] && echo 0 || echo 1)" "$v"
+
+# S1: secret rows. The lines are built at run time so this file itself never carries a key=value the guard would refuse.
+SRC=$(mktemp "${TMPDIR:-/tmp}/pg-secret.XXXXXXXX")
+trap 'rm -f "$OTHER" "$SRC"' EXIT
+sv() { printf '%s\n' "$1" > "$SRC"; verdict "$(printf '%s\t%s\n' "src/app.module.ts" "$SRC")"; }
+K=tok; K="${K}en"; C="SAMPLE_GATEWAY""_PORT"; V="Ab3dE5gH7j""K9mN1pQ3sT"
+s1() { local v; v=$(sv "$2"); ok "$1" "$([ "$v" = "$3" ] && echo 0 || echo 1)" "got $v"; }
+s1 "S1 pass: a provider key holding a constant name, then a comma" "  { provide: X, $K: $C, optional: true }," clean
+s1 "S1 pass: a constant name, then a closing brace" "  { $K: $C }" clean
+s1 "S1 pass: a constant name, then a closing parenthesis" "  inject($K= $C)" clean
+s1 "S1 pass: a constant name at the end of the line" "  $K: $C" clean
+s1 "S1 fail: a 20-character mixed value under the key is refused" "  $K: \"$V\"," refused
+s1 "S1 fail: an unquoted mixed value under the key is refused" "  $K=$V," refused
+s1 "S1 fail: an upper-case start that turns mixed is refused" "  $K: ABCDEFGHIJKLMNOPq1," refused
+s1 "S1 fail: a quoted all-capitals value is not a bare constant, refused" "  $K: \"ABCDEFGHIJKLMNOPQRST\"," refused
+A="AKIA""ABCDEFGHIJKLMNOP"
+s1 "S1 fail: an all-capitals key with no underscore (an AWS key ID) under the key is refused" "  secret: $A," refused
+s1 "S1 fail: a constant on the line does not hide a real secret after it" "  $K: $C, secret: $V" refused
 
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -10,8 +10,9 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/gparts.XXXXXXXX") && [ -d "$T" ] || { echo "no te
 G="$TOOLS/check-guards.sh"; W="$TOOLS/../../../../.github/workflows/guards.yml"
 # What the parts must cover, read independently of --list: the TESTS line plus its two extra tests, and the MUT rows as
 # bash builds them.
-eval "$(grep '^TESTS=' "$G")"; want_t=$(printf 'TEST %s\n' $TESTS check-deps-line.sh check-pr-concurrency.sh | sort)
-MUT=""; eval "$(sed -n '/^MUT=/,/--- each test without its guard/p' "$G" | sed '$d')"
+# OS-85: the rows (and extra tests) are in guards.d/*.sh, read here in name order (C locale), as check-guards.sh reads them.
+eval "$(grep -h '^TESTS=' "$G" "$TOOLS"/guards.d/*.sh)"; want_t=$(printf 'TEST %s\n' $TESTS check-deps-line.sh check-pr-concurrency.sh | sort)
+MUT=""; for gd in $(cd "$TOOLS/guards.d" && LC_ALL=C ls -- *.sh); do eval "$(grep -v '^[a-z]*parse() ' "$TOOLS/guards.d/$gd")"; done
 want_r=$(printf '%s\n' "$MUT" | grep -c .)
 bash "$G" --mutate --part 1/1 --list > "$T/all" 2>&1; r=$?
 ok "--list --part 1/1: every test once and every mutation row once ($want_r rows), exit 0, nothing run" "$([ $r = 0 ] && [ "$(grep '^TEST ' "$T/all" | sort)" = "$want_t" ] && [ "$(grep -c '^ROW ' "$T/all")" = "$want_r" ] && [ "$(grep -c '^ROW ' "$T/all")" = "$(grep '^ROW ' "$T/all" | cut -d' ' -f2 | sort -u | wc -l | tr -d ' ')" ] && echo 1)" "exit $r; $(grep -c '^ROW ' "$T/all") rows listed, $want_r wanted; $(head -3 "$T/all")"

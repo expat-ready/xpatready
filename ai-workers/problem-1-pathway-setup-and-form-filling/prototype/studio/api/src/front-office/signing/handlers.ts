@@ -3,7 +3,9 @@
 // webhook (./service.ts) applies RETAINER requests itself; a CONSULTATION request goes to the handler FO-3c registers
 // (`registerSigningHandler("CONSULTATION", (call, firmId) => agreements.signingEvent(call, firmId))`, which stores its
 // own receipt), and is stored and answered "no handler" until then. Every value is Sample.
+import type { Prisma } from "@prisma/client";
 import type { MailPort } from "../../../../ports/mail.ts";
+import type { NotificationPort } from "../../../../ports/notifications.ts";
 import { fakeSigning, type SigningHookCall, type SigningPort } from "./port.ts";
 
 let port: SigningPort | null = null, mail: MailPort | null = null;
@@ -14,6 +16,11 @@ export function useSigningPort(p: SigningPort | null): SigningPort | null { cons
 /** The MailPort for "Your signed agreement" (the signing feature sets the platform's at start). */
 export const signingMail = (): MailPort | null => mail;
 export function useSigningMail(m: MailPort | null): MailPort | null { const was = mail; mail = m; return was; }
+let notifications: NotificationPort<Prisma.TransactionClient> | null = null;
+/** FO-5d: the NotificationPort a retainer's decline tells the prospect's owner through (the feature sets the platform's
+ *  when one is bound; none: nobody is told, and the decline stands). */
+export const signingNotifications = (): NotificationPort<Prisma.TransactionClient> | null => notifications;
+export function useSigningNotifications(n: NotificationPort<Prisma.TransactionClient> | null) { const was = notifications; notifications = n; return was; }
 
 /** A document kind's own webhook handler: it gets the verified call and the request's firm, and runs as that firm. */
 export type SigningKindHandler = (call: SigningHookCall, firmId: string) => Promise<unknown>;

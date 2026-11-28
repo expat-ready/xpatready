@@ -209,11 +209,13 @@ try {
   ok("FO-7s3a B-M1 pass (round 2): Record again after the 504 is the replay: one payment", (await pb.locator("[data-pay-replayed]").count()) === 1 && sql(`select count(*) from money_payment where invoice_id = '${INV}' and reference = 'M1b-${run}'`) === "1");
   await pb.locator("[data-pay-close]").click(); await pb.locator('[role="dialog"]').waitFor({ state: "detached" });
   // M2: west of UTC in the evening the person's day is still today, not the UTC tomorrow
+  const utcDay = new Date().toISOString().slice(0, 10), fixedAt = Date.parse(`${utcDay}T05:30:00Z`);
+  // the stored session must outlive the page's fixed clock: one hour past the later of now and 05:30 UTC (before 04:30 UTC
+  // a real-clock expiry is already past at the fixed 05:30, the session is dropped and the invoice page never loads)
   const west = await (async () => { const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "America/Vancouver", deviceScaleFactor: 1 });
-    await ctx.addInitScript((t) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, TBILL);
+    await ctx.addInitScript(([t, until]) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: until })); }, [TBILL, Math.max(Date.now(), fixedAt) + 3_600_000] as const);
     const p = await ctx.newPage(); p.on("dialog", (d) => void d.accept().catch(() => undefined)); return p; })();
-  const utcDay = new Date().toISOString().slice(0, 10);
-  await west.clock.setFixedTime(new Date(`${utcDay}T05:30:00Z`));   // 21:30 the evening before in Vancouver
+  await west.clock.setFixedTime(new Date(fixedAt));   // 21:30 the evening before in Vancouver
   await detail(west, INV2); await open(west);
   const prev = new Date(Date.parse(`${utcDay}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
   const dflt = await west.locator("[data-pay-date]").inputValue(), max = await west.locator("[data-pay-date]").getAttribute("max");
