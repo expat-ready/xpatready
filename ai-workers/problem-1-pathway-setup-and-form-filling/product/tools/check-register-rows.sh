@@ -40,9 +40,12 @@ ok "... the same row without its window still fails" "$([ $r = 1 ] && echo 1)" "
 # Lead 13 (28 Nov): main's own register has zero failing rows once this PR lands
 here=$(cd "$TOOLS/.." && pwd)
 out=$(python3 -I "$RR" check --file "$here/design/lab-register-2026-11-27.md"); r=$?
-# LR-178: the register's own rows are written by the records lane (records PR from claude/loving-meitner-lko6pq-lr173-records),
-# so a code PR cannot make them pass; here the check reads the real register cleanly (0 = all named, 1 = FAIL lines only).
-ok "this copy's lab register is read by the check (exit 0, or 1 with only FAIL row lines)" "$({ [ $r = 0 ] || { [ $r = 1 ] && ! grep -qv '^FAIL  LR-[0-9]*: ' <<<"$out"; }; } && echo 1)" "rc=$r $out"
+# LR-178: the register's own rows are written by the records lane (records-only branch claude/loving-meitner-lko6pq-lr173-records),
+# so a code PR cannot make them pass. Until it lands only the 17 rows it fixes may fail; once it is on main, tighten this to exit 0
+# only (LR-173 follow-up). A new bad row, or any other output, fails here.
+known=" LR-022 LR-023 LR-024 LR-025 LR-026 LR-027 LR-028 LR-029 LR-030 LR-031 LR-075 LR-076 LR-077 LR-078 LR-096 LR-120 LR-153 "
+extra=$({ grep -v '^FAIL  LR-[0-9]*: ' <<<"$out" | grep .; for id in $(sed -n 's/^FAIL  \(LR-[0-9]*\): .*/\1/p' <<<"$out"); do case "$known" in *" $id "*) ;; *) echo "$id";; esac; done; } | grep -c .)
+ok "this copy's lab register passes the check, or fails only on the 17 rows the records branch fixes" "$({ [ $r = 0 ] || { [ $r = 1 ] && [ "$extra" = 0 ]; }; } && echo 1)" "rc=$r $out"
 reg "$(row LR-003 DO 'x' Intended)" "$(row LR-004 DONE 'x' 'Proven')"; chk
 ok "DO and DONE rows are not asked for either" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
 # review r1 of LR-173: an empty cell keeps the columns; a later date after an event marker counts; a date that does not exist
