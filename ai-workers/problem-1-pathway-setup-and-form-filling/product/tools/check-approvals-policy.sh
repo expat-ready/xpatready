@@ -14,7 +14,7 @@
 #       an override whose `if` is exactly "claude/code_review = pass". Each protected path must exist in the checkout.
 #   A6  verdict and override keys and values are the documented ones (claude: approves|comments|blocks).
 #   A8  every studio API file that declares a no-sign-in route (@OpenRead, @StaffSignIn, @SystemSignIn, or a controller
-#       under api/public) is covered strictly as in A5: found from the code at each run, so a new door fails here.
+#       under api/public, api/link or api/hooks) is covered strictly as in A5: found from the code at each run.
 #   Patterns with {a,b} or [ab] are refused (this check does not read them, so it cannot vouch for them).
 # First proves on fixtures that each rule fails when broken, then checks this checkout. Runs in ci (the tools step).
 #   bash product/tools/check-approvals-policy.sh [repo-root]
@@ -42,7 +42,11 @@ SAMPLE = {f"{S}/prisma/migrations/20990101000000_x/migration.sql"}
 VERDICT = {"claude", "seats", "max_age"}
 OVERRIDE = {"if", "verdict", "reuse", "findings", "purpose", "use"}
 GATE = "claude/code_review = pass"
-DOOR = re.compile(r'@(?:OpenRead|StaffSignIn|SystemSignIn)\(|@Controller\(\s*["\']api/public')
+# A door: a read mark that opens a route, or any controller under api/public, api/link or api/hooks (a webhook or a
+# link is reached signed out; its handler checks a signature or a token, which this check cannot see). Review I-1 on
+# #4155: an unmarked write under api/hooks is open (ConfigReadGuard passes every non-GET without a read mark).
+# Known limits: an aliased decorator (`OpenRead as X`) and a door in a .js file are not seen (route-sweep says the same).
+DOOR = re.compile(r'@(?:OpenRead|StaffSignIn|SystemSignIn)\(|@Controller\(\s*["\']/?api/(?:public|link|hooks)\b')
 def doors(root):
     """Studio API files declaring a no-sign-in route, read from the code (None when the folder is missing)."""
     api = os.path.join(root, S, "api", "src")

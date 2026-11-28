@@ -120,13 +120,18 @@ rules:
       - "**/platform/firms/routes.ts"
       - "**/platform/firms/signup*"
       - "**/platform/messages/demo-inbox.ts"
-      - "**/*unsubscribe*"
+      - "**/*unsubscribe*.ts"
+      - "**/front-office/signing/hooks.ts"
       - "**/platform/web-address/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/health.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/screen02.ts"
-      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-*.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-branding.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-firms.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-messages.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-signup-links.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/platform-web-address.ts"
     verdict: { claude: comments, seats: 0 }
     override:
       - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
