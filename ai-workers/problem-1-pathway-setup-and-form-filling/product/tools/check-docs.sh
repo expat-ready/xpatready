@@ -251,4 +251,13 @@ if [ -f "$PH/LEAD-START.md" ]; then
   printf '%s\n' "$sr" | grep -v '^START READ: ' | grep . || true; printf '%s\n' "$sr" | grep '^START READ: ' >> "$out" || true
 elif [ -f "$ROOT/.claude/skills/lead/SKILL.md" ]; then echo "START READ: LEAD-START.md is missing: the Lead's start read is unmeasured (OS-16, P-615)" >> "$out"
 fi
+# LR-090 (SF:A1): every ID code an instruction file uses has its prefix's plain name in product/GLOSSARY.md. No glossary
+# and no next skill (a throwaway test copy): nothing; the skill without the page fails. Test: check-glossary.sh.
+if [ -f "$PH/GLOSSARY.md" ]; then
+  gl=$(python3 -I "$PH/tools/check-glossary.py" --product "$PH" --root "$ROOT" 2>&1); glc=$?
+  if [ "$glc" -gt 1 ] || { [ "$glc" = 1 ] && ! grep -q '^GLOSSARY: ' <<<"$gl"; }; then
+    echo "GLOSSARY: check-glossary.py failed (exit $glc): $(printf '%s' "$gl" | tail -1 | cut -c1-160)" >> "$out"
+  else printf '%s\n' "$gl" | grep '^GLOSSARY: ' >> "$out" || true; fi
+elif [ -f "$ROOT/.claude/skills/next/SKILL.md" ]; then echo "GLOSSARY: product/GLOSSARY.md is missing: ID codes have no plain names (LR-090)" >> "$out"
+fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0
