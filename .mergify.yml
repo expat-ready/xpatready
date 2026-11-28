@@ -422,8 +422,8 @@ scopes:
 # CAPABILITIES.md among the last 300 closed PRs (17 Nov), all 7 had a "qa:" title and none a claude/qa- branch (cloud
 # sessions name their own branches). No allow_checks_interruption: Mergify's default inserts a higher-priority PR just
 # after the batches whose checks already run, so a verdict never restarts a running product batch.
-# P-827 (founder 25 Nov, one-time): the order is verdicts, pipeline, product, records until P-822, P-823 and the
-# Lead-tool fixes are on main (the pipeline queue's comment below; undo: move pipeline back after product).
+# P-861 (founder, records PR #4073; LR-172, 28 Nov): the order is verdicts, product, pipeline, records again; P-827's
+# one-time "pipeline first" (25 Nov) has ended (the pipeline queue's comment below).
 # product/screens/B119/check-queue-rules.py reads this file and fails when the queues stop routing that way. The daily
 # records PR (P-336) stays.
 # OS-50 (P-733, P-820; full-power #129; OS-PM 4, 26 Nov): a PR that completes a Release 1 item goes first among the PRs
@@ -473,19 +473,66 @@ queue_rules:
     merge_conditions:
       - check-success = ci
     merge_method: merge
+  - name: product
+    batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
+    batch_max_failure_resolution_attempts: 2
+    # F6 (founder 6 Nov, "Yes, apply all seven"): a 24-hour trial of 5 min (was 2 min), so batches fill; review 7 Nov
+    # ~21:00 IST: kept if PRs per batch rises (baseline 1.6) and approved-to-merged median does not get worse.
+    batch_max_wait_time: 5 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      # E6 (P-772, enforcement plan 21 Nov; P-606, P-526, P-610): the PR-body and size rules (pr-rules.yml: a testable
+      # "Done when", a "Duplicate check:" line, a readable "Completes:" line, under 800 changed lines or a recorded
+      # exception, reviewer agents on Opus) hold a product PR out of the queue when red. pr-rules has run on every PR
+      # since 15 Nov (P-717 (b)'s 24 h report-only start long passed). pr-rules passes a records-only PR with its rule
+      # steps skipped and skips Mergify's own batch PRs; neither enters this queue. Undo: delete this line and the six
+      # comment lines above it.
+      - check-success = pr-rules
+      - -label=records
+      # P-717 (a), P-861: a PR whose every file is pipeline work goes to the queue "pipeline" (listed after product), never
+      # a product batch: this clause keeps it out. Fast route (P-847): pipeline work plus records counts as pipeline work.
+      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$))
+      # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
+      # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
+      - or:
+          - check-success = xfa-engine
+          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
+      # B194 (founder 16 Nov, measured in product/design/merge-queue-causes-2026-11-16.md): a PR touching the app also
+      # needs the status queue-fresh (queue-gate.yml, product/tools/queue-gate.sh). It is "failure" while main has merged
+      # a PR touching one of the same app files, or a second migration, since the PR's green ci started (35% of such
+      # PRs failed in the queue, 60% for two migrations, against 17%); the PR's ci is re-run on today's main first.
+      # A queued PR keeps success. To switch it off, delete these four lines.
+      - or:
+          - check-success = queue-fresh
+          - -files ~= /prototype/
+      # ENF-782a (P-782 (2), founder 21 Nov; the one exception to P-717 (b)'s 24 h: the founder ruled 2 h): a "Completes:"
+      # PR with a part missing stays out. The check itself is report-only (passes) for 2 h after it reached main, then
+      # fails on a missing part (ready-gate.py), so this line needs no second PR; a PR with no run is never held.
+      - -check-failure = completes-ready
+    merge_conditions:
+      - check-success = ci
+      # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,
+      # so a red container proof now blocks a product batch. Guarded: a batch that touches none of skeleton.yml's
+      # `paths` gets no skeleton run and is not held. Keep this regex in step with skeleton.yml's `paths` block.
+      - or:
+          - check-success = skeleton
+          - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
+    merge_method: merge
   # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
   # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
   # product code. The XFA engine rule applies here too.
-  # P-827 (founder 25 Nov 10:3x IST, typed "Yes, pipeline first"; a one-time exception to P-717 (a)'s order): pipeline
-  # is listed just after verdicts, ahead of product, so enforcement lands first until P-822, P-823 and the Lead-tool
-  # fixes are on main. No allow_checks_interruption: Mergify's default puts a higher-priority PR just after the batches
-  # whose checks already run, so a pipeline PR never restarts a running product batch.
-  # Fast route (lab lane, 27 Nov; DECISIONS P-847, product paused to finish the lab): this is the tooling queue. It stays
-  # ahead of product while the lab runs, and a pipeline PR may also carry records (product/ .md, images, .txt, .html, the
-  # records-only.sh definition), so a tool fix with its STATE or design note no longer falls into the product queue and
-  # its batches. Still: the review label, green ci, the XFA rule, capacity 1 (scope "pipeline"), never with app code.
-  # Undo: move pipeline back after product when P-827 ends (this block below product's; check-queue-rules.py's order
-  # and engineering-approved-setup.json's queue_order with it).
+  # P-861 (founder, records PR #4073; LR-172, 28 Nov): product ahead of pipeline again, ending P-827's one-time
+  # "pipeline first" (25 Nov). Mergify takes the first queue whose conditions hold, so product keeps a pipeline-only PR
+  # out by its own clause (files ~= ^(?!(<pipeline paths>)): at least one file outside them), the same pattern this
+  # queue selects with (check-queue-rules.py compares the two); a pipeline-only PR falls through to this queue. verdicts
+  # stays first and the top-level priority rules (near-proven, fixes-main) are unchanged.
+  # Fast route (lab lane, 27 Nov; DECISIONS P-847): this is the tooling queue; a pipeline PR may also carry records
+  # (product/ .md, images, .txt, .html, the records-only.sh definition), so a tool fix with its STATE or design note
+  # never falls into the product queue and its batches. Still: the review label, green ci, the XFA rule, capacity 1
+  # (scope "pipeline"), never with app code.
   - name: pipeline
     batch_size: 4   # Lead 13, 28 Nov (P-214): was 2 (P-715, set at 40% failed batches); 0 of the last 20 batches failed and 13 lab PRs
     # waited in this one-at-a-time queue (capacity 1), so a batch of 4 halves the wait; undo: 2.
@@ -516,54 +563,6 @@ queue_rules:
           - -files ~= ^(\.claude/(settings\.json$|skills/|agents/)|\.github/workflows/|\.github/pull_request_template\.md$|\.githooks/|\.mergify\.yml$|(CONTRIBUTING|CLAUDE|AGENTS|REVIEW)\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/(tools/|WAY-OF-WORKING\.md$|focus-list\.md$|rules/account-switch\.md$|state/items\.schema\.json$|screens/B119/|design/(waves\.(tsv|md)|night-checklist\.json|full-power-plan-2026-11-17\.md|engineering-approved-setup\.json)$)|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/|packages/xfa-engine/(fixtures/synthetic|src/__tests__/fixtures)/[^/]+\.pdf$)
     merge_conditions:
       - check-success = ci
-    merge_method: merge
-  - name: product
-    batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
-    batch_max_failure_resolution_attempts: 2
-    # F6 (founder 6 Nov, "Yes, apply all seven"): a 24-hour trial of 5 min (was 2 min), so batches fill; review 7 Nov
-    # ~21:00 IST: kept if PRs per batch rises (baseline 1.6) and approved-to-merged median does not get worse.
-    batch_max_wait_time: 5 min
-    queue_conditions:
-      - base = main
-      - -draft
-      - "label = review: approved"
-      - check-success = ci
-      # E6 (P-772, enforcement plan 21 Nov; P-606, P-526, P-610): the PR-body and size rules (pr-rules.yml: a testable
-      # "Done when", a "Duplicate check:" line, a readable "Completes:" line, under 800 changed lines or a recorded
-      # exception, reviewer agents on Opus) hold a product PR out of the queue when red. pr-rules has run on every PR
-      # since 15 Nov (P-717 (b)'s 24 h report-only start long passed). pr-rules passes a records-only PR with its rule
-      # steps skipped and skips Mergify's own batch PRs; neither enters this queue. Undo: delete this line and the six
-      # comment lines above it.
-      - check-success = pr-rules
-      - -label=records
-      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" (listed above product while P-827
-      # holds), never a product batch. Fast route (P-847): pipeline work plus records counts as pipeline work.
-      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$))
-      # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
-      # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
-      - or:
-          - check-success = xfa-engine
-          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
-      # B194 (founder 16 Nov, measured in product/design/merge-queue-causes-2026-11-16.md): a PR touching the app also
-      # needs the status queue-fresh (queue-gate.yml, product/tools/queue-gate.sh). It is "failure" while main has merged
-      # a PR touching one of the same app files, or a second migration, since the PR's green ci started (35% of such
-      # PRs failed in the queue, 60% for two migrations, against 17%); the PR's ci is re-run on today's main first.
-      # A queued PR keeps success. To switch it off, delete these four lines.
-      - or:
-          - check-success = queue-fresh
-          - -files ~= /prototype/
-      # ENF-782a (P-782 (2), founder 21 Nov; the one exception to P-717 (b)'s 24 h: the founder ruled 2 h): a "Completes:"
-      # PR with a part missing stays out. The check itself is report-only (passes) for 2 h after it reached main, then
-      # fails on a missing part (ready-gate.py), so this line needs no second PR; a PR with no run is never held.
-      - -check-failure = completes-ready
-    merge_conditions:
-      - check-success = ci
-      # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,
-      # so a red container proof now blocks a product batch. Guarded: a batch that touches none of skeleton.yml's
-      # `paths` gets no skeleton run and is not held. Keep this regex in step with skeleton.yml's `paths` block.
-      - or:
-          - check-success = skeleton
-          - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
     merge_method: merge
   - name: records
     batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR

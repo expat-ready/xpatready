@@ -9,10 +9,10 @@ queue_conditions the way Mergify does (the first queue, in file order, whose con
 label, "attr=x" holds when any item equals x and "-attr=x" when none does) on fixed PRs, and checks the rules every
 queue keeps (base main, the review label, green ci, refusing drafts, records last). P-664 (founder 17 Nov, "Yes,
 verdicts first (Recommended)"): a queue "verdicts", listed first, takes only qa verdict records (label "records", title
-starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. P-827 (founder 25 Nov,
-"Yes, pipeline first", one-time): the queue "pipeline" is listed second, ahead of "product", without
-allow_checks_interruption, until P-822, P-823 and the Lead-tool fixes are on main (undo: move pipeline back after
-product when P-827 ends, here and in .mergify.yml). Fast route (lab lane, 27 Nov; P-847): "pipeline" is the tooling
+starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. P-861 (founder, records
+PR #4073; LR-172, 28 Nov) ends P-827's one-time "pipeline first" (25 Nov): the order is verdicts, product, pipeline,
+records; product keeps a pipeline-only PR out by its own pipeline-path clause, so such a PR falls through to "pipeline",
+which never sets allow_checks_interruption. Fast route (lab lane, 27 Nov; P-847): "pipeline" is the tooling
 queue, and pipeline work plus records (product/ .md, images, .txt, .html) still joins it, never product. Each fixed PR lists its files;
 its label comes from records-only.sh is-records and must agree with the case's expected label (so the definition and
 the cases cannot drift apart), and the label name the queues use must be the one records-only.sh prints. A missing
@@ -145,6 +145,11 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("an unguarded .claude file (guards.yml does not run; skills are guarded since lab A2): pipeline without guards (F4)", [".claude/launch.json"], False, "pipeline"),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
+    # P-861 (LR-172): product is listed before pipeline, so only product's pipeline-path clause keeps these out of it.
+    case("pipeline-only with every product check green too (pr-rules, queue-fresh, xfa-engine): pipeline (P-861)",
+         [f"{R}/tools/x.sh", ".mergify.yml"], False, "pipeline", checks=("ci", "pr-rules", "guards", "queue-fresh", "xfa-engine")),
+    case("pipeline work plus one app file, every check green: product (P-861)", [f"{R}/tools/x.sh", f"{A}/web/src/App.tsx"],
+         False, "product", checks=("ci", "pr-rules", "guards", "queue-fresh", "xfa-engine")),
     # LR-181 (enforcement audit, P-214): pr-rules gates the pipeline, records and verdicts queues too.
     case("a pipeline PR with pr-rules red: no queue (LR-181)", [f"{R}/tools/x.sh"], False, None, checks=("ci", "guards"), failed=("pr-rules",)),
     case("a pipeline PR with no pr-rules run yet: no queue (LR-181)", [".mergify.yml"], False, None, checks=("ci", "guards")),
@@ -187,10 +192,10 @@ def problems(cfg, have_script):
     out = []
     qs = cfg.get("queue_rules", [])
     names = [q.get("name") for q in qs]
-    # P-827 (one-time): pipeline ahead of product. Undo: move pipeline back after product when P-827 ends.
-    if names != ["verdicts", "pipeline", "product", "records"]:
-        out.append(f"queue order is {names}: want verdicts, pipeline, product, records (the first listed has the highest "
-                   "priority; qa verdicts first (P-664), pipeline ahead of product while P-827 holds, records last)")
+    # P-861 (LR-172): product ahead of pipeline again (P-827's one-time "pipeline first" ended).
+    if names != ["verdicts", "product", "pipeline", "records"]:
+        out.append(f"queue order is {names}: want verdicts, product, pipeline, records (the first listed has the highest "
+                   "priority; qa verdicts first (P-664), product ahead of pipeline (P-861), records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
         # LR-181 (enforcement audit, P-214): pr-rules gates every queue, not only product.
@@ -209,7 +214,7 @@ def problems(cfg, have_script):
                     out.append(f"queue verdicts: queue_conditions lack {need!r} (only qa verdict records go first)")
             if q.get("allow_checks_interruption"):
                 out.append("queue verdicts: allow_checks_interruption set (a verdict must not restart a running batch)")
-        if q.get("name") == "pipeline" and q.get("allow_checks_interruption"):   # P-827: ahead of product, never restarting it
+        if q.get("name") == "pipeline" and q.get("allow_checks_interruption"):   # P-827, P-861: never restarting a product batch
             out.append("queue pipeline: allow_checks_interruption set (a pipeline PR must not restart a running product batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
@@ -218,8 +223,8 @@ def problems(cfg, have_script):
     out += near_proven(cfg)
     out += fixes_main(cfg)
     out += guards_required(cfg)
-    # P-717 (a), whatever the order (P-827 lists pipeline first, so routing alone no longer shows it): product keeps its
-    # own pipeline-path exclusion, the same pattern pipeline selects with, so no PR falls between the two queues.
+    # P-717 (a), P-861: with product listed before pipeline, product's own pipeline-path exclusion is what keeps a
+    # pipeline-only PR out of a product batch; it is the same pattern pipeline selects with, so no PR falls between them.
     paths = {q.get("name"): [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)
                              and c.replace(" ", "").lstrip("-").startswith("files~=^(?!")] for q in qs}
     prod = [c[len("files~="):] for c in paths.get("product", []) if c.startswith("files~=")]
@@ -443,10 +448,10 @@ def mutations(cfg):
         ("pipeline skips pr-rules (LR-181)", drop("pipeline", lambda x: x == "check-success=pr-rules")),
         ("records skips pr-rules (LR-181)", drop("records", lambda x: x == "check-success=pr-rules")),
         ("verdicts skips pr-rules (LR-181)", drop("verdicts", lambda x: x == "check-success=pr-rules")),
-        ("pipeline listed after product (P-827)", swap12(cfg)),
+        ("pipeline listed before product (P-861)", swap12(cfg)),
         ("product's pipeline-path pattern differs from pipeline's (P-717 (a))", other_paths(cfg)),
         ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
-        ("verdicts listed after pipeline (P-664)", swap01(cfg)),
+        ("verdicts listed after product (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
         ("no top-level near-proven priority rule (OS-50)", prio(cfg, lambda q: q.pop("priority_rules", None))),
         ("near-proven inside the product queue, where Mergify refuses it (#3825)", inqueue(cfg)),
@@ -492,7 +497,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label, green ci and green pr-rules (LR-181); the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4); near-proven product PRs first, never interrupting (OS-50)")
+        passed += 1; print("PASS  order verdicts, product, pipeline, records (P-861); verdicts only qa verdict records; every queue keeps base main, the review label, green ci and green pr-rules (LR-181); the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4); near-proven product PRs first, never interrupting (OS-50)")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")
