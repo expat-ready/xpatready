@@ -2,7 +2,7 @@
 
 current_lead: local_68bddbc4-11e4-4b09-9a52-dd8ab935e64f Lead 10 · 28 Nov 00:21 IST (after Lead 9 local_e9b535bc at 200k beyond start, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-28 07:40 IST (clock): **Lead 10: A451 decided (P-856): lane-starter routine hourly (first 07:47 IST), lane A11 started; nightly 2 of 7 dispatched 07:29; reads #3972 #3913 #3905.** Earlier: `history/` lead10 files.
+updated: 2026-11-28 08:09 IST (clock): **Lead 10: lab review 5/10 (two rounds, https://claude.ai/artifact/PJVMHnR6X9iJgZVw9ChRww); founder approved all recommendations (P-857): restart by 1 Dec 23:59 or re-decide; 5 critical code-scanning alerts before restart; no new checks after; 3-5 lanes and lab ≤20% after; records cap.** Earlier: `history/` lead10 files.
 
 ## Hand-over Lead 9 → Lead 10, 00:21 IST 28 Nov (reason: Lead 9 at 448k context, past 200k beyond its start read, P-446; no subagent running)
 **Do first:** create your check FIRST (cron 3,13,23,33,43,53, prompt exactly `run lead-watch; read STATE Start here`), CronDelete your gap check, send Lead 9 your CronList, rename "Lead 10 · 28 Nov <IST>", invoke `lead`, check `current_lead:` names you, re-arm the watch (Monitor `bash /tmp/claude-501/lane-watch.sh`, allowed_domains api.github.com, github.com). **Records on `lead/2026-11-27-lead9`** (lead5 merged as #3959), written from a scratch clone: the main copy's tools are kept at main's versions by the OS-11 hook, so lead branches cannot fast-forward there (never reset it). Every report starts with `python3 product/tools/lab-progress.py`. Previous block: `history/STATE-2026-11-28-0020-lead9-handover-old-block.md`.
@@ -22,6 +22,7 @@ Rows A242-A418 word for word in `history/STATE-2026-11-27-0915-lead1-founder-ask
 | A444-A446 | 27 Nov 18:0x-19:1x | why slow; replan; restart line by 80% impact, 7 nights | Decided: P-852, P-853, P-854 (nightlies on demand ~3/day from #3918; qa routine repository set). Word for word: `history/STATE-2026-11-27-2040-lead8-asks-A444-A446-rows.md` |
 | A447 | 27 Nov 20:4x | audit + one diagram of the engineering machinery | Done; page refreshed 28 Nov (A450): https://claude.ai/artifact/NNq7CTgMa488EBg8ZpzSnG; row in `history/STATE-2026-11-28-0745-lead10-A447-row.md` |
 | A448 | 27 Nov 21:2x | quick fix, retest, solid, fast | Answered 21:4x; carried into A449. Word for word: `history/STATE-2026-11-28-0005-lead9-27nov-entries-and-A448.md` |
+| A452 | 28 Nov 07:5x-08:1x | review the lab against industry practice, worth it?, rate it; then "start implementing, you have my approval" | Decided P-857; implementing |
 | A451 | 28 Nov 07:3x | lanes wake and start themselves, register on merge, open-PR cap; how long; how we know the lab is ready | Decided P-856; routine and lane A11 started; word for word in `history/STATE-2026-11-28-0745-lead10-A451-row.md` |
 | A450 | 28 Nov 07:1x | detailed report, every lane checked, factory picture, recovery plan | Done 08:0x: word for word in `history/STATE-2026-11-28-0800-lead10-A450-row.md` |
 | A449 | 28 Nov 00:0x | finish all lab work by tomorrow | In force; word for word in `history/STATE-2026-11-28-0805-lead10-A449-row.md` |
