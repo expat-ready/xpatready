@@ -69,7 +69,7 @@ gt 'Touches: page-one.ts' fail; ok "GitHub: a failed read refuses (exit 2)" "$([
 printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"; export FOCUS_LIST="$T/focus-list.md"
 printf '| # | Map row: capability | Module | Status |\n|---|---|---|---|\n| R1.1 | x | P | Partial |\n' > "$T/caps.md"; printf 'R1.1\t1\tJ0\n' > "$T/waves.tsv"
 printf '| Row | Area | What |\n|---|---|---|\n| X-1 | runtime (case side) | a build row |\n' > "$T/BACKLOG.md"; export FOCUS_BACKLOG_DIR="$T" WAVES_TSV="$T/waves.tsv" WAVES_CAPS="$T/caps.md"
-BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nItem: R1.1\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries'
+BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser.\nItem: R1.1\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries'
 hook() { out=$(jq -n --arg p "$1" '{tool_name:"start_session", tool_input:{target:"cloud", prompt:$p}}' | TOUCH_PRS="$T/prs.tsv" bash "$TOOLS/lane-preflight.sh" --hook); r=$?; }
 hook "$BRIEF"$'\nTouches: prisma/schema.prisma'
 ok "hook: a cloud start whose Touches: overlaps an open PR is denied with the reason" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("E10.*schema.prisma is changed by open PR #2001"))' >/dev/null 2>&1 && echo 1 || echo 0)" "$out"

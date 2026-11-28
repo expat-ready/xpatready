@@ -25,7 +25,7 @@ pf "$(gb 150)" 3 "4420 4431 4452 4471"; ok "four running test copies are refused
 pf "$(gb 30)" 20 "4420 4431 4452 4471"; ok "every reason is named at once" "$([ $r = 1 ] && [ "$(echo "$out" | grep '^REFUSED' | grep -o 'under 7 GB\|over 16\|cap 4' | wc -l | tr -d ' ')" = 3 ] && echo 1)" "$out"
 # The stand-in brief's row X-1 is put on a throwaway focus list, so focus-check.py (ENF-733; test: check-focus-list.sh) is not what these checks see.
 printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"; export FOCUS_LIST="$T/focus-list.md"
-BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nItem: R1.1\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries'   # passes brief-check.sh --brief (G-4, B204)
+BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser.\nItem: R1.1\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries'   # passes brief-check.sh --brief (G-4, B204)
 # B204 (P-745): a throwaway waves list, so the wave a fixture item is in never moves with qa's verdicts. Wave 1 has 4 unproven
 # items (active), wave 2 is next; R1.6 is wave 4, R1.7 wave 3; R1.8 is Proven (wave 0).
 printf '| # | Map row: capability | Module | Status |\n|---|---|---|---|\n' > "$T/caps.md"
@@ -39,7 +39,7 @@ hook "$(gb 37)" 3 "" x cloud; ok "hook: a cloud start is not checked" "$([ $r = 
 hook "$(gb 150)" 3 "" x ""; ok "hook: a Mac start with room passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x cloud "Row X-1. Done when: check-x.sh exits 0"; ok "hook: a cloud brief with no model and effort line or Duplicate check is denied (G-4 (7))" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("model and effort") and test("Duplicate check"))' >/dev/null && echo 1)" "$out"
 # B204 (P-745): what the lane is for, and its wave (brief-check.sh --brief, then waves.py allow).
-B4=$'Row X-1. Model: Opus 5.5, effort: medium.\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries\n'
+B4=$'Row X-1. Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser.\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0; stop after 3 tries\n'
 deny() { echo "$out" | jq -e --arg w "$1" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test($w))' >/dev/null 2>&1 && echo 1; }
 hook "$(gb 150)" 3 "" x cloud "${B4}Item: R1.6"; ok "hook: a Wave 4 item (R1.6) is refused, with its wave and the open waves" "$(deny 'OUTSIDE WAVE: R1.6 is in wave 4; lane starts are open for waves 0, 1, 2 only')" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4}Item: R1.1"; ok "hook: a Wave 1 item (R1.1, the active wave) passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
@@ -50,12 +50,12 @@ hook "$(gb 150)" 3 "" x cloud "${B4/Row X-1./Row T-1.}Item: none (tooling)"; ok 
 hook "$(gb 150)" 3 "" x cloud "${B4/Row X-1./\/next runtime T-1.}Item: none (tooling)"; ok "hook: ... and on /next runtime with a tooling row (a builder on a tooling row)" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4}Build R1.6."$'\nItem: none (tooling)'; ok "hook: Item: none on a build row's brief is refused (no skipping the wave check)" "$(deny 'row X-1 is a build row')" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4/Row X-1./\/next runtime X-1.}Item: none (records)"; ok "hook: ... on /next runtime with a build row too" "$(deny 'row X-1 is a build row')" "$out"
-hook "$(gb 150)" 3 "" x cloud $'/lead: take over as Lead 9; R1.6 is in the hand-over. Model: Opus 5.5, effort: medium.\nItem: none (lead)'; ok "hook: a Lead start naming an item, with Item: none (lead), passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
+hook "$(gb 150)" 3 "" x cloud $'/lead: take over as Lead 9; R1.6 is in the hand-over. Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser.\nItem: none (lead)'; ok "hook: a Lead start naming an item, with Item: none (lead), passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4}**Item**: R1.1"; ok "hook: '**Item**: R1.1' is read" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4}1. Item: R1.6"; ok "hook: '1. Item: R1.6' is read (and refused for its wave)" "$(deny 'R1.6 is in wave 4')" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4}Item: the booking page"; ok "hook: an Item line that is neither R1 items nor none is refused" "$(deny 'neither R1 items')" "$out"
-hook "$(gb 150)" 3 "" x cloud $'Model: Opus 5.5, effort: medium. You are a standby; wait for the Lead.'; ok "hook: a start naming no row and no R1 item needs no Item line" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
-hook "$(gb 150)" 3 "" x cloud $'Model: Opus 5.5, effort: medium. Build R1.6 now.'; ok "hook: a brief naming an R1 item but no row still needs an Item line" "$(deny 'no \"Item:\" line')" "$out"
+hook "$(gb 150)" 3 "" x cloud $'Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser. You are a standby; wait for the Lead.'; ok "hook: a start naming no row and no R1 item needs no Item line" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
+hook "$(gb 150)" 3 "" x cloud $'Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser. Build R1.6 now.'; ok "hook: a brief naming an R1 item but no row still needs an Item line" "$(deny 'no \"Item:\" line')" "$out"
 WAVES_TSV="$T/none.tsv" hook "$(gb 150)" 3 "" x cloud "${B4}Item: R1.1"; ok "hook: an unreadable waves list refuses the start (fails closed)" "$(deny 'cannot read')" "$out"
 ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | test("start_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null

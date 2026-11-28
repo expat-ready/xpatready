@@ -62,6 +62,7 @@ packages/xfa-engine/dist/
 ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/private/
 # B197: the Lead's latest app view (claude.ai/code session list), one per copy, rewritten every check
 ai-workers/problem-1-pathway-setup-and-form-filling/product/state/app-view-latest.txt
+ai-workers/problem-1-pathway-setup-and-form-filling/product/state/app-view-latest.json
 
 # Clean-up (test output out of git, P-674 stages; lab lane "cleanup", 27 Nov): screenshots, recordings and other images the
 # studio tests, walks and qa runs write into product/screens, product/qa and studio/evidence stay on the copy that made

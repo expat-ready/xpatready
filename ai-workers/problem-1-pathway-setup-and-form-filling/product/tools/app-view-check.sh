@@ -38,6 +38,9 @@ while IFS="$(printf '\t')" read -r lane key m l; do
   else ACT "app view: ${l#FLAG  }"; fi
 done <<< "$idle_lanes"
 echo "idle lanes: $nl cloud lanes idle over 10 min with work left or waiting for the Lead$([ "$nl" -gt 0 ] && echo ", oldest $oldest min")"
+# LR-177 (b) (founder A455): a finished lane (state completed, nothing it needs) still in the list over 10 min is not
+# archived: archive it in claude.ai so the list shows only lanes with work (archive_session or the session's menu).
+while IFS= read -r l; do ACT "app view: finished lane not archived: ${l#ok    } [archive it, LR-177]"; done < <(grep -E '^ok +.* · (cloud|mac) · completed · needs: none · ' "$f" | awk -F' · ' '{m = 0; for (i = NF; i >= 2; i--) if ($i ~ /^idle [0-9]+ min$/) { split($i, w, " "); m = w[2]; break } if (m + 0 > 10) print}')
 while IFS= read -r l; do ACT "app view: $l"; done < <(grep '^UNREADABLE' "$f")
 # B204 (4): the page returned as many sessions as it asked for, or said more remain: lanes past the limit are unseen.
 while IFS= read -r l; do ACT "app view: $l: raise LIMIT in tools/app-view.js or read the rest in claude.ai/code"; done < <(grep '^WARNING: list may be cut' "$f")

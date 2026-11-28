@@ -30,7 +30,7 @@ cat > "$T/BACKLOG.md" <<'B'
 | B25 | Lead form: the sales lead form | a build row whose area starts with the word Lead |
 | PF-19b | runtime (platform: sending) | one sending path |
 B
-M="Model: Opus 5.5, effort: medium."
+M=$'Model: Opus 5.5, effort: medium.\nDo it yourself: gh, git and the built-in browser.'
 fc() { out=$(printf '%s\n' "$1" | FOCUS_LIST="${2-$T/focus-list.md}" FOCUS_BACKLOG_DIR="$T" python3 -I "$TOOLS/focus-check.py" 2>&1); r=$?; }
 fc "$M Build J-37 per lead-b-briefs/J-rows.md §J-37, from main; one PR (R1.37)."
 ok "a brief for a listed item and its row passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
