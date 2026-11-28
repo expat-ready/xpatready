@@ -52,6 +52,11 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   s("zoom", "PLATFORM_ZOOM_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9_-]{8,128}$/), "the Zoom app's client id"),
   s("zoom", "PLATFORM_ZOOM_CLIENT_SECRET", true, z.string().regex(/^[A-Za-z0-9_-]{16,256}$/), "the Zoom app's client secret (16 or more characters)"),
   s("zoom", "PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN", true, z.string().regex(/^[A-Za-z0-9_-]{16,256}$/), "the Zoom app's webhook secret token (16 or more characters)"),
+  // R1.43 part 0 (FO-3s2's OAuth client, P-821): the Google OAuth web client (Calendar now; Gmail with PF-19mc). Both or
+  // neither: unset, connecting a Google calendar is off on this server. The id is public (Google shows it on every consent
+  // page); the secret comes from Secrets Manager (deploy/RUNBOOK-secrets.md). Shapes only, never Google's own rules.
+  opt("google", "PLATFORM_GOOGLE_CLIENT_ID", false, z.string().regex(/^[0-9]{6,20}-[a-z0-9]{8,64}\.apps\.googleusercontent\.com$/), "a Google OAuth client id such as 123456789012-abc….apps.googleusercontent.com (unset, with the secret unset: Google calendar connections are off)"),
+  opt("google", "PLATFORM_GOOGLE_CLIENT_SECRET", true, z.string().regex(/^[A-Za-z0-9_-]{20,128}$/), "the Google OAuth client's secret, as Google's copy button gives it (20 or more letters, digits, - or _)"),
   s("secret-box", "PLATFORM_SECRET_BOX_KEYS", true, z.string().refine((v) => v.split(",").every((e) => KEY_ENTRY.test(e.trim()))), "version:key pairs, comma-separated, each key 32 random bytes in base64 (e.g. 2:…=,1:…=)"),
   s("secret-box", "PLATFORM_SECRET_BOX_KEY_VERSION", false, z.string().regex(/^[1-9][0-9]{0,5}$/), "the key version new values are sealed with, one of the versions in PLATFORM_SECRET_BOX_KEYS"),
   // PF-4's sign-in settings (identity/port.ts identityConfig reads them from here, PF-24w): unset identity = no staff sign-in.
@@ -89,6 +94,8 @@ export type PlatformConfig = Readonly<{
   ses: Readonly<{ region: string | null }>;
   boldsign: Readonly<{ apiKey: Secret | null }>;
   zoom: Readonly<{ clientId: string | null; clientSecret: Secret | null; webhookSecretToken: Secret | null }>;
+  /** R1.43 part 0: the Google OAuth web client; both null when Google connections are off on this server. */
+  google: Readonly<{ clientId: string | null; clientSecret: Secret | null }>;
   /** null when this server holds no secret-box key (local only): sealing or opening then says so. */
   secretBox: SecretBoxKeys | null;
   /** PF-4's sign-in: which adapter, the pool's two-step rule, the local stand-in's signing key (local only). */
@@ -161,6 +168,10 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     if (!got.has(n) && !invalid.some((i) => i.name === n)) missing.push(n);
   if (got.has("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") && got.get("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") === got.get("PLATFORM_COGNITO_USER_POOL_ID")) invalid.push({ name: "PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", expects: "a pool of its own: our own staff never share PLATFORM_COGNITO_USER_POOL_ID's pool with firm staff" });
   if (got.has("PLATFORM_SYSTEM_LOCAL_SECRET") && got.get("PLATFORM_SYSTEM_LOCAL_SECRET") === got.get("PLATFORM_LOCAL_SECRET")) invalid.push({ name: "PLATFORM_SYSTEM_LOCAL_SECRET", expects: "a key of its own: never the same value as PLATFORM_LOCAL_SECRET" });
+  // R1.43 part 0: the Google client is a pair; half of it would send people to a consent page that can never finish.
+  if (got.has("PLATFORM_GOOGLE_CLIENT_ID") !== got.has("PLATFORM_GOOGLE_CLIENT_SECRET"))
+    for (const n of ["PLATFORM_GOOGLE_CLIENT_ID", "PLATFORM_GOOGLE_CLIENT_SECRET"])
+      if (!got.has(n) && !invalid.some((i) => i.name === n)) missing.push(n);
   let secretBox: SecretBoxKeys | null = null;
   const keysRaw = got.get("PLATFORM_SECRET_BOX_KEYS"), versionRaw = got.get("PLATFORM_SECRET_BOX_KEY_VERSION");
   if (keysRaw || versionRaw) {
@@ -197,6 +208,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     ses: Object.freeze({ region: plain("PLATFORM_SES_REGION") }),
     boldsign: Object.freeze({ apiKey: secret("PLATFORM_BOLDSIGN_API_KEY") }),
     zoom: Object.freeze({ clientId: plain("PLATFORM_ZOOM_CLIENT_ID"), clientSecret: secret("PLATFORM_ZOOM_CLIENT_SECRET"), webhookSecretToken: secret("PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN") }),
+    google: Object.freeze({ clientId: plain("PLATFORM_GOOGLE_CLIENT_ID"), clientSecret: secret("PLATFORM_GOOGLE_CLIENT_SECRET") }),
     secretBox,
     identity: Object.freeze({ via: (plain("PLATFORM_IDENTITY") ?? "none") as "local" | "cognito" | "none", poolMfaRequired: plain("PLATFORM_POOL_MFA_REQUIRED") !== "false", localSecret: secret("PLATFORM_LOCAL_SECRET") }),
     systemIdentity: Object.freeze({ via: (plain("PLATFORM_SYSTEM_IDENTITY") ?? "none") as "local" | "cognito" | "none", userPoolId: plain("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_SYSTEM_COGNITO_CLIENT_ID"), localSecret: secret("PLATFORM_SYSTEM_LOCAL_SECRET") }),
