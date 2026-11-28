@@ -1,0 +1,2 @@
+Entry points: PF-22v: `sales/saved-view-lists.ts` registers fo.leads, fo.pipeline.individual, fo.pipeline.corporate and fo.prospects on SavedViewPort (share key agent/prospect:configure-pipeline; a removed stage, a leaver owner or an archived field is a dropped part); `GET /api/front-office/leads` and `/prospects` take `cf.<key>` (the person's and the prospect's custom fields, inside the visibility)
+Tests: tests/check_pf22v_saved_views.ts

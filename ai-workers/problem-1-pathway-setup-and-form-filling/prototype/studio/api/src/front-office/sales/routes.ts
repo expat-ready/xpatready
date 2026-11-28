@@ -17,6 +17,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query, Req }
 import type { PrismaClient } from "@prisma/client";
 import { Db } from "../../core.ts";
 import { z } from "zod";
+import { cfPart, customFieldQuery } from "../../platform/custom-fields/filter.ts";
 import { idParam, list, parseInput, strict } from "../../platform/http/input.ts";
 import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Activity } from "./calls.ts";
@@ -40,8 +41,12 @@ const s = (max: number) => z.string().max(max).nullish();
 const version = z.union([z.number(), z.string().max(40)], { error: "Send the prospect's version as read." }).nullish();
 /** `?source=` once or repeated (FO-4sf): one text value or a list of them. */
 const sources = z.union([z.string().max(500), list(z.string().max(500), 50)]).optional();
-const LEADS_QUERY = strict({ view: z.string().max(500).optional(), source: sources, owner: z.string().max(500).optional(), from: z.string().max(500).optional(), to: z.string().max(500).optional() });
-const PROSPECTS_QUERY = strict({ type: z.string().max(500).optional(), stage: z.string().max(500).optional(), owner: z.string().max(500).optional(), source: sources, from: z.string().max(500).optional(), to: z.string().max(500).optional() });
+/** PF-22v: the leads' and prospects' query words, which a saved view also stores; cf.<key> filters by a custom field
+ *  (platform/custom-fields/filter.ts), any other unknown key is refused, named (PF-28). */
+export const LEADS_QUERY_SHAPE = { view: z.string().max(500).optional(), source: sources, owner: z.string().max(500).optional(), from: z.string().max(500).optional(), to: z.string().max(500).optional() };
+export const PROSPECTS_QUERY_SHAPE = { type: z.string().max(500).optional(), stage: z.string().max(500).optional(), owner: z.string().max(500).optional(), source: sources, from: z.string().max(500).optional(), to: z.string().max(500).optional() };
+const LEADS_QUERY = customFieldQuery(LEADS_QUERY_SHAPE);
+const PROSPECTS_QUERY = customFieldQuery(PROSPECTS_QUERY_SHAPE);
 const ADD_LEAD = strict({ requestId: s(ID), givenNames: s(LINE), familyName: s(LINE), email: s(LINE), phone: s(LINE), source: s(LINE), note: textUpTo(NOTE_MAX).nullish(), interestedIn: s(ID), personId: s(ID), confirmedNew: z.boolean().nullish() });
 const ASSIGN = strict({ staffId: s(ID), expectedOwnerStaffId: z.string().max(ID).nullable() });   // the owner the list showed, or null: required
 const CLOSE = strict({ reasonId: z.string().max(ID), note: textUpTo(REASON_MAX).nullish() });
@@ -72,7 +77,7 @@ export class SalesController {
   webFormEnabled(@Req() r: R, @Param("id") id: string, @Body() b: B) { return saveEnabled(this.db, this.ports.audit, staffOf(r), idParam(id, "web form"), parseInput(ENABLED, b ?? {}), this.origin()); }
 
   @Get("leads") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
-  list(@Req() r: R, @Query() query: B) { const { view, source, owner, from, to } = parseInput(LEADS_QUERY, query ?? {}); return this.leads.list(staffOf(r), view, source, { owner, from, to }); }
+  list(@Req() r: R, @Query() query: B) { const q = parseInput(LEADS_QUERY, query ?? {}); const { view, source, owner, from, to } = q; return this.leads.list(staffOf(r), view, source, { owner, from, to, cf: cfPart(q) }); }
 
   @Post("leads") @PermissionKeys("agent/prospect:create")
   add(@Req() r: R, @Body() b: B) { return this.leads.add(staffOf(r), parseInput(ADD_LEAD, b ?? {})); }
@@ -102,7 +107,7 @@ export class SalesController {
   engage(@Req() r: R, @Param("id") id: string) { return this.prospects.engage(staffOf(r), id); }
 
   @Get("prospects") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
-  prospectList(@Req() r: R, @Query() q: Record<string, unknown>) { return this.prospects.list(staffOf(r), parseInput(PROSPECTS_QUERY, q ?? {})); }
+  prospectList(@Req() r: R, @Query() q: Record<string, unknown>) { const p = parseInput(PROSPECTS_QUERY, q ?? {}); return this.prospects.list(staffOf(r), { ...p, cf: cfPart(p) }); }
 
   @Get("prospects/lost-reasons") @PermissionKeys("agent/prospect:show")   // FO-4 part 2a; declared before prospects/:id
   prospectLostReasons(@Req() r: R) { return this.prospects.lostReasons(staffOf(r)); }

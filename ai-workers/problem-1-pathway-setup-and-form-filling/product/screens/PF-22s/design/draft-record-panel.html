@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Record fields panel draft</title>
+<!-- PF-22s draft board 2 (drafter, 25 Nov): the custom-fields section on the Prospect and Lead screens (shared component in
+     web/src/modules/platform/custom-fields/, one embed line in prospect-page.tsx and lead-page.tsx). Self-contained.
+     Colours from web/src/styles/tokens.css. All names and values Sample. -->
+<style>/* Colours copied from web/src/styles/tokens.css (light sheet; text-muted per index.css = neutral-700). Sizes 12/14/16/18/24 only. */
+:root{--primary:#0862c5;--primary-t:#e6f4ff;--surface:#f7f7f7;--raised:#fff;--text:#2d2d2d;--muted:#595959;--link:#054e9c;--border:#d9d9d9;--strong:#bfbfbf;--danger:#991b1b;--danger-fill:#dc2626;--warn:#663200;--warn-t:#fff3e0;--ok:#0f5c2e;--ok-t:#eaf6ee;--ring:#0862c5;font-family:'Inter Variable',Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--text);font-size:14px;line-height:1.45}
+.board{display:grid;gap:32px;padding:24px 16px;max-width:1440px;margin:auto}
+.intro{background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:16px 20px}.intro h1{font-size:24px;margin:0 0 4px}.intro p{margin:4px 0;color:var(--muted)}
+h2.b{font-size:16px;margin:0 0 8px}h2.b small{font-size:12px;color:var(--muted);font-weight:400;margin-left:8px}
+.frame{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--raised);border-bottom:1px solid var(--border);font-size:14px}.top b{color:var(--primary)}.top .sp{flex:1}.crumb{color:var(--muted)}
+.main{padding:20px;min-width:0;position:relative}.page h1{font-size:24px;margin:0}.sub{color:var(--muted);margin:4px 0 16px}
+.hd{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.chip{min-height:32px;border:1px solid var(--border);border-radius:999px;padding:5px 12px;background:var(--raised);font-size:14px}.chip.on{border-color:var(--primary);background:var(--primary-t);color:var(--link);font-weight:600}
+.fchip{display:inline-flex;align-items:center;gap:4px;min-height:32px;border:1px solid var(--primary);background:var(--primary-t);color:var(--link);border-radius:999px;padding:4px 6px 4px 12px;font-weight:600}.fchip i{font-style:normal;padding:0 6px}
+table{border-collapse:collapse;width:100%;background:var(--raised);border:1px solid var(--border);border-radius:8px;overflow:hidden}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;height:44px}th{font-size:12px;color:var(--muted);font-weight:600}td small{display:block;color:var(--muted);font-size:12px}
+button,.btn{font:inherit;font-size:14px;border-radius:8px;padding:7px 14px;border:1px solid var(--strong);background:var(--raised);color:var(--text);cursor:pointer}button.p{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600}button.sm{padding:4px 10px}button.ln{border:0;background:none;color:var(--link);padding:4px;text-decoration:underline}button.d{color:var(--danger);border-color:#e8b4b4}button[disabled]{opacity:.5;cursor:not-allowed}button.ic{padding:4px 8px}
+.card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--raised)}.card h2{font-size:14px;margin:0 0 8px}.card h3{font-size:12px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+dl.kv{display:grid;grid-template-columns:12rem 1fr;gap:6px 12px;margin:0}dl.kv dt{color:var(--muted)}dl.kv dd{margin:0;overflow-wrap:anywhere}
+.notice{border-radius:8px;padding:10px 12px;margin-bottom:12px;border:1px solid}.notice b{display:block}.n-info{background:#eef4fc;border-color:#c7d9f2}.n-warn{background:var(--warn-t);border-color:#f2d39b;color:var(--warn)}.n-danger{background:#fdecec;border-color:#f0c4c0;color:var(--danger)}.n-ok{background:var(--ok-t);border-color:#b8dcc4;color:var(--ok)}
+.pill{display:inline-block;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted);background:var(--surface)}.pill.req{border-color:var(--strong);color:var(--text)}.pill.warn{border-color:#f2d39b;color:var(--warn);background:var(--warn-t)}.pill.arch{border-style:dashed}
+.empty{border:1px dashed var(--border);border-radius:12px;padding:32px 16px;text-align:center;color:var(--muted);background:var(--raised)}
+.skel{height:14px;border-radius:6px;background:linear-gradient(90deg,#eee,#f7f7f7,#eee);margin:10px 0}
+.panelwrap{display:grid;grid-template-columns:1fr 560px;min-height:520px}.panelwrap .dim{background:rgba(45,45,45,.25)}
+.panel{background:var(--raised);border-left:1px solid var(--border);display:flex;flex-direction:column}.panel header{padding:16px 20px;border-bottom:1px solid var(--border)}.panel header h2{font-size:18px;margin:0}.panel header p{margin:4px 0 0;color:var(--muted)}.panel .body{padding:16px 20px;flex:1}.panel footer{display:flex;justify-content:space-between;gap:8px;padding:12px 20px;border-top:1px solid var(--border)}
+.dlg{max-width:480px;margin:24px auto;border:1px solid var(--border);border-radius:12px;padding:20px;background:var(--raised);box-shadow:0 8px 24px rgba(0,0,0,.12)}.dlg h2{font-size:18px;margin:0 0 8px}.dlg .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.field{margin-bottom:14px}.field label,.field .lb{display:block;font-weight:600;margin-bottom:4px}.field .lb small,.field label small{font-weight:400;color:var(--muted)}.hint{font-size:12px;color:var(--muted);margin-top:4px}.err{font-size:12px;color:var(--danger);margin-top:4px;font-weight:600}.err::before{content:"⚠ "}
+input,select,textarea{width:100%;font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--strong);border-radius:8px;background:var(--raised);color:var(--text)}input.bad,select.bad,textarea.bad{border-color:var(--danger);border-width:2px}input[type=checkbox],input[type=radio]{width:auto;margin-right:6px}
+.opt{display:flex;gap:8px;align-items:center;margin-bottom:6px}.opt input{flex:1}
+.preview{border:1px dashed var(--strong);border-radius:8px;padding:12px;background:var(--surface)}.preview .t{font-size:12px;color:var(--muted);margin-bottom:6px}
+.spec{background:var(--raised);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:14px}.spec h3{font-size:14px;margin:8px 0 4px}.spec ul{margin:4px 0;padding-left:20px}.spec td,.spec th{height:auto;padding:6px 8px}
+.menu{position:absolute;z-index:5;width:340px;background:var(--raised);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px}.menu .sec{font-size:12px;color:var(--muted);font-weight:600;padding:8px 8px 4px}.menu .row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;min-height:36px}.menu .row:hover,.menu .row.f{background:#f0f4fa}.menu .row .n{flex:1}.menu .row small{display:block;color:var(--muted);font-size:12px}.menu hr{border:0;border-top:1px solid var(--border);margin:6px 0}
+.toast{position:absolute;right:16px;bottom:16px;background:var(--raised);border:1px solid #b8dcc4;border-left:4px solid var(--ok-t);border-left-color:#16a34a;border-radius:8px;padding:10px 14px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.row-a{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.sample{font-size:12px;color:var(--warn);font-weight:600}
+@media (max-width:1100px){.panelwrap{grid-template-columns:1fr}.panelwrap .dim{display:none}.grid2{grid-template-columns:1fr}dl.kv{grid-template-columns:1fr}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}code{font-size:12px;background:var(--surface);padding:1px 4px;border-radius:4px}
+</style></head><body><div class="board">
+
+<section class="intro"><h1>Custom fields on the record <span class="sample">(draft board, Sample data)</span></h1>
+<p>Prospect screen: the prospect's own fields, then the person's (or the company's, for a corporate prospect). Lead screen: the person's fields. Placed after the first card (Prospect / Lead details), before the retainer and checks.</p>
+<p>Rules here: BR-6 archived hidden, BR-8 checked by type at the field, BR-9 required refused when blank at Save fields only, BR-10 never more than the record shows.</p></section>
+
+<section><h2 class="b">A. Read: prospect with values <small>1440 px</small></h2>
+<div class="frame"><div class="top"><b>ExpatReady</b><span class="crumb">Pipeline › Prospect</span><span class="sp"></span><span>Agent ▾</span></div>
+<div class="main">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><h1 style="font-size:24px;margin:0">Client A</h1><span class="pill">Prospect</span><span class="pill">Consult</span><span class="hint">P-2026-0042 (Sample)</span></div>
+<div class="grid2" style="grid-template-columns:1fr 18rem">
+<div style="display:flex;flex-direction:column;gap:16px">
+<div class="card"><h2>Prospect</h2><dl class="kv"><dt>From lead</dt><dd><a href="#">L-2026-0108</a></dd><dt>Value</dt><dd>$3,500.00 CAD</dd><dt>Owner</dt><dd>Agent</dd></dl></div>
+<section class="card" aria-labelledby="cf"><div class="hd"><div><h2 id="cf">Custom fields</h2><p class="hint" style="margin:0 0 8px">Fields your firm added.</p></div><button class="sm">Edit fields</button></div>
+<h3>Prospect</h3><dl class="kv"><dt>Referral partner</dt><dd>Maple Law</dd><dt>Budget for fees</dt><dd>2,500.50</dd><dt>Wants a consult in</dt><dd>English, French</dd><dt>Intake deadline</dt><dd><span class="hint" style="font-size:14px">Not filled in</span></dd></dl>
+<h3>Person: Client A</h3><dl class="kv"><dt>Preferred contact time</dt><dd>Evenings after 6 pm, Eastern time</dd><dt>Has a job offer</dt><dd>Yes</dd><dt>LinkedIn</dt><dd><a href="#">linkedin.com/in/client-a-sample</a></dd></dl></section>
+</div>
+<aside class="card"><button class="p" style="width:100%">Convert to client</button><p class="hint">Actions are unchanged: a blank required field never blocks them.</p></aside></div>
+</div></div></section>
+
+<section><h2 class="b">B. Edit fields: right panel, every type, errors at the field (BR-8, BR-9)</h2>
+<div class="frame"><div class="panelwrap"><div class="dim"></div><aside class="panel" role="dialog" aria-labelledby="eh">
+<header><h2 id="eh">Edit custom fields</h2><p>Client A, P-2026-0042</p></header>
+<div class="body">
+<div class="notice n-danger" role="alert" tabindex="-1"><b>There is a problem: 3 fields need a fix</b><a href="#r1">Fill in Referral partner</a> · <a href="#r2">Budget for fees: type a number</a> · <a href="#r3">Intake deadline: pick a real date</a></div>
+<h3 style="font-size:14px;margin:0 0 8px">Prospect</h3>
+<div class="field"><label for="r1">Referral partner</label><select id="r1" class="bad" aria-describedby="r1e r1h"><option>Choose…</option><option>Maple Law</option><option>Northgate Legal</option><option>Harbourview Paralegal</option></select><div class="err" id="r1e">Fill in Referral partner: your firm requires it.</div><div class="hint" id="r1h">The firm or person who sent this prospect to us.</div></div>
+<div class="field"><label for="r2">Budget for fees <small>(optional)</small></label><input id="r2" class="bad" value="about 2500" inputmode="decimal"><div class="err">Type a number, for example 2500 or 2500.50.</div></div>
+<div class="field"><span class="lb">Wants a consult in <small>(optional)</small></span><label style="font-weight:400"><input type="checkbox" checked>English</label><label style="font-weight:400"><input type="checkbox" checked>French</label><label style="font-weight:400"><input type="checkbox">Punjabi</label><label style="font-weight:400"><input type="checkbox">Spanish</label></div>
+<div class="field"><label for="r3">Intake deadline <small>(optional)</small></label><input id="r3" class="bad" value="2026-02-30"><div class="err">Pick a real date, for example 15 Dec 2026.</div></div>
+<h3 style="font-size:14px;margin:16px 0 8px">Person: Client A <small class="hint">changes show on every lead and prospect of this person</small></h3>
+<div class="field"><label>Preferred contact time <small>(optional)</small></label><input value="Evenings after 6 pm, Eastern time"></div>
+<div class="field"><label>Background notes <small>(optional)</small></label><textarea rows="3">Referred after a seminar. Sample text.</textarea></div>
+<div class="field"><label style="font-weight:400"><input type="checkbox" checked><b>Has a job offer</b> <small>(optional)</small></label></div>
+<div class="field"><label>Second email <small>(optional)</small></label><input class="bad" value="client.a@"><div class="err">Type an email like name@example.com.</div></div>
+<div class="field"><label>Second phone <small>(optional)</small></label><input value="(416) 555-0142"><div class="hint">Spaces, dashes and brackets are fine.</div></div>
+<div class="field"><label>LinkedIn <small>(optional)</small></label><input value="linkedin.com/in/client-a-sample"><div class="hint">https:// is added for you.</div></div>
+</div>
+<footer><button>Cancel</button><button class="p">Save fields</button></footer></aside></div></div>
+<p class="hint">What was typed is kept on every error. Format errors show after the person leaves the field; required shows at Save. Focus moves to the summary; its links move to the field. A field the person did not change and that is already blank-but-required on an old record is marked, and Save asks for it.</p></section>
+
+<section class="grid2">
+<div><h2 class="b">C. Required not filled (old record)</h2><div class="frame main"><div class="card"><h2>Custom fields</h2><dl class="kv"><dt>Referral partner</dt><dd><span class="pill warn">▲ Required, not filled in</span></dd><dt>Budget for fees</dt><dd>2,500.50</dd></dl></div></div></div>
+<div><h2 class="b">D. Read-only (BR-10) <small>no edit right on this prospect</small></h2><div class="frame main"><div class="card"><h2>Custom fields</h2><dl class="kv"><dt>Referral partner</dt><dd>Maple Law</dd></dl><p class="hint">You can read these fields. Changing them needs a role that works prospects: ask your firm's Owner or Admin.</p></div></div></div>
+<div><h2 class="b">E. No fields defined <small>Admin sees a link; others see no section at all</small></h2><div class="frame main"><div class="card"><h2>Custom fields</h2><p class="hint" style="font-size:14px">Your firm has no custom fields for prospects yet. <a href="#">Add them in Settings → Custom fields</a>.</p></div></div></div>
+<div><h2 class="b">F. Loading</h2><div class="frame main"><div class="card"><h2>Custom fields</h2><div class="skel" style="width:60%"></div><div class="skel" style="width:45%"></div><div class="skel" style="width:55%"></div><span class="sr" role="status">Loading the custom fields…</span></div></div></div>
+<div><h2 class="b">G. Error <small>the rest of the record still works</small></h2><div class="frame main"><div class="card"><h2>Custom fields</h2><p role="alert" style="color:var(--danger);margin:0">Could not load the custom fields. <button class="ln">Try again</button></p></div></div></div>
+<div><h2 class="b">H. Someone saved first (409 STALE)</h2><div class="frame main"><div class="notice n-warn"><b>Someone changed these fields while you were editing.</b>What you typed is kept. <button class="ln">Load their changes</button> then save again.</div></div></div>
+<div><h2 class="b">I. Lead screen <small>person fields only</small></h2><div class="frame main"><div class="card"><div class="hd"><h2>Custom fields</h2><button class="sm">Edit fields</button></div><h3>Person: Client B</h3><dl class="kv"><dt>Preferred contact time</dt><dd>Mornings</dd><dt>Has a job offer</dt><dd>No</dd></dl></div></div></div>
+<div><h2 class="b">J. Archived field (BR-6)</h2><div class="frame main"><p class="hint" style="font-size:14px">“Referral partner” is archived: it is absent here. Its 14 values are kept and return on Un-archive. Nothing says “archived” on the record (no clutter).</p></div></div>
+</section>
+
+<section class="spec"><h3>Contract used (shape only)</h3>
+<ul><li><code>GET /api/platform/custom-fields/values/fo_prospect/:id</code> and <code>…/fo_person/:personId</code> (or <code>fo_company</code>) → <code>{ fields[], values, canEdit, version }</code>; one request per kind on the screen view.</li>
+<li><code>PUT …/values/:kind/:id</code> <code>{ values: {key: value|null}, version }</code> → 422 Problem Details with <code>errors[]</code> by key (said at the field) · 403 · 404 · 409 STALE (frame H). Empty value = <code>null</code> (no row).</li>
+<li>Two kinds on one panel save as two PUTs; if the second fails the first stays saved and the panel says which group did not save.</li></ul>
+<h3>Tests on this board</h3><table><tr><th>BR</th><th>Pass</th><th>Fail</th></tr>
+<tr><td>6</td><td>Un-archive: Referral partner back with Maple Law</td><td>archived: absent from read and edit</td></tr>
+<tr><td>8</td><td>“2500.50”, “(416) 555-0142”, “linkedin.com/…” save</td><td>“about 2500”, “2026-02-30”, “client.a@” refused at the field, typed text kept; PUT with “tomorrow” in a date → 422</td></tr>
+<tr><td>9</td><td>filled required saves; Convert works while it is blank</td><td>Save fields with it blank: frame B error, nothing saved</td></tr>
+<tr><td>10</td><td>an editor sees Edit fields</td><td>a reader sees frame D; another agent's hidden prospect → 404, section not drawn</td></tr></table>
+<h3>Keyboard and size</h3><ul><li>Edit fields → panel; first field focused; Tab through every type; Escape asks to keep or drop unsaved changes; focus returns to Edit fields.</li><li>375 px: label above value; panel full width; Save fields 44 px tall.</li></ul></section>
+</div></body></html>

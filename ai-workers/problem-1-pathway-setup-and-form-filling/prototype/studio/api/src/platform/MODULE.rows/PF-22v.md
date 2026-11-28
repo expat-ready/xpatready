@@ -1,0 +1,2 @@
+Entry points: PF-22v: `GET|POST /api/platform/saved-views`, `PATCH|DELETE /api/platform/saved-views/:id` (personal views for anyone; sharing and shared views need the list's share key, 403 SHARE_NOT_ALLOWED; invalid filter 400 INVALID_FILTER; dropped parts named per viewer); `SavedViewPort.registerList(kind, { filterSchema, shareKey, check })` (ports/saved-views.ts; real adapter saved-views/registry.ts); `custom-fields/filter.ts` `customFieldQuery`, `customFieldIdsWhere` (cf.<key> on a list's query)
+Tests: tests/check_pf22v_saved_views.ts
