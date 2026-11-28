@@ -19,3 +19,4 @@ You did not build this screen. Use only saved files, the running app and the tes
 
 **Capability or scaffolding (P-33):** a demo step that works only through scaffolding (sample loader, script, replay) instead of the product's own screen is a Major finding.
 **Scope (P-26):** check only what the concept's "What gets built" section lists. Anything on its "Not built" line is not a finding, and "the team's screen has it" is never a finding.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

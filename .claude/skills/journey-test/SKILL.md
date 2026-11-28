@@ -28,3 +28,4 @@ task completed · next step obvious · plain words · feedback and state · corr
 
 ## Report
 Write `screens/NN/journey-test-<role>-<date>.md` (under 100 lines): journeys, what held, findings with screenshot or file:line, the score table, verdict. State what you could not test (a real screen reader, an intended user's unaided walk: D17/D20 stay with the founder). Do not fix anything and do not add scope (P-26).
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.
