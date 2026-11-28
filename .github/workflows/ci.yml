@@ -405,6 +405,8 @@ jobs:
           node "$P/tools/static-sweeps.mjs" --self-test   # ENF-782a part 2: the sweep rule and the base comparison
           bash "$P/tools/check-flaky.sh"
           bash "$P/tools/check-write-token.sh"
+          bash "$P/tools/live-ai-off.sh"   # OS-33 (P-175): no STUDIO_*_LIVE switch on by default
+          bash "$P/tools/engine-hardcode.sh"   # OS-32 (P-319, P-425): no new form number or key-literal branch in engine code
           bash "$P/tools/change-route.sh" --self-test   # fast route (P-847): docs, tooling, full
           bash "$P/tools/tooling-checks.sh" --self-test
           bash "$P/tools/flaky-guard.sh" --self-test   # LR-151: planted wait, retry and skip fail; a reason line passes
