@@ -191,7 +191,10 @@ await p.keyboard.press("Escape"); await p.keyboard.press("Escape");
   await lp.context().close();
 }
 const pn4 = publish("PRIVACY_NOTICE");
-await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click(); await termsPage(p);
+// Nightly 28 Nov: pn6 above stays pending for the Owner through break M1's 5 s, so the bell's 60 s poll (PF-18ns, #3302)
+// may already have brought the terms page up over p, hiding the menu; DW9 needs the page up, not the click that brings it,
+// so it is reached by its address (a move either way).
+await p.goto(`${BASE}/account`); await termsPage(p);
 
 // ------------------------------------------------------------------------- DW9: Sign out from the terms page while pending
 await p.locator("[data-terms-sign-out]").click(); await p.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
