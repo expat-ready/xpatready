@@ -126,9 +126,9 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("this row's checker (.py under screens/)", [f"{R}/screens/B119/check-queue-rules.py"], False, "product"),
     case("a JSON file under screens/", [f"{R}/screens/12/fixture.json"], False, "product"),
     case("the merge queue file itself: pipeline (P-717 (a))", [".mergify.yml"], False, "pipeline", checks=G),
-    case("a workflow: pipeline (P-717 (a))", [".github/workflows/ci.yml"], False, "pipeline"),
+    case("a workflow: pipeline (P-717 (a))", [".github/workflows/ci.yml"], False, "pipeline", checks=G),   # lab A2: every workflow is on guards.yml's paths
     case("a skill: pipeline (P-717 (a))", [".claude/skills/next/SKILL.md"], False, "pipeline", checks=G),
-    case("agent rules and a git hook: pipeline", ["AGENTS.md", "CLAUDE.md", ".githooks/pre-push"], False, "pipeline"),
+    case("agent rules and a git hook: pipeline", ["AGENTS.md", "CLAUDE.md", ".githooks/pre-push"], False, "pipeline", checks=G),   # lab A2: AGENTS.md and CLAUDE.md are on guards.yml's paths
     case("a workflow plus app code: product (one non-pipeline file is enough)", [".github/workflows/ci.yml", f"{A}/api/src/core.ts"], False, "product", checks=F),
     # Fast route (lab lane, 27 Nov; P-847): pipeline work may carry records; the queue "pipeline" is the tooling queue.
     case("a tool plus a record: pipeline (fast route, P-847), never product or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "pipeline", checks=G),
@@ -142,7 +142,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a tool with guards not green: no queue (F4)", [f"{R}/tools/x.sh"], False, None),
     case("the merge queue file with guards not green: no queue (F4)", [".mergify.yml"], False, None),
     case("a guarded skill and a workflow, guards not green: no queue (F4)", [".claude/skills/lead/SKILL.md", ".github/workflows/ci.yml"], False, None),
-    case("an unguarded skill (guards.yml does not run): pipeline without guards (F4)", [".claude/skills/screen-build/SKILL.md"], False, "pipeline"),
+    case("an unguarded .claude file (guards.yml does not run; skills are guarded since lab A2): pipeline without guards (F4)", [".claude/launch.json"], False, "pipeline"),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
