@@ -11,6 +11,7 @@ n=$(( ${1:?additions} + ${2:?deletions} ))
 [ "${3:-no}" = yes ] && { echo "size: $n changed lines, records only (P-686)"; exit 0; }
 [ "$n" -le "$limit" ] && { echo "size: $n changed lines (limit $limit)"; exit 0; }
 ex=$(grep -oE 'Size exception:[[:space:]]*P-[0-9]+' | head -1 | grep -oE 'P-[0-9]+')
-[ -n "$ex" ] && grep -E "^\| *$ex *\|" "$DEC" | grep -qiE '800|size exception' && { echo "size: $n changed lines, over $limit, recorded exception $ex"; exit 0; }
+# Rows moved out of DECISIONS.md word for word (decisions/DECISIONS-*.md, lab clean-up 27 Nov) still count.
+[ -n "$ex" ] && cat "$DEC" "$(dirname "$DEC")"/decisions/DECISIONS-*.md 2>/dev/null | grep -E "^\| *$ex *\|" | grep -qiE '800|size exception' && { echo "size: $n changed lines, over $limit, recorded exception $ex"; exit 0; }
 echo "REFUSED: $n changed lines, over $limit (P-610 (1)): split the row into parts, or add a line \"Size exception: P-NNN\" naming a DECISIONS row${ex:+ ($ex is not a size row of DECISIONS.md)}."
 exit 1
