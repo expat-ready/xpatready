@@ -23,6 +23,10 @@ ok "... a warning, never a block" "$(jq -e 'has("decision") | not' <<<"$out" >/d
 # A subagent's turn in the transcript does not count as the session's context.
 { turn 10 150000 0; turn 10 900000 0 true; } > "$T/side.jsonl"
 out=$(run "$T/side.jsonl" screens); ok "a sidechain turn (900k) is not the session's context" "$([ -z "$out" ] && echo 1)" "$out"
+# A synthetic turn (model "<synthetic>", all-zero usage, e.g. an API error) is not the session's size.
+{ turn 10 405000 0; jq -nc '{type:"assistant",message:{model:"<synthetic>",content:[{type:"text",text:"API Error"}],usage:{input_tokens:0,output_tokens:0}}}'; } > "$T/synth.jsonl"
+out=$(run "$T/synth.jsonl" screens 2>&1); ok "a synthetic zero-usage turn is skipped (the real 405k warns)" "$(jq -e '.systemMessage | contains("~405k")' <<<"$out" >/dev/null && echo 1)" "$out"
+out=$(run "$T/above.jsonl" screens 2>&1 >/dev/null); ok "nothing on stderr (no fallback noise)" "$([ -z "$out" ] && echo 1)" "$out"
 # The Lead's line is 320k (200k beyond a ~120k start read, P-446); qa's 300k.
 { user; turn 10 330000 0; } > "$T/lead.jsonl"
 out=$(run "$T/lead.jsonl" lead); ok "the Lead is warned at 330k (line 320k) to hand over in STATE.md" "$(jq -e '.systemMessage | contains("320k") and contains("STATE.md")' <<<"$out" >/dev/null && echo 1)" "$out"
