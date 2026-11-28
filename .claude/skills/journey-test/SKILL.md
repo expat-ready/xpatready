@@ -14,7 +14,7 @@ From the item's `concept.md`, decisions and `PRODUCT.md` §1, write each journey
 Start an isolated copy on your own port (`WAY-OF-WORKING.md` in the product home). Use the built-in browser pane (or Playwright headed). Use only what a person sees: click, type, read. No API shortcuts, no reading code first. For each step note what you expected, what happened, wrong turns, unclear words, waits over 1 s. Screenshot each decision point.
 
 ## 3. Replay as automated checks
-Turn the main and error journeys into a Playwright script (`prototype/studio/tests/`, or the lane's evidence folder): axe WCAG 2.2 A/AA on each state; widths 400, 1024, 1440 px with no sideways scroll; keyboard-only main path; console and page errors; timings against `STANDARDS.md` §9 budgets. Run it twice to catch flakiness.
+Turn the main and error journeys into a Playwright script (`prototype/studio/tests/`, or the lane's evidence folder): axe WCAG 2.2 A/AA on each state; widths 400, 1024, 1440 px with no sideways scroll; keyboard-only main path; timings against `STANDARDS.md` §9 budgets. Run it with `JOURNEY_STRICT=1` (`acceptance/lib/browser.ts`, LR-125): any console or page error, or LCP over 2.5 s or CLS over 0.1 (web.dev's "good" line), fails it. **If any step fails, fix the issue and rerun from step 1**, never only the failed check. Run it twice to catch flakiness.
 
 ## 4. Check the data underneath
 After each journey, read the API or database: the record exists once, values are exactly what was entered, nothing else changed, the audit line is there, roles were enforced on the server.
