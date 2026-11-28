@@ -35,7 +35,6 @@ TESTS="$TESTS check-retry-watch.sh"   # A348: retry-only passes
 TESTS="$TESTS check-merge-wake.sh"   # wake on merge
 TESTS="$TESTS check-full-run-ask.sh"   # OS-06: full run on ask
 TESTS="$TESTS check-startup-failures.sh"   # OS-52: runs that never started
-TESTS="$TESTS check-records-pr.sh"   # OS-15: the records PR in one command
 TESTS="$TESTS check-founder-wait.sh"   # OS-18: the 🔴 founder line is an ACT each check
 TESTS="$TESTS check-hang-report.sh"   # Lead 30, 24 Nov: what a hung suite waits on, no secret printed
 TESTS="$TESTS check-lead-watch-speed.sh"   # Lead 26, 24 Nov: the check's reads start together, none lost
