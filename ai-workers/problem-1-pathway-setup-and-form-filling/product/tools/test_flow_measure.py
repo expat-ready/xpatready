@@ -300,7 +300,8 @@ class JobsCacheAndBudget(unittest.TestCase):
 
     def test_completed_runs_are_read_once(self):
         run = {"id": 5, "run_attempt": 2, "status": "completed"}
-        self.assertEqual(fm.jobs(run), [{"id": 1}]); self.assertEqual(fm.jobs(run), [{"id": 1}])
+        first, again = fm.jobs(run), fm.jobs(run)
+        self.assertEqual(first, [{"id": 1}]); self.assertEqual(again, [{k: None for k in fm.JOB_FIELDS}])   # kept fields
         self.assertEqual(len(self.calls), 1)
         fm.jobs(dict(run, run_attempt=3))                                              # a new attempt is read again
         self.assertEqual(len(self.calls), 2)
@@ -310,12 +311,33 @@ class JobsCacheAndBudget(unittest.TestCase):
         fm.jobs(run); fm.jobs(run)
         self.assertEqual(len(self.calls), 2)
 
+    def test_a_short_budget_warms_the_cache_and_converges(self):
+        runs = [{"id": n, "status": "completed"} for n in range(4000)]
+        self.left = 5000                                                              # the Mac's gh token
+        ok, need, left = fm.budget_ok(runs)
+        self.assertFalse(ok)
+        self.assertEqual(fm.warm(runs, left - fm.BUDGET_MARGIN), 1500)                 # newest first, what the hour allows
+        self.assertEqual(len(fm.uncached(runs)), 2500)
+        fm.warm(runs, 1500)                                                           # the next hour
+        self.assertEqual(len(fm.uncached(runs)), 1000)
+        self.assertTrue(fm.budget_ok(runs)[0])                                        # 1,000 + 3,500 <= 5,000: it runs
+        self.assertEqual(fm.warm([{"id": 0, "status": "in_progress"}], 10), 0)         # never caches a run in progress
+
+    def test_the_cache_keeps_only_the_fields_read_and_prunes_old_files(self):
+        fm.get = lambda url, raw=False: {"jobs": [{"name": "a", "started_at": "x", "steps": [1] * 99, "conclusion": "success"}]}
+        fm.jobs({"id": 8, "status": "completed"})
+        with open(fm.cache_path({"id": 8})) as f:
+            self.assertEqual(sorted(json.load(f)[0]), sorted(fm.JOB_FIELDS))
+        old = fm.cache_path({"id": 8}); os.utime(old, (1, 1))
+        fm.prune_cache()
+        self.assertFalse(os.path.exists(old))
+
     def test_budget_counts_uncached_runs_plus_the_margin(self):
         runs = [{"id": n, "status": "completed"} for n in range(3000)]
         fm.jobs(runs[0])
         ok, need, left = fm.budget_ok(runs)
         self.assertEqual((ok, need, left), (False, 2999 + fm.BUDGET_MARGIN, 5000))
-        self.left = 6000
+        self.left = 2999 + fm.BUDGET_MARGIN
         self.assertTrue(fm.budget_ok(runs)[0])
 
 

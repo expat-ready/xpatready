@@ -105,6 +105,21 @@ def runs_since(since, until, max_runs=0):
 JOBS_CACHE = os.environ.get("FLOW_JOBS_CACHE") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "flow-measure-jobs")
 
 
+JOB_FIELDS = ("name", "started_at", "completed_at", "conclusion", "run_attempt")
+CACHE_DAYS = 9   # older cache files are pruned: a 7-day window never reads them
+
+
+def prune_cache(now=None):
+    cut = (now or time.time()) - CACHE_DAYS * 86400
+    try:
+        for n in os.listdir(JOBS_CACHE):
+            fp = os.path.join(JOBS_CACHE, n)
+            if os.path.getmtime(fp) < cut:
+                os.remove(fp)
+    except OSError:
+        pass
+
+
 def cache_path(run):
     return os.path.join(JOBS_CACHE, "%s-%s.json" % (run["id"], run.get("run_attempt") or 1))
 
@@ -136,21 +151,34 @@ def jobs(run, size=100):
     if done:
         try:
             os.makedirs(JOBS_CACHE, exist_ok=True)
-            with open(cache_path(run) + ".tmp", "w") as f:
-                json.dump(js, f)
+            with open(cache_path(run) + ".tmp", "w") as f:   # only the fields this script reads (secs, guard, attempts)
+                json.dump([{k: j.get(k) for k in JOB_FIELDS} for j in js], f)
             os.replace(cache_path(run) + ".tmp", cache_path(run))
         except OSError:
             pass   # no cache: the next run reads them again
     return js
 
 
-BUDGET_MARGIN = 2500   # merged PRs' facts (~2 calls each, ~1,000 merges a week) and the ENF-782b reads
+def warm(runs, n):
+    """Read and cache the jobs of up to n uncached completed runs, newest first (a 5,000-an-hour token converges over a
+    few hours instead of never starting). -> how many were cached."""
+    todo = [r for r in uncached(runs) if r.get("status") == "completed"][:max(0, n)]
+    with ThreadPoolExecutor(16) as ex:
+        list(ex.map(jobs, todo))
+    return len(todo)
+
+
+BUDGET_MARGIN = 3500   # merged PRs' facts (2+ calls each, ~1,064 merges a week on 28 Nov) and the ENF-782b reads (~700)
+
+
+def uncached(runs):
+    return [r for r in runs if not (r.get("status") == "completed" and os.path.exists(cache_path(r)))]
 
 
 def budget_ok(runs):
     """-> (ok, need, left): the jobs calls still to make (uncached runs) plus BUDGET_MARGIN against the core calls left
     this hour (GET /rate_limit costs nothing). Unreadable: ok, as before (the run then fails where it fails)."""
-    need = sum(1 for r in runs if not (r.get("status") == "completed" and os.path.exists(cache_path(r)))) + BUDGET_MARGIN
+    need = len(uncached(runs)) + BUDGET_MARGIN
     try:
         left = get("https://api.github.com/rate_limit")["resources"]["core"]["remaining"]
     except (SystemExit, KeyError, TypeError):
@@ -562,10 +590,13 @@ def main():
         return
 
     runs = runs_since(since, until, a.max_runs)
+    prune_cache()
     ok, need, left = budget_ok(runs)
-    if not ok:   # LR-098: stop before GitHub's rate limit does, mid-run
+    if not ok:   # LR-098: stop before GitHub's rate limit does, mid-run; first warm the cache with what this hour allows
+        warmed = warm(runs, left - BUDGET_MARGIN)
         print(f"flow-measure: needs about {need} API calls ({len(runs)} runs, the uncached ones' jobs + {BUDGET_MARGIN}), "
-              f"{left} left this hour: not started; the jobs cache grows as runs are read", file=sys.stderr)
+              f"{left} left this hour: not measured; {warmed} runs' jobs cached now, so a later hour needs fewer",
+              file=sys.stderr)
         sys.exit(3)
     with ThreadPoolExecutor(16) as ex:
         js = list(ex.map(jobs, runs))
