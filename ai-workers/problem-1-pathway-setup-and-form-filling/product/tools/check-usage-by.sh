@@ -4,7 +4,9 @@
 #   bash product/tools/check-usage-by.sh
 set -u
 cd "$(dirname "$0")"
-D="$(mktemp -d)"; trap 'rm -rf "$D"' EXIT
+# The temp folder under TMPDIR, as guard-test-lib.sh makes it (a bare mktemp -d failed on the Mac: "/runs.json:
+# Operation not permitted"); no folder, no test (exit 2), never a run against an empty path.
+D="$(mktemp -d "${TMPDIR:-/tmp}/check-usage-by.XXXXXXXX")" && [ -d "$D" ] || { echo "check-usage-by: no temp folder under ${TMPDIR:-/tmp}; nothing was checked"; exit 2; }; trap 'rm -rf "$D"' EXIT
 pass=0; fail=0
 ok() { if [ "$2" = 0 ]; then pass=$((pass + 1)); echo "PASS  $1"; else fail=$((fail + 1)); echo "FAIL  $1"; fi; }
 S="$D/p/s1"; mkdir -p "$S/subagents"

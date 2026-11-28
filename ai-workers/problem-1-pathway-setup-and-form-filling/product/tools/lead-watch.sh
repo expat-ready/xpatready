@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
-# Read-only, except step 6b's private sync (P-678). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
+# Read-only, except step 6b's private sync (P-678) and the last step's check stamp push (LR-168). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines; step 15 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 #        bash product/tools/lead-watch.sh app-view-read <<'EOF' (app-view.js's answer) EOF   saves the app view (step 10)
@@ -425,6 +425,14 @@ fresh "STATE.md on $(git rev-parse --abbrev-ref HEAD)"
 tl=$(python3 -I "$TOOLS/cycle-timeline.py" 2>&1); echo "$tl"; act=$((act + $(grep -c '^ACT' <<<"$tl")))   # 14. Cycle timeline (A244, ENF-783b, P-783 (2)): every check
 fresh "cycle-timeline.py"
 
+# 13a. Lane-start watch (LR-171, founder A455): a lane in STATE "Lanes running" with no session activity (the saved app
+# view, step 10) and no push of a branch or PR it names (#NNNN: its head branch), both over 90 min, is an ACT: type its next
+# step or restart it (A451). Each app view line now carries its session id, so step 10a's nudges (LR-146) can name lanes.
+gh api "repos/expat-ready/xpatready/pulls?state=open&per_page=100" > "$STATE_DIR/open-pulls.json" 2>/dev/null || rm -f "$STATE_DIR/open-pulls.json"   # a PR named in the line counts as a push
+lsw=$(python3 -I "$TOOLS/lane-start-watch.py" --state "$RECS/STATE.md" --view "${APP_VIEW_FILE:-$TOOLS/../state/app-view-latest.txt}" --repo "$ROOT" --pulls "$STATE_DIR/open-pulls.json" 2>&1)
+grep -qE '^(lanes running: |ACT   lane start: )' <<<"$lsw" || lsw="ACT   lane start: lane-start-watch.py did not run ($(head -1 <<<"$lsw"))"
+echo "$lsw"; act=$((act + $(grep -c '^ACT' <<<"$lsw"))); seen "$lsw"
+fresh "lane-start-watch.py: STATE.md in $RECS, the saved app view, origin/* as the last fetch saw it"
 # 13a2. LR-173 (founder P-861): dropped and deferred rows never get lost: register rows on main whose DROP names no other
 # home or whose DEFERRED names no trigger are one ACT; each DEFERRED row whose date trigger is due is an ACT.
 rr=$(python3 -I "$TOOLS/register-rows.py" lines --ref origin/main 2>&1); grep -qE '^(deferred: |ACT   )' <<<"$rr" || rr="ACT   register rows: register-rows.py did not run ($(head -1 <<<"$rr"))"
@@ -456,5 +464,9 @@ fresh "focus-truth.py: focus-list.md and qa/CAPABILITIES.md on origin/main (fetc
 cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "$BOARD" \
   --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
 fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board as step 11 accepted it (over $FRESH_MAX_MIN min: not measured)"
+# LR-168 (founder A455): the Lead's copy pushes this check's stamp to lead/check-stamp, which .github/workflows/lead-gap.yml
+# judges every 10 min with no Mac running (a red lead-check-gap status on main over 20 min). Not pushed is an ACT.
+if [ "${LEAD_STAMP_PUSH:-on}" != off ] && case "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" in lead|lead-stale) true;; *) false;; esac; then
+  sp=$(bash "$TOOLS/lead-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
 echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
 exit "$act"
