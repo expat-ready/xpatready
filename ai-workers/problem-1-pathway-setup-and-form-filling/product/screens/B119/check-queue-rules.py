@@ -145,6 +145,12 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("an unguarded .claude file (guards.yml does not run; skills are guarded since lab A2): pipeline without guards (F4)", [".claude/launch.json"], False, "pipeline"),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
+    # LR-181 (enforcement audit, P-214): pr-rules gates the pipeline, records and verdicts queues too.
+    case("a pipeline PR with pr-rules red: no queue (LR-181)", [f"{R}/tools/x.sh"], False, None, checks=("ci", "guards"), failed=("pr-rules",)),
+    case("a pipeline PR with no pr-rules run yet: no queue (LR-181)", [".mergify.yml"], False, None, checks=("ci", "guards")),
+    case("a records PR with pr-rules green (its rule steps skipped): records (LR-181)", [f"{R}/STATE.md"], True, "records", checks=("ci", "pr-rules")),
+    case("a records PR with pr-rules red: no queue (LR-181)", [f"{R}/STATE.md"], True, None, checks=("ci",), failed=("pr-rules",)),
+    case("a qa verdict with pr-rules missing: no queue (LR-181)", [f"{R}/qa/CAPABILITIES.md"], True, None, "qa: C1.1 Works", checks=("ci",)),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
     case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product", checks=F),
     case("records without the review label: no queue", [f"{R}/STATE.md"], True, None, labels=()),
@@ -187,7 +193,8 @@ def problems(cfg, have_script):
                    "priority; qa verdicts first (P-664), pipeline ahead of product while P-827 holds, records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
-        for need in ("base = main", "label = review: approved", "check-success = ci"):
+        # LR-181 (enforcement audit, P-214): pr-rules gates every queue, not only product.
+        for need in ("base = main", "label = review: approved", "check-success = ci", "check-success = pr-rules"):
             if need.replace(" ", "") not in conds:
                 out.append(f"queue {q.get('name')}: queue_conditions lack {need!r} (no gate removed)")
         if "check-success = ci" not in [c.strip() for c in q.get("merge_conditions", []) if isinstance(c, str)]:
@@ -433,6 +440,9 @@ def mutations(cfg):
         ("product takes pipeline-only PRs (P-717 (a))", drop("product", lambda x: x.startswith("files~="))),
         ("pipeline takes PRs with app code (P-717 (a))", drop("pipeline", lambda x: x.startswith("-files~=^(?!"))),
         ("pipeline skips green ci", drop("pipeline", lambda x: x.startswith("check-success"))),
+        ("pipeline skips pr-rules (LR-181)", drop("pipeline", lambda x: x == "check-success=pr-rules")),
+        ("records skips pr-rules (LR-181)", drop("records", lambda x: x == "check-success=pr-rules")),
+        ("verdicts skips pr-rules (LR-181)", drop("verdicts", lambda x: x == "check-success=pr-rules")),
         ("pipeline listed after product (P-827)", swap12(cfg)),
         ("product's pipeline-path pattern differs from pipeline's (P-717 (a))", other_paths(cfg)),
         ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
@@ -482,7 +492,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4); near-proven product PRs first, never interrupting (OS-50)")
+        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label, green ci and green pr-rules (LR-181); the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4); near-proven product PRs first, never interrupting (OS-50)")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

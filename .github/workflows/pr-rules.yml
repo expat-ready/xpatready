@@ -7,7 +7,7 @@
 # An item's last PR says "Completes: R1.77" on a line of its own (several: "Completes: R1.77, R1.78"); at its merge
 # item-proof.yml runs the item's pack and journey and posts the verdict (P-728 (3)); an unreadable line fails here.
 # A runtime/screens PR whose title names an R1 row and whose body has no such line gets a MISSING warning (A274).
-# The product queue waits for this check (E6, P-772; .mergify.yml). Reads only, US$0.
+# Every queue (verdicts, product, pipeline, records) waits for this check (E6, P-772; LR-181; .mergify.yml). Reads only, US$0.
 # B204 (P-745): job outside-wave labels a PR naming an R1 item outside the open waves (design/waves.tsv) "outside-wave",
 # with a warning, never a failure (fixes still merge, P-214). It holds the only write token here, so it runs main's
 # waves.py from the base commit in a folder of its own, reads the PR's title and body as data only, and keeps no
@@ -30,11 +30,12 @@ concurrency:
   cancel-in-progress: true
 jobs:
   pr-rules:
-    # E6 (P-772, review of #2595): the product queue waits for this check, so the job always runs on a PR and never reads
+    # E6 (P-772, review of #2595; LR-181): every queue waits for this check, so the job always runs on a PR and never reads
     # the "records" label from the event: records-label.yml drops that label on the same push that adds code, after
     # this job read it, and a label change by GITHUB_TOKEN starts no run, so a skipped run could hold an approved
-    # product PR out of the queue for good. The first step asks records-only.sh about the PR's own file list instead; a
-    # records-only PR passes with every rule step skipped (its own queue does not wait for pr-rules).
+    # PR out of the queue for good. The first step asks records-only.sh about the PR's own file list instead; a
+    # records-only PR skips the body and size rules, while the always-on steps (LR-156 stale base, the model rule, clean-up
+    # and stale paths, comment filter, waves, deps line) still run and hold it when red (LR-181: its queue waits for pr-rules).
     if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -112,8 +113,7 @@ jobs:
         run: python3 -I "$T/comment-filter-check.py"
       # LR-156 (founder A433/A434; P-388): a records PR, or any PR from a lead/* branch, is cut from main under 24 h before
       # main's tip, so the Lead never writes records on a stale branch. Runs on records-only PRs too (that is its point):
-      # there it is a red pr-rules for the Lead to see, since the records queue waits only on ci (.mergify.yml); on a
-      # lead/* PR in the product queue it blocks the merge.
+      # every queue waits for pr-rules (LR-181; .mergify.yml), so a stale records or lead/* PR is held until it is cut again.
       # Reads GitHub's compare answer (base_commit, merge_base_commit); the shas reach it only through env. Test:
       # product/tools/check-lead-age.sh.
       - name: a records or lead/* branch is under 24 h old against main (LR-156)
