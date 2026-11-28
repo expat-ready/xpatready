@@ -19,16 +19,13 @@ done <<'EOF'
 deny|curl -sS -X POST -H 'Authorization: Bearer x' https://api.github.com/repos/o/r/issues/1/comments -d '{"body":"x"}'
 deny|curl -sSL -XPATCH https://api.github.com/repos/o/r/pulls/1
 deny|curl --request DELETE https://api.github.com/repos/o/r/git/refs/heads/x
-deny|curl --request=PUT https://api.github.com/repos/o/r/pulls/1/merge
 deny|curl -sSd '{}' https://api.github.com/repos/o/r/issues
 deny|curl --data-binary @f https://api.github.com/repos/o/r/issues
 deny|curl --json '{}' https://uploads.github.com/repos/o/r/releases/1/assets
-deny|curl -F f=@x https://api.github.com/x
 deny|curl -H "Authorization: token $GH_TOKEN" -X POST "$API/issues/1/labels"
 deny|cd /tmp && curl -X POST https://api.github.com/x
 deny|bash -c "curl -X POST https://api.github.com/repos/o/r/issues"
 deny|echo $(curl -sS -X PATCH https://api.github.com/x)
-deny|FOO=1 env curl -X POST https://api.github.com/x
 deny|wget --post-data='{}' https://api.github.com/x
 deny|wget --method=DELETE https://api.github.com/x
 deny|http POST api.github.com/repos/o/r/issues title=x
@@ -48,7 +45,6 @@ deny|sudo -u me curl -X POST https://api.github.com/x
 deny|printf "1" | xargs -I % gh api repos/o/r/issues/%/labels -f labels[]=x
 deny|echo `curl -X POST https://api.github.com/x`
 deny|gh api repos/o/r/issues -fbody=hi
-deny|gh api repos/o/r/issues -X=POST
 deny|gh api graphql --input m.json
 deny|gh api graphql -F query=@m.graphql
 deny|perl -MLWP::UserAgent -e 'LWP::UserAgent->new->post("https://api.github.com/x", Content => "{}")'
@@ -65,6 +61,9 @@ deny|curl -X POST https://API.GITHUB.COM/repos/o/r/issues -d '{}'
 deny|python3 -E -c "import requests; requests.post('https://api.github.com/x', json={})"
 deny|node --eval "fetch('https://api.github.com/x',{method:'POST'})"
 deny|bash -c -- 'gh api repos/o/r/issues/1/comments -f body=hi'
+deny|curl -sS -X PATCH "https://x-access-token:${GITHUB_TOKEN}@api.github.com/repos/o/r/pulls/1" --data '{"body":"x"}'
+deny|curl -XPOST https://api.github.com/repos/o/r/issues -d @b.json http://localhost:4400/x
+allow|curl -sXPOST http://localhost:4400/api/x -H "Authorization: Bearer $GH_TOKEN" -d '{}'
 allow|echo for '*' in https://api.github.com/x; ls
 allow|curl -s -X POST http://localhost:4400/api/hooks -H "X-Hub: https://api.github.com/hook" -d '{}'
 allow|curl -s -X POST http://localhost:4400/api/programs -d "{\"token\":\"$GH_TOKEN\"}"

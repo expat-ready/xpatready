@@ -20,7 +20,7 @@ VALUED = {"--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlen
           "--form-string", "--output", "--user", "--user-agent", "--referer", "--upload-file", "--request", "--config",
           "--cookie", "--cookie-jar", "--write-out", "--max-time", "--proxy", "--method", "--post-data", "--post-file",
           "--body-data", "--body-file", "--output-document", "--auth"}
-VALUED_SHORT = "dHFouAeTXKbcwmxyYzErUO"
+VALUED_SHORT = "dHFouAeTXKbcwmxyYzErU"   # not O: curl -O takes no value
 CURL_BODY_LONG = ("--data", "--json", "--form", "--upload-file")   # --data-raw, --data-binary, --form-string ...
 WGET_BODY = ("--post-data", "--post-file", "--body-data", "--body-file")
 SEP = {";", "&&", "||", "|", "&", "(", ")", "|&", "{", "}", "!"}
@@ -113,17 +113,18 @@ def judge_words(words, hostvars, depth):
             if skip:
                 skip = False
             elif a.startswith("-"):
-                skip = "=" not in a and (a in VALUED or re.match(r"^-[A-Za-z]*[" + VALUED_SHORT + r"]$", a) is not None)
+                f = a[1:]   # -XPOST: the cluster takes a value only when its first value letter is its last (as curl reads it)
+                skip = "=" not in a and (a in VALUED or (not a.startswith("--") and next(
+                    (j for j, c in enumerate(f) if c in VALUED_SHORT), -1) == len(f) - 1))
             else:
                 out.append(a)
         return out
 
     def elsewhere(args):   # a POST to localhost carrying $GH_TOKEN names no GitHub host: not a GitHub write
-        t = targets(args)
-        named = [m.group(1).split(":")[0].lower() for a in t for m in [re.match(r"^['\"]?https?://([^/\s'\"]+)", a)] if m]
-        return bool(named) and not any(re.search(r"(^|\.)github\.com$", h) for h in named) \
-            and not any(HOST.search(a) and not re.search(r"GH_TOKEN|GITHUB_TOKEN|gh auth token", a) or
-                        any(re.search(r"\$\{?" + re.escape(v) + r"\b", a) for v in hostvars) for a in t)
+        t = targets(args)   # the host is after any user:token@ and before any :port
+        named = [m.group(1).rsplit("@", 1)[-1].split(":")[0].lower() for a in t for m in [re.match(r"^https?://([^/\s]+)", a, re.I)] if m]
+        return bool(named) and not any(re.search(r"(^|\.)github\.com$", h) for h in named) and not any(re.search(
+            r"(?:api|uploads)\.github\.com|github\.com/api/", a, re.I) or any(re.search(r"\$\{?" + re.escape(v) + r"\b", a) for v in hostvars) for a in t)
 
     def hosted(a):
         return HOST.search(a) or any(re.search(r"\$\{?" + re.escape(v) + r"\b", a) for v in hostvars)
@@ -161,7 +162,7 @@ def judge_words(words, hostvars, depth):
 
 
 HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*\\?(['\"]?)([A-Za-z_][\w-]*)\1")
-INTERP_WORD = re.compile(r"(^|[\s;&|(])(?:\S*/)?(?:python3?|node|ruby|perl)(\s|$)")   # the program word, not "python3" in a title or a path
+INTERP_WORD = re.compile(r"(^|[\s;&|(])(?:\S*/)?(?:python3?(?:\.\d+)?|node|ruby|perl)(\s|$)")   # the program word, not "python3" in a title or a path
 
 
 def interp_heredoc_write(text):
@@ -169,7 +170,7 @@ def interp_heredoc_write(text):
     lines = text.split("\n")
     for i, line in enumerate(lines):
         m = HEREDOC.search(line)
-        if m and (INTERP_WORD.search(line[:m.start()]) or re.search(r"\|\s*(?:\S*/)?(?:python3?|node|ruby|perl)\b", line[m.end():])):
+        if m and (INTERP_WORD.search(line[:m.start()]) or re.search(r"(?<!\|)\|(?!\|)\s*(?:\S*/)?(?:python3?|node|ruby|perl)\b", line[m.end():])):
             body = []
             for b in lines[i + 1:]:
                 if b.strip() == m.group(2):
@@ -194,7 +195,7 @@ def strip_heredocs(text):
             continue
         delim = m.group(2)
         shell = re.search(r"(^|[\s;&|(/])(bash|sh|zsh|dash)(\s|$)", line[:m.start()]) \
-            or re.search(r"\|\s*(?:\S*/)?(bash|sh|zsh|dash)\b", line[m.end():]) or re.search(r"\beval\b", line[:m.start()])
+            or re.search(r"(?<!\|)\|(?!\|)\s*(?:\S*/)?(bash|sh|zsh|dash)\b", line[m.end():]) or re.search(r"(^|[;&|(]\s*|\$\()\s*eval\b", line[:m.start()])
         end = next((j for j in range(i, len(lines)) if lines[j].strip() == delim), None)
         if end is None:
             continue   # no closing line (a quoted "<<EOF", a dotted delimiter): the lines stay commands
