@@ -24,7 +24,7 @@ jobs:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { fetch-depth: 0, filter: "blob:none", persist-credentials: false }   # history and origin/main, as pr-suites.yml: a suite may read them
       - id: p
         name: which suites does this PR add or change? (red-on-old.py plan)
@@ -38,7 +38,7 @@ jobs:
         if: steps.p.outputs.suites != ''
         continue-on-error: true
         run: python3 -I "$P/tools/red-on-old.py" old --base HEAD^1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.old.outcome == 'success'
         continue-on-error: true
         with: { node-version-file: .nvmrc, cache: npm, cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json }
@@ -58,7 +58,7 @@ jobs:
       - name: logs
         if: steps.s.outcome != 'skipped'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: red-on-old-a${{ github.run_attempt }}
           path: |

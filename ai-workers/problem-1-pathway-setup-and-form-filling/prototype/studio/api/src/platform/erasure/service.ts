@@ -189,6 +189,9 @@ export class Erasure {
       if (!(await this.personCheck(tx, order.firmId, order.personId))) return { kind: "gone" } as const;   // in this transaction, locked (review r4 M1)
       const hold = await this.holds.isHeld(tx, order.firmId, [{ kind: "PERSON", id: order.personId }]);
       if (hold.held) return { kind: "held", held: hold.holds.map((h) => `hold ${h.holdId}: ${h.reason}`) } as const;
+      // PF-21d part 2b-2: the request and its claim, for this transaction only; the insert-only tables' triggers open a
+      // person's words to their erasure only while these name a request claimed at that time (fo_compliance_erasure_names).
+      await tx.$queryRaw`SELECT set_config('pf21d.erasing', ${order.requestId}, true), set_config('pf21d.claim', ${claim.toISOString()}, true)`;
       const results: { module: string; r: EraseOutcome }[] = [];
       for (const e of this.registry.erasers()) {
         try { results.push({ module: e.module, r: EraseOutcome.parse(await e.erase(tx, order)) }); } catch (err) { throw new EraserFailed(e.module, err); }

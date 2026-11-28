@@ -1,0 +1,4 @@
+# actionlint config (workflow-lint.yml, A9): the Mac's self-hosted runner labels (check-workflow-security.sh S2 keeps
+# them to queue-gate.yml and demo-update.yml).
+self-hosted-runner:
+  labels: [xr-mac, xr-mac-light]

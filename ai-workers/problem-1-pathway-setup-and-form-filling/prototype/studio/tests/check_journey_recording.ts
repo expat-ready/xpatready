@@ -65,7 +65,7 @@ const wp = readFileSync(join(import.meta.dirname, "..", "tools", "walk-plan.mjs"
 const block = (name: string) => { const i = y.indexOf(`name: ${name}`); return i < 0 ? "" : y.slice(i, y.indexOf("\n      - ", i + 1) > 0 ? y.indexOf("\n      - ", i + 1) : undefined); };
 const up = block("upload the recording"), walk = block("walk ${{ matrix.j.name }} on its own copy");
 ok("P-700 R2: the upload step runs always (if: always()), uses upload-artifact and is named by journey and head sha",
-  /if: always\(\)/.test(up) && /actions\/upload-artifact@v4/.test(up) && /name: walk-\$\{\{ matrix\.j\.name \}\}-\$\{\{ needs\.plan\.outputs\.sha \}\}/.test(up), up);
+  /if: always\(\)/.test(up) && /actions\/upload-artifact@[0-9a-f]{40} # v4\.\d+\.\d+/.test(up) && /name: walk-\$\{\{ matrix\.j\.name \}\}-\$\{\{ needs\.plan\.outputs\.sha \}\}/.test(up), up);
 ok("P-700 R2: the walk step comes before the upload and fails its job except for the fixture and on a push to main (ENF-733: the verdict goes to the merged PR's comment)", walk !== "" && y.indexOf(walk) < y.indexOf(up) && /continue-on-error: \$\{\{ matrix\.j\.expect == 'fail' \|\| github\.event_name == 'push' \}\}/.test(walk), walk);
 ok("P-700 R2: continue-on-error appears once (the walk step), the self-test step runs always and fails on either miss, both fixtures are in every matrix walk-plan.mjs builds",
   (y.match(/continue-on-error:/g) ?? []).length === 1 && /if: always\(\) && matrix\.j\.expect == 'fail'/.test(y) && /= failure \] \|\| \{[^}]*exit 1; \}/.test(y) && /-n "\$ART" \] \|\| \{[^}]*exit 1; \}/.test(y) && /for \(const f of \["j_0_fails", "j_0_throws"\]\) matrix\.push\(\{[^\n]*expect: "fail" \}\)/.test(wp) && /walk-plan\.mjs" --event/.test(y));

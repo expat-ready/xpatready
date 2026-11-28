@@ -1,0 +1,728 @@
+<title>Engineering Machinery Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --ink: #16202c;
+  --muted: #5a6675;
+  --line: #c9d1db;
+  --accent: #1f5fbf;
+  --accent-soft: #dde8f8;
+  --loss: #c2311f;
+  --loss-soft: #fbe3df;
+  --warn: #a86400;
+  --warn-soft: #fbedd5;
+  --fix: #1d7a46;
+  --fix-soft: #dcf2e4;
+  --lane-a: #f1f4f8;
+  --lane-b: #e9eef5;
+  --grid: #dfe4ea;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a;
+    --surface: #18202a;
+    --surface-2: #202a36;
+    --ink: #e6ebf1;
+    --muted: #9aa6b4;
+    --line: #3a4757;
+    --accent: #79a9f2;
+    --accent-soft: #1c2f4b;
+    --loss: #ff7a66;
+    --loss-soft: #45201b;
+    --warn: #f0b049;
+    --warn-soft: #3f2e12;
+    --fix: #5fd193;
+    --fix-soft: #143523;
+    --lane-a: #141b23;
+    --lane-b: #17202a;
+    --grid: #2a3542;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a;
+  --surface: #18202a;
+  --surface-2: #202a36;
+  --ink: #e6ebf1;
+  --muted: #9aa6b4;
+  --line: #3a4757;
+  --accent: #79a9f2;
+  --accent-soft: #1c2f4b;
+  --loss: #ff7a66;
+  --loss-soft: #45201b;
+  --warn: #f0b049;
+  --warn-soft: #3f2e12;
+  --fix: #5fd193;
+  --fix-soft: #143523;
+  --lane-a: #141b23;
+  --lane-b: #17202a;
+  --grid: #2a3542;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: 48px;
+}
+main { max-width: 1180px; margin: 0 auto; }
+h1, h2, h3 { font-family: "Space Grotesk", Inter, system-ui, sans-serif; line-height: 1.2; }
+h1 { font-size: 30px; margin: 28px 0 6px; }
+h2 { font-size: 22px; margin: 40px 0 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+h3 { font-size: 17px; margin: 22px 0 6px; }
+p { margin: 8px 0; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.88em; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+.verdict {
+  background: var(--warn-soft); border-left: 5px solid var(--warn);
+  padding: 14px 16px; border-radius: 8px; font-size: 17px; margin: 18px 0;
+}
+.verdict strong { color: var(--warn); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 14px 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.card .num { font-family: "Space Grotesk", Inter, sans-serif; font-size: 26px; font-weight: 700; color: var(--accent); }
+.card .lbl { color: var(--muted); font-size: 13px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin: 12px 0; }
+.q h3 { margin-top: 2px; }
+.q ul { margin: 6px 0; padding-left: 20px; }
+.q li { margin: 4px 0; }
+.src { color: var(--muted); font-size: 13px; }
+.loss { color: var(--loss); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.fix { color: var(--fix); font-weight: 600; }
+.diagram {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  margin: 12px 0; padding: 8px;
+}
+.diagram svg { display: block; min-width: 1100px; width: 100%; height: auto; }
+.hint { color: var(--muted); font-size: 13px; }
+table { border-collapse: collapse; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 14px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: var(--surface-2); font-family: "Space Grotesk", Inter, sans-serif; font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+.tablewrap table { min-width: 640px; }
+ol.top { padding-left: 22px; }
+ol.top li { margin: 8px 0; }
+
+/* SVG classes: every fill and stroke comes from a token */
+svg text { fill: var(--ink); font-family: Inter, system-ui, sans-serif; font-size: 13px; }
+svg .t-muted { fill: var(--muted); font-size: 12px; }
+svg .t-lane { font-family: "Space Grotesk", Inter, sans-serif; font-weight: 600; font-size: 14px; }
+svg .t-head { font-family: "Space Grotesk", Inter, sans-serif; font-weight: 700; font-size: 13.5px; }
+svg .t-loss { fill: var(--loss); font-weight: 600; font-size: 12.5px; }
+svg .t-fix { fill: var(--fix); font-weight: 600; font-size: 12.5px; }
+svg .t-warn { fill: var(--warn); font-weight: 600; font-size: 12.5px; }
+svg .t-accent { fill: var(--accent); font-weight: 600; }
+svg .t-small { font-size: 11.5px; }
+svg .lane-a { fill: var(--lane-a); }
+svg .lane-b { fill: var(--lane-b); }
+svg .lane-label { fill: var(--surface-2); stroke: var(--line); }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .box-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+svg .chip { fill: var(--surface-2); stroke: var(--line); }
+svg .chip-opt { fill: var(--warn-soft); stroke: var(--warn); stroke-dasharray: 4 3; }
+svg .lossbox { fill: var(--loss-soft); stroke: var(--loss); stroke-width: 1.4; }
+svg .warnbox { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1.2; }
+svg .fixbox { fill: var(--fix-soft); stroke: var(--fix); stroke-width: 1.2; }
+svg .arrow { stroke: var(--accent); stroke-width: 2; fill: none; }
+svg .arrow-thin { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+svg .arrow-loss { stroke: var(--loss); stroke-width: 1.4; fill: none; }
+svg .head { fill: var(--accent); }
+svg .head-muted { fill: var(--muted); }
+svg .gridline { stroke: var(--grid); stroke-width: 1; }
+svg .today { stroke: var(--loss); stroke-width: 2; stroke-dasharray: 6 4; }
+svg .mile { stroke: var(--accent); stroke-width: 2; }
+svg .bar-lab { fill: var(--accent-soft); stroke: var(--accent); }
+svg .bar-fix { fill: var(--fix-soft); stroke: var(--fix); }
+svg .bar-warn { fill: var(--warn-soft); stroke: var(--warn); }
+svg .bar-prod { fill: var(--accent); stroke: var(--accent); }
+svg .bar-range { fill: var(--loss-soft); stroke: var(--loss); stroke-dasharray: 4 3; }
+svg .t-onbar { fill: var(--bg); font-weight: 600; }
+svg .dot { fill: var(--accent); }
+svg .dot-loss { fill: var(--loss); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+@media (max-width: 600px) { h1 { font-size: 24px; } .verdict { font-size: 15.5px; } }
+</style>
+
+<main>
+<h1>The engineering machinery, measured</h1>
+<p class="sub">Independent audit for the tech lead and the founder · 27 Nov 2026, measured 20:42–20:50 IST from GitHub and from <code>main</code> at b1b4c682a (20:15 IST). Every code carries its plain meaning next to it.</p>
+
+<div class="verdict"><strong>On track?</strong> Not against the first lab plan (all 137 rows Built by 23:00 tonight: we are at 22 of 137). Tight but reachable against the current restart line (P-854: product restarts about 30 Nov): likely 30 Nov to 2 Dec, if the builder lanes are staffed tonight and no nightly run goes red. Release 1 on 12 Dec still holds only with the 1 Dec re-decision (P-609, the release-date check).</div>
+
+<div class="cards">
+  <div class="card"><div class="num">90%</div><div class="lbl">of the 99 hours lab pull requests (PRs, one change each) were open today was waiting, not work. Machines worked 9.6 h.</div></div>
+  <div class="card"><div class="num">1,953</div><div class="lbl">lines of new lab code merged since the lab started (P-847, 10:5x IST), in 10 PRs. Another 11,419 sit in 23 open lab PRs.</div></div>
+  <div class="card"><div class="num">49,470</div><div class="lbl">lines of the whole pipeline machinery on main today, against 163,826 lines of product app code (30%).</div></div>
+  <div class="card"><div class="num">1 of 8</div><div class="lbl">builder lanes are running on the must-have safety work (bundle 1, started 20:3x IST). The triage says 7 more can run at once on separate files once #3833 lands.</div></div>
+</div>
+
+<h2>The audit, five answers</h2>
+
+<div class="q">
+<h3>1. Planning or resources? Both, but the real limit is flow, not tokens.</h3>
+<p>The weekly plan is at 20% used (Lead, 20:4x IST). Tokens are not short. What is short is <em>things that only one session can do</em>, and builders working at the same time.</p>
+<ul>
+<li><span class="loss">One reader for everything.</span> Every pipeline PR waits for the tech lead to read its diff (the read gate). That cost <b>29.5 h</b> today, the largest single loss. Waits: median 25 min, worst 212 min. The Lead changed 8 times today (Lead 1 to Lead 8), and each hand-over restarts the reading.</li>
+<li><span class="loss">One lane in the queue for pipeline work.</span> The <code>pipeline</code> scope of the merge queue (Mergify) takes one batch at a time, about 32 min each, and was 91% busy from 11:30 to 18:00. Main-fix PRs had no way to jump the line: <b>17.4 h</b>.</li>
+<li><span class="loss">An optional check let a broken change in.</span> <code>guards</code> (the pipeline's own self-tests) is not a required check, so #3924 (private-records split) merged with a red part and broke main for 2 h 55 min. Together with two other stacked causes: <b>13.3 h</b> of red main.</li>
+<li><span class="warn">Planning gap: under-used builders.</span> The triage page (§3) says 7 bundles (A1, A3 to A8) can run at once on separate files once #3833 (one file per guard rule, ends the hot-file clash) lands. Today about 5 cloud lab lanes ran in the morning (STATE, 11:37 IST). The four must-have PRs of bundle 1 had <b>no builder</b> from the account switch until 20:3x IST, when the founder started the new "Lab bundle 1" lane; it has already merged main into #3814 and #3825. Ten Mac sessions today were Leads or standby Leads; none were builders.</li>
+<li><span class="warn">Planning gap: the target was wrong.</span> The 23:00 plan counted all 137 register rows. Only 27 are must-haves for the restart (class A). That was corrected at 18:2x (P-852).</li>
+</ul>
+<p class="src">Sources: lab-replan-2026-11-27-flow.md (measured 18:10 IST), triage §3, session list read 20:4x IST.</p>
+</div>
+
+<div class="q">
+<h3>2. How big is the lab, and is that reasonable?</h3>
+<ul>
+<li><b>Lab code written since the lab began</b> (P-847, 10:5x IST): <b>1,953 changed lines merged</b> in 10 PRs (#3953 fast-route failure lines, #3944, #3941, #3937, #3925, #3924, #3921, #3908, #3902, #3896). Open lab PRs: <b>11,419 lines</b> in 23 PRs (some opened 24-26 Nov, e.g. #3833 1,568, #3843 1,787). Not counted as code: the dependency update #3904 (1,645) and the clean-up.</li>
+<li><b>Clean-up removed</b> 226,870 lines of October work (#3893) and 5,164 test screenshots (#3900, #3901), plus a 1,363-line word-for-word move of old decisions (#3906). Another 184,209-line clean-up (#3905) is open.</li>
+<li><b>Whole pipeline machinery on main today: 49,470 lines.</b> Tools folder 44,687 lines in 313 files (182 shell, 77 Python), of which 108 self-test scripts are 11,029 lines; 29 GitHub workflows 3,491 lines (whole <code>.github</code> folder); merge-queue file 543 lines (42 scopes, 4 queue rules); <code>.claude</code> 708 lines (12 skills, 2 agents, settings, 15 rule files); git hooks 41 lines. The rule register holds 161 rules.</li>
+<li><b>Product app for scale:</b> 163,826 lines (api 76,491, web 40,066, database schema and migrations 28,852, engine 14,687, contracts 3,730), plus 180,373 lines of tests and 13,331 of acceptance checks.</li>
+</ul>
+<p><b>Against common practice</b> (DORA lead-time research, trunk-based development, merge queues with required checks, code-owner review, flaky-test quarantine): our <em>parts</em> match the practice. The <em>amount</em> does not. A team's delivery tooling is usually a small slice of its code; ours is 30% of the app. <span class="warn">Over-engineered:</span> 161 rules, 108 scripts that test the tools, mutation tests of the pipeline itself, 29 workflows, reports that block nobody. <span class="loss">Under-engineered where it counts:</span> a slow check left optional (guards), no priority lane for fixes, failure logs cut to their last 20 lines, and a human-style read on every pipeline PR where practice uses code owners plus an automated approver (the planned switch, A10).</p>
+<p class="src">Measured: GitHub REST API, PR additions + deletions, 20:4x IST; <code>git ls-tree</code> + <code>wc -l</code> on origin/main b1b4c682a.</p>
+</div>
+
+<div class="q">
+<h3>3. Will product also take forever to merge?</h3>
+<p>Partly no, partly yes. The 7 product and qa PRs merged today: approve-to-merge median <b>73 min</b> (19, 20, 58, 73, 110, 579, 871 min). Product queues are already parallel (41 area and migration scopes, 4 batches at once), so the queue cost only 4.4 h. The two slow ones lost time to the same causes as the lab: #3822 (case notes panel) waited <b>567 min</b> on the Lead; #3878 (firm company rules) sat <b>391 min</b> idle after Approve. Across the 7: Lead 15.8 h, idle 8.2 h.</p>
+<p><span class="fix">What changes:</span> F1 (owed reads first) and F6 (every approved PR has an owner) cut both at once. The real cure is the switch (A10, after the A6 observe week): Claude Approvals approves, Claude Code Review must pass on money, schema, migration and pipeline paths, and the Lead reads after merge (P-849, P-823). That takes the Lead out of the merge path for product.</p>
+</div>
+
+<div class="q">
+<h3>4. Are we on track? Plan dates against the measured rate.</h3>
+<ul>
+<li><b>First lab plan</b>: Built 27 Nov 23:00, Proven 28 Nov 10:00 IST, all 137 rows. Measured now: <b>Built 22/137 (16%), Proven 7/137 (5%)</b> (<code>lab-progress.py</code>, 20:4x IST). <span class="loss">Missed; it needed 51 rows an hour.</span></li>
+<li><b>Current restart line</b> (P-853, P-854): flow fixes F1-F6 plus one proven day; the must-have rows (bundle 1, A1-A5, A7, A8); 7 green nightly runs started about 3 a day. Rate: 14 lab PRs merged in about 9.5 h (1.5 an hour). Left before restart: about 15 PRs, about 5,900 lines (restart-line page). At today's rate the queue can merge them in about one working day; the limits are building and reading.</li>
+<li><b>Forecast</b> (assumes builders start tonight, #3918 guards in 6 parts lands by 28 Nov morning, the F2+F4 PR lands 28 Nov, no nightly goes red):
+  <ul>
+  <li>Best: restart <b>30 Nov</b> evening (the 7th green nightly; P-854 date).</li>
+  <li>Likely: <b>1 Dec</b>, the same day as the re-decision (P-609).</li>
+  <li>Worst: <b>2-3 Dec</b>, if one nightly goes red (count resets to 0, about 2.5 days) or bundle 1 has no builder until 28 Nov afternoon.</li>
+  </ul></li>
+<li><b>Release 1, 12 Dec</b>: about 9-11 working days of product after a 1 Dec restart. Whether that is enough is the 1 Dec re-decision's question; this audit did not measure product rows left.</li>
+</ul>
+</div>
+
+<div class="q">
+<h3>5. The three changes that matter most now (cheapest first, no gate lowered)</h3>
+<ol class="top">
+<li><b>Start the clocks tonight: land #3918 (guards in 6 parts, 11 lines) and one ~20-line PR for F2 (priority lane for main fixes in the queue) and F4 (guards required for pipeline PRs).</b> This raises a gate rather than lowering one. It starts both the proof day and the 3-a-day nightly count (P-854), which are the longest waits left. Effect: removes most of today's 13.3 h red main and 11.9 h guards time-outs, and makes 30 Nov possible at all.</li>
+<li><b>Staff the builders: bundle 1 has its lane since 20:3x (#3833, then #3814 and #3825, then #3843); then 7 lanes at once the moment #3833 merges (A1 hooks fail closed, A3 PR rules, A4 review converges, A5 money and migration safety checks, A7 private split, A8 dependencies; A2 after #3843).</b> The plan has room; tokens are at 20%. Effect: about 7 days of serial building becomes 1-2 days.</li>
+<li><b>Start the A6 observe week now: land #3899 (Claude Approvals policy in watch-only mode).</b> Claude Approvals is already connected (STATE, 10:5x). Effect: the switch (A10) that takes the Lead out of the merge path can land about 5 Dec instead of mid-December, removing most of the 29.5 h Lead wait for product too.</li>
+</ol>
+</div>
+
+<h2>The machinery, end to end</h2>
+<p class="hint">How one change travels from the founder's decision to "Works". Red boxes: where today's 99 PR-hours went (lab PRs, 27 Nov). Green boxes: the fix that removes each loss. Amber dashed checks are optional today. On a phone, scroll the diagram sideways.</p>
+
+<div class="diagram" role="img" aria-label="Swimlane diagram of the engineering machinery with time losses and fixes">
+<svg viewBox="0 0 1440 1130" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+    <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-muted"/></marker>
+  </defs>
+
+  <!-- lane backgrounds -->
+  <rect x="0" y="0" width="1440" height="110" class="lane-a"/>
+  <rect x="0" y="110" width="1440" height="150" class="lane-b"/>
+  <rect x="0" y="260" width="1440" height="120" class="lane-a"/>
+  <rect x="0" y="380" width="1440" height="100" class="lane-b"/>
+  <rect x="0" y="480" width="1440" height="170" class="lane-a"/>
+  <rect x="0" y="650" width="1440" height="110" class="lane-b"/>
+  <rect x="0" y="760" width="1440" height="150" class="lane-a"/>
+  <rect x="0" y="910" width="1440" height="220" class="lane-b"/>
+
+  <!-- lane labels -->
+  <rect x="6" y="8" width="160" height="94" rx="8" class="lane-label"/>
+  <text x="18" y="40" class="t-lane">Founder</text>
+  <text x="18" y="60" class="t-muted">direction, decisions,</text>
+  <text x="18" y="76" class="t-muted">account settings</text>
+
+  <rect x="6" y="118" width="160" height="134" rx="8" class="lane-label"/>
+  <text x="18" y="150" class="t-lane">Tech lead</text>
+  <text x="18" y="170" class="t-muted">one Mac session;</text>
+  <text x="18" y="186" class="t-muted">8 Leads today,</text>
+  <text x="18" y="202" class="t-muted">2 standbys (Lead 9, 10)</text>
+
+  <rect x="6" y="268" width="160" height="104" rx="8" class="lane-label"/>
+  <text x="18" y="300" class="t-lane">Builder and qa</text>
+  <text x="18" y="318" class="t-lane">lanes (cloud)</text>
+  <text x="18" y="338" class="t-muted">one row = one PR</text>
+
+  <rect x="6" y="388" width="160" height="84" rx="8" class="lane-label"/>
+  <text x="18" y="418" class="t-lane">Review agents</text>
+  <text x="18" y="438" class="t-muted">fresh context, Opus</text>
+
+  <rect x="6" y="488" width="160" height="154" rx="8" class="lane-label"/>
+  <text x="18" y="520" class="t-lane">Checks on the PR</text>
+  <text x="18" y="540" class="t-muted">GitHub workflows</text>
+  <text x="18" y="556" class="t-muted">(29 on main)</text>
+
+  <rect x="6" y="658" width="160" height="94" rx="8" class="lane-label"/>
+  <text x="18" y="690" class="t-lane">Read gate</text>
+  <text x="18" y="708" class="t-lane">and label</text>
+
+  <rect x="6" y="768" width="160" height="134" rx="8" class="lane-label"/>
+  <text x="18" y="800" class="t-lane">Merge queue</text>
+  <text x="18" y="820" class="t-muted">Mergify, 42 scopes,</text>
+  <text x="18" y="836" class="t-muted">4 batches at once</text>
+
+  <rect x="6" y="918" width="160" height="204" rx="8" class="lane-label"/>
+  <text x="18" y="950" class="t-lane">Main and proof</text>
+  <text x="18" y="970" class="t-muted">what "done" means:</text>
+  <text x="18" y="986" class="t-muted">on main and proven</text>
+
+  <!-- FOUNDER LANE -->
+  <rect x="190" y="18" width="300" height="76" rx="8" class="box-acc"/>
+  <text x="202" y="40" class="t-head">Direction and decisions</text>
+  <text x="202" y="58" class="t-small">P-847 stop product until the lab is done</text>
+  <text x="202" y="73" class="t-small">P-853 restart line · P-854 nightlies 3 a day</text>
+  <text x="202" y="88" class="t-small">P-609 Release 1 re-decision on 1 Dec</text>
+
+  <rect x="510" y="18" width="300" height="76" rx="8" class="box"/>
+  <text x="522" y="40" class="t-head">Founder steps (no code)</text>
+  <text x="522" y="58" class="t-small">LR-063 second org owner · LR-057 runner fence</text>
+  <text x="522" y="73" class="t-small">LR-144 Approvals connected (done 10:5x)</text>
+  <text x="522" y="88" class="t-small">LR-072 the yes for the switch</text>
+
+  <rect x="1000" y="18" width="420" height="76" rx="8" class="fixbox"/>
+  <text x="1012" y="40" class="t-fix">Resource view: tokens are not the limit</text>
+  <text x="1012" y="58" class="t-small">Weekly plan 20% used (20:4x IST). The limits are one reader,</text>
+  <text x="1012" y="73" class="t-small">one pipeline queue lane, and builders not running in parallel</text>
+  <text x="1012" y="88" class="t-small">(1 bundle lane now; 7 more possible).</text>
+
+  <!-- LEAD LANE -->
+  <rect x="190" y="124" width="250" height="122" rx="8" class="box"/>
+  <text x="202" y="146" class="t-head">Plans the work</text>
+  <text x="202" y="164" class="t-small">Register: 137 lab rows</text>
+  <text x="202" y="180" class="t-small">A = 27 must-have before restart</text>
+  <text x="202" y="196" class="t-small">B = 52 after restart, alongside product</text>
+  <text x="202" y="212" class="t-small">C = 31 deferred or dropped</text>
+  <text x="202" y="232" class="t-muted">triage §3: 7 bundles on separate files</text>
+
+  <rect x="460" y="124" width="230" height="122" rx="8" class="box"/>
+  <text x="472" y="146" class="t-head">Starts and steers lanes</text>
+  <text x="472" y="164" class="t-small">Answers lane questions</text>
+  <text x="472" y="180" class="t-small">(47 of 50 today, median 2 min)</text>
+  <text x="472" y="196" class="t-small">Check every 10 min (P-761)</text>
+  <text x="472" y="212" class="t-small">Hand-over at context limit</text>
+  <text x="472" y="232" class="t-muted">8 Lead sessions today</text>
+
+  <rect x="900" y="124" width="250" height="122" rx="8" class="box-acc"/>
+  <text x="912" y="146" class="t-head">Reads every pipeline diff</text>
+  <text x="912" y="164" class="t-small">Posts the exact line</text>
+  <text x="912" y="180" class="mono t-small">Lead read the diff: &lt;sha&gt;</text>
+  <text x="912" y="196" class="t-small">Only the Lead may post it (gate)</text>
+  <text x="912" y="212" class="t-small">Reads: median 25, p75 97,</text>
+  <text x="912" y="228" class="t-small">max 212 min</text>
+
+  <rect x="1170" y="124" width="250" height="122" rx="8" class="box"/>
+  <text x="1182" y="146" class="t-head">Keeps the records</text>
+  <text x="1182" y="164" class="t-small">STATE, DECISIONS, register</text>
+  <text x="1182" y="180" class="t-small">Records PRs: 10 today, 7 of 30</text>
+  <text x="1182" y="196" class="t-small">queue batches (about 43 min)</text>
+  <text x="1182" y="212" class="t-small">Lead-only process rows: 17 in B</text>
+
+  <!-- BUILDER LANE -->
+  <rect x="460" y="274" width="230" height="92" rx="8" class="box-acc"/>
+  <text x="472" y="296" class="t-head">Cloud builder lanes</text>
+  <text x="472" y="314" class="t-small">/next: branch from main, build,</text>
+  <text x="472" y="330" class="t-small">tests, open one PR per row</text>
+  <text x="472" y="350" class="t-muted">~5 lab lanes ran this morning</text>
+
+  <rect x="710" y="274" width="170" height="92" rx="8" class="warnbox"/>
+  <text x="722" y="296" class="t-warn">Gap until 20:3x</text>
+  <text x="722" y="314" class="t-small">Bundle 1 builder lost</text>
+  <text x="722" y="330" class="t-small">at the account switch;</text>
+  <text x="722" y="346" class="t-small">bundle 1 restaffed 20:3x</text>
+
+  <rect x="1170" y="274" width="250" height="92" rx="8" class="box"/>
+  <text x="1182" y="296" class="t-head">qa lanes</text>
+  <text x="1182" y="314" class="t-small">Test the merged app like a person,</text>
+  <text x="1182" y="330" class="t-small">then underneath (API, data)</text>
+  <text x="1182" y="350" class="t-muted">LR-101: starts itself hourly (#3902)</text>
+
+  <!-- AGENTS LANE -->
+  <rect x="460" y="392" width="230" height="78" rx="8" class="box"/>
+  <text x="472" y="414" class="t-head">Reviewer agent</text>
+  <text x="472" y="432" class="t-small">Approve &lt;head sha&gt; or changes;</text>
+  <text x="472" y="448" class="t-small">54 verdicts on lab PRs today</text>
+  <text x="472" y="464" class="t-muted">round limit 2 (review-rounds)</text>
+
+  <rect x="710" y="392" width="170" height="78" rx="8" class="box"/>
+  <text x="722" y="414" class="t-head">Breaker agent</text>
+  <text x="722" y="432" class="t-small">Tries to break it</text>
+  <text x="722" y="448" class="t-small">through UI and API</text>
+
+  <rect x="900" y="392" width="250" height="78" rx="8" class="fixbox"/>
+  <text x="912" y="414" class="t-fix">A4 review converges</text>
+  <text x="912" y="432" class="t-small">REVIEW.md, one brief check:</text>
+  <text x="912" y="448" class="t-small">fewer rounds, fewer re-approvals</text>
+  <text x="912" y="464" class="t-small">(LR-130, LR-133, LR-135, LR-121)</text>
+
+  <!-- CHECKS LANE -->
+  <rect x="190" y="494" width="250" height="148" rx="8" class="lossbox"/>
+  <text x="202" y="516" class="t-loss">Red main / red fast: 13.3 h</text>
+  <text x="202" y="534" class="t-small">Three stacked causes, found one</text>
+  <text x="202" y="550" class="t-small">at a time; logs showed the last</text>
+  <text x="202" y="566" class="t-small">20 lines only. Root: #3924 merged</text>
+  <text x="202" y="582" class="t-small">with its own guards part red,</text>
+  <text x="202" y="598" class="t-small">because guards is not required.</text>
+  <text x="202" y="618" class="t-loss">guards part 1 time-outs: 11.9 h</text>
+  <text x="202" y="634" class="t-small">14 runs hit the 45-min limit</text>
+
+  <!-- check chips -->
+  <rect x="460" y="494" width="110" height="40" rx="6" class="chip"/>
+  <text x="470" y="512" class="t-small">fast route</text>
+  <text x="470" y="527" class="t-muted t-small">by changed path</text>
+  <rect x="580" y="494" width="110" height="40" rx="6" class="chip"/>
+  <text x="590" y="512" class="t-small">ci (required)</text>
+  <text x="590" y="527" class="t-muted t-small">median 9 min</text>
+  <rect x="700" y="494" width="180" height="40" rx="6" class="chip-opt"/>
+  <text x="710" y="512" class="t-small">guards, 4 parts (optional)</text>
+  <text x="710" y="527" class="t-muted t-small">median 29 min, p90 59</text>
+  <rect x="460" y="542" width="110" height="40" rx="6" class="chip"/>
+  <text x="470" y="560" class="t-small">pr-rules</text>
+  <text x="470" y="575" class="t-muted t-small">product only req.</text>
+  <rect x="580" y="542" width="110" height="40" rx="6" class="chip-opt"/>
+  <text x="590" y="560" class="t-small">pr-suites</text>
+  <text x="590" y="575" class="t-muted t-small">report parts</text>
+  <rect x="700" y="542" width="85" height="40" rx="6" class="chip-opt"/>
+  <text x="708" y="560" class="t-small">walks</text>
+  <text x="708" y="575" class="t-muted t-small">gate A</text>
+  <rect x="795" y="542" width="85" height="40" rx="6" class="chip"/>
+  <text x="803" y="560" class="t-small">label-guard</text>
+  <text x="803" y="575" class="t-muted t-small">+ rounds</text>
+  <text x="460" y="604" class="t-muted">CI running (the real work): 9.6 h of 99 PR-hours</text>
+  <text x="460" y="622" class="t-muted">5 more report-only checks block nobody (LR-048)</text>
+
+  <rect x="900" y="494" width="250" height="148" rx="8" class="fixbox"/>
+  <text x="912" y="516" class="t-fix">Fixes</text>
+  <text x="912" y="534" class="t-small">F3 #3953 every FAIL line printed,</text>
+  <text x="912" y="550" class="t-small">zsh on the runner (merged 20:15)</text>
+  <text x="912" y="566" class="t-small">F5 #3918 guards in 6 parts (open)</text>
+  <text x="912" y="582" class="t-small">F4 guards required for pipeline</text>
+  <text x="912" y="598" class="t-small">A2 guards right-sized (LR-044)</text>
+  <text x="912" y="614" class="t-small">A3 PR rules fail closed (LR-043)</text>
+  <text x="912" y="630" class="t-muted">removes about 10 h + 12 h</text>
+
+  <rect x="1170" y="494" width="250" height="148" rx="8" class="fixbox"/>
+  <text x="1182" y="516" class="t-fix">Safety checks for product</text>
+  <text x="1182" y="534" class="t-small">A5 destructive migrations refused,</text>
+  <text x="1182" y="550" class="t-small">route sweep (LR-045, LR-074)</text>
+  <text x="1182" y="566" class="t-small">A1 hooks fail closed (LR-046, 060)</text>
+  <text x="1182" y="582" class="t-small">A8 9 high dependency alerts</text>
+  <text x="1182" y="598" class="t-small">A9 workflows pinned (after restart)</text>
+  <text x="1182" y="618" class="t-muted">bundle 1: #3833 one file per</text>
+  <text x="1182" y="634" class="t-muted">guard row ends the hot-file clash</text>
+
+  <!-- GATE LANE -->
+  <rect x="460" y="664" width="230" height="86" rx="8" class="lossbox"/>
+  <text x="472" y="686" class="t-loss">Idle after Approve: 10.4 h</text>
+  <text x="472" y="704" class="t-small">Nobody owned the next step</text>
+  <text x="472" y="720" class="t-small">(e.g. #3904's full run never</text>
+  <text x="472" y="736" class="t-small">started after a failed batch)</text>
+
+  <rect x="710" y="664" width="170" height="86" rx="8" class="box-acc"/>
+  <text x="722" y="686" class="t-head">Label</text>
+  <text x="722" y="704" class="mono t-small">review: approved</text>
+  <text x="722" y="720" class="t-small">needs Approve line +</text>
+  <text x="722" y="736" class="t-small">Lead read line</text>
+
+  <rect x="900" y="664" width="250" height="86" rx="8" class="lossbox"/>
+  <text x="912" y="686" class="t-loss">Waiting on the Lead: 29.5 h</text>
+  <text x="912" y="704" class="t-small">Reads queued behind other work;</text>
+  <text x="912" y="720" class="t-small">prose HOLD notes not counted, so</text>
+  <text x="912" y="736" class="t-small">reads were done twice</text>
+
+  <rect x="1170" y="664" width="250" height="86" rx="8" class="fixbox"/>
+  <text x="1182" y="686" class="t-fix">F1 owed reads first, exact line</text>
+  <text x="1182" y="702" class="t-small">F6 owner per approved PR, ≤2</text>
+  <text x="1182" y="718" class="t-small">hand-overs a day (in force 17:01)</text>
+  <text x="1182" y="734" class="t-fix">Then A6 observe week → A10 switch</text>
+
+  <!-- QUEUE LANE -->
+  <rect x="460" y="774" width="230" height="128" rx="8" class="box-acc"/>
+  <text x="472" y="796" class="t-head">pipeline scope</text>
+  <text x="472" y="814" class="t-small">Capacity 1, batch of 2,</text>
+  <text x="472" y="830" class="t-small">~32 min a batch, 91% busy</text>
+  <text x="472" y="846" class="t-small">11:30-18:00; merge needs ci only</text>
+  <text x="472" y="866" class="t-muted">30 batches today, 5 failed</text>
+  <text x="472" y="882" class="t-muted">(95 min lost)</text>
+
+  <rect x="710" y="774" width="170" height="128" rx="8" class="box"/>
+  <text x="722" y="796" class="t-head">product scopes</text>
+  <text x="722" y="814" class="t-small">5 areas + 36 migration</text>
+  <text x="722" y="830" class="t-small">scopes (one migration</text>
+  <text x="722" y="846" class="t-small">per area at a time)</text>
+  <text x="722" y="866" class="t-small">records: lowest</text>
+  <text x="722" y="882" class="t-muted">needs ci + pr-rules</text>
+
+  <rect x="900" y="774" width="250" height="128" rx="8" class="lossbox"/>
+  <text x="912" y="796" class="t-loss">Merge queue: 17.4 h</text>
+  <text x="912" y="814" class="t-small">Main fixes waited behind ordinary</text>
+  <text x="912" y="830" class="t-small">batches: #3925 60 min, #3944</text>
+  <text x="912" y="846" class="t-small">62 min, while 7 PRs stayed red</text>
+  <text x="912" y="866" class="t-small">Approve to merge, median 141 min</text>
+  <text x="912" y="882" class="t-small">for 9-29 min of checks</text>
+
+  <rect x="1170" y="774" width="250" height="128" rx="8" class="fixbox"/>
+  <text x="1182" y="796" class="t-fix">F2 priority lane for main fixes</text>
+  <text x="1182" y="814" class="t-small">(~15 lines, same conditions)</text>
+  <text x="1182" y="832" class="t-fix">#3825 near-done product first</text>
+  <text x="1182" y="850" class="t-fix">#3843 full run starts by itself</text>
+  <text x="1182" y="868" class="t-small">B206 queue gate re-runs after a</text>
+  <text x="1182" y="884" class="t-small">failed batch (working since 18:43)</text>
+
+  <!-- MAIN LANE -->
+  <rect x="190" y="928" width="250" height="88" rx="8" class="box-acc"/>
+  <text x="202" y="950" class="t-head">main</text>
+  <text x="202" y="968" class="t-small">The one trunk; every merged PR</text>
+  <text x="202" y="984" class="t-small">lands here; the demo updates</text>
+  <text x="202" y="1002" class="t-muted">14 lab PRs merged since 10:5x</text>
+
+  <rect x="460" y="928" width="230" height="88" rx="8" class="box"/>
+  <text x="472" y="950" class="t-head">Nightly full run</text>
+  <text x="472" y="968" class="t-small">No retries, quarantined tests,</text>
+  <text x="472" y="984" class="t-small">every Works pack, restore drill</text>
+  <text x="472" y="1002" class="t-muted">LR-110: 7 green in a row</text>
+
+  <rect x="710" y="928" width="170" height="88" rx="8" class="box"/>
+  <text x="722" y="950" class="t-head">qa proof</text>
+  <text x="722" y="968" class="t-small">Packs and walks on</text>
+  <text x="722" y="984" class="t-small">merged main</text>
+  <text x="722" y="1002" class="t-muted">gate A / gate B</text>
+
+  <rect x="900" y="928" width="250" height="88" rx="8" class="box-acc"/>
+  <text x="912" y="950" class="t-head">Built → Proven → Works</text>
+  <text x="912" y="968" class="t-small">Lab: Built 22/137, Proven 7/137</text>
+  <text x="912" y="984" class="t-small">Restart line: 27 must-have rows</text>
+  <text x="912" y="1002" class="t-muted">reported to the founder</text>
+
+  <rect x="1170" y="928" width="250" height="88" rx="8" class="fixbox"/>
+  <text x="1182" y="950" class="t-fix">P-854 nightlies on demand</text>
+  <text x="1182" y="968" class="t-small">~3 a day: 7 runs in ~2.5 days</text>
+  <text x="1182" y="984" class="t-small">instead of 7 days; red resets to 0;</text>
+  <text x="1182" y="1002" class="t-small">red night stops product (P-852)</text>
+
+  <!-- loss summary strip -->
+  <rect x="190" y="1032" width="1230" height="86" rx="8" class="box"/>
+  <text x="204" y="1054" class="t-head">Where today's 99 lab PR-hours went</text>
+  <rect x="204" y="1064" width="351" height="20" class="lossbox"/>
+  <rect x="555" y="1064" width="207" height="20" class="lossbox"/>
+  <rect x="762" y="1064" width="158" height="20" class="lossbox"/>
+  <rect x="920" y="1064" width="142" height="20" class="warnbox"/>
+  <rect x="1062" y="1064" width="124" height="20" class="warnbox"/>
+  <rect x="1186" y="1064" width="114" height="20" class="fixbox"/>
+  <rect x="1300" y="1064" width="87" height="20" class="box"/>
+  <text x="208" y="1104" class="t-small">Lead 29.5 h</text>
+  <text x="559" y="1104" class="t-small">Queue 17.4 h</text>
+  <text x="766" y="1104" class="t-small">Red main 13.3 h</text>
+  <text x="924" y="1104" class="t-small">Guards 11.9 h</text>
+  <text x="1066" y="1104" class="t-small">Idle 10.4 h</text>
+  <text x="1190" y="1104" class="t-small">CI work 9.6 h</text>
+  <text x="1304" y="1104" class="t-small">Other 7.3 h</text>
+
+  <!-- flow arrows (the path of one change) -->
+  <path d="M340,94 L340,124" class="arrow" marker-end="url(#ah)"/>
+  <path d="M440,185 L460,185" class="arrow" marker-end="url(#ah)"/>
+  <path d="M575,246 L575,274" class="arrow" marker-end="url(#ah)"/>
+  <path d="M575,366 L575,392" class="arrow" marker-end="url(#ah)"/>
+  <path d="M690,431 L710,431" class="arrow-thin" marker-end="url(#ahm)"/>
+  <path d="M520,470 L520,494" class="arrow" marker-end="url(#ah)"/>
+  <path d="M837,582 L837,664" class="arrow" marker-end="url(#ah)"/>
+  <path d="M1025,246 L1025,262 L895,262 L895,700 L880,700" class="arrow" marker-end="url(#ah)"/>
+  <path d="M795,750 L795,762 L575,762 L575,774" class="arrow" marker-end="url(#ah)"/>
+  <path d="M795,750 L795,774" class="arrow" marker-end="url(#ah)"/>
+  <path d="M520,902 L520,915 L315,915 L315,928" class="arrow" marker-end="url(#ah)"/>
+  <path d="M440,972 L460,972" class="arrow" marker-end="url(#ah)"/>
+  <path d="M690,972 L710,972" class="arrow" marker-end="url(#ah)"/>
+  <path d="M880,972 L900,972" class="arrow" marker-end="url(#ah)"/>
+  <path d="M1150,972 L1170,972" class="arrow-thin" marker-end="url(#ahm)"/>
+  <path d="M1295,366 L1295,380 L1160,380 L1160,920 L1025,920 L1025,928" class="arrow-thin" marker-end="url(#ahm)"/>
+</svg>
+</div>
+
+<h2>The timeline: lab, proof, restart, product in parallel</h2>
+<p class="hint">Bars are plans and forecasts from today's measured rate, not promises. Each row names the lane type and the files it works on, so parallel bars never touch the same files.</p>
+
+<div class="diagram" role="img" aria-label="Timeline from 27 November to 12 December">
+<svg viewBox="0 0 1440 700" xmlns="http://www.w3.org/2000/svg">
+  <!-- day grid: x = 210 + index*76 ; 27 Nov = 0 ... 12 Dec = 15 -->
+  <rect x="0" y="0" width="1440" height="700" class="lane-a"/>
+  <g>
+    <line x1="210" y1="40" x2="210" y2="680" class="gridline"/>
+    <line x1="286" y1="40" x2="286" y2="680" class="gridline"/>
+    <line x1="362" y1="40" x2="362" y2="680" class="gridline"/>
+    <line x1="438" y1="40" x2="438" y2="680" class="gridline"/>
+    <line x1="514" y1="40" x2="514" y2="680" class="gridline"/>
+    <line x1="590" y1="40" x2="590" y2="680" class="gridline"/>
+    <line x1="666" y1="40" x2="666" y2="680" class="gridline"/>
+    <line x1="742" y1="40" x2="742" y2="680" class="gridline"/>
+    <line x1="818" y1="40" x2="818" y2="680" class="gridline"/>
+    <line x1="894" y1="40" x2="894" y2="680" class="gridline"/>
+    <line x1="970" y1="40" x2="970" y2="680" class="gridline"/>
+    <line x1="1046" y1="40" x2="1046" y2="680" class="gridline"/>
+    <line x1="1122" y1="40" x2="1122" y2="680" class="gridline"/>
+    <line x1="1198" y1="40" x2="1198" y2="680" class="gridline"/>
+    <line x1="1274" y1="40" x2="1274" y2="680" class="gridline"/>
+    <line x1="1350" y1="40" x2="1350" y2="680" class="gridline"/>
+    <line x1="1426" y1="40" x2="1426" y2="680" class="gridline"/>
+  </g>
+  <text x="216" y="30" class="t-small">27 Nov</text>
+  <text x="292" y="30" class="t-small">28</text>
+  <text x="368" y="30" class="t-small">29</text>
+  <text x="444" y="30" class="t-small">30</text>
+  <text x="520" y="30" class="t-small">1 Dec</text>
+  <text x="596" y="30" class="t-small">2</text>
+  <text x="672" y="30" class="t-small">3</text>
+  <text x="748" y="30" class="t-small">4</text>
+  <text x="824" y="30" class="t-small">5</text>
+  <text x="900" y="30" class="t-small">6</text>
+  <text x="976" y="30" class="t-small">7</text>
+  <text x="1052" y="30" class="t-small">8</text>
+  <text x="1128" y="30" class="t-small">9</text>
+  <text x="1204" y="30" class="t-small">10</text>
+  <text x="1280" y="30" class="t-small">11</text>
+  <text x="1356" y="30" class="t-small">12 Dec</text>
+
+  <!-- now line: 27 Nov 20:45 = 210 + 0.86*76 = 275 -->
+  <line x1="275" y1="38" x2="275" y2="680" class="today"/>
+  <text x="222" y="54" class="t-loss">now 20:45</text>
+
+  <!-- row labels -->
+  <text x="12" y="88" class="t-lane">Tech lead</text>
+  <text x="12" y="104" class="t-muted t-small">process, reads, F-fixes</text>
+  <text x="12" y="158" class="t-lane">Builder: bundle 1</text>
+  <text x="12" y="174" class="t-muted t-small">guards.d, comment workflows,</text>
+  <text x="12" y="188" class="t-muted t-small">.mergify.yml, CI triggers</text>
+  <text x="12" y="238" class="t-lane">7 builders at once</text>
+  <text x="12" y="254" class="t-muted t-small">separate files each (§3)</text>
+  <text x="12" y="348" class="t-lane">Nightly runs</text>
+  <text x="12" y="364" class="t-muted t-small">same workflow, on demand</text>
+  <text x="12" y="418" class="t-lane">Restart window</text>
+  <text x="12" y="434" class="t-muted t-small">forecast range</text>
+  <text x="12" y="488" class="t-lane">Product lanes</text>
+  <text x="12" y="504" class="t-muted t-small">api, web, prisma by area</text>
+  <text x="12" y="558" class="t-lane">Lab after restart</text>
+  <text x="12" y="574" class="t-muted t-small">class B rows, switch</text>
+  <text x="12" y="638" class="t-lane">Decisions</text>
+  <text x="12" y="654" class="t-muted t-small">founder dates</text>
+
+  <!-- Lead row -->
+  <rect x="275" y="72" width="40" height="34" rx="5" class="bar-fix"/>
+  <text x="279" y="93" class="t-small">F2+F4</text>
+  <rect x="318" y="72" width="120" height="34" rx="5" class="bar-warn"/>
+  <text x="324" y="88" class="t-small">Proof day F1-F6</text>
+  <text x="324" y="102" class="t-muted t-small">≤45 min merges</text>
+  <rect x="210" y="112" width="1216" height="8" rx="3" class="bar-fix"/>
+  <text x="444" y="98" class="t-muted t-small">F1 reads first, F6 owners, ≤2 hand-overs a day: in force all the way</text>
+
+  <!-- Bundle 1 row -->
+  <rect x="275" y="146" width="22" height="34" rx="5" class="bar-lab"/>
+  <rect x="297" y="146" width="40" height="34" rx="5" class="bar-lab"/>
+  <rect x="337" y="146" width="40" height="34" rx="5" class="bar-lab"/>
+  <text x="383" y="160" class="t-small">#3833 → #3814 + #3825 → #3843</text>
+  <text x="383" y="176" class="t-muted t-small">3,596 lines; builder running since 20:3x</text>
+
+  <!-- 7 parallel bundles -->
+  <rect x="300" y="208" width="114" height="16" rx="4" class="bar-lab"/>
+  <text x="420" y="221" class="t-small">A1 hooks fail closed · .claude/settings.json, hook scripts</text>
+  <rect x="300" y="228" width="114" height="16" rx="4" class="bar-lab"/>
+  <text x="420" y="241" class="t-small">A3 PR rules fail closed · pr-rules.yml, PR template</text>
+  <rect x="300" y="248" width="114" height="16" rx="4" class="bar-lab"/>
+  <text x="420" y="261" class="t-small">A4 review converges · REVIEW.md, reviewer agent, next skill</text>
+  <rect x="300" y="268" width="130" height="16" rx="4" class="bar-lab"/>
+  <text x="436" y="281" class="t-small">A5 money and migration checks · new safety.yml, new tools</text>
+  <rect x="300" y="288" width="114" height="16" rx="4" class="bar-lab"/>
+  <text x="420" y="301" class="t-small">A7 private split · records files move to the private repo</text>
+  <rect x="290" y="308" width="100" height="16" rx="4" class="bar-lab"/>
+  <text x="396" y="321" class="t-small">A8 dependencies · dependabot.yml, studio lockfile</text>
+  <rect x="350" y="188" width="80" height="16" rx="4" class="bar-warn"/>
+  <text x="436" y="201" class="t-small">A2 guards right-sized · after #3843</text>
+
+  <!-- Nightlies: 7 dots from 28 Nov morning, ~3 a day -->
+  <circle cx="300" cy="350" r="7" class="dot"/>
+  <circle cx="325" cy="350" r="7" class="dot"/>
+  <circle cx="350" cy="350" r="7" class="dot"/>
+  <circle cx="376" cy="350" r="7" class="dot"/>
+  <circle cx="401" cy="350" r="7" class="dot"/>
+  <circle cx="426" cy="350" r="7" class="dot"/>
+  <circle cx="451" cy="350" r="7" class="dot"/>
+  <text x="470" y="347" class="t-small">7 green in a row (P-854), from #3918 on main</text>
+  <text x="470" y="363" class="t-muted t-small">a red run resets to 0: about +2.5 days</text>
+  <rect x="514" y="372" width="912" height="6" rx="3" class="bar-lab"/>
+  <text x="900" y="368" class="t-muted t-small">scheduled nightly keeps running; a red night stops product merges</text>
+
+  <!-- Restart window -->
+  <rect x="456" y="404" width="210" height="34" rx="5" class="bar-range"/>
+  <text x="462" y="420" class="t-loss">best 30 Nov · likely 1 Dec</text>
+  <text x="462" y="434" class="t-muted t-small">worst 2-3 Dec (one red nightly)</text>
+
+  <!-- Product -->
+  <rect x="514" y="474" width="836" height="34" rx="5" class="bar-prod"/>
+  <text x="524" y="495" class="t-onbar">Product lanes restart (screens, forms, runtime, evidence) → Release 1 rows</text>
+  <rect x="456" y="474" width="58" height="34" rx="5" class="bar-range"/>
+
+  <!-- Lab after restart -->
+  <rect x="300" y="532" width="530" height="16" rx="4" class="bar-warn"/>
+  <text x="306" y="545" class="t-small">A6 observe week (#3899 policy in watch-only mode, baseline file)</text>
+  <rect x="830" y="532" width="80" height="16" rx="4" class="bar-fix"/>
+  <text x="916" y="545" class="t-fix">A10 switch: Lead out of the merge path</text>
+  <rect x="590" y="552" width="150" height="16" rx="4" class="bar-lab"/>
+  <text x="746" y="565" class="t-small">A9 workflows pinned (every .github/workflows file)</text>
+  <rect x="514" y="572" width="836" height="16" rx="4" class="bar-lab"/>
+  <text x="524" y="585" class="t-small">52 class B rows, 1-2 lanes, alongside product, never on product files</text>
+
+  <!-- Decisions -->
+  <line x1="514" y1="610" x2="514" y2="672" class="mile"/>
+  <text x="520" y="632" class="t-accent">1 Dec re-decision (P-609)</text>
+  <text x="520" y="648" class="t-muted t-small">release-date check</text>
+  <line x1="1350" y1="610" x2="1350" y2="672" class="mile"/>
+  <text x="1200" y="632" class="t-accent">Release 1, 12 Dec</text>
+  <text x="1200" y="648" class="t-muted t-small">launch 12 Mar 2027</text>
+</svg>
+</div>
+
+<h2>What product gets from each lab group</h2>
+<div class="tablewrap">
+<table>
+<tr><th>Lab group</th><th>What it is, in plain words</th><th>What product gets</th></tr>
+<tr><td>F1-F6 flow fixes</td><td>Reads first, priority lane for fixes, every failing line printed, guards required, guards in 6 parts, an owner for every approved PR</td><td>Faster merges: about 50 of today's 82.5 waiting hours gone if today's mix recurs; target approve-to-merge ≤45 min</td></tr>
+<tr><td>Bundle 1 (#3833, #3814, #3825, #3843)</td><td>One file per guard rule; comments cannot start jobs; near-done product PRs first; full run starts by itself</td><td>No hot-file conflicts, fewer manual restarts, finished product work merges first</td></tr>
+<tr><td>A1 hooks, A3 PR rules</td><td>Local hooks and PR-body rules stop a bad change instead of letting it through silently</td><td>Fewer red mains; size and "Done when" rules enforced on every product PR</td></tr>
+<tr><td>A2 guards right-sized</td><td>The pipeline's self-tests split to finish under the time limit, run only where needed</td><td>No time-out holds; pipeline changes cannot break product's main</td></tr>
+<tr><td>A4 review converges</td><td>One review standard, one brief check</td><td>Fewer review rounds and re-approvals per product PR</td></tr>
+<tr><td>A5 safety checks</td><td>Destructive database migrations refused; routes swept for missing permission checks</td><td>Client data and money paths protected before risky product PRs</td></tr>
+<tr><td>A7 private split, A8 dependencies</td><td>Lead records leave the public repo; 9 high security alerts fixed, kept current</td><td>Smaller public repo; no known-vulnerable libraries in the app</td></tr>
+<tr><td>Nightlies (LR-110, P-854)</td><td>The full test set with no retries, 7 green runs in a row</td><td>Proof that main is stable before product resumes; a red night stops product until fixed</td></tr>
+<tr><td>A6 → A10 the switch</td><td>Claude Approvals approves, Claude Code Review passes risky paths, the Lead reads after merge</td><td>The Lead stops being the queue for product: the biggest single wait removed</td></tr>
+<tr><td>52 class B rows</td><td>Useful improvements, after restart, on separate files</td><td>Run beside product; never hold it</td></tr>
+</table>
+</div>
+
+<h2>Sources and measurements</h2>
+<ul class="src">
+<li>Founder question A447: <code>product/history/STATE-2026-11-27-2045-lead8-A447-row.md</code>.</li>
+<li><code>product/design/lab-restart-line-2026-11-27.md</code> (F1-F6, P-853), <code>lab-replan-2026-11-27.md</code>, <code>lab-replan-2026-11-27-flow.md</code> (minute-by-minute waits, measured 18:10 IST), <code>lab-replan-2026-11-27-triage.md</code> (A/B/C classes, §3 bundles), <code>lab-register-2026-11-27.md</code>.</li>
+<li><code>product/DECISIONS.md</code> rows P-847 to P-854; <code>product/RULES.md</code> on origin/main (161 rule rows).</li>
+<li>Lines of code: <code>git ls-tree</code> + <code>wc -l</code> on origin/main b1b4c682a (20:15 IST): <code>.github</code> 30 files 3,491; <code>.mergify.yml</code> 543; <code>.claude</code> 31 files 708; <code>.githooks</code> 41; <code>product/tools</code> 313 files 44,687 (108 <code>check-*</code> scripts 11,029). Studio: .ts/.tsx/.js/.prisma/.sql/.css/.sh/.py files only, no lockfiles or images.</li>
+<li>Lab PRs: GitHub REST API, additions + deletions per PR, read 20:4x IST. Merged since 05:20Z (10:50 IST) and not records or qa: 14 PRs (10 code, 4 clean-up). Open lab PRs: titles starting pipeline/tooling/tools/lab, 23 code PRs plus #3904 dependencies and #3905 clean-up.</li>
+<li>Progress: <code>python3 product/tools/lab-progress.py</code>, 20:4x IST: Built 22/137, Proven 7/137.</li>
+<li>Sessions: the app's session list, 20:4x IST (Lead 1 to Lead 8 today, standbys Lead 9 and 10). Cloud lane count from STATE on main (11:37 IST); cloud lane runtime not measured.</li>
+<li>Weekly plan 20% used: the Lead's reading at 20:4x IST, not re-measured here.</li>
+<li>Not measured: product Release 1 rows left (so the 12 Dec forecast is a range, not a figure), cloud lane hours, and runner queue time.</li>
+</ul>
+</main>

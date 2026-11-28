@@ -142,7 +142,9 @@ def mode(base):
     p = subprocess.run(["git", "-C", ROOT, "log", base, "--first-parent", "-m", "--diff-filter=A", "--format=%cI", "--", SELF],
                        capture_output=True, text=True)
     first = [l for l in p.stdout.split("\n") if l.strip()]
-    if p.returncode or not first:
+    if p.returncode:   # LR-043: history that cannot be read is said and fails, never a report-only pass
+        print(f"ready-gate: cannot read main's history at {base}: {p.stderr.strip()[:200]}"); sys.exit(2)
+    if not first:
         return "report", "the gate is not on main yet: report-only"
     since = datetime.fromisoformat(first[-1])
     until = since + timedelta(hours=REPORT_HOURS)

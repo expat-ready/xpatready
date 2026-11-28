@@ -155,6 +155,16 @@ export async function onFirmCreated(db: PrismaClient, event: { type: string; fir
   return seeded;
 }
 
+/** A failed firm's reason, as the command prints it: the database's own words first (Prisma 7.10 puts a code frame of
+ *  about 800 characters before them in the message, so a cut of the message alone lost the reason; LR-058), else the
+ *  message's last line, else the error as it is. */
+export function seedError(e: unknown, max = 300): string {
+  const cause = (e as { meta?: { driverAdapterError?: { cause?: { message?: unknown } } } } | null)?.meta?.driverAdapterError?.cause?.message;
+  if (typeof cause === "string" && cause.trim()) return cause.trim().slice(0, max);
+  const lines = String((e as { message?: unknown } | null)?.message ?? e).split("\n").map((l) => l.trim()).filter(Boolean);
+  return (lines.length > 1 ? lines[lines.length - 1] : String(e)).slice(0, max);
+}
+
 /** Catch-up over the outbox: every firm with a `firm.created` event and no seeded front office (so a missed or failed
  *  delivery is made good by the next run). One firm that fails is named in `failed` and the others still run (break B6). */
 export async function seedCreatedFirms(db: PrismaClient): Promise<FirmSeedResult[] & { failed?: { firmId: string; error: string }[] }> {
@@ -170,7 +180,7 @@ export async function seedCreatedFirms(db: PrismaClient): Promise<FirmSeedResult
   const out: FirmSeedResult[] & { failed?: { firmId: string; error: string }[] } = [];
   const failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
-    try { out.push(await seedAsFirm(db, f.firm_id)); } catch (e) { failed.push({ firmId: f.firm_id, error: String(e).slice(0, 300) }); }
+    try { out.push(await seedAsFirm(db, f.firm_id)); } catch (e) { failed.push({ firmId: f.firm_id, error: seedError(e) }); }
   }
   if (failed.length) out.failed = failed;
   return out;
@@ -215,8 +225,8 @@ export async function seedSampleFirmsFrontOffice(db: PrismaClient): Promise<{ re
   }
   const results: FirmSeedResult[] = [], failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
-    try { results.push(await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return seedFirmFrontOffice(tx, f.id); })); } catch (e) { failed.push({ firmId: f.id, error: String(e).slice(0, 300) }); }
-    try { await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return ensureBookingWording(tx, f.id); }); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${String(e).slice(0, 280)}` }); }
+    try { results.push(await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return seedFirmFrontOffice(tx, f.id); })); } catch (e) { failed.push({ firmId: f.id, error: seedError(e) }); }
+    try { await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return ensureBookingWording(tx, f.id); }); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${seedError(e, 280)}` }); }
   }
   return { results, missing: SAMPLE_FIRM_KEYS.filter((k) => !firms.some((f) => f.key === k)), failed };
 }
@@ -235,7 +245,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (failed.length) process.exitCode = 1;
   } catch (e) {
     // Never an unhandled rejection (#1742, Lead B): the error is printed as JSON on stdout, exit code 1.
-    console.log(JSON.stringify({ error: String(e).slice(0, 1000) }));
+    console.log(JSON.stringify({ error: seedError(e, 1000) }));
     process.exitCode = 1;
   } finally { await db.$disconnect(); }
 }

@@ -2,7 +2,7 @@
 # Guards 6 and 7 (founder, 6 Nov ~03:00 IST). 6: check-docs.sh fails when STATE.md is over 12 KB (it reached 34 KB and
 # every Lead re-read it); the earlier page goes to product/history/. 7 (E9, P-302, now a failure): check-docs.sh fails when
 # STATE's "updated:" time (HH:MM or HH:Mx IST) is more than 30 minutes from its commit time, or cannot be read, and this
-# branch wrote it; a time already on the base only warns (times are read, not guessed). Throwaway copies, US$0.
+# branch wrote it; a time already on the base only warns, unless it is over 30 minutes ahead of the clock (OS-35: fails). Throwaway copies, US$0.
 #   bash product/tools/check-state-page.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
@@ -29,6 +29,11 @@ soon=$(ist '+20 minutes' +20M); put "$soon"; run
 ok "uncommitted STATE is compared with now; 20 minutes passes" "$( ! echo "$out" | grep -qE 'WARN|STATE TIME' && [ $r = 0 ] && echo 1)" "exit $r: $out"
 far=$(ist '-3 hours' -3H); put "$far"; out=$(STATE_TIME_BASE=HEAD bash "$CD" 2>/dev/null); r=$?
 ok "uncommitted STATE 3 hours off fails even when its last commit is on the base" "$([ $r = 1 ] && echo "$out" | grep -q 'STATE TIME' && echo 1)" "exit $r: $out"
+# OS-35 (P-302): a time ahead of the clock fails even when it is already on the base, uncommitted or committed.
+ahead=$(ist '+2 hours' +2H); put "$ahead"; GIT_COMMITTER_DATE="$(date -d '+2 hours' -R 2>/dev/null || date -v+2H -R)" git -C "$T/d" commit -qam ahead; out=$(STATE_TIME_BASE=HEAD bash "$CD" 2>/dev/null); r=$?
+ok "OS-35: a committed time 2 hours ahead of the clock fails even when already on the base, saying so" "$([ $r = 1 ] && echo "$out" | grep -q "STATE TIME: STATE.md says updated $ahead IST, 1[12][0-9] min ahead of the clock" && ! echo "$out" | grep -q '^WARN' && echo 1)" "exit $r: $out"
+ahx="${ahead%?}x"; put "$ahx"; out=$(STATE_TIME_BASE=HEAD bash "$CD" 2>/dev/null); r=$?
+ok "OS-35: ... and uncommitted in the 'HH:Mx' form" "$([ $r = 1 ] && echo "$out" | grep -q "STATE TIME: .*$ahx IST, .* min ahead of the clock" && echo 1)" "exit $r: $out"
 x=$(ist '-12 minutes' -12M); x="${x%?}x"; put "$x"; run
 ok "an 'HH:Mx' time within its ten minutes passes" "$( ! echo "$out" | grep -q 'STATE TIME' && [ $r = 0 ] && echo 1)" "exit $r: $out"
 ox="${old%?}x"; put "$ox"; run

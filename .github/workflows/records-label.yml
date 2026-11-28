@@ -29,7 +29,7 @@ jobs:
     # pull-requests: write is enough to add or remove a pull request's label; no issues: write.
     permissions: { contents: read, pull-requests: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}   # main's commit this run's workflow file came from
           fetch-depth: 0
