@@ -36,7 +36,6 @@ export const SnsNotice = z.object({
   SignatureVersion: z.enum(["1", "2"]), Signature: z.string().max(1024), SigningCertURL: z.string().max(2048),
   SubscribeURL: z.string().max(2048).optional(), UnsubscribeURL: z.string().max(2048).optional(), Token: z.string().max(2048).optional(),
 });
-const CERT_HOST = /^sns\.[a-z]{2}-[a-z]+-[0-9]\.amazonaws\.com$/;
 
 export class NoticeRefused extends Error { constructor(m: string) { super(m); this.name = "NoticeRefused"; } }
 export type CertFetch = (url: string) => Promise<string>;
@@ -49,7 +48,21 @@ const KINDS = new Set(["Bounce", "Complaint", "Delivery"]);
 /** The states a hard bounce or complaint may move to BOUNCED (a sent message; BOUNCED again is a no-op). */
 const FORWARD_TO_BOUNCED = new Set(["SENT", "DELIVERED", "BOUNCED"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const snsUrl = (s: unknown) => { try { const u = new URL(String(s)); return u.protocol === "https:" && CERT_HOST.test(u.hostname) && !u.port && !u.username ? u : null; } catch { return null; } };
+/** CodeQL alerts 33-34 (request forgery): the only hosts an address from a notice is ever fetched on, written out: SNS in
+ *  each region of AWS's commercial partition (the AWS SDK's own partition list, @aws-sdk/core 3.979.1, partition "aws",
+ *  read 28 Nov 2026). A region missing here refuses its notices (400, SNS retries), never fetches an unknown host. */
+const SNS_REGIONS = ["af-south-1", "ap-east-1", "ap-east-2", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3", "ap-south-1", "ap-south-2", "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-southeast-5", "ap-southeast-6", "ap-southeast-7", "ca-central-1", "ca-west-1", "eu-central-1", "eu-central-2", "eu-north-1", "eu-south-1", "eu-south-2", "eu-west-1", "eu-west-2", "eu-west-3", "il-central-1", "me-central-1", "me-south-1", "mx-central-1", "sa-east-1", "us-east-1", "us-east-2", "us-west-1", "us-west-2"] as const;
+const SNS_HOSTS: readonly string[] = SNS_REGIONS.map((r) => `sns.${r}.amazonaws.com`);
+/** An https address on one of SNS_HOSTS, rebuilt from the list's own host (the notice's text never names the host fetched),
+ *  else null. No port, no user or password. */
+const snsUrl = (s: unknown) => {
+  try {
+    const u = new URL(String(s));
+    if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
+    const host = SNS_HOSTS.find((h) => h === u.hostname);
+    return host ? new URL(`https://${host}/${u.pathname.replace(/^\/+/, "")}${u.search}`) : null;
+  } catch { return null; }
+};
 
 const FIELDS: Record<string, string[]> = {
   Notification: ["Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type"],

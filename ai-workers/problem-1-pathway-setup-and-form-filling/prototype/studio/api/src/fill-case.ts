@@ -492,8 +492,11 @@ export class CaseForms implements OnModuleInit {
    *  with its checksum and the fingerprint of the form's facts at that moment (C-10), insert-only. */
   async validated(actor: Actor, id: string, files: { originalname?: string; buffer?: Buffer; size?: number }[] | undefined) {
     const { x, c } = await this.copyFor(actor, id, true);
-    const f = (files ?? [])[0];
-    if (!f?.buffer?.length || (files ?? []).length !== 1) fail("Send the one validated PDF you saved from Adobe.", HttpStatus.BAD_REQUEST);
+    // CodeQL alert 39 (type confusion): only a real list of one file with a real Buffer counts; a list-shaped object
+    // ({0: file, length: 1}) or a string is refused here, whatever the caller (multer always gives a list today).
+    const list = Array.isArray(files) ? files : [];
+    const f = list[0];
+    if (list.length !== 1 || !Buffer.isBuffer(f?.buffer) || !f!.buffer!.length) fail("Send the one validated PDF you saved from Adobe.", HttpStatus.BAD_REQUEST);
     if (f!.buffer!.length > MAX_VALIDATED_BYTES) fail(`The file is larger than ${MAX_VALIDATED_MB} MB: send the validated PDF of this form. Nothing was recorded.`, HttpStatus.PAYLOAD_TOO_LARGE);
     if (x.status !== "GENERATED" || !x.path) conflict("Only a generated copy can be validated and read back.");
     if (chosen(this.runtime.snapshotOf(c), await this.itemChannels(c.id), x.formNumber, x.subjectId) === "ONLINE") conflict(`${x.formNumber} is filed Online: its PDF is a ${NOT_FOR_FILING.toLowerCase()}, so there is nothing to validate.`);

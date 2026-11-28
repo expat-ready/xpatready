@@ -79,7 +79,9 @@ export class Intake {
    *  of the same new form in one batch give "added" then "in_library", never two forms. */
   async intake(actor: Actor, files: IntakeFile[] | undefined, combinationId?: string, via: "MANUAL" | "SAMPLE" = "MANUAL", forForm?: { combinationId: string; code: string }) {
     need(actor, "author");
-    if (!files?.length) fail("Choose at least one file.");
+    // CodeQL alert 40 (type confusion): the upload's files must be a real list; a string or a list-shaped object would
+    // pass the count check below with a length it chooses. Multer always gives a list today; this keeps it so for every caller.
+    if (!Array.isArray(files) || !files.length) fail("Choose at least one file.");
     if (files!.length > MAX_FILES) fail(`Add at most ${MAX_FILES} files at a time.`, HttpStatus.PAYLOAD_TOO_LARGE);
     const workspaceId = await this.ws.id();
     const combination = combinationId ? await this.db.combination.findUnique({ where: { id: combinationId } }) : null;
