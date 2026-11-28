@@ -3,7 +3,8 @@
 our own history (PRs that merged a bug that later turned main red or was reverted), run whenever the reviewer's brief
 (REVIEW.md, the reviewer agent and skill), its tools or its model change. Each case is the culprit PR's diff as it
 merged; a fresh reviewer, told nothing about the bug, reviews it by REVIEW.md. Caught = its verdict is Changes or Block
-AND an Important finding names a file that holds the bug. The rate is the reviewer's catch rate on bugs we really shipped.
+AND an Important finding names a file that holds the bug and, where the case has one, matches its "match" pattern
+(words that describe the bug itself: naming the file for another problem is not a catch, first run 28 Nov). The rate is the reviewer's catch rate on bugs we really shipped.
 Commands (US$0 here: this script runs no model; the reviewers are plan subagents the runner starts, a pilot of 2 first,
 RULES pilot rule LR-128):
   check  [--repo DIR]           the set is 10-20 cases, each complete, its shas present, its bug file in its diff
@@ -80,9 +81,14 @@ def caught(c, text):
     if v[-1].lower() == "approve":
         return False, "approved"
     names = [n for f in c["files"] for n in (f, os.path.basename(f))]
+    on_file = False
     for para in re.split(r"\n\s*\n|\n(?=\s*(?:[-*]|\d+\.)\s)", text):
         if re.search(r"\bImportant\b", para) and any(n in para for n in names):
-            return True, f"{v[-1]}, Important on {c['files'][0]}"
+            on_file = True
+            if not c.get("match") or re.search(c["match"], para, re.I):
+                return True, f"{v[-1]}, Important on {c['files'][0]}"
+    if on_file:
+        return False, f"{v[-1]}, Important on {os.path.basename(c['files'][0])} but for another problem (match: {c['match']})"
     return False, f"{v[-1]}, but no Important finding names {os.path.basename(c['files'][0])}"
 
 

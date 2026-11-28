@@ -42,5 +42,9 @@ grep -q '^RT-03 #103 MISSED' "$D/out"; ok "Important elsewhere, the bug file onl
 grep -q '^RT-04 #104 MISSED  no verdict line' "$D/out"; ok "no verdict line: missed" $?
 grep -q '^RT-05 #105 CAUGHT' "$D/out"; ok "Block with an Important on the bug file name: caught" $?
 grep -q '^reviewer-eval: caught 2 of 5 (40%), tokens 2000 (5 cases not run)$' "$D/out"; ok "summary: caught, rate, tokens, cases not run" $?
+python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));d[0]["match"]="one too far";d[4]["match"]="one too far";json.dump(d,open(sys.argv[1],"w"))' "$D/set.json"
+e score "$A" --set "$D/set.json" >/dev/null
+grep -q '^RT-01 #101 CAUGHT' "$D/out"; ok "match: the Important on the bug file that describes the bug is caught" $?
+grep -q '^RT-05 #105 MISSED  Block, Important on a.ts but for another problem' "$D/out"; ok "match: the bug file named for another problem is missed" $?
 echo "check-reviewer-eval: $pass passed, $fail failed"
 [ "$fail" = 0 ]
