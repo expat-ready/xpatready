@@ -22,6 +22,7 @@ import { SupportPage, SupportTicketPage } from "./settings/support-page";
 import { NotificationsPage } from "./settings/notifications-page";
 import { AllNotificationsPage } from "./notifications/all-page";
 import { ActivityLogPage } from "./audit/activity-log-page";
+import { ReportsPage } from "./reports/reports-page";
 import { TemplatePage, TemplatesPage } from "./messages/templates/templates-page";
 import { ImportsPage } from "./import/imports-page";
 import { ImportPage, NewImportPage } from "./import/import-flow";
@@ -29,6 +30,7 @@ import { ImportPage, NewImportPage } from "./import/import-flow";
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
   { path: "/home", element: <HomePage /> },   // PF-18h: the staff Home (sign-in lands here)
+  { path: "/platform/reports", element: <ReportsPage /> },   // R1.79 part 4 (PF-R3): the firm's Reports page
   { path: "/account", element: <AccountPage /> },
   ...complaintRoutes,
   { path: "/platform/team", element: <TeamPage /> },   // PF-6 part 2a

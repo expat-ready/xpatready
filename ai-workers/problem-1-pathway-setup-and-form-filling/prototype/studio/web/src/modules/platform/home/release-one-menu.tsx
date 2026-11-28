@@ -18,6 +18,9 @@ export const RELEASE_ONE_MENU: { heading: string; links: MenuLink[] }[] = [
     { label: "Clients", to: "/clients" },
     { label: "Cases", to: "/cases" },
   ] },
+  { heading: "Reports", links: [
+    { label: "Reports", to: "/platform/reports", hint: "sales, cases and money, counted from your records" },
+  ] },
   { heading: "Firm settings", links: [
     { label: "Team", to: "/platform/team" },
     { label: "Licences", to: "/platform/licences" },
