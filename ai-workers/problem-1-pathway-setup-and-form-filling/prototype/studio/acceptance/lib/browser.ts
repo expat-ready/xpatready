@@ -9,7 +9,7 @@
 // route change keeps the load's LCP: read the first settle after a goto. Test: tests/check_os73_vitals_browser.ts.
 // LR-125 (lab register, founder A425; Loops article: "If any step fails, fix the issue and rerun from step 1"): the strict
 // self-check of the journey-test skill. With JOURNEY_STRICT=1 (or walker(base, { strict: true })) settle throws on a
-// console error (console.error, or a failed resource the browser logs as one), a page error, or a vitals miss, so the
+// console error (console.error, or a failed resource the browser logs as one, except a handled 4xx), a page error, or a vitals miss, so the
 // replay fails instead of warning. Off by default: the packs keep STANDARDS §9's warning budget (P-717 (b)) until the
 // Lead rules it blocks. Every console error is collected in both modes (consoleErrors). Test:
 // tests/check_lr125_strict_browser.ts.
@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { chromium, type Browser, type Page } from "playwright";
 
 export const LCP_BUDGET_MS = 2500, CLS_BUDGET = 0.1;
+const HANDLED_4XX = /Failed to load resource: the server responded with a status of 4\d\d\b/;
 export type Vital = { what: string; path: string; lcpMs: number | null; cls: number; over: string[] };
 export type Walker = { browser: Browser; strict: boolean; errors: string[]; consoleErrors: string[]; vitals: Vital[]; open: (actor: string, width?: number) => Promise<Page>; settle: (p: Page, what: string) => Promise<void>; text: (p: Page) => Promise<string>; close: () => Promise<void> };
 
@@ -61,7 +62,9 @@ export async function walker(base: string, opts: { strict?: boolean } = {}): Pro
     const v = await vital(p, what);
     if (!strict) return;
     // LR-125: zero errors over the whole run, so one left by an earlier step fails here too; then this page's vitals.
-    const why = [...errors.map((e) => `page error ${e}`), ...consoleErrors.map((e) => `console error ${e}`)];
+    // A handled 4xx (an error journey's 400/409 shown to the person) logs Chrome's own "Failed to load resource ... status
+    // of 4xx" line: not a fault of the page, so it does not count (review of #4045); a 5xx or the page's own errors do.
+    const why = [...errors.map((e) => `page error ${e}`), ...consoleErrors.filter((e) => !HANDLED_4XX.test(e)).map((e) => `console error ${e}`)];
     if (v?.over.length) why.push(...v.over);
     if (why.length) throw new Error(`${what}: strict self-check failed (JOURNEY_STRICT; fix it and rerun from step 1): ${why.join("; ").slice(0, 600)}`);
   };
