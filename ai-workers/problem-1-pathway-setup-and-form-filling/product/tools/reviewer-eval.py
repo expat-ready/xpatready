@@ -73,95 +73,24 @@ def brief(c, review="REVIEW.md"):
             f"`Reviewer: <Approve|Changes|Block> {c['culprit_merge_sha']}`. Do not edit files or post anything.")
 
 
-# A finding starts at a heading or a top-level finding line: a numbered item ("1." or "**1." or "**I1."), or a bullet
-# that opens with a severity tag. Sub-bullets and blank lines stay in the finding, so its file, tag and description
-# are judged together (Code Review on #4078: a split at every bullet scored RT-09's layout as missed).
-TAG = r"\W{0,4}(?:\d+[.)]\s*)?\W{0,4}"   # what may open a line before its tag: "1. ", "**", "- **", "_"
-START = re.compile(rf"^(#+\s|\*\*[A-Za-z]?\d+[.)]|\d+[.)]\s|{TAG}(?:Important|Nits?|Pre-existing)\b)")
-TITLE = re.compile(rf"^(\*\*[A-Za-z]?\d+[.)]|\d+[.)]\s|{TAG}(?:Important|Nits?|Pre-existing)\b)")
-BULLET = re.compile(r"^[-*]\s")
-SEV = re.compile(r"^\s*#+\s*(Important|Nits?|Nitpicks?|Pre-existing)\b", re.I)
-IS_IMPORTANT = re.compile(rf"^{TAG}Important\b")
-IS_OTHER = re.compile(rf"^{TAG}(?:Nits?|Pre-existing)\b")
-
-
-def findings(text):
-    """Whole findings (Code Review on #4078, round-3 review): a finding starts at a heading or a finding title (a
-    numbered item, "**1."/"**I1.", or a line that opens with a severity tag). A top-level bullet stays inside a finding
-    whose title it follows; under a heading, or where no title opened the chunk, each top-level bullet is a finding of
-    its own. (The count line "1 Important, 2 Nit" opens no finding: a tag counts only at the start of a line.)"""
-    chunks, cur, titled, fence = [], [], False, False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            fence = not fence
-        if fence or line.lstrip().startswith("```"):   # inside a code block nothing starts a finding ("# comment")
-            cur.append(line)
-            continue
-        new = bool(START.match(line)) or (bool(BULLET.match(line)) and not titled)
-        if new and cur:
-            chunks.append(cur)
-            cur = []
-        if new or not cur:
-            titled = bool(TITLE.match(line)) and not line.lstrip().startswith("#")   # a heading is no title
-        cur.append(line)
-    if cur:
-        chunks.append(cur)
-    return chunks
-
-
-PREFIX = re.compile(r"\S*/blob/[0-9a-f]{7,40}/|(?<![\w.])(?:\.\.?/)+|(?<![\w./-])[ab]/(?=\S)")
-
-
-def names_file(path, text):
-    """The finding names this file: its repo path or a suffix of it at a "/" boundary (the bare file name included),
-    never the tail of a different path (platform/MODULE.md is not front-office/MODULE.md). ./, ../, a/, b/ and a
-    GitHub .../blob/<sha>/ link before a path are read as the path itself."""
-    text = PREFIX.sub(" ", text)
-    parts = path.split("/")
-    for i in range(len(parts)):
-        suf = "/".join(parts[i:])
-        for m in re.finditer(re.escape(suf), text):
-            before = text[m.start() - 1] if m.start() else " "
-            after = text[m.end()] if m.end() < len(text) else " "
-            if not re.match(r"[\w./-]", before) and not re.match(r"[\w]", after):
-                return True
-    return False
-
-
 def caught(c, text):
-    """(caught?, why): Changes or Block, and an Important finding that names a bug file and describes the bug."""
+    """(caught?, why): Changes or Block, and an Important finding that names a bug file (path or file name)."""
     v = VERDICT.findall(text)
     if not v:
         return False, "no verdict line"
     if v[-1].lower() == "approve":
         return False, "approved"
+    names = [n for f in c["files"] for n in (f, os.path.basename(f))]
     on_file = False
-    # A bare severity heading ("## Important", "## Nits") sets the section; another heading at its level or higher
-    # ("## Checked and fine") clears it; a deeper one ("### Off by one") keeps it. A heading that says more than a bare
-    # severity word is a finding title and is judged with its body ("### 1. Important: src/a.ts:3 ...").
-    section, level = "", 0
-    for lines in findings(text):
-        m = re.match(r"\s*(#+)\s*(.*)", lines[0])
-        if m and not lines[0].lstrip().startswith("```"):
-            depth, title = len(m.group(1)), m.group(2).strip()
-            head = SEV.match(lines[0])
-            if head and re.fullmatch(r"\W*(Important|Nits?|Nitpicks?|Pre-existing)\W*", title, re.I):
-                section, level = ("nit" if head.group(1).lower().startswith("nit") else head.group(1).lower()), depth
-                lines = [l for l in lines[1:] if l.strip()]   # text right under the heading is judged as one finding
-                if not lines:
-                    continue
-            else:
-                if not level or depth <= level:
-                    section, level = "", 0
-                lines = [title] + [l for l in lines[1:] if l.strip()]
-        first, body = lines[0], "\n".join(lines)
-        if IS_OTHER.match(first):   # the tag is read at the start of the line, never a mention later in it
-            tagged = False
-        else:
-            tagged = bool(IS_IMPORTANT.match(first)) or section == "important"
-        if tagged and any(names_file(f, body) for f in c["files"]):
+    section = ""   # a "## Important" / "## Nit" heading tags the findings under it (first run, RT-08)
+    for para in re.split(r"\n\s*\n|\n(?=\s*(?:[-*]|\d+\.)\s)", text):
+        head = re.match(r"\s*#+\s*(Important|Nit|Pre-existing)\b", para, re.I)
+        if head:
+            section = head.group(1).lower()
+        tagged = re.search(r"\b(Nit|Pre-existing)\b", para[:80]) is None and (section == "important" or re.search(r"\bImportant\b", para))
+        if tagged and any(n in para for n in names):
             on_file = True
-            if not c.get("match") or re.search(c["match"], body, re.I):
+            if not c.get("match") or re.search(c["match"], para, re.I):
                 return True, f"{v[-1]}, Important on {c['files'][0]}"
     if on_file:
         return False, f"{v[-1]}, Important on {os.path.basename(c['files'][0])} but for another problem (match: {c['match']})"
