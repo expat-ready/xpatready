@@ -95,4 +95,4 @@ ahead=$(git rev-list --count @{upstream}..HEAD 2>/dev/null) && [ "$ahead" -gt 0 
 [ -z "$reasons" ] && { [ -n "$notes" ] && jq -n --arg m "note: $notes" '{systemMessage:$m}'; exit 0; }
 [ -n "$notes" ] && reasons="$reasons- note: $notes (not blocking)
 "
-jq -n --arg r "$reasons" '{decision:"block",reason:$r}'
+jq -n --arg r "$reasons" '{decision:"block",reason:("Rule P-189: this copy may not stop yet (stop-check.sh):\n" + $r + "Fix: do what each line above says (each names its rule), then stop.")}'

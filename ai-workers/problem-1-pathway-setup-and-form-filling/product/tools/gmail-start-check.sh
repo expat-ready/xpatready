@@ -31,4 +31,4 @@ mark="${TMPDIR:-/tmp}/xr-gmail-check/$sid"; mkdir -p "$(dirname "$mark")"
 echo "$state" > "$mark"
 [ "$state" = ok ] && exit 0
 why=$([ "$state" = failed ] && echo "the Gmail connector failed or needs sign-in" || echo "this session has no Gmail connector")
-jq -n --arg w "$why" '{decision:"block",reason:("P-620 start check: " + $w + ". Ask the founder now, one AskUserQuestion: connect the company mailbox in claude.ai Settings › Connectors (Gmail), then restart or switch back to this session. Record the answer in STATE. Shown once per session and again after a change.")}'
+jq -n --arg w "$why" '{decision:"block",reason:("Rule P-620: start check, " + $w + ". Fix: ask the founder now, one AskUserQuestion: connect the company mailbox in claude.ai Settings › Connectors (Gmail), then restart or switch back to this session. Record the answer in STATE. Shown once per session and again after a change.")}'

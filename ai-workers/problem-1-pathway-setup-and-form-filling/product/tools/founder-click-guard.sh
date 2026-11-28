@@ -85,4 +85,4 @@ fi
 [ -n "$msg" ] || exit 0
 hits=$(printf '%s' "$msg" | judge text)
 [ -z "$hits" ] && exit 0
-jq -n --arg h "$hits" '{decision:"block",reason:("- The last message asks the founder to do a GitHub, claude.ai or console step. Do it yourself now: do it in the built-in browser (P-752; P-763, P-778 E-c), then tell the founder it is done. Only sign-in, password, 2FA or one-time code, payment, a new account or key (P-551) or a permission widening (P-387) go to the founder, named as the reason in the same message:\n" + $h + "\n")}'
+jq -n --arg h "$hits" '{decision:"block",reason:("- Rule P-763: the last message asks the founder to do a GitHub, claude.ai or console step. Fix: do it yourself now: do it in the built-in browser (P-752; P-763, P-778 E-c), then tell the founder it is done. Only sign-in, password, 2FA or one-time code, payment, a new account or key (P-551) or a permission widening (P-387) go to the founder, named as the reason in the same message:\n" + $h + "\n")}'

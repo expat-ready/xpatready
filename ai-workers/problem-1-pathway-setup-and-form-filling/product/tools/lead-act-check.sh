@@ -36,4 +36,4 @@ KEY="$( [ -s "$stamp" ] && cat "$stamp" || echo none)|$(printf '%s' "$out" | gre
 mark="$(dirname "$stamp")/act-check.alerted"
 if [ -s "$mark" ] && [ "$(sed -n 2p "$mark")" = "$KEY" ] && [ $(( (now - $(head -1 "$mark")) / 60 )) -lt "$REPEAT_MIN" ]; then exit 0; fi
 mkdir -p "$(dirname "$mark")" 2>/dev/null && printf '%s\n%s\n' "$now" "$KEY" > "$mark"
-jq -n --arg r "$out" '{decision:"block",reason:("Lead alarms (B193): act on these before you stop.\n" + $r)}'
+jq -n --arg r "$out" '{decision:"block",reason:("Rule B193: Lead alarms, act on these before you stop.\n" + $r + "\nFix: do the act each line names, then stop.")}'
