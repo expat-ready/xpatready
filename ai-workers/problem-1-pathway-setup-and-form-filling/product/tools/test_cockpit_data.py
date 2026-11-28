@@ -2493,5 +2493,76 @@ class MainChecks(unittest.TestCase):
         self.assertEqual(len(cd.main_checks(runs, set())), 3)                                         # no full run: all 3 kept
 
 
+
+class BacklogDone(unittest.TestCase):
+    """LR-091 (Lead 13's option (a), 28 Nov): BACKLOG's done rows move word for word to history/BACKLOG-done-*.md. Every
+    reader that looks rows up by id reads both, so a sample move leaves the board's data and the reconciliation unchanged;
+    the same rows only deleted (no done file) do change them, which shows the comparison can fail."""
+    MOVE = ("| PF-1 |", "| FO-2 |", "| BK-1 |", "| BK-6 |")    # merged and ready rows, one with a brief, one others wait on
+
+    def moved(self, with_done=True):
+        d = snap_with()
+        r = os.path.join(d, "files", cd.REL)
+        with open(os.path.join(r, "BACKLOG.md"), encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        out = [l for l in lines if l.startswith(self.MOVE)]
+        self.assertEqual(len(out), 4)
+        with open(os.path.join(r, "BACKLOG.md"), "w", encoding="utf-8") as f:
+            f.write("\n".join(l for l in lines if l not in out))
+        if with_done:
+            os.makedirs(os.path.join(r, "history"), exist_ok=True)
+            with open(os.path.join(r, "history", "BACKLOG-done-2026-11-28.md"), "w", encoding="utf-8") as f:
+                f.write("# Backlog: done rows\n\n## Rows (moved from BACKLOG.md)\n| Row | Area | What | Done when |\n|---|---|---|---|\n"
+                        + "\n".join(out) + "\n")
+        return d
+
+    @staticmethod
+    def board(snap):
+        out = tempfile.mkdtemp()
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                            "--from-snapshot", snap, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+        assert r.returncode == 0, r.stderr
+        d = jread(os.path.join(out, "data.json"))
+        d.pop("run", None)                                        # run time
+        d.get("lineage", {}).pop("snapshot", None)                # the snapshot folder's path
+        d.get("history", {}).get("today", {}).get("file_shas", {}).pop("BACKLOG.md", None)   # the raw file's blob: it did change
+        d["backlog"]["rows"] = sorted(d["backlog"]["rows"], key=lambda x: x["id"])          # moved rows are read after the rest
+        return d
+
+    @staticmethod
+    def reconcile(snap):
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-reconcile.py"), snap], capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        return json.loads(r.stdout)
+
+    def test_board_unchanged_by_a_move(self):
+        self.assertEqual(self.board(FIX), self.board(self.moved()))
+
+    def test_reconcile_unchanged_by_a_move(self):
+        self.assertEqual(self.reconcile(FIX), self.reconcile(self.moved()))
+
+    def test_rows_only_deleted_change_the_board(self):
+        a, b = self.board(FIX), self.board(self.moved(with_done=False))
+        self.assertNotEqual(a["backlog"]["rows"], b["backlog"]["rows"])
+        self.assertNotEqual(self.reconcile(FIX), self.reconcile(self.moved(with_done=False)))
+
+    def test_snapshot_backlog_joins_done_files_in_name_order(self):
+        d = snap_with({f"files/{cd.REL}/history/BACKLOG-done-2026-12-01.md": "| X-2 | b |\n",
+                       f"files/{cd.REL}/history/BACKLOG-done-2026-11-28.md": "| X-1 | a |\n",
+                       f"files/{cd.REL}/history/BACKLOG-other.md": "| X-9 | not a done file |\n"})
+        t = cd.Snap(d).backlog()
+        self.assertTrue(t.startswith(cd.Snap(FIX).file("BACKLOG.md")))
+        self.assertLess(t.index("X-1"), t.index("X-2"))
+        self.assertNotIn("X-9", t)
+
+    def test_git_backlog_reads_done_files_at_the_commit(self):
+        tree = {("ls-tree", "--name-only", "abc", f"{cd.REL}/history/"): f"{cd.REL}/history/BACKLOG-done-2026-11-28.md\n{cd.REL}/history/STATE-x.md\n",
+                ("show", f"abc:{cd.REL}/BACKLOG.md"): "| PF-1 | open |",
+                ("show", f"abc:{cd.REL}/history/BACKLOG-done-2026-11-28.md"): "| PF-0 | done |"}
+        with mock.patch.object(cd, "git_out", side_effect=lambda *a: tree.get(a)):
+            self.assertEqual(cd.git_backlog("abc"), "| PF-1 | open |\n| PF-0 | done |")
+            self.assertEqual(set(cd.parse_backlog(cd.git_backlog("abc"))["ids"]), {"PF-0", "PF-1"})
+
+
 if __name__ == "__main__":
     unittest.main()
