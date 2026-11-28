@@ -10,7 +10,7 @@ The desk is where the founder talks strategy, integration and plain-words explan
 ## Opening it (the Lead)
 * Only in a turn the founder typed (P-286); a check or a message turn leaves a card instead.
 * `start_session` on the Mac, `use_worktree: false`, title "Strategy desk NN", fresh context. **Model: Opus 5.5, effort medium** (P-788 supersedes P-597's Fable high; one rule everywhere, A420): pass `effort: medium` and confirm with `get_session`. Its reading helpers inherit the same model. Any other model or effort only when needed, named to the founder with the reason (P-788 (2)), and marked `P-788 exception:` in the brief.
-* The brief gives three things: the path of the current track file (the private notes folder named in STATE, P-504), the current Lead's id (`tools/current-lead.sh`), and these rules word for word. When replacing a desk, add the old desk's id and tell it to stop after it hands over.
+* The brief gives three things: the path of the current track file (the private notes folder named in STATE, P-504), the current Lead's id (`tools/current-lead.sh`), and these rules word for word, and a `Do it yourself:` line naming its tools (its notes folder, the built-in browser; brief-check.sh, LR-177). When replacing a desk, add the old desk's id and tell it to stop after it hands over.
 
 ## The desk's rules
 * **Read-only on everything but its notes folder**: no git, pull requests, lanes, records or skills, because the Lead is the one writer (P-511); nothing about the team's app in our public repository (P-504, P-539).

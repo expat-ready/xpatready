@@ -4,7 +4,7 @@ epoch <n>", then app-view.js's lines) as JSON, so every lane's state, last messa
   python3 -I product/tools/app-view-json.py <app-view-latest.txt> <app-view.json>
 Each line "FLAG|ok  <title> · cloud|mac · <state> · needs: <what> · <detail> · idle <n> min · <context> [· id <session>]
 [-> <reasons>]" becomes {title, where, state, waits_for, detail, idle_min, last_message_at (ISO, UTC: saved time minus idle),
-session_id, flagged, reasons}. Fields are found by shape, never by position (a title or detail may hold " · ").
+session_id (null until app-view.js writes "id <session>", LR-171 #4089), flagged, reasons}. Fields are found by shape, never by position (a title or detail may hold " · ").
 Writes the file atomically; exit 0, or 2 (nothing written) when the text is not a saved app view. Test: check-wait-unseen.sh.
 """
 import json, os, re, sys

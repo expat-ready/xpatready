@@ -56,7 +56,8 @@ if [ "${1:-}" = --brief ]; then
   # LR-177 (c) (founder A455, 15:5x IST: agents wait instead of doing steps themselves): every lane brief has a "Do it
   # yourself" section (its heading or bold line, then lines up to a blank line or heading) naming the tools the lane uses
   # for its own steps (gh, git, the GitHub tools or API, claude.ai, the built-in browser, the CLI, Playwright, ...).
-  diy=$(printf '%s\n' "$txt" | awk 'f && (/^[[:space:]]*$/ || /^#/) {exit} !f && tolower($0) ~ /^[[:space:]#*>-]*do it yourself/ {f = 1} f {print}')
+  diy=$(printf '%s\n' "$txt" | awk '!f && tolower($0) ~ /^[[:space:]#*>-]*do it yourself/ {f = 1; print; next}
+    f && /^#/ {exit} f && /^[[:space:]]*$/ {if (n) exit; next} f {print; n = 1}')   # blank lines right after the heading are skipped
   if [ -z "$diy" ]; then bad="$bad no \"Do it yourself\" section naming the tools the lane uses for its own steps (LR-177, founder A455);"
   elif ! printf '%s\n' "$diy" | grep -qiE '(^|[^a-z])(gh|git|github|mcp|api|claude\.ai|claude -p|browser|cli|curl|bash|playwright|mergify)([^a-z]|$)'; then
     bad="$bad a \"Do it yourself\" section that names no tool (e.g. gh, git, the GitHub API, claude.ai, the built-in browser; LR-177);"; fi

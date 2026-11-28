@@ -47,6 +47,8 @@ o=$(printf '%s\n' "$B" | bash "$TOOLS/brief-check.sh" --brief); r=$?
 ok "(c) a lane brief with no \"Do it yourself\" section is refused, naming it" "$([ $r = 1 ] && grep -q 'no "Do it yourself" section' <<<"$o" && echo 1)" "rc=$r $o"
 o=$(printf '%s\n\nDo it yourself: gh, git and the built-in browser on claude.ai.\n' "$B" | bash "$TOOLS/brief-check.sh" --brief); r=$?
 ok "(c) ... one with the section naming its tools passes" "$([ $r = 0 ] && echo 1)" "rc=$r $o"
+o=$(printf '%s\n\n## Do it yourself\n\n- gh, git and the built-in browser\n' "$B" | bash "$TOOLS/brief-check.sh" --brief); r=$?
+ok "(c) ... a heading, a blank line, then the tools passes (review of LR-177)" "$([ $r = 0 ] && echo 1)" "rc=$r $o"
 o=$(printf '%s\n\n## Do it yourself\nEverything, always.\n' "$B" | bash "$TOOLS/brief-check.sh" --brief); r=$?
 ok "(c) ... a section that names no tool is refused" "$([ $r = 1 ] && grep -q 'names no tool' <<<"$o" && echo 1)" "rc=$r $o"
 o=$(printf 'Done when: x.sh exits 0.\nDuplicate check: none\n' | bash "$TOOLS/brief-check.sh"); r=$?
