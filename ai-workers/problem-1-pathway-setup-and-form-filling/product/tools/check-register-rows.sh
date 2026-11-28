@@ -31,6 +31,14 @@ reg "$(row LR-002 'DEFERRED (trigger: 2026-12-05)' 'later' Intended)"; chk
 ok "a DEFERRED row with a date trigger passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
 reg "$(row LR-002 'DEFERRED (P-860: revisit when measures.py shows a need)' 'later' Intended)"; chk
 ok "a DEFERRED row with an event (\"revisit when ...\") passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
+reg "$(row LR-002 'DEFERRED (P-860: class C, folder move and refactor, a quiet window near Release 1)' 'later' Intended)"; chk
+ok "P-860's wording (\"a quiet window near Release 1\") is an event trigger: passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
+reg "$(row LR-002 'DEFERRED (P-860: class C, folder move and refactor)' 'later' Intended)"; chk
+ok "... the same row without its window still fails" "$([ $r = 1 ] && echo 1)" "rc=$r $out"
+# Lead 13 (28 Nov): main's own register has zero failing rows once this PR lands
+here=$(cd "$TOOLS/.." && pwd)
+out=$(python3 -I "$RR" check --file "$here/design/lab-register-2026-11-27.md"); r=$?
+ok "this copy's lab register passes the check (zero standing ACTs on main)" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
 reg "$(row LR-003 DO 'x' Intended)" "$(row LR-004 DONE 'x' 'Proven')"; chk
 ok "DO and DONE rows are not asked for either" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
 # review r1 of LR-173: an empty cell keeps the columns; a later date after an event marker counts; a date that does not exist

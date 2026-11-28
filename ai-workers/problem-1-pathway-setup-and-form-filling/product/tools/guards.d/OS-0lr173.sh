@@ -13,4 +13,5 @@ LR173 every|product/tools/register-rows.py|s/        for m in TRIG.finditer(x):/
 LR173 split|product/tools/register-rows.py|s/            c = \[x.strip() for x in line.split(".")\]/            c = [x.strip() for x in line.split(" ! ")]/|check-register-rows.sh
 LR173 real|product/tools/register-rows.py|s/                    date.fromisoformat(d); ok.append(d)/                    ok.append(d)/|check-register-rows.sh
 LR173 log|product/tools/lab-progress.py|s/    if .--file. not in sys.argv:   #/    if True:   #/|check-register-rows.sh
-LR173 watch|product/tools/lead-watch.sh|s/^echo "\$rr"; act=/echo "$rr"; : act=/|check-register-rows.sh'
+LR173 watch|product/tools/lead-watch.sh|s/^echo "\$rr"; act=/echo "$rr"; : act=/|check-register-rows.sh
+LR173 window|product/tools/register-rows.py|s/.a quiet window near\\s+)(/)(/|check-register-rows.sh'

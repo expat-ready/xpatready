@@ -4,7 +4,8 @@ not miss anything dropped or deferred ... as a row ... with the proper statuses"
 
 A row of design/lab-register-2026-11-27.md whose Verdict starts DROP must name where its work lives: "exists elsewhere:
 <where>" in its Verdict, Reason or Gate notes cell. A row whose Verdict starts DEFERRED must name its trigger: "trigger:
-<a date YYYY-MM-DD or an event>" or "revisit when <event>" (or "revisit on <date>") in the same cells.
+<a date YYYY-MM-DD or an event>", "revisit when <event>" (or "revisit on <date>"), or P-860's "a quiet window near
+<event>" in the same cells.
   register-rows.py check [--file F | --ref R]           one FAIL line per row breaking the rule; exit 1 when any, else 0
   register-rows.py due [--file F | --ref R] [--today D]  "deferred: N rows (K on a date, M on an event)", then one ACT
                                                           line per DEFERRED row whose date trigger is today or past (IST)
@@ -17,7 +18,8 @@ from datetime import date, datetime, timedelta, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 IST = timezone(timedelta(hours=5, minutes=30))
 HOME = re.compile(r"\bexists elsewhere:\s*[^\s;|)]", re.I)
-TRIG = re.compile(r"\b(?:trigger:\s*|revisit (?:when|on)\s+)([^\s;|)][^;|)]*)", re.I)
+# "a quiet window near <event>" is P-860's wording for a deferral (class C), accepted as an event trigger as written.
+TRIG = re.compile(r"\b(?:trigger:\s*|revisit (?:when|on)\s+|a quiet window near\s+)([^\s;|)][^;|)]*)", re.I)
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 
 
