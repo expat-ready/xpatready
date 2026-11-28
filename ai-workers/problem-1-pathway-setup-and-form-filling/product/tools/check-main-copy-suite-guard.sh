@@ -28,6 +28,24 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/mc.XXXXXXXX"); trap 'rm -rf "${T:?}"' EXIT
 git init -q -b main "$T/c"; mkdir -p "$T/c/$PRODREL/tools"; cp "$TOOLS/lane.sh" "$TOOLS/records-dir.sh" "$T/c/$PRODREL/tools/" 2>/dev/null
 out=$(jq -n --arg d "$T/c" '{tool_input:{command:"bash tools/check-guards.sh"},cwd:$d}' | env -u MAIN_COPY_LANE CLAUDE_CODE_REMOTE=true python3 -I "$G" --hook)
 ok "no stand-in: lane.sh decides, and a cloud copy is never the Lead's" "$([ -z "$out" ] && echo 1)" "$out"
+# Review round 1 of this slice: check-docs.sh is a records check the lead skill runs here (I1); a script that runs in another
+# folder, the refusal's own throwaway-clone form included, is allowed (I2); quoted text is not a run, VAR=x/nice/nohup/time
+# before a path are runs (N1); an unreadable cwd fails open (N2). X lives under $T, which the trap above removes.
+ROOT="$(cd "$TOOLS/../../../.." && pwd)"; X="$T/elsewhere"; mkdir -p "$X"
+at() { jq -n --arg c "$2" --arg d "$ROOT" '{tool_input:{command:$c},cwd:$d}' | env $1 MAIN_COPY_LANE=lead python3 -I "$G" --hook; }
+said() { local o; o=$(at "$1" "$2"); [ -z "$o" ] && echo allowed || echo denied; }
+for c in 'bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-docs.sh' \
+         'git clone --shared . "$TMPDIR/suite" && cd "$TMPDIR/suite" && bash tools/check-guards.sh' \
+         "cd $X && bash tools/check-guards.sh" "bash $X/tools/check-guards.sh" \
+         'git commit -m "records: bash tools/check-x.sh passes"' "gh pr comment 1 --body 'Done when: bash tools/check-x.sh exits 0'"; do
+  r=$(said "TMPDIR=$X" "$c"); ok "the Lead's copy: allowed: $c" "$([ "$r" = allowed ] && echo 1)" "got $r"; done
+r=$(said "-u TMPDIR" 'git clone --shared . "$TMPDIR/suite" && cd "$TMPDIR/suite" && bash tools/check-guards.sh')
+ok "... the clone form also with TMPDIR unset (a cd to an unexpanded variable leaves this copy)" "$([ "$r" = allowed ] && echo 1)" "got $r"
+for c in 'FOO=1 ./tools/check-guards.sh' 'nice ./tools/check-guards.sh' 'nohup bash tools/run-suites.sh' 'time ./tools/check-x.sh' \
+         'bash "tools/check-guards.sh"' "cd $ROOT && bash tools/check-guards.sh" "bash $ROOT/tools/check-guards.sh"; do
+  r=$(said "TMPDIR=$X" "$c"); ok "the Lead's copy: refused (runs here): $c" "$([ "$r" = denied ] && echo 1)" "got $r"; done
+out=$(jq -n '{tool_input:{command:"bash tools/check-guards.sh"},cwd:"/no/such/folder"}' | env -u MAIN_COPY_LANE python3 -I "$G" --hook); r=$?
+ok "a cwd that does not exist: lane.sh cannot say Lead, so allowed, exit 0 (fails open)" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
 SET="$TOOLS/../../../../.claude/settings.json"
 ok "settings.json runs it on every Bash call (no if: filter)" "$(jq -e '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("main-copy-suite-guard.py")) | has("if")] == [false]' "$SET" >/dev/null && echo 1)"
 # The command as settings.json runs it (review I1): it denies through the real file, and with the file gone it stays

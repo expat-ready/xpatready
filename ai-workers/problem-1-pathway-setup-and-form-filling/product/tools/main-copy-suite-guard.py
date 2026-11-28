@@ -15,10 +15,15 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Running it, not naming it: the script at the start of a command (after ; & | ( or a newline) or after bash/sh/zsh/source/
-# exec/timeout, with any path in front. `cat`, `git add`, `sed` or `grep` on the file stay allowed.
-SUITE = re.compile(r"(?:^|[;&|(]\s*|\n\s*|\b(?:bash|sh|zsh|source|exec)(?:\s+-\S+)*\s+|\btimeout\s+\S+\s+(?:bash\s+)?)"
-                   r"(?:[^\s;&|()]*/)?(check-[A-Za-z0-9_-]+\.sh|run-suites\.sh)\b")
+# Running it, not naming it: the script at the start of a command (after ; & | ( or a newline, past VAR=value, nice, nohup
+# or time) or after bash/sh/zsh/source/exec/timeout, with any path in front. `cat`, `git add`, `sed` or `grep` on the file
+# stay allowed, and so does quoted text with a space in it (a commit message or a comment), which is blanked first.
+SUITE = re.compile(r"(?:(?:^|[;&|(]\s*|\n\s*)(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:(?:nice|nohup|time)\s+)*"
+                   r"|\b(?:bash|sh|zsh|source|exec)(?:\s+-\S+)*\s+|\btimeout\s+\S+\s+(?:bash\s+)?)"
+                   r"(?P<path>[^\s;&|()]*/)?(?P<script>check-[A-Za-z0-9_-]+\.sh|run-suites\.sh)\b")
+CD = re.compile(r"(?:^|[;&|(]\s*|\n\s*)cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|()]+)")
+# A records check, not a suite: the lead skill runs it in the main copy before a records PR (review I1 of LR-155 suite).
+EXEMPT = {"check-docs.sh"}
 
 
 def lane(cwd):
@@ -32,15 +37,70 @@ def lane(cwd):
         return ""   # unknown: never the Lead (a hook must not block by failing)
 
 
+def blank_text(cmd):
+    """Quoted strings with a space in them become "" (text such as a commit message, not a path); quotes are paired left
+    to right, so the part between two strings is never taken for one."""
+    out, i, n = [], 0, len(cmd)
+    while i < n:
+        q = cmd[i]
+        if q in "\"'":
+            j = i + 1
+            while j < n and cmd[j] != q:
+                j += 2 if q == '"' and cmd[j] == "\\" else 1
+            body = cmd[i + 1:j]
+            out.append('""' if any(c.isspace() for c in body) else cmd[i:j + 1])
+            i = j + 1
+        else:
+            out.append(q)
+            i += 1
+    return "".join(out)
+
+
+def toplevel(d):
+    d = os.path.abspath(d)
+    while d != os.path.dirname(d) and not os.path.isdir(d):
+        d = os.path.dirname(d)   # a folder not made yet: judge the nearest one that exists
+    try:
+        r = subprocess.run(["git", "-C", d, "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=5)
+        return os.path.realpath(r.stdout.strip()) if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def runs_in(cmd, m, cwd):
+    """The folder the matched script runs in: a `cd` before it on the same line, or its own absolute path (review I2);
+    None when a `cd` goes to a folder named by a variable the hook cannot expand."""
+    d = cwd
+    for c in CD.finditer(cmd[:m.start()]):
+        t = os.path.expandvars(os.path.expanduser(c.group(1).strip("\"'")))
+        if "$" in t:
+            return None   # a `cd` to a variable this hook cannot expand ($TMPDIR unset here): it leaves this copy
+        d = t if os.path.isabs(t) else os.path.join(d, t)
+    p = os.path.expandvars(os.path.expanduser(m.group("path") or ""))
+    if os.path.isabs(p):
+        d = p
+    return d
+
+
 def verdict(cmd, cwd):
-    m = SUITE.search(cmd)
-    if not m or lane(cwd) not in ("lead", "lead-stale"):
-        return None
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason":
-            "Rule F-7Nov: `%s` runs a guard or test suite in the Lead's main copy (on 7 Nov one removed 3,511 files here "
-            "and committed uncommitted work). Fix: run it in a throwaway clone of origin/main, e.g. `git clone --shared . "
-            "\"$TMPDIR/suite\" && cd \"$TMPDIR/suite\" && git remote set-url origin https://github.com/<owner>/<repo>`, then the "
-            "same command there." % m.group(1)}}
+    text = blank_text(cmd)
+    lead = None
+    for m in SUITE.finditer(text):
+        if m.group("script") in EXEMPT:
+            continue
+        if lead is None:
+            lead = lane(cwd) in ("lead", "lead-stale")
+        if not lead:
+            return None
+        where = runs_in(text, m, cwd)
+        if where is None or (where != cwd and toplevel(where) != toplevel(cwd)):
+            continue   # it runs in another folder (a throwaway clone): allowed
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason":
+                "Rule F-7Nov: `%s` runs a guard or test suite in the Lead's main copy (on 7 Nov one removed 3,511 files "
+                "here and committed uncommitted work). Fix: run it in a throwaway clone of origin/main, e.g. `git clone "
+                "--shared . \"$TMPDIR/suite\" && cd \"$TMPDIR/suite\" && git remote set-url origin https://github.com/<owner>/"
+                "<repo> && bash <path>/%s` (check-docs.sh, a records check, stays allowed here)." % (m.group("script"), m.group("script"))}}
+    return None
 
 
 def main(argv):
@@ -50,7 +110,7 @@ def main(argv):
     try:
         event = json.load(sys.stdin)
     except ValueError:
-        return 0
+        return 0   # not JSON: nothing to judge
     if not isinstance(event, dict) or not isinstance(event.get("tool_input") or {}, dict):
         return 0   # not a hook event: nothing to judge
     cmd = (event.get("tool_input") or {}).get("command") or ""
