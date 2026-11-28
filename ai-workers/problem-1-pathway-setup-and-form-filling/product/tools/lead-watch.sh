@@ -54,7 +54,11 @@ gf=$(bash "$TOOLS/github-meter.sh" fits lead-watch-full 2>&1); gfrc=$?
 if [ "$gfrc" = 1 ]; then ACT "github budget: ${gf#meter: }: a full check would not fit; no GitHub step ran (the lite check comes with LR-175; until then wait for the reset; rules/github-limits.md)"
   # The stamp still moves (a check ran; the standbys' gap alarm must not fire, LR-175's incident), atomic as in step 0.
   now=$(date +%s); stamp="$STATE_DIR/last-check"; rm -f "$GH_METER_START"
-  echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"; exit $(( act + 1 )); fi   # +1: never the "only the constraint" exit 1
+  echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"
+  # ... and pushed (LR-168: lead-gap.yml judges lead/check-stamp with no Mac running; a git push, no REST request).
+  if [ "${LEAD_STAMP_PUSH:-on}" != off ] && case "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" in lead|lead-stale) true;; *) false;; esac; then
+    sp=$(bash "$TOOLS/lead-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
+  exit $(( act + 1 )); fi   # +1: never the "only the constraint" exit 1
 [ "$gfrc" = 2 ] && say "github budget unknown: the full check runs (${gf#meter: })"
 fresh "github-meter.sh: the x-ratelimit headers of GET /rate_limit (free), now"
 
