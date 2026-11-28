@@ -201,7 +201,7 @@ def bundle_of(repo, numbers):
     gh(), so QB_GH's fake answers it in the test) instead of two REST reads each. -> (bundle, note); ({}, note) when
     GraphQL fails: every read then goes through REST, as before."""
     def run(q):
-        out = json.loads(gh("api", "graphql", "-f", "query=" + q))
+        out = json.loads(gh("api", "graphql", "-f", "query=" + g.read_only(q)))
         if not isinstance(out, dict) or out.get("errors") or not out.get("data"):
             raise Unread("GraphQL answer without data")
         return out["data"]
@@ -226,8 +226,9 @@ def files_of(repo, n, e):
 
 
 def comments_of(repo, n, e):
-    """Every comment of PR n: the bundle's when it holds them all, else REST, every page."""
-    if e.get("comments_complete"):
+    """Every comment of PR n: the bundle's when it holds them all and each says when it was last edited (lead_read's
+    never-edited rule, P-423, needs updated_at), else REST, every page."""
+    if e.get("comments_complete") and all("updated_at" in c for c in e["comments"]):
         return e["comments"]
     return pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"])
 

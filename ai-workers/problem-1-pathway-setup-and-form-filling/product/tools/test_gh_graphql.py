@@ -32,9 +32,9 @@ def node(n, comments=(), labeled=(), files=None):
     return p
 
 
-C1 = {"databaseId": 11, "createdAt": "2026-11-28T08:00:00Z", "body": "Reviewer: Approve abcdef1", "authorAssociation": "MEMBER",
+C1 = {"databaseId": 11, "createdAt": "2026-11-28T08:00:00Z", "updatedAt": "2026-11-28T08:00:00Z", "body": "Reviewer: Approve abcdef1", "authorAssociation": "MEMBER",
       "author": {"login": "builder", "__typename": "User"}}
-C2 = {"databaseId": 12, "createdAt": "2026-11-28T08:05:00Z", "body": "To label again ...", "authorAssociation": "NONE",
+C2 = {"databaseId": 12, "createdAt": "2026-11-28T08:05:00Z", "updatedAt": "2026-11-28T08:05:00Z", "body": "To label again ...", "authorAssociation": "NONE",
       "author": {"login": "github-actions", "__typename": "Bot"}}
 
 
@@ -49,7 +49,8 @@ class Bundle(unittest.TestCase):
     def test_comments_come_back_in_the_rest_shape(self):
         got = g.pr_bundle("o/r", [7], labels=True, run=lambda q: {"repository": {"p7": node(7, [C1, C2], [("2026-11-28T09:00:00Z", "review: approved")])}})
         c = got[7]["comments"]
-        self.assertEqual(c[0], {"id": 11, "created_at": "2026-11-28T08:00:00Z", "body": "Reviewer: Approve abcdef1",
+        self.assertEqual(c[0], {"id": 11, "created_at": "2026-11-28T08:00:00Z", "updated_at": "2026-11-28T08:00:00Z",
+                                "body": "Reviewer: Approve abcdef1",
                                 "author_association": "MEMBER", "user": {"login": "builder", "type": "User"}})
         self.assertEqual(c[1]["user"], {"login": "github-actions[bot]", "type": "Bot"})          # REST's bot login
         self.assertEqual(got[7]["labeled"], [{"created_at": "2026-11-28T09:00:00Z", "label": "review: approved"}])
@@ -107,7 +108,7 @@ class Bundle(unittest.TestCase):
                 self.assertTrue(str(e.exception))                                          # always a reason
                 self.assertNotIn("\n", str(e.exception))                                    # on one line
             g.subprocess.run = lambda *a, **k: R(0, '{"data": {"repository": {}}}')
-            self.assertEqual(g.gh_query("q"), {"repository": {}})
+            self.assertEqual(g.gh_query("query { x }"), {"repository": {}})
         finally:
             g.subprocess.run = real
 
@@ -296,12 +297,39 @@ class QueueBlockedBundle(unittest.TestCase):
         try:
             self.assertEqual(qb.files_of("o/r", 7, {"files": []}), [])                     # an empty list is an answer
             self.assertEqual(qb.files_of("o/r", 7, {"files": None}), ["new.sh", "old.sh"])
-            self.assertEqual(qb.comments_of("o/r", 7, {"comments": ["c"], "comments_complete": True}), ["c"])
-            qb.comments_of("o/r", 8, {"comments": ["c"], "comments_complete": False}); qb.comments_of("o/r", 9, {})
+            c = {"body": "c", "updated_at": None}
+            self.assertEqual(qb.comments_of("o/r", 7, {"comments": [c], "comments_complete": True}), [c])
+            qb.comments_of("o/r", 8, {"comments": [c], "comments_complete": False}); qb.comments_of("o/r", 9, {})
             self.assertEqual(calls, ["repos/o/r/pulls/7/files?per_page=100", "repos/o/r/issues/8/comments?per_page=100",
                                      "repos/o/r/issues/9/comments?per_page=100"])
         finally:
             qb.pages = real
+
+    def test_an_edited_lead_read_from_the_bundle_is_not_a_read(self):
+        head = "a" * 40
+        read = {"databaseId": 5, "createdAt": "2026-11-28T07:20:00Z", "updatedAt": "2026-11-28T07:20:00Z",
+                "body": "Lead read the diff: " + head, "authorAssociation": "OWNER", "author": {"login": "lead", "__typename": "User"}}
+        edited = dict(read, updatedAt="2026-11-28T07:50:00Z")
+        for c, want in ((read, True), (edited, False)):
+            b = g.pr_bundle("o/r", [7], run=lambda q, c=c: {"repository": {"p7": node(7, [c])}})
+            self.assertEqual(qb.lead_read(qb.comments_of("o/r", 7, b[7]), head), want)
+
+    def test_comments_without_an_edit_time_are_read_by_rest(self):
+        real, calls = qb.pages, []
+        qb.pages = lambda path, cap, enough=None: calls.append(path) or []
+        try:
+            qb.comments_of("o/r", 7, {"comments": [{"body": "x"}], "comments_complete": True})
+            self.assertEqual(calls, ["repos/o/r/issues/7/comments?per_page=100"])
+        finally:
+            qb.pages = real
+
+    def test_only_queries_are_sent(self):
+        self.assertTrue(g.query_for("o", "r", [7], True, True, True).startswith("query {"))
+        for bad in ("mutation { x }", "subscription { x }", "{ x }"):
+            with self.assertRaises(g.GraphQLError):
+                g.read_only(bad)
+        with self.assertRaises(g.GraphQLError):
+            g.gh_query("mutation { addComment }")
 
     def test_failures_are_rest(self):
         partial = '{"data": {"repository": {"p7": %s}}, "errors": [{"message": "x"}]}' % __import__("json").dumps(node(7, [C1], files=["x"]))

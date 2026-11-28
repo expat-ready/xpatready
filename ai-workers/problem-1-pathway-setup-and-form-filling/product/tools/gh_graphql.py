@@ -8,7 +8,8 @@ the same day: sle-watch spent ~242 REST requests a run (79 per-PR comment reads,
   pr_bundle(repo, numbers, comments=True, labels=False, files=False) ->
       {number: {"comments": [REST-shaped issue comment, oldest first], "comments_complete": bool,
                 "labeled": [{"created_at", "label"}], "labeled_complete": bool, "files": [path, ...] or None}}
-Comments come back in the REST shape the tools already read (created_at, body, author_association, user {login, type};
+Comments come back in the REST shape the tools already read (created_at, updated_at, body, author_association, user
+{login, type}; updated_at feeds lead-read-gate.sh's never-edited rule in queue-blocked;
 a bot's login gets REST's "[bot]" suffix). REST's ?per_page=100 gave a PR's oldest 100 comments; this gives its newest
 COMMENTS (the newer ones are the ones the checks judge); comments_complete says whether that is all of them. files is
 None for a PR with over FILES files or a renamed or copied file (no previous path in GraphQL): read it by REST. Any
@@ -29,8 +30,16 @@ class GraphQLError(RuntimeError):
     pass
 
 
+def read_only(query):
+    """Only a query is ever sent (a POST to /graphql, but a read): never a mutation or subscription."""
+    if not query.lstrip().startswith("query {"):
+        raise GraphQLError("not a read-only query")
+    return query
+
+
 def gh_query(query):
     """Runs one query through gh.sh; -> the "data" object. Errors (HTTP, GraphQL errors, bad JSON) raise GraphQLError."""
+    read_only(query)
     r = subprocess.run(["bash", os.path.join(TOOLS, "gh.sh"), "api", "graphql", "-f", "query=" + query],
                        capture_output=True, text=True)
     try:
@@ -48,7 +57,7 @@ def query_for(owner, name, numbers, comments, labels, files):
     for n in numbers:
         f = []
         if comments:
-            f.append("comments(last: %d) { totalCount nodes { databaseId createdAt body authorAssociation "
+            f.append("comments(last: %d) { totalCount nodes { databaseId createdAt updatedAt body authorAssociation "
                      "author { login __typename } } }" % COMMENTS)
         if labels:
             f.append("timelineItems(itemTypes: [LABELED_EVENT], last: %d) { totalCount nodes { ... on LabeledEvent { createdAt "
@@ -63,7 +72,8 @@ def rest_comment(c):
     a = c.get("author") or {}
     bot = a.get("__typename") == "Bot"
     login = a.get("login") or "ghost"
-    return {"id": c.get("databaseId"), "created_at": c.get("createdAt"), "body": c.get("body") or "",
+    return {"id": c.get("databaseId"), "created_at": c.get("createdAt"), "updated_at": c.get("updatedAt"),
+            "body": c.get("body") or "",
             "author_association": c.get("authorAssociation"),
             "user": {"login": login + "[bot]" if bot and not login.endswith("[bot]") else login,
                      "type": "Bot" if bot else "User"}}
