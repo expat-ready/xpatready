@@ -25,7 +25,7 @@ const shot = async (p, n) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: tru
   const row = await vv(); const ref = `QA401-${Date.now() % 100000}`;
   const made = await call("POST", "/runtime/cases", "user-O", { combinationId: row?.combination_id, reference: ref, clientActor: "user-P", principal: { displayName: "Sample Principal V" }, idempotencyKey: ref });
   const c = made.body; ok("QA-401 setup: a new Visitor visa case opens", made.status < 300 && !!c?.id, made); if (!c?.id) process.exit(2);
-  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: !process.env.DISPLAY }));   // LR-182: no pinned revision
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: !process.env.DISPLAY }));   // LR-183: no pinned revision
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
   await ctx.addInitScript(() => { try { if (!sessionStorage.getItem("qa401")) { localStorage.setItem("xr-actor", "user-O"); sessionStorage.setItem("qa401", "1"); } } catch {} });
   const p = await ctx.newPage(); let reloads = 0; p.on("load", () => reloads++);

@@ -95,7 +95,7 @@ async function walk() {
   const story = rows.find((c) => c.reference === STORY_REF) ?? null;
   const theCase = story ?? [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] ?? null;
 
-  let browser;   // LR-182: the studio's shared rule for the older checks (acceptance/lib/launch-options.cjs chromiumOptions)
+  let browser;   // LR-183: the studio's shared rule for the older checks (acceptance/lib/launch-options.cjs chromiumOptions)
   try { browser = await chromium.launch(createRequire(import.meta.url)("../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true })); }
   catch (e) { const err = new Error(`no browser could start: ${String(e?.message ?? e).split("\n")[0]}`); err.cannotRun = true; throw err; }
   try {

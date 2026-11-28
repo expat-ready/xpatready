@@ -1,4 +1,4 @@
-// Types for launch-options.cjs (LR-179, LR-182), so the .ts checks import it under TypeScript strict.
+// Types for launch-options.cjs (LR-179, LR-183), so the .ts checks import it under TypeScript strict.
 type LaunchOpts = { channel?: string; executablePath?: string; headless?: boolean; [k: string]: unknown };
 type Machine = { platform: string; exists: (p: string) => boolean; own?: string };
 declare const lib: {

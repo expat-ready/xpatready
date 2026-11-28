@@ -58,7 +58,7 @@ ok("R4: no revision is linked to another in cloud-setup.sh (the chrome channel l
 // call's closing parenthesis, across lines) and passes only when they name the shared options, a channel or an
 // executablePath (a caller's own exe object counts). Exempt by name: the journey fixtures (tests/journeys/fixtures/), which
 // record.ts loads first and whose launch it wraps with the same options, as it does for every journey.
-const GOOD = /launchOptions\(|chromiumOptions\(|channel|executablePath|\bexe\b/;   // chromiumOptions: LR-182
+const GOOD = /launchOptions\(|chromiumOptions\(|channel|executablePath|\bexe\b/;   // chromiumOptions: LR-183
 function launchCalls(text: string): { line: number; args: string }[] {
   const out: { line: number; args: string }[] = [];
   for (let i = text.indexOf("chromium.launch("); i >= 0; i = text.indexOf("chromium.launch(", i + 1)) {
@@ -88,13 +88,15 @@ ok(`S1: every chromium.launch( in the studio's ${files.length} script files name
 const fixtures = files.filter((f) => relative(STUDIO, f).startsWith(join("tests", "journeys", "fixtures")));
 ok("S2: the only exempt launches are the journey fixtures record.ts wraps (and the sweep does see them)", fixtures.length > 0 && fixtures.flatMap((f) => bareIn(readFileSync(f, "utf8"))).length >= 3);
 
-// LR-182: chromiumOptions(), the older checks' own order kept in one place (Mac chrome, Playwright's own Chromium, the
+// LR-183: chromiumOptions(), the older checks' own order kept in one place (Mac chrome, Playwright's own Chromium, the
 // image's /opt/pw-browsers/chromium, the channel chrome), and no check names a Chromium revision.
 const OWN = "/pw/chromium-1248/chrome-linux64/chrome";
 const box = (platform: string, have: string[]) => ({ platform, own: OWN, exists: (p: string) => have.includes(p) });
 const co = (env: ReturnType<typeof box>, extra: Record<string, unknown> = { headless: true }) => JSON.stringify(lib.chromiumOptions(extra, env));
 ok("C1: CI (Playwright's own Chromium installed, runner Chrome present): nothing added, Playwright's own Chromium as before",
   co(box("linux", [OWN, lib.CHROME])) === JSON.stringify({ headless: true }));
+ok("C1b: Playwright's own Chromium and the image's both present (a cloud session after playwright install): Playwright's own comes first",
+  co(box("linux", [OWN, lib.PW_IMAGE, lib.CHROME])) === JSON.stringify({ headless: true }));
 ok("C2: a cloud session (no Playwright Chromium of this release, the image's link present): the image's /opt/pw-browsers/chromium",
   co(box("linux", [lib.PW_IMAGE, lib.CHROME])) === JSON.stringify({ executablePath: lib.PW_IMAGE, headless: true }));
 ok("C3: the Mac: the channel chrome, whatever is installed", co(box("darwin", [OWN])) === JSON.stringify({ channel: "chrome", headless: true }));
@@ -107,11 +109,11 @@ ok("C7: the image path is the link, never a revision folder", lib.PW_IMAGE === "
 const REV = /pw-browsers\/chromium[-_]\d+/;
 const pinned = files.filter((f) => !f.endsWith("check_launch_options.ts")).filter((f) => REV.test(readFileSync(f, "utf8"))).map((f) => relative(STUDIO, f));
 ok("S3: no script names a Chromium revision folder (/opt/pw-browsers/chromium-<n>): the image's revision changes under us", pinned.length === 0, pinned);
-// S4, a ratchet: checks that still write their own /opt/pw-browsers rule inline. 252 before LR-182; each later part lowers
+// S4, a ratchet: checks that still write their own /opt/pw-browsers rule inline. 252 before LR-183; each later part lowers
 // MAX to its new count, so a new inline rule fails here and points at chromiumOptions().
 const MAX_INLINE = 206;
 const inline = files.filter((f) => !f.endsWith("launch-options.cjs") && !f.endsWith("check_launch_options.ts")).filter((f) => readFileSync(f, "utf8").includes("/opt/pw-browsers"));
-ok(`S4: at most ${MAX_INLINE} scripts still write their own /opt/pw-browsers rule (252 before LR-182; use chromiumOptions())`, inline.length <= MAX_INLINE, `${inline.length}: ${inline.slice(0, 5).map((f) => relative(STUDIO, f)).join(", ")}`);
+ok(`S4: at most ${MAX_INLINE} scripts still write their own /opt/pw-browsers rule (252 before LR-183; use chromiumOptions())`, inline.length <= MAX_INLINE, `${inline.length}: ${inline.slice(0, 5).map((f) => relative(STUDIO, f)).join(", ")}`);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
