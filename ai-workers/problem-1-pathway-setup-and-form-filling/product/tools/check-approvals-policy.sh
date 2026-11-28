@@ -13,9 +13,9 @@
 #       rule `mode`; a "!" item takes the path out) and is strict: claude comments or blocks, and approves only through
 #       an override whose `if` is exactly "claude/code_review = pass". Each protected path must exist in the checkout.
 #   A6  verdict and override keys and values are the documented ones (claude: approves|comments|blocks).
-#   A7  reuse (LR-148): the "**" catch-all keeps its result across a push only with exactly
-#       reuse: "claude/diff <= trivial"; no other rule and no override carries reuse (gap research row 8: a steered
-#       answer must not keep a risky rule's approval after a sneaky push); `same_intent` nowhere before the observe week.
+#   A7  no reuse (LR-148): no rule, override or local carries `reuse` (the catch-all has nothing to keep; on the risky
+#       rules gap research row 8 forbids it: a steered answer must not keep an approval after a sneaky push), and no
+#       `same_intent` anywhere. Widening this is the tech lead's written call, with this check changed in the same PR.
 #   Patterns with {a,b} or [ab] are refused (this check does not read them, so it cannot vouch for them).
 # First proves on fixtures that each rule fails when broken, then checks this checkout. Runs in ci (the tools step).
 #   bash product/tools/check-approvals-policy.sh [repo-root]
@@ -43,7 +43,6 @@ SAMPLE = {f"{S}/prisma/migrations/20990101000000_x/migration.sql"}
 VERDICT = {"claude", "seats", "max_age"}
 OVERRIDE = {"if", "verdict", "reuse", "findings", "purpose", "use"}
 GATE = "claude/code_review = pass"
-REUSE = "claude/diff <= trivial"   # LR-148: the one reuse this policy allows, on the catch-all only
 
 def rx(g):
     out, i = "", 0
@@ -99,10 +98,9 @@ def check(p):
             errs.append(f'A4 rule {i} covers "**" and names claude/code_review: a billed review at every push')
     for i, r in enumerate(rules, 1):
         if not isinstance(r, dict): continue
-        if "**" in (r.get("paths") or []) and "verdict" in r and not r.get("if") and "mode" not in r:
-            if r.get("reuse") != REUSE: errs.append(f'A7 rule {i} (the catch-all): reuse is {r.get("reuse")!r}, not "{REUSE}" (LR-148)')
-        elif "reuse" in r: errs.append(f"A7 rule {i}: reuse on a rule other than the catch-all (gap research row 8)")
+        if "reuse" in r: errs.append(f"A7 rule {i}: reuse (LR-148: nothing to keep on the catch-all; gap research row 8 on risky rules)")
         if any(isinstance(o, dict) and "reuse" in o for o in r.get("override") or []): errs.append(f"A7 rule {i}: reuse in an override (gap research row 8)")
+    if "reuse" in yaml.safe_dump(p.get("locals") or {}): errs.append("A7 reuse inside locals, which `use` copies into a rule (LR-148)")
     if "same_intent" in text: errs.append("A7 same_intent before the observe week's read (LR-148)")
     for path in PROTECTED:
         if path not in SAMPLE and not os.path.isfile(os.path.join(ROOT, path)):
@@ -136,11 +134,12 @@ fixtures = [
     ("an override on a failed review", m(lambda p: risky(p)[0]["override"][0].update({"if": "claude/code_review != pass"})), "A5"),
     ("a misspelt verdict", m(lambda p: p["rules"][0]["verdict"].update(claude="aproves")), "A6"),
     ("a brace pattern", m(lambda p: risky(p)[0]["paths"].append("**/{a,b}.ts")), "A0"),
-    ("no reuse on the catch-all", m(lambda p: p["rules"][0].pop("reuse")), "A7"),
-    ("reuse widened to same_intent", m(lambda p: p["rules"][0].update(reuse="claude/diff <= same_intent")), "A7"),
-    ("reuse as a seats map", m(lambda p: p["rules"][0].update(reuse={"seats": REUSE})), "A7"),
-    ("reuse on a risky rule", m(lambda p: risky(p)[0].update(reuse=REUSE)), "A7"),
-    ("reuse in a risky override", m(lambda p: risky(p)[0]["override"][0].update(reuse=REUSE)), "A7"),
+    ("reuse on the catch-all", m(lambda p: p["rules"][0].update(reuse="claude/diff <= trivial")), "A7"),
+    ("reuse as a seats map", m(lambda p: p["rules"][0].update(reuse={"seats": "claude/diff <= trivial"})), "A7"),
+    ("reuse on a risky rule", m(lambda p: risky(p)[0].update(reuse="claude/diff <= trivial")), "A7"),
+    ("reuse in a risky override", m(lambda p: risky(p)[0]["override"][0].update(reuse="claude/diff <= trivial")), "A7"),
+    ("reuse through locals and use", m(lambda p: (p.update(locals={"keep": {"reuse": "claude/diff <= different"}}), risky(p)[0].update(use=["@keep"]))), "A7"),
+    ("same_intent in a condition", m(lambda p: risky(p)[0]["override"][0].update({"if": "claude/diff <= same_intent"})), "A7"),
 ]
 bad = 0
 for name, p, want in fixtures:
@@ -148,5 +147,5 @@ for name, p, want in fixtures:
     ok = want in got
     print(("ok    " if ok else "FAIL  ") + f"fixture: {name} -> {got or 'clean'}"); bad += not ok
 if bad: print(f"FAIL  {bad} self-test fixture(s): the check cannot be trusted"); sys.exit(1)
-print(f"PASS  {F}: observe mode, a catch-all rule, no seat for people, Code Review only on risky rules, {len(PROTECTED)} protected paths strict, reuse on the catch-all only (trivial)")
+print(f"PASS  {F}: observe mode, a catch-all rule, no seat for people, Code Review only on risky rules, {len(PROTECTED)} protected paths strict, no reuse")
 PY
