@@ -92,7 +92,7 @@ def pr_bundle(repo, numbers, comments=True, labels=False, files=False, run=None)
             if labels:
                 e["labeled"] = [{"created_at": x["createdAt"], "label": (x.get("label") or {}).get("name")}
                                 for x in p["timelineItems"]["nodes"] if x]
-                e["labeled_complete"] = p["timelineItems"].get("totalCount", 0) <= LABELS
+                e["labeled_complete"] = p["timelineItems"].get("totalCount", LABELS + 1) <= LABELS   # no count: not complete
             if files:   # None: over FILES, or a rename or copy (GraphQL gives no previous path): read that PR by REST
                 fs = p["files"]
                 e["files"] = None if fs["totalCount"] > FILES or any(

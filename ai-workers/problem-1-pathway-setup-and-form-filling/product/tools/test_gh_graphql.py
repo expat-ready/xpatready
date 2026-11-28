@@ -25,7 +25,7 @@ fm = load("flow_measure", "flow-measure.py")
 
 def node(n, comments=(), labeled=(), files=None):
     p = {"comments": {"totalCount": len(comments), "nodes": list(comments)},
-         "timelineItems": {"nodes": [{"createdAt": t, "label": {"name": l}} for t, l in labeled] + [{}]}}
+         "timelineItems": {"totalCount": len(labeled), "nodes": [{"createdAt": t, "label": {"name": l}} for t, l in labeled] + [{}]}}
     if files is not None:
         p["files"] = {"totalCount": len(files), "nodes": [{"path": f} for f in files]}
     return p
@@ -76,6 +76,8 @@ class Bundle(unittest.TestCase):
         self.assertFalse(g.pr_bundle("o/r", [7], labels=True, run=lambda q: {"repository": {"p7": many}})[7]["labeled_complete"])
         few = node(7, []); few["timelineItems"]["totalCount"] = 3
         self.assertTrue(g.pr_bundle("o/r", [7], labels=True, run=lambda q: {"repository": {"p7": few}})[7]["labeled_complete"])
+        nocount = node(7, []); del nocount["timelineItems"]["totalCount"]
+        self.assertFalse(g.pr_bundle("o/r", [7], labels=True, run=lambda q: {"repository": {"p7": nocount}})[7]["labeled_complete"])
 
     def test_comments_complete_only_when_all_were_read(self):
         many = node(7, [C1]); many["comments"]["totalCount"] = 101
@@ -224,6 +226,28 @@ class FlowMeasureFacts(unittest.TestCase):
         self.assertEqual(fm.facts_from(b, 7), (["a.sh"], [fm.t("2026-11-28T09:00:00Z")]))
         fm.facts_from(b, 8); fm.facts_from(b, 9); fm.facts_from(b, 10)
         self.assertEqual(self.calls, [8, 9, 10])
+
+    def test_comments_from_the_bundle_only_when_complete(self):
+        real, calls = fm.paged, []
+        fm.paged = lambda url, **k: calls.append(url) or ["rest"]
+        try:
+            b = {7: {"comments": ["c"], "comments_complete": True}, 8: {"comments": ["c"], "comments_complete": False}}
+            self.assertEqual(fm.comments_from(b, 7), ["c"])
+            self.assertEqual(fm.comments_from(b, 8), ["rest"]); self.assertEqual(fm.comments_from(b, 9), ["rest"])
+            self.assertEqual(len(calls), 2)
+            self.assertTrue(calls[0].endswith("/issues/8/comments"))
+        finally:
+            fm.paged = real
+
+    def test_bundle_of_failure_is_all_rest(self):
+        class G:
+            PR_BATCH = 20
+            @staticmethod
+            def pr_bundle(*a, **k):
+                raise g.GraphQLError("HTTP 403: GitHub GraphQL is not available")
+        fm.GITHUB.clear()
+        self.assertEqual(fm.bundle_of([7], gql=G), {})
+        self.assertEqual(fm.GITHUB, ["REST: GraphQL not used (HTTP 403: GitHub GraphQL is not available)"])
 
     def test_bundle_of_says_its_path(self):
         fm.GITHUB.clear()

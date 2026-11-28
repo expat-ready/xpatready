@@ -17,6 +17,9 @@ LR098 prwfile|product/tools/proof-read-watch.py|s/            if e.get("files") 
 LR098 prwfixture|product/tools/proof-read-watch.py|s/        if self.fixture and not self.gql:/        if False:/|check-gh-graphql.sh
 LR098 fmfiles|product/tools/flow-measure.py|s/    if e and e.get("files") is not None and e.get("labeled_complete"):/    if e:/|check-gh-graphql.sh
 LR098 fmlabel|product/tools/flow-measure.py|s/for x in e\["labeled"\] if x\["label"\] == "review: approved"\]/for x in e["labeled"]]/|check-gh-graphql.sh
-LR098 labeled|product/tools/gh_graphql.py|s/e\["labeled_complete"\] = p\["timelineItems"\].get("totalCount", 0) <= LABELS/e["labeled_complete"] = False/|check-gh-graphql.sh
+LR098 labeled|product/tools/gh_graphql.py|s/e\["labeled_complete"\] = p\["timelineItems"\].get("totalCount", LABELS + 1) <= LABELS/e["labeled_complete"] = False/|check-gh-graphql.sh
+LR098 nocount|product/tools/gh_graphql.py|s/.get("totalCount", LABELS + 1) <= LABELS/.get("totalCount", 0) <= LABELS/|check-gh-graphql.sh
 LR098 oneline|product/tools/gh_graphql.py|s/raise GraphQLError(" ".join(str(why or r.stderr.strip() or r.stdout.strip() or "gh exit %d" % r.returncode).split())\[:200\])/raise GraphQLError(str(why or r.stderr.strip() or r.stdout.strip() or "gh exit %d" % r.returncode)[:200])/|check-gh-graphql.sh
-LR098 sleline|product/tools/sle-watch.py|s/    if snap.get("github"):   # LR-098/    if False:   # LR-098/|check-gh-graphql.sh'
+LR098 sleline|product/tools/sle-watch.py|s/    if snap.get("github"):   # LR-098/    if False:   # LR-098/|check-gh-graphql.sh
+LR098 fmcomments|product/tools/flow-measure.py|s/    if e.get("comments_complete"):/    if e:/|check-gh-graphql.sh
+LR098 fmfail|product/tools/flow-measure.py|s/        GITHUB.append("REST: GraphQL not used (%s)" % " ".join(str(e).split())\[:80\])/        raise/|check-gh-graphql.sh'

@@ -156,15 +156,25 @@ def pr_facts(n):
 GITHUB = []   # LR-098: which path read the merged PRs' facts (the --lead line's bracket says it)
 
 
-def bundle_of(numbers):
+def comments_from(b, n):
+    """Every comment of PR n: the bundle's when it holds them all (comments_complete), else REST, all pages."""
+    e = b.get(n) or {}
+    if e.get("comments_complete"):
+        return e["comments"]
+    return paged(f"{API}/issues/{n}/comments")
+
+
+def bundle_of(numbers, gql=None):
     """LR-098 (P-860): the merged PRs' files, label events and comments in a few GraphQL queries (gh_graphql.py, loaded by
     path: python3 -I does not put this folder on the import path) instead of three REST reads each. {} when GraphQL
     fails: every read then goes through REST, as before."""
     try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("gh_graphql", os.path.join(os.path.dirname(os.path.abspath(__file__)), "gh_graphql.py"))
-        g = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(g)
+        g = gql
+        if g is None:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("gh_graphql", os.path.join(os.path.dirname(os.path.abspath(__file__)), "gh_graphql.py"))
+            g = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(g)
         b = g.pr_bundle(REPO, numbers, comments=True, labels=True, files=True)
         GITHUB.append("graphql: %d PRs in %d queries" % (len(numbers), -(-len(numbers) // g.PR_BATCH)))
         return b
@@ -432,9 +442,7 @@ def new_measures(since, until, now, merged=None, r1_floor="2026-11-14T00:00:00Z"
                 bundle = {}
             prime_kinds([f for _, f in merged])
             code = [p for (p, _), k in zip(merged, ex.map(lambda pf: kind(pf[1]), merged)) if k == "code"]
-            per = dict(zip([p["number"] for p in code], ex.map(lambda p: verdicts(
-                bundle[p["number"]]["comments"] if bundle.get(p["number"], {}).get("comments_complete")
-                else paged(f"{API}/issues/{p['number']}/comments")), code)))
+            per = dict(zip([p["number"] for p in code], ex.map(lambda p: verdicts(comments_from(bundle, p["number"])), code)))
         b = rounds_summary(per)
         b["sample"] = f"{len(code)} code PRs (change-kind.sh) of {len(merged)} merged {win}"
         return b
