@@ -13,8 +13,11 @@ test `check-report-only-tally.sh`, mutation rows `guards.d/OS-13.sh`).
 
 * **False block**: a red run on a PR head that merged into main unchanged. Had the check blocked, it would have stopped a
   PR that landed as it was (or cost a re-run).
-* **Caught**: a red run on a head that never merged, whose PR later merged another head (a real catch or work in progress).
-* **Masked**: the workflow's steps are `continue-on-error` and no run is red: the run conclusion cannot show a red at all,
+* **Caught**: a red run on a head that never merged, whose PR (by number or branch) later merged another head seen in the
+  runs (a real catch or work in progress). A lower bound: GitHub often leaves a merged PR's runs without
+  `pull_requests`, and the branch match needs a run on the head that merged.
+* **Masked**: no run is red and every `run:` step of every job that can run on a pull request is `continue-on-error`
+  (or its job is); a soft step in a job that never runs on a PR does not count: the run conclusion cannot show a red at all,
   so its false blocks cannot be counted from runs, and it cannot graduate as it is. Its findings are `::warning::`
   annotations; counting them needs the check-run annotations (as queue-gate.sh already reads pr-suites' plan annotations).
 
@@ -30,12 +33,13 @@ test `check-report-only-tally.sh`, mutation rows `guards.d/OS-13.sh`).
 | safety | 10 | 2026-11-27T18:43 to 2026-11-28T04:41 | 0 | 0 | 0 | yes |
 | skeleton | 71 | 2026-11-26T17:38 to 2026-11-28T04:41 | 0 | 0 | 0 | no |
 | studio-audit | 64 | 2026-11-24T08:48 to 2026-11-28T04:41 | 0 | 0 | 0 | yes |
-| test-graph | 82 | 2026-11-25T04:19 to 2026-11-28T04:41 | 0 | 0 | 0 | yes |
+| test-graph | 82 | 2026-11-25T04:19 to 2026-11-28T04:41 | 0 | 0 | 0 | no |
 | walks | 66 | 2026-11-26T23:11 to 2026-11-28T04:41 | 5 | 0 | 0 | no |
 | workflow-lint | 6 | 2026-11-28T02:08 to 2026-11-28T06:29 | 0 | 0 | 0 | yes |
 
 safety and workflow-lint were read by hand from the same API (14 and 9 runs, the skipped Mergify batch runs left out);
-the other rows are the tool's output. Reds: pr-suites' 3 are all on #3978 (the actions bump, never merged); walks' 5 are on
+the other rows are the tool's output (re-run after the round 1 review fixes). The runs were read through the GitHub MCP
+reader, which gives `pull_requests` as numbers; GitHub's REST answer gives objects, which the tool also reads. Reds: pr-suites' 3 are all on #3978 (the actions bump, never merged); walks' 5 are on
 #3829 (4) and #3692 (1), both product PRs not merged (product paused, P-847). review-rounds' 9 red issue_comment runs sit
 on main's commit, not a PR head, and its verdict is the commit status "review-rounds", not the run: not counted.
 
@@ -54,12 +58,17 @@ Zero false blocks over a mostly pipeline window is weaker evidence for a product
 | safety | Report-only by design (A5, LR-045 Proven, LR-074 Built) | **Not yet**: add a verdict step (red only on a finding) first, then graduate after 10 clean runs | masked; 10 runs since 27 Nov |
 | workflow-lint | Report-only (A9, LR-059) | **Not yet**: its own rule says after 10 clean runs (6 so far); needs a verdict step too | masked |
 | studio-audit | Report-only (P-776) | **Retire** (or keep as information): Dependabot security updates now hold 0 open high alerts on main (LR-058 Proven) | masked; duplicates Dependabot |
-| test-graph | A measurement (coverage graph), continue-on-error | **Reclassify**: a report, not a check; take it off the report-only list | it has no pass/fail meaning to graduate |
+| test-graph | On PRs only its `fixture` job runs (`check-test-graph.sh`, hard); the coverage graph runs on main | **Graduate** the PR job: pipeline queue condition scoped to its paths | 82 runs, 0 red; the soft boot-baseline step is in the main-only `parts` job |
 | red-on-old | Report only by the founder's decision (A351 C1) | **Keep** report-only unless the founder reopens A351 | masked by design |
 | review-rounds | Commit status, report-only (Lead 13 on #2749) | **Lead's call** under P-423 (`status-success=review-rounds`); its status, not its runs, is what to count | not countable from runs |
 
 Done-when (LR-048): "Each of the 8 report-only workflows is required or deleted, with its false-block count in the PR".
-This page gives the counts; the required/deleted step is one tech-lead PR per workflow (`.mergify.yml` rule above).
+**This PR is part 1**: the false-block count and a proposal for each workflow (tool and test). The required/deleted step
+is one tech-lead PR per workflow (`.mergify.yml` rule above); LR-048 stays Intended until those land.
+
+Which 8: OS-13 (os-backlog.md:34) says "8 workflows" and names five: pr-suites, walks, skeleton parts, red-on-old,
+review-rounds. The other three are not written down anywhere on main; this page measures every pull-request workflow that is
+in no Mergify condition and no queue-gate read (the six others above), so whichever three were meant are covered.
 
 ## Re-running the count
 

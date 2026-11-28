@@ -4,4 +4,6 @@ TESTS="$TESTS check-report-only-tally.sh"
 MUT="$MUT"'
 OS13 false block|product/tools/report-only-tally.py|s/false = \[r for r in red if r\["head_sha"\] in merged\]/false = []/|check-report-only-tally.sh
 OS13 caught|product/tools/report-only-tally.py|s/caught = \[r for r in red if r\["head_sha"\] not in merged/caught = [r for r in [] if 1/|check-report-only-tally.sh
-OS13 batch head|product/tools/report-only-tally.py|s/and not str(r.get("head_branch", "")).startswith("mergify\/"))/)/|check-report-only-tally.sh'
+OS13 batch head|product/tools/report-only-tally.py|s/and not str(r.get("head_branch", "")).startswith("mergify\/"))/)/|check-report-only-tally.sh
+OS13 pr objects|product/tools/report-only-tally.py|s/p.get("number") if isinstance(p, dict) else p for p/p for p/|check-report-only-tally.sh
+OS13 masked hard step|product/tools/report-only-tally.py|s/if st.get("continue-on-error") is not True:/if False:/|check-report-only-tally.sh'
