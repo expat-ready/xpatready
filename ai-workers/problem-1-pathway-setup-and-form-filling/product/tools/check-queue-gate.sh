@@ -605,7 +605,7 @@ ok "OS-82: the run has a job pr-suites (red) but no check run read: refused, tha
 oldrun $HEAD1 failure skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "OS-82: the run itself ended red: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 SR_STATUS=in_progress oldrun $HEAD1 "" skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
-ok "OS-82: the run has not ended: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+ok "OS-82: the run has not ended: pending, exit 3 (LR-169: label-guard keeps the label; the run's end judges it)" "$([ $r = 3 ] && grep -q 'has not ended (LR-169)' <<< "$out" && echo 1)" "exit $r: $out"
 for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "SR_BASE=side:a run of a PR into a side branch"; do
   ( export "${c%%:*}"; oldrun $HEAD1 success skipped ); SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
   ok "OS-82: ${c#*:}: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
@@ -766,4 +766,38 @@ if "format('"'"'full-run PR #{0} {1}'"'"', inputs.pr, inputs.head)" not in str(c
 print("; ".join(bad) or "ok")' "$W" "${W%/*}/label-guard.yml" "${W%/*}/ci.yml" 2>&1)
 ok "CI-PRE wiring: queue-gate.yml wakes when a full run ends; and on dequeued and covered lines; gate and sweep hold main's history; no FULL_RUN_FROM; ci.yml names a full run by its inputs pr and head" "$([ "$fw" = ok ] && echo 1)" "$fw"
 ok "queue-gate.yml can be run by hand (workflow_dispatch) and its gate job runs then (Lead 84, 19 Nov: schedules can be dropped)" "$([ "$wd" = ok ] && echo 1)" "$wd"
+# --- LR-169 (founder A455, #4019): marked ready 06:11:44Z after a draft push; labelled 06:12:23Z; the head's only "pr-suites"
+# check run was the draft's skipped one while the ready-for-review run (started 06:11:46Z) had not made its job yet.
+lr169() {  # lr169 <run status> [run conclusion] → the draft's skipped check run (run 88) and the ready run 99 of PR 7 on HEAD1
+  suites $HEAD1 completed skipped
+  jq -n --arg st "$1" --arg co "${2:-}" --arg h "${SR_HEAD:-$HEAD1}" --argjson n "${SR_PRS:-[7]}" --arg b "${SR_BASE:-main}" --arg p "${SR_PATH:-.github/workflows/pr-suites.yml}" '{workflow_runs: [{id: 99, path: $p,
+    event: "pull_request", head_sha: $h, status: $st, conclusion: (if $co == "" then null else $co end), created_at: "2026-11-28T06:11:46Z",
+    pull_requests: ($n | map({number: ., base: {ref: $b}}))}]}' > "$T/fx/suiteruns.json"
+  }
+prj 7 $HEAD1 false "review: approved"; cirun $HEAD1 completed success 2026-11-28T06:11:46Z; lr169 in_progress
+SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169 (#4019): a label put on while the ready run is going: pending, exit 3 (kept), not skipped" "$([ $r = 3 ] && grep -q 'run 99 on 111111111 (the PR marked ready after a draft push) has not ended' <<< "$out" && echo 1)" "exit $r: $out"
+lr169 queued; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169: ... a queued ready run counts as on its way too" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
+lr169 completed skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169: with no run on its way, the draft's skipped run still refuses (exit 1)" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
+for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "SR_BASE=side:a run into a side branch" "SR_PATH=.github/workflows/other.yml:another workflow's run"; do
+  eval "export ${c%%:*}"; lr169 in_progress; unset SR_HEAD SR_PRS SR_BASE SR_PATH
+  SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+  ok "LR-169: ${c#*:} in progress does not count: refused (exit 1)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"; done
+suites $HEAD1 completed success; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169: once the ready run's job pr-suites is green on the head: exit 0" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+# the run's end: a kept label comes off when pr-suites ended red on the PR's head; stays when green
+prj 7 $HEAD1 false "review: approved"; files 7 "$S/src/a.ts"; suites $HEAD1 completed failure
+printf '{"workflow_run": {"path": ".github/workflows/pr-suites.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
+ok "LR-169: the PR's pr-suites run ends red on its head: the kept label comes off, with the P-822 comment" "$(grep -qx 'UNLABEL 7' <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (P-822, LR-169):\*\* .review: approved. removed' <<< "$log" && echo 1)" "exit $r: $out / $log"
+suites $HEAD1 completed success; ev workflow_run
+ok "LR-169: ... ended green: the label stays" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+suites $HEAD1 completed failure; printf '{"workflow_run": {"path": ".github/workflows/pr-suites.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $OLD > "$T/fx/ev.json"; ev workflow_run
+ok "LR-169: ... a run of an older head never takes the label off the new head" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+printf '{"workflow_run": {"path": ".github/workflows/ci.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
+ok "LR-169: ... another workflow's end takes nothing off here" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+prj 7 $HEAD1; printf '{"workflow_run": {"path": ".github/workflows/pr-suites.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
+ok "LR-169: ... an unlabelled PR: nothing to take off" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+rm -f "$T/fx/suiteruns.json"
 finish

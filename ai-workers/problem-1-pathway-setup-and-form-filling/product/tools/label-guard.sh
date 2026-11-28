@@ -91,6 +91,9 @@ while [ -z "$why" ] && [ "$merges" -le 50 ]; do
     relabel=0; [ "${LABELED:-}" = "$LABEL" ] && relabel=1
     unproved=$(PR=$PR HEADS="$seen" RELABEL=$relabel bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" proof 2>/dev/null); p=$?
     [ "$p" = 1 ] && break
+    # LR-169 (#4019): a label put on while the head's own pr-suites run is still going (the PR just marked ready) is kept;
+    # queue-gate.sh takes it off at that run's end unless it ended green.
+    [ "$p" = 3 ] && { echo "kept: ${c:0:9} has a reviewer Approve ($by); its pr-suites run has not ended: $unproved (the queue gate judges the label at its end, LR-169)"; exit 0; }
     [ "$p" = 0 ] || { echo "label-guard: the full-run check could not finish: $unproved"; exit 2; }
     [ "$merges" = 0 ] && echo "kept: ${c:0:9} has a reviewer Approve ($by)" \
       || echo "kept: ${AFTER:0:9} is $merges pure merge(s) of main (P-318 (1)) on ${c:0:9}, which has a reviewer Approve ($by)"
