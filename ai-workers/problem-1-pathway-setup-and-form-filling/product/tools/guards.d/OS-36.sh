@@ -11,4 +11,5 @@ OS36 plpgsql|prototype/studio/tools/safety/migration-check.py|s/        while (p
 OS36 waiver place|prototype/studio/tools/safety/migration-check.py|s/                if not "".join(buf).strip():/                if True:/|check-safety-tools.sh
 OS36 stamp|prototype/studio/tools/safety/migration-check.py|s/        elif m.group(1) <= newest:/        elif False:/|check-safety-tools.sh
 OS36 history|prototype/studio/tools/safety/migration-check.py|s/            if folder in names:/            if False:/|check-safety-tools.sh
-OS36 report only|../../.github/workflows/safety.yml|0,/continue-on-error: true/s/continue-on-error: true/continue-on-error: false/|check-safety-tools.sh'
+OS36 report only|../../.github/workflows/safety.yml|0,/continue-on-error: true/s/continue-on-error: true/continue-on-error: false/|check-safety-tools.sh
+OS36 extra checkout|../../.github/workflows/safety.yml|s/^      - name: route walk, self-test (planted answers)$/      - uses: actions\/checkout@0000000000000000000000000000000000000000 # v0\n&/|check-safety-tools.sh'

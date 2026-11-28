@@ -72,7 +72,7 @@ for p in $prs; do   # each target is owner/repo#N (B3: read from the repository 
   else why=$(GH_REPO=${rp:-${GH_REPO:-}} verdict "$n"); r=$?; fi
   [ "$r" = 2 ] && why="$why, so the read cannot be checked"
   [ "$r" = 0 ] && continue
-  jq -n --arg w "$why" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("P-423: the Lead reads the diff before labelling money, permissions, schema, a migration, .github/ or .mergify.yml. " + $w + ". Read the diff, comment the line, then label.")}}'
+  jq -n --arg w "$why" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Rule P-423: the Lead reads the diff before labelling money, permissions, schema, a migration, .github/ or .mergify.yml. " + $w + ". Fix: read the diff, comment the line, then label.")}}'
   exit 0
 done
 exit 0

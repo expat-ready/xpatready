@@ -1,6 +1,6 @@
 {
  "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
- "version": "1.9.0",
+ "version": "1.11.0",
  "date": "2026-11-28",
  "owner": "the tech lead",
  "change_log": [
@@ -67,7 +67,19 @@
   {
    "version": "1.9.0",
    "date": "2026-11-28",
-   "change": "P-861 (LR-172): P-827's one-time \"pipeline first\" ends; the queue pipeline moves back after product. queue_order becomes verdicts > product > pipeline > records. product's own pipeline-path clause (files ~= ^(?!(...)), the same pattern pipeline selects with) keeps a pipeline-only PR out of product, so it falls through to pipeline; the top-level priority rules near-proven and fixes-main are unchanged and act within their own queue (first among the PRs waiting in it), so a pipeline-only main fix now waits behind product's queue (question to the tech lead on the LR-172 PR); pipeline still never sets allow_checks_interruption.",
+   "change": "Merge flow (P-214): max_parallel_checks 4 to 12 (queue-depth.py rule: 0 of 20 batches failed, under 10%; Enterprise Cloud runners since 18 Nov), and the pipeline queue batch_size 2 to 4, so the one-at-a-time lab queue (capacity 1, 13 PRs waiting at 16:3x IST) clears twice as fast. Undo: 4 and 2.",
+   "approval": "the tech lead (Lead 13), 28 Nov 16:4x IST, as a merge-flow fix (P-214)"
+  },
+  {
+   "version": "1.10.0",
+   "date": "2026-11-28",
+   "change": "LR-181 (enforcement audit, top gap; a P-214 merge-flow fix): check-success = pr-rules joins the queue_conditions of verdicts, pipeline and records (product already had it in .mergify.yml since E6; the manifest's product entry catches up here), so a lab or records PR whose Done when, explainer, model rule, stale base or LR-178 register line is red is not queued. A records-only PR skips pr-rules' body and size rules (pr-rules.yml; #4073 shows success); its always-on steps (LR-156 stale base, the model rule, clean-up) still run and hold it when red. Every queue's queue_conditions_required now lists it.",
+   "approval": "the tech lead (Lead 13, 28 Nov): the enforcement audit's top gap, a merge-flow fix to merge ahead (P-214)"
+  },
+  {
+   "version": "1.11.0",
+   "date": "2026-11-28",
+   "change": "P-861 (LR-172): P-827's one-time \"pipeline first\" ends; the queue pipeline moves back after product. queue_order becomes verdicts > product > pipeline > records. product's own pipeline-path clause (files ~= ^(?!(...)), the same pattern pipeline selects with) keeps a pipeline-only PR out of product, so it falls through to pipeline; the top-level priority rules near-proven and fixes-main are unchanged and act within their own queue (first among the PRs waiting in it), so a pipeline-only main fix now waits behind product's queue (the tech lead's ruling, Lead 13: within its own queue is enough); pipeline still never sets allow_checks_interruption.",
    "approval": "founder, P-861 (records PR #4073), passed on by the tech lead (Lead 13, 28 Nov): product ahead of pipeline, verdicts first; fixes-main unchanged (first within its own queue)"
   }
  ],
@@ -203,7 +215,7 @@
  },
  "mergify": {
   "path": ".mergify.yml",
-  "max_parallel_checks": 4,
+  "max_parallel_checks": 12,
   "mode": "parallel",
   "capacities_required": {"money": 1, "mig-*": 1, "pipeline": 1},
   "barrier_files_required": ["**/package.json", "**/package-lock.json", ".nvmrc", "tsconfig.base.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/base.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/links.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"],
@@ -217,6 +229,7 @@
      "-draft",
      "label = review: approved",
      "check-success = ci",
+     "check-success = pr-rules",
      "label = records",
      "title ~= ^qa:",
      "files ~= qa/CAPABILITIES\\.md$"
@@ -232,6 +245,7 @@
      "-draft",
      "label = review: approved",
      "check-success = ci",
+     "check-success = pr-rules",
      "-label=records",
      "files ~= ^(?!(\\.github/|\\.githooks/|\\.mergify\\.yml$|\\.claude/|AGENTS\\.md$|CLAUDE\\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))",
      {
@@ -246,13 +260,14 @@
     "merge_method": "merge"
    },
    "pipeline": {
-    "batch_size": 2,
+    "batch_size": 4,
     "batch_max_failure_resolution_attempts": 2,
     "queue_conditions_required": [
      "base = main",
      "-draft",
      "label = review: approved",
      "check-success = ci",
+     "check-success = pr-rules",
      "-label=records",
      "-files ~= ^(?!(\\.github/|\\.githooks/|\\.mergify\\.yml$|\\.claude/|AGENTS\\.md$|CLAUDE\\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))",
      {
@@ -268,7 +283,7 @@
    "records": {
     "batch_size": 2,
     "batch_max_failure_resolution_attempts": 2,
-    "queue_conditions_required": ["base = main", "-draft", "label = review: approved", "check-success = ci", "label = records"],
+    "queue_conditions_required": ["base = main", "-draft", "label = review: approved", "check-success = ci", "check-success = pr-rules", "label = records"],
     "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    }

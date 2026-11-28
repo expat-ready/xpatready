@@ -4,16 +4,22 @@
 // screens yet (WALK_BOARD=1, set by walk.mjs when its file never starts a browser) gets a recorded step board instead:
 // a page listing its steps and the requests behind each, so its video and trace show the walk honestly as an API walk.
 // Everything goes to $WALK_OUT (video/, trace-*.zip, steps/, requests.jsonl, steps.jsonl); run by walk.mjs, never alone.
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { videoSize } from "./video-size.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
+const { launchOptions, videoGap } = launchLib;
 
 const OUT = process.env.WALK_OUT;
 if (!OUT) throw new Error("record.ts: WALK_OUT is not set (run the journey through tests/journeys/walk.mjs)");
 for (const d of ["video", "steps"]) mkdirSync(join(OUT, d), { recursive: true });
-// As j_6 does: Chrome on the Mac, a cloud session's pre-installed Chromium, else Playwright's own (CI installs it).
-const exe = process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {};
+// The channel "chrome" where it exists (the Mac, GitHub's runners, a cloud session after cloud-setup.sh), else Playwright's
+// own Chromium (LR-179: acceptance/lib/launch-options.cjs, the rule browser.ts uses). Video needs Playwright's own ffmpeg of
+// the same release; where it is missing (a cloud image) the walk records no video and says so once, never fails on it.
+const exe = launchOptions();
+const noVideo = videoGap();
+if (noVideo) console.log(`record: ${noVideo}; trace and step screenshots are still kept`);
 const live = new Set<BrowserContext>(), pending: Promise<unknown>[] = [];
 let traces = 0, shots = 0;
 const realLog = console.log.bind(console), realExit = process.exit.bind(process), realFetch = globalThis.fetch.bind(globalThis);
@@ -33,7 +39,7 @@ function finishContext(ctx: BrowserContext): Promise<void> {
 function record(browser: Browser): Browser {
   const close = browser.close.bind(browser), newContext = browser.newContext.bind(browser);
   browser.newContext = async (opts = {}) => {
-    const ctx = await newContext({ ...opts, recordVideo: { dir: join(OUT!, "video"), size: videoSize(opts.viewport ?? { width: 1440, height: 900 }) } });
+    const ctx = await newContext(noVideo ? opts : { ...opts, recordVideo: { dir: join(OUT!, "video"), size: videoSize(opts.viewport ?? { width: 1440, height: 900 }) } });
     await ctx.tracing.start({ screenshots: true, snapshots: true, title: process.argv[1] });
     live.add(ctx);
     const ctxClose = ctx.close.bind(ctx);
