@@ -10,8 +10,8 @@ ROOT="${1:-$(cd "$(dirname "$0")/../../../.." && pwd)}"; T="$ROOT/ai-workers/pro
 nocomment() { grep -hv '^[[:space:]]*#' "$@" 2>/dev/null | sed 's/[[:space:]]#.*//'; }   # a comment runs nothing
 tests() { nocomment "$T/check-guards.sh" "$T"/guards.d/*.sh | grep '^TESTS=' | grep -oE '[A-Za-z0-9_.-]+\.(sh|py)'; }
 extras() { grep -oE 'for t in \$TESTS [^;]*' "$T/check-guards.sh" | grep -oE '[A-Za-z0-9_.-]+\.sh'; echo check-guards.sh; }
-rowfiles() { nocomment "$T"/guards.d/*.sh | awk -F'|' 'NF >= 4 { n = split($2, a, "/"); print a[n] }'; }
-workflows() { nocomment "$ROOT"/.github/workflows/*.yml | grep -oE 'check-[A-Za-z0-9_.-]+\.sh'; }
+rowfiles() { nocomment "$T"/guards.d/*.sh | awk -F'|' 'NF >= 4 && $2 ~ /^product\/tools\/[^\/]+$/ { sub(/^product\/tools\//, "", $2); print $2 }'; }
+workflows() { nocomment "$ROOT"/.github/workflows/*.yml | grep -vE '^[[:space:]]*(- *["\x27]|-? *name:)' | grep -oE 'check-[A-Za-z0-9_.-]+\.sh'; }   # a paths entry or a step name runs nothing
 covered=$( { tests; extras; rowfiles; workflows; } | sort -u )
 n=0
 for f in $(cd "$T" && LC_ALL=C ls -- check-*.sh); do

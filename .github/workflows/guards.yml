@@ -6,7 +6,8 @@ on:
   pull_request:
     # SPD-2 item 5 (b): a draft runs only the light checks (ci's guard, pr-rules, module-cards); this runs on ready-for-review.
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:   # LR-044 (lab A2, 28 Nov): every file a guard test or the mutation copy reads, so a change there runs them
+    paths:   # LR-044 (lab A2, 28 Nov): every file a guard test or the mutation copy reads, so a change there runs them;
+      # one exception on purpose: product/qa/CAPABILITIES.md (qa verdicts change it many times a day; the nightly runs every test)
       - ".claude/settings.json"
       - ".claude/skills/**"   # check-model-rule.sh reads every skill and agent file
       - ".claude/agents/**"
@@ -14,6 +15,7 @@ on:
       - ".github/workflows/studio-audit.yml"   # named for check-npm-audit-report.sh (its "guarded" case)
       - ".github/workflows/red-on-old.yml"   # named for check-red-on-old.sh (its "guarded" case)
       - ".github/pull_request_template.md"
+      - ".githooks/**"   # check-g4-rules.sh reads pre-push
       - ".mergify.yml"
       - "CONTRIBUTING.md"
       - "CLAUDE.md"   # check-model-rule.sh

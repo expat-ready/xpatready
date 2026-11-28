@@ -505,7 +505,7 @@ queue_rules:
       # the two report-only workflows stay unnamed here (their own two tests check that).
       - or:
           - check-success = guards
-          - -files ~= ^(\.claude/(settings\.json$|skills/|agents/)|\.github/workflows/|\.github/pull_request_template\.md$|\.mergify\.yml$|(CONTRIBUTING|CLAUDE|AGENTS|REVIEW)\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/(tools/|WAY-OF-WORKING\.md$|focus-list\.md$|rules/account-switch\.md$|state/items\.schema\.json$|screens/B119/|design/(waves\.(tsv|md)|night-checklist\.json|full-power-plan-2026-11-17\.md|engineering-approved-setup\.json)$)|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/|packages/xfa-engine/(fixtures/synthetic|src/__tests__/fixtures)/[^/]+\.pdf$)
+          - -files ~= ^(\.claude/(settings\.json$|skills/|agents/)|\.github/workflows/|\.github/pull_request_template\.md$|\.githooks/|\.mergify\.yml$|(CONTRIBUTING|CLAUDE|AGENTS|REVIEW)\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/(tools/|WAY-OF-WORKING\.md$|focus-list\.md$|rules/account-switch\.md$|state/items\.schema\.json$|screens/B119/|design/(waves\.(tsv|md)|night-checklist\.json|full-power-plan-2026-11-17\.md|engineering-approved-setup\.json)$)|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/|packages/xfa-engine/(fixtures/synthetic|src/__tests__/fixtures)/[^/]+\.pdf$)
     merge_conditions:
       - check-success = ci
     merge_method: merge
