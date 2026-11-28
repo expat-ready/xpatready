@@ -59,7 +59,7 @@ new; set_c; prs; run; ok "pass: nothing passed only on retry" "$([ "$(none)" = 1
 new; set_c "$(bot 2026-11-24T01:00:00Z 3302 1 8 "$AB")" "$(bot 2026-11-24T02:00:00Z 3303 2 9 "$A")"; run
 ok "fail: one ACT per suite, its newest PR, its count, the IST time" "$([ "$(grep -c '^ACT' <<<"$o")" = 2 ] && has 'ACT   retry: check_a.ts passed only on retry 2 times, newest on #3303 at 24 Nov 07:30 IST')" "$o"
 run; ok "fail: seen at the last check: one ACT for both, and the list" "$([ "$(grep -c '^ACT' <<<"$o")" = 1 ] && [ "$(has 'ACT   retry: 2 suites with no fix PR, most often: check_a.ts (#3303), check_b.cjs (#3302)')" = 1 ] && grep -q '^check_b.cjs passed only' "$T/s$k/retry-watch.txt" && echo 1)" "$o"
-set_c; run 2027-03-01T03:00:00Z; ok "fail: months later, no comment left to read: still an ACT" "$(has 'ACT   retry: 2 suites with no fix PR')" "$o"
+set_c; run 2027-03-01T03:00:00Z; ok "fail: months later, no comment left to read: still an ACT, dated by the newest pass (OS-85 part 2: act-age.py makes it weekly)" "$(has 'ACT   retry: 2 suites with no fix PR, newest pass over 72 h ago (at 24 Nov 07:30 IST), most often: check_a.ts (#3303)')" "$o"
 new; set_c "$(bot 2026-11-24T01:00:00Z 3302 1 9 "$A")" "$(bot 2026-11-24T01:00:01Z 3303 2 9 "$A")"; run; ok "a batch holding two PRs counts once" "$(has 'check_a.ts passed only on retry 1 time,')" "$o"
 new; set_c "$(c someone 2026-11-24T01:00:00Z 3302 1 "$A")"; run; ok "pass: the same words from a person are not CI's comment" "$(none)" "$o"
 new; set_c "$(c "$B" 2026-11-24T01:00:00Z 3302 1 'a table | x | y | `check_a.ts` |')"; run; ok "pass: another bot comment naming a suite" "$(none)" "$o"
@@ -105,7 +105,7 @@ k=$((k + 1)); run; ok "fail: a missing memory is an ACT" "$(has 'ACT   retry: me
 run; ok "pass: the memory is back at the next check" "$(not 'memory')" "$o"
 
 # lead-watch.sh's own step 2i, cut out and run as written
-sed -n '/^# 2i\. Retry-only/,/^$/p' "$TOOLS/lead-watch.sh" > "$T/step.sh"; mkdir "$T/l"
+sed -n '/^# 2i\. Retry-only/,/^$/p' "$TOOLS/lead-watch.sh" > "$T/step.sh"; mkdir "$T/l"; cp "$TOOLS/act-age.py" "$T/l/"   # OS-85 part 2: the step pipes through act-age.py
 step() { printf 'print("""%s""")\n' "$1" > "$T/l/retry-watch.py"; o=$( ( TOOLS="$T/l"; STATE_DIR="$T/s1"; act=0; ACT() { act=$((act + 1)); echo "ACT   $1"; }; seen() { echo "seen: $1"; }; fresh() { :; }; . "$T/step.sh"; echo "acts=$act" ) 2>&1 ); }
 step 'retry 0 of 0'; ok "lead-watch.sh prints its line and hands it to step 12, no ACT counted" "$([ "$(has 'seen: retry 0 of 0')" = 1 ] && has 'acts=0')" "$o"
 step 'ACT   retry: x
