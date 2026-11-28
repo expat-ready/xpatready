@@ -117,7 +117,7 @@
           },
           {
             "type": "command",
-            "command": "python3 -I \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/shell-trap-guard.py --hook",
+            "command": "f=\"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/shell-trap-guard.py; [ -f \"$f\" ] || exit 0; python3 -I \"$f\" --hook",
             "timeout": 10
           },
           {
