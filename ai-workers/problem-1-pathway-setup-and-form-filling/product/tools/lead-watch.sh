@@ -16,6 +16,8 @@ if [ "${1:-}" = app-view-read ]; then
   fi
   printf '%s\n' "$body" | bash "$(cd "$(dirname "$0")" && pwd)/app-view-save.sh"; exit $?
 fi
+# LR-175: the lite check (under 50 REST requests; writes the stamp with mode lite): lead-watch-lite.sh.
+case "${1:-}" in lite|--lite) exec bash "$(cd "$(dirname "$0")" && pwd)/lead-watch-lite.sh" "${2:-30}";; esac
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
@@ -32,8 +34,9 @@ if [ "${1:-}" = gap ]; then
   case "$v" in ''|*[!0-9]*) echo "ACT   watchdog: Lead check stamp unreadable at $st"; exit 1;; esac
   n=$(( (now - 10#$v) / 60 ))
   [ "$n" -lt 0 ] && { echo "ACT   watchdog: Lead check stamp is $(( -n )) min in the future at $st"; exit 1; }
-  [ "$n" -gt "${GAP_MAX:-15}" ] && { echo "ACT   watchdog: last Lead check $n min ago"; exit 1; }
-  echo "ok    watchdog: last Lead check $n min ago"; exit 0
+  md=$( { tr -cd 'a-z' < "$st-mode"; } 2>/dev/null | head -c 8); md=${md:+ ($md)}   # LR-175: the mode of the last check, when known
+  [ "$n" -gt "${GAP_MAX:-15}" ] && { echo "ACT   watchdog: last Lead check $n min ago$md"; exit 1; }
+  echo "ok    watchdog: last Lead check $n min ago$md"; exit 0
 fi
 mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
@@ -47,11 +50,12 @@ GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN
 
 # 000. LR-174 (founder A455; rules/github-limits.md): the GitHub budget is the top line: token kind, limit, used, remaining,
 # whether the org App token is in use (github-meter.sh, GET /rate_limit, free). A full check that would not fit the
-# remaining budget (github-budget.tsv, lead-watch-full) runs no GitHub step: one ACT, and the lite check instead (LR-175).
+# remaining budget (github-budget.tsv, lead-watch-full) runs no GitHub step: one ACT, then the lite check (LR-175), which writes the stamp.
 export GITHUB_METER_DIR="${GITHUB_METER_DIR:-$STATE_DIR/github-meter}"
 GH_METER_START="$STATE_DIR/meter-start.$$"; gm=$(bash "$TOOLS/github-meter.sh" start "$GH_METER_START" 2>&1); say "$gm"
 gf=$(bash "$TOOLS/github-meter.sh" fits lead-watch-full 2>&1); gfrc=$?
-if [ "$gfrc" = 1 ]; then ACT "github budget: ${gf#meter: }: a full check would not fit; run the lite check (lead-watch.sh lite, LR-175) until the reset (rules/github-limits.md)"; rm -f "$GH_METER_START"; exit "$act"; fi
+if [ "$gfrc" = 1 ]; then echo "ACT   github budget: ${gf#meter: }: a full check would not fit; the lite check runs instead (LR-175) until the reset (rules/github-limits.md)"; rm -f "$GH_METER_START" "$SEEN"
+  bash "$TOOLS/lead-watch-lite.sh" "$SINCE"; exit $(( $? + 1 )); fi
 [ "$gfrc" = 2 ] && say "github budget unknown: the full check runs (${gf#meter: })"
 
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.
@@ -72,6 +76,7 @@ if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
   [ "$gap" -gt "${STALL_MAX:-15}" ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
 fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"   # atomic: the standby never reads a half-written stamp
+echo full > "$stamp-mode.$$" && mv -f "$stamp-mode.$$" "$stamp-mode"   # LR-175: the mode of the last check, named by gap
 fresh "the clock and $stamp"
 
 # 0b. Speed (Lead 26, 24 Nov): the steps' own commands, started together after one fetch; each step below still runs its

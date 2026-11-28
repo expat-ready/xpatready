@@ -3,3 +3,4 @@
 # no line; github-meter.sh fits <script> refuses a run the remaining budget cannot hold. Facts: product/rules/github-limits.md.
 # Columns (tab-separated): script, budget, why.
 lead-watch-full	2800	measured about 2,650 for one run on 28 Nov (Lead 13); the line holds it while LR-098 cuts it; lower the line as cuts land
+lead-watch-lite	50	LR-175: the lite check (lab, merges, questions, reads owed); one comments read of at most 20 pages

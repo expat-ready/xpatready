@@ -60,7 +60,7 @@ printf 'lead-watch-full\t2800\tline\n' > "$BF"
 echo 4900 > "$T/used"
 out=$(cd "$TOOLS" && GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$TOOLS/lead-watch.sh" 2>/dev/null); r=$?
 ok "lead-watch: the first line is the GitHub budget" "$(head -1 <<<"$out" | grep -q '^github token user OAuth (gho_, gh CLI) · limit 5000/h · used 4900 · remaining 100' && echo 1)" "$(head -3 <<<"$out")"
-ok "lead-watch over budget: one ACT naming the lite check, exit 1, no fetch, nothing but /rate_limit asked" "$([ $r = 1 ] && grep -q '^ACT   github budget: 100 remaining is under lead-watch-full.s budget 2800 .*lead-watch.sh lite' <<<"$out" && [ ! -s "$T/fetch.log" ] && [ ! -s "$T/unexpected.log" ] && [ "$(wc -l <<<"$out")" -le 3 ] && echo 1)" "exit $r: $out"
+ok "lead-watch over budget: one ACT, then the lite check instead of any full-check step (LR-175), nothing but /rate_limit asked of curl" "$([ $r -ge 1 ] && grep -q '^ACT   github budget: 100 remaining is under lead-watch-full.s budget 2800 .*the lite check runs instead' <<<"$out" && grep -q 'mode lite' <<<"$out" && ! grep -q '^tools  ' <<<"$out" && [ ! -s "$T/unexpected.log" ] && echo 1)" "exit $r: $out"
 
 # The Lead's machine: the live meter log is judged against the real budget lines (skipped where there is none, as in CI).
 LIVE="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}/github-meter/meter.tsv"
