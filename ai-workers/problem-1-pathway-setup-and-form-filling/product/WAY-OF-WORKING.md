@@ -56,6 +56,9 @@ Every PR and every merge-queue batch runs its affected suites on 4 GitHub Linux 
 
 **A test failing without a code cause is quarantined at once** in `tools/run-suites.sh` (`QUARANTINE`) with its evidence and fix row; nightly still runs it (P-205).
 
+## Milestone gate (LR-068)
+At each milestone gate, never per PR, the Lead runs these and links each result in the gate's records line: (1) `/qa milestone`; (2) `/cto-review`; (3) one deep review of the milestone's whole diff, `/code-review ultra` (alias `/ultrareview`; a cloud review billed to usage credits after three free runs, about US$5-25 a run, code.claude.com/docs/en/ultrareview, read 28 Nov); (4) a security pass with the Claude Security plugin (`/plugin install claude-security@claude-plugins-official`, then `/claude-security` › Scan codebase; code.claude.com/docs/en/claude-security, read 28 Nov) against a written threat model (money, permissions and sign-in, public routes), not the per-turn security-guidance plugin (gap research row 30). (3) and (4) are paid: usual and worst cost stated and the worst reserved in the ledger (P-295b), then the founder's yes for that gate, which also covers going over P-232's US$5 job cap; the cost goes in the records line. Gates only: code-review mapping row DO27 (Ultrareview not adopted per PR, no gap to fill) stands for PRs; at a gate the separate deep evaluator is the gap ([C16], LR-068). Findings carry REVIEW.md tags and go to the backlog; an open Important one holds the gate.
+
 ## Questions and stuck
 Never wait for a human: put the question in the PR under "Questions" with your recommendation and carry on with what is not blocked; stuck for 10 minutes, ask rather than retry blindly. The tech lead answers in batches, product questions going to the founder one at a time. Disagree with evidence in the PR or in `screens/<item>/challenge.md`; never deviate silently.
 
