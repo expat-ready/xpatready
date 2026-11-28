@@ -30,3 +30,4 @@ Use the interview tool (`AskUserQuestion`), **one decision per question**, and o
 - Options without consequences, or a recommendation hidden in the description instead of marked on the option.
 - Leading questions that remove a real option, or a scenario with a real person's name.
 - Asking the founder to settle something a source or a ratified decision already settles — challenge instead, with the finding.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.
