@@ -27,6 +27,16 @@ skill 'fine'; mkdir -p "$C/.claude/agents"; echo 'see AB-3' > "$C/.claude/agents
 printf 'row EF-2\n' > "$Q/WAY-OF-WORKING.md"; run
 ok "agents, AGENTS.md and WAY-OF-WORKING.md are read too" "$([ "$rc" = 1 ] && has "'AB-'" && has "'CD-'" && has "'EF-'" && echo 1)" "$o"
 rm -f "$C/.claude/agents/a.md" "$C/AGENTS.md" "$Q/WAY-OF-WORKING.md"
+printf 'see GH-1\n' > "$C/CLAUDE.md"; printf '| IJ-2 | r |\n' > "$Q/RULES.md"; run
+ok "root CLAUDE.md and RULES.md are read too" "$([ "$rc" = 1 ] && has "'GH-'" && has "'IJ-'" && echo 1)" "$o"
+rm -f "$C/CLAUDE.md" "$Q/RULES.md"
+skill 'see KL-4'; gloss '`PF-`' '`MN-` | `KL-` named only in the second cell'; run
+ok "only a row's first cell defines a prefix" "$([ "$rc" = 1 ] && has "'KL-'" && echo 1)" "$o"
+skill 'Files are UTF-8, hashes SHA-256.'; gloss '`PF-`'; run; ok "a standard name fails while it is not under Not codes" "$([ "$rc" = 1 ] && has "'UTF-'" && echo 1)" "$o"
+gloss '`PF-`'
+printf '\n`UTF-8`, `SHA-256` and dates such as `2026-11-28` or `P-854-P-859` are not codes.\n' >> "$Q/GLOSSARY.md"; skill 'Files are UTF-8, hashes SHA-256, row QR-1.'; run
+ok "standard names listed in backticks under Not codes are skipped; other tokens there add nothing" "$([ "$rc" = 1 ] && ! has "'UTF-'" && ! has "'SHA-'" && has "'QR-'" && echo 1)" "$o"
+skill 'fine'
 printf '# Glossary\n\nno table\n' > "$Q/GLOSSARY.md"; run; ok "a glossary with no dash table fails" "$([ "$rc" = 1 ] && has "has no '## Codes with a dash' table" && echo 1)" "$o"
 gloss '`PF-`'; printf 'import sys\nsys.exit(3)\n' > "$Q/tools/check-glossary.py"; run
 ok "check-glossary.py crashing: check-docs fails" "$([ "$rc" = 1 ] && has 'GLOSSARY: check-glossary.py failed (exit 3)' && echo 1)" "$o"

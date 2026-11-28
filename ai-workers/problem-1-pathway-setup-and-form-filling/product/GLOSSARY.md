@@ -22,7 +22,7 @@ Rulings sit beside the levels: founder decisions (`P-n`), the founder's asks (`A
 | `F-` | Founder rule dated by day (F-6Nov) | ruling | `RULES.md`, `rules/tech-lead.md` |
 | `ENF-` | Enforcer for a decision: the script, hook or CI step that makes a rule bite (ENF-733) | task | `BACKLOG.md`, `RULES.md` "Enforced by" |
 | `LR-` | Lab register row (Intended, Built, Proven) | task | `design/lab-register-2026-11-27.md` |
-| `OS-` | Operating-system backlog row: the factory's tooling and pipeline | task | `BACKLOG.md` (OS rows) |
+| `OS-` | Operating-system backlog row: the factory's tooling and pipeline (P-828) | task | `design/os-backlog.md` |
 | `PF-` | Platform backlog row: firms, staff, sign-in, audit, templates, shared services | task | `BACKLOG.md` |
 | `FO-` | Front-office backlog row: leads, consults, retainers, money, the client portal | task | `BACKLOG.md` |
 | `CS-` | Case-side backlog row: cases, documents, tasks, notes on a case | task | `BACKLOG.md` |
@@ -31,9 +31,12 @@ Rulings sit beside the levels: founder decisions (`P-n`), the founder's asks (`A
 | `BK-` | Configurator backlog row from the Bake period (forms, Sample cases) | task | `BACKLOG.md` |
 | `TR-` | Traceability tooling row (requirements as data) | task | `BACKLOG.md` |
 | `RQ-` | Case-row draft from the requirement read (P-814), shaped by the Lead before it is built | task | `BACKLOG.md` |
-| `SEC-` | Security row (alerts, dependencies, gold-class code) | task | `BACKLOG.md` |
-| `TK-`, `FD-` | Early draft names for tasks and find rows; they became PF-29 and PF-30 | task (history) | `BACKLOG.md` |
+| `SEC-` | Security row (alerts, dependencies, gold-class code); SEC-1 is shaped under OS-67 | task | `design/os-backlog.md`, `MVP-CHECKLIST.md` |
+| `TK-`, `FD-` | Draft names for task and find rows, held for consolidation: TK-1 to TK-6 to become PF-29a to PF-29f; FD-1, FD-3, FD-2 to become PF-30a, PF-30s, CS-30c | task (history) | `BACKLOG.md` |
 | `X-` | A row left out of the first build, kept so it is not lost (P-582) | task (left out) | `BACKLOG.md` |
+| `CL-`, `SS-`, `FP-`, `AM-`, `PS-` | Bulk change of a lab lane (clean-up, ship-security, full-power, automation-measures, private-split); `PS-` is also a row of the private-split plan (PS-1b) | task (bundle) | `design/lab-register-2026-11-27.md` › Bulk changes; `design/private-split-plan-2026-11-27.md` |
+| `L-` | Lab before-and-after item (L-1 to L-9) | task (source) | `design/lab-before-after-2026-11-27.md` |
+| `CK-` | Conformance-check item (CK-1 the conformance check, CK-2 the heartbeat) | task | `tools/check-guards.sh` header, `BACKLOG.md` |
 | `R-` | October backlog row carried over (R-109: re-check an agreed screen before building) | task (history) | `design/backlog-carry-over-2026-10-31.md` |
 | `QA-` | qa's bug or finding (QA-526, Major) | task | `qa/BUGS.md` |
 | `J-` | Journey test for a capability (J-31; file names use `j_31`) | test | `prototype/studio/tests/journeys/`, the journey-test skill |
@@ -63,4 +66,6 @@ Rulings sit beside the levels: founder decisions (`P-n`), the founder's asks (`A
 
 ## Not codes
 
-`UTF-8`, `SHA-256`, `ISO-8601` and similar standard names, dates such as `2026-11-28`, and words inside a path or file name (`RULES-2026-11-28-…`) are not ID codes; the check skips anything joined to the word or path before it.
+`UTF-8`, `SHA-256`, `ISO-8601`, `COVID-19` and the other standard names listed in backticks in this section (the check reads them here and skips their prefixes; add one here, never to the table above), dates such as `2026-11-28`, and words inside a path or file name (`RULES-2026-11-28-…`) are not ID codes; the check skips anything joined to the word or path before it.
+
+The check also skips: a code right after another dash (the second P in `P-854-P-859`), and prefixes longer than six characters. It misses those, never flags them wrongly.
