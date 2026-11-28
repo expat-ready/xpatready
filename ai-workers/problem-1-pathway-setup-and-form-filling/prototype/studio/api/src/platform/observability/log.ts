@@ -25,7 +25,7 @@ export const stdSink: Sink = (line, stream) => { process[stream].write(`${line}\
 
 /** Who a request acts as, for its audit lines (AUD-1b; SA-11-2): the actor word, its type, and the support session
  *  when there is one (AUD-3b). Read lazily, like firmId, because the guard sets req.platform after the middleware. */
-export type AuditScope = { actor: string; actorType: "FIRM_STAFF" | "OUR_STAFF" | "CLIENT" | "SYSTEM" | "SEED"; supportSessionId?: string };
+export type AuditScope = { actor: string; actorType: "FIRM_STAFF" | "OUR_STAFF" | "CLIENT" | "SYSTEM" | "SEED"; supportSessionId?: string; supportReason?: string };
 /** What a request contributes to every line written while it runs (hook.ts sets it). */
 export type RequestScope = { correlationId: string; firmId: () => string | undefined; audit?: () => AuditScope | undefined };
 export const requestScope = new AsyncLocalStorage<RequestScope>();

@@ -30,7 +30,7 @@ const urlOf = (db: string, user = "xr_studio") => `postgresql://${user}@127.0.0.
 const FAMILIES = /^(platform_|fo_|money_|msg_|auto_|plat_complaint)/;
 const CATALOGUES = ["platform_plan", "platform_role_permission", "platform_setting_definition", "platform_permission_key", "platform_terms_version"];
 /** Our own registers: row-level security forced and no policy at all, so only the bypass role reaches them. */
-const OWN = ["platform_signup_pending", "plat_breach", "plat_breach_event", "plat_breach_notice", "plat_data_request", "plat_legal_hold"];
+const OWN = ["platform_signup_pending", "plat_breach", "plat_breach_event", "plat_breach_notice", "plat_data_request", "plat_legal_hold", "plat_support_session"];
 /** Catalogues made after PF-12 (no firm_id; read by every firm and the case side): PF-15's plan limits. */
 const LATER_CATALOGUES = ["platform_plan_limit", "platform_limit_change"];
 const EXCEPTIONS = [...CATALOGUES, ...LATER_CATALOGUES, ...OWN];

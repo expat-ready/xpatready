@@ -1,0 +1,3 @@
+Entry points: AUD-3b part 1: `support-session/service.ts` `POST /api/system/firms/:id/support-sessions {reason}` (`system/firm:impersonate`, Platform Owner and Support; a sign-in in the last 5 minutes; reason 1-200; a READ session of 60 minutes; `platform.support_session.started` on the firm's trail; 409 while one is open), `SupportSessionCalls` (a call with `X-Support-Session: <id>`: a read of that firm carries `support_session_id` and `detail.supportReason`; any change, another firm, a read across firms and starting another session → 403 with `platform.support_session.refused` on the firm's trail; ended or not yours → 401), `ALWAYS_BLOCKED` (SA-2-17).
+Tables: platSupportSession
+Tests: tests/check_aud3b_support_session.ts

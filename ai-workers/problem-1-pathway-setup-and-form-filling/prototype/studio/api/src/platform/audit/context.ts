@@ -17,6 +17,8 @@ export type AuditContext = {
   correlationId?: string;
   /** The support session the request runs under (AUD-3b; undefined until then). */
   supportSessionId?: string;
+  /** That session's reason or ticket (AUD-3b part 1: carried on each of its lines as detail.supportReason). */
+  supportReason?: string;
 };
 
 /** The context of the running request or job, or undefined outside both. Reading the firm or the actor never fails
@@ -30,7 +32,7 @@ export function auditContext(): AuditContext | undefined {
   const firmId = jobFirm !== undefined ? jobFirm ?? undefined : scope?.firmId();
   const ctx: AuditContext = {};
   if (firmId) ctx.firmId = firmId.toLowerCase();
-  if (who) { ctx.actor = who.actor; ctx.actorType = who.actorType; if (who.supportSessionId) ctx.supportSessionId = who.supportSessionId; }
+  if (who) { ctx.actor = who.actor; ctx.actorType = who.actorType; if (who.supportSessionId) ctx.supportSessionId = who.supportSessionId; if (who.supportReason) ctx.supportReason = who.supportReason; }
   else if (inJob) ctx.actorType = "SYSTEM";
   if (scope) ctx.correlationId = scope.correlationId;
   return ctx;

@@ -64,7 +64,7 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       const workspaceId = await platformAuditWorkspaceId(tx);
       await tx.auditEvent.create({
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
-          actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, ...flattenValues(e.before, e.after), firmId } as Prisma.InputJsonValue },
+          actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, ...flattenValues(e.before, e.after), ...(ctx?.supportSessionId && ctx.supportReason ? { supportReason: ctx.supportReason.slice(0, 200) } : {}), firmId } as Prisma.InputJsonValue },   // AUD-3b part 1: the why of a line in a support session
       });
       if (actorType === "OUR_STAFF") noteOurStaffLine(firmId);   // AUD-3: the changes-firm check counts it (access/lines.ts)
     }, ids, { attempts: 1 });
