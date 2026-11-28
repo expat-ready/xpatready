@@ -19,7 +19,12 @@
 #     through GitHub's "1 approval" rule (LR-072). A Mergify condition on the check alone would not hold it; switching
 #     the risky rules to `claude: blocks` (the check fails until Code Review passes) is the tech lead's call at the switch.
 #   * Risky globs name folders too (`**/*word*/**`): `*` stays in one folder, so `**/*word*` matches file names only.
-#   * reuse across a main-merge push is LR-148 (lane ship-security-2), built on this file.
+#   * reuse (LR-148): none, on purpose. `reuse` keeps only people's approvals (seats) and the answers of classifiers a
+#     rule reads (approvals-policy, `reuse`). The catch-all has seats 0 and reads none, so it has nothing to keep, and
+#     Claude re-approves once the check passes again. The risky rules read claude/code_review, but gap research row 8
+#     keeps reuse off them ("a steered answer could keep an approval after a sneaky push"). A push that leaves the
+#     diff's text identical (most merges of main) keeps approvals with no reuse ("Earlier approvals after a new push").
+#     A7 in the check refuses reuse anywhere until the tech lead writes otherwise.
 # product/tools/check-approvals-policy.sh (ci) checks these points.
 version: 1
 mode: observe

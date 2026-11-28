@@ -13,6 +13,9 @@
 #       rule `mode`; a "!" item takes the path out) and is strict: claude comments or blocks, and approves only through
 #       an override whose `if` is exactly "claude/code_review = pass". Each protected path must exist in the checkout.
 #   A6  verdict and override keys and values are the documented ones (claude: approves|comments|blocks).
+#   A7  no reuse (LR-148): no rule, override or local carries `reuse` (the catch-all has nothing to keep; on the risky
+#       rules gap research row 8 forbids it: a steered answer must not keep an approval after a sneaky push), and no
+#       `same_intent` anywhere. Widening this is the tech lead's written call, with this check changed in the same PR.
 #   Patterns with {a,b} or [ab] are refused (this check does not read them, so it cannot vouch for them).
 # First proves on fixtures that each rule fails when broken, then checks this checkout. Runs in ci (the tools step).
 #   bash product/tools/check-approvals-policy.sh [repo-root]
@@ -93,6 +96,12 @@ def check(p):
             if v.get("seats") not in (None, 0): errs.append(f"A3 rule {i}: a seat for people (seats {v.get('seats')}), none can fill it (P-849)")
         if "**" in (r.get("paths") or []) and "claude/code_review" in yaml.safe_dump(r):
             errs.append(f'A4 rule {i} covers "**" and names claude/code_review: a billed review at every push')
+    for i, r in enumerate(rules, 1):
+        if not isinstance(r, dict): continue
+        if "reuse" in r: errs.append(f"A7 rule {i}: reuse (LR-148: nothing to keep on the catch-all; gap research row 8 on risky rules)")
+        if any(isinstance(o, dict) and "reuse" in o for o in r.get("override") or []): errs.append(f"A7 rule {i}: reuse in an override (gap research row 8)")
+    if "reuse" in yaml.safe_dump(p.get("locals") or {}): errs.append("A7 reuse inside locals, which `use` copies into a rule (LR-148)")
+    if "same_intent" in text: errs.append("A7 same_intent before the observe week's read (LR-148)")
     for path in PROTECTED:
         if path not in SAMPLE and not os.path.isfile(os.path.join(ROOT, path)):
             errs.append(f"A5 {path} is not in this checkout: the protected list (check-approvals-policy.sh) is stale"); continue
@@ -125,6 +134,12 @@ fixtures = [
     ("an override on a failed review", m(lambda p: risky(p)[0]["override"][0].update({"if": "claude/code_review != pass"})), "A5"),
     ("a misspelt verdict", m(lambda p: p["rules"][0]["verdict"].update(claude="aproves")), "A6"),
     ("a brace pattern", m(lambda p: risky(p)[0]["paths"].append("**/{a,b}.ts")), "A0"),
+    ("reuse on the catch-all", m(lambda p: p["rules"][0].update(reuse="claude/diff <= trivial")), "A7"),
+    ("reuse as a seats map", m(lambda p: p["rules"][0].update(reuse={"seats": "claude/diff <= trivial"})), "A7"),
+    ("reuse on a risky rule", m(lambda p: risky(p)[0].update(reuse="claude/diff <= trivial")), "A7"),
+    ("reuse in a risky override", m(lambda p: risky(p)[0]["override"][0].update(reuse="claude/diff <= trivial")), "A7"),
+    ("reuse through locals and use", m(lambda p: (p.update(locals={"keep": {"reuse": "claude/diff <= different"}}), risky(p)[0].update(use=["@keep"]))), "A7"),
+    ("same_intent in a condition", m(lambda p: risky(p)[0]["override"][0].update({"if": "claude/diff <= same_intent"})), "A7"),
 ]
 bad = 0
 for name, p, want in fixtures:
@@ -132,5 +147,5 @@ for name, p, want in fixtures:
     ok = want in got
     print(("ok    " if ok else "FAIL  ") + f"fixture: {name} -> {got or 'clean'}"); bad += not ok
 if bad: print(f"FAIL  {bad} self-test fixture(s): the check cannot be trusted"); sys.exit(1)
-print(f"PASS  {F}: observe mode, a catch-all rule, no seat for people, Code Review only on risky rules, {len(PROTECTED)} protected paths strict")
+print(f"PASS  {F}: observe mode, a catch-all rule, no seat for people, Code Review only on risky rules, {len(PROTECTED)} protected paths strict, no reuse")
 PY
