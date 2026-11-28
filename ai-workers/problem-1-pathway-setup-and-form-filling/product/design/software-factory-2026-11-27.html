@@ -203,20 +203,20 @@ flowchart LR
 </table></div>
 
 <h2 id="layers">Layers and escapes</h2>
-<p>No single gate catches everything: each layer catches some problems and misses others. An escape is a problem that reached <code>main</code> (a revert, or an episode of ci or nightly red on main). Each one names the layer that should have caught it, so we can see which layer leaks. Map: <code>design/layer-map.tsv</code>; escapes: <code>design/escapes.tsv</code>. Re-run after naming escapes: <code>python3 -I product/tools/escape-map.py --page product/design/software-factory-2026-11-27.html</code>.</p>
+<p>No single gate catches everything: each layer catches some problems and misses others. An escape is a problem that reached <code>main</code>: a revert of a change that had reached it, or a red episode of the scheduled nightly (the only run that tests <code>main</code>; a re-run that went green still counts). Each one names the layer that should have caught it, so we can see which layer leaks. Map: <code>design/layer-map.tsv</code>; escapes: <code>design/escapes.tsv</code>. Re-run after naming escapes, from <code>ai-workers/problem-1-pathway-setup-and-form-filling/product</code>: <code>python3 -I tools/escape-map.py --page design/software-factory-2026-11-27.html</code>.</p>
 <!-- escape-map -->
-<p>Escapes since 2026-11-14 (reverts on main, and episodes of ci or nightly red on main), each named against the layer that should have caught it, counted by <code>product/tools/escape-map.py --page</code> from <code>design/escapes.tsv</code> (LR-142). 62 escapes, 61 not named yet.</p>
+<p>Escapes since 2026-11-14 (reverts of changes that had reached main, and red episodes of the scheduled nightly, the only run that tests main), each named against the layer that should have caught it, counted by <code>escape-map.py --page</code> from <code>design/escapes.tsv</code> (LR-142). 2 escapes, 2 not named yet.</p>
 <div class="tbl"><table>
 <tr><th>Layer</th><th>Catches</th><th>Misses</th><th>Escapes</th></tr>
 <tr><td>self-check</td><td>the builder&#x27;s own run of the row&#x27;s tests and guards before a push</td><td>what the builder did not think to test; checks run on a stale copy</td><td class="pct">0</td></tr>
 <tr><td>reviewer</td><td>logic and scope errors in the diff, read in a fresh context (P-303)</td><td>failures that only show when the code runs against main or other suites</td><td class="pct">0</td></tr>
 <tr><td>breaker</td><td>breakage through the UI and the API on a built screen</td><td>pipeline and tooling changes (no screen to break)</td><td class="pct">0</td></tr>
-<tr><td>CI</td><td>the PR&#x27;s own checks and affected suites on its head</td><td>interactions with what lands on main after its run; suites a path filter skipped</td><td class="pct">1</td></tr>
+<tr><td>CI</td><td>the PR&#x27;s own checks and affected suites on its head</td><td>interactions with what lands on main after its run; suites a path filter skipped</td><td class="pct">0</td></tr>
 <tr><td>Code Review</td><td>risky-path problems Claude Code Review finds on the PR</td><td>anything when it is skipped (balance, mode); it never blocks by itself</td><td class="pct">0</td></tr>
 <tr><td>Approvals</td><td>a merge without the required approval</td><td>the content of an approved change</td><td class="pct">0</td></tr>
 <tr><td>queue</td><td>conflicts and failures of the PR batched with main (merge queue)</td><td>checks the batch does not run (nightly, scheduled, slow suites)</td><td class="pct">0</td></tr>
 <tr><td>qa</td><td>a capability that does not work end to end, tested like a person on main</td><td>faults in tooling, pipeline and records; anything outside the capability walked</td><td class="pct">0</td></tr>
-<tr><td><b>Not named yet</b></td><td></td><td></td><td class="pct">61</td></tr>
+<tr><td><b>Not named yet</b></td><td></td><td></td><td class="pct">2</td></tr>
 </table></div>
 <!-- /escape-map -->
 

@@ -1,4 +1,3 @@
 # Escapes (LR-142): every revert on main and every main-red episode of ci or nightly since 14 Nov, with the layer that
 # should have caught it (a layer of design/layer-map.tsv). tools/escape-map.py lists the ones not named yet. Tab-separated.
 id	kind	date	layer	what	source
-nightly:45931352404	main-red	2026-11-27	CI	nightly red: check_pf5t_terms_browser.ts (DW9) raced the PF-5t terms modal added by 374dfc799; the PR's own checks did not run that browser suite (fixed by #4013)	STATE.md 28 Nov 09:39 IST (Lead 11); #4013
