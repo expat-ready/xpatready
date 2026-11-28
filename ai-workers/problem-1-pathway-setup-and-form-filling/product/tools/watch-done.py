@@ -26,27 +26,45 @@ def gh(path):
     return [x for page in d for x in page] if "?" in path else d
 
 
+def pr_number(v):
+    n = int(v)
+    if n < 1:
+        raise argparse.ArgumentTypeError("a pull request number is 1 or more")
+    return n
+
+
+def ist(stamp):
+    """GitHub's UTC time (2026-11-28T08:00:00Z) as IST, or None."""
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST")
+    except (AttributeError, ValueError):
+        return None
+
+
 def main():
     a = argparse.ArgumentParser(description="the end condition of a watch (LR-127)")
     g = a.add_mutually_exclusive_group(required=True)
-    g.add_argument("--pr", type=int)
+    g.add_argument("--pr", type=pr_number)
     g.add_argument("--queue", action="store_true")
     a.add_argument("--repo", default=os.environ.get("WATCH_REPO", "expat-ready/xpatready"))
     a.add_argument("--prs", help="JSON as gh api returns it, in place of GitHub")
     a.add_argument("--log", default=os.environ.get("WATCH_LOG", os.path.expanduser("~/.claude/xr-watch-ends.tsv")))
     a.add_argument("--what", default="", help="the watch's name in the log line")
     o = a.parse_args()
-    what = o.what or (f"#{o.pr}" if o.pr else "merge queue")
+    what = o.what or (f"#{o.pr}" if o.pr is not None else "merge queue")
     try:
         if o.prs:
             with open(o.prs) as f:
                 d = json.load(f)
         else:
-            d = gh(f"repos/{o.repo}/pulls/{o.pr}") if o.pr else gh(f"repos/{o.repo}/pulls?state=open&per_page=100")
-        if o.pr:
+            d = gh(f"repos/{o.repo}/pulls/{o.pr}") if o.pr is not None else gh(f"repos/{o.repo}/pulls?state=open&per_page=100")
+        if o.pr is not None:
             if not isinstance(d, dict) or d.get("number") != o.pr or d.get("state") not in ("open", "closed"):
                 raise ValueError(f"not pull request #{o.pr}")
             why = None if d["state"] == "open" else ("merged" if d.get("merged_at") or d.get("merged") else "closed")
+            if why:   # GitHub's own time of the merge or close, never the watch's (review of #4075)
+                at = ist(d.get("merged_at") if why == "merged" else d.get("closed_at"))
+                why += f" {at} (GitHub)" if at else " (GitHub gave no time)"
             wait = f"#{o.pr} is open"
         else:
             if not isinstance(d, list):
@@ -62,7 +80,7 @@ def main():
         print(f"watch-done: {what}: not yet ({wait})")
         return 1
     now = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST")
-    print(f"watch end: {what} {why} at {now}")
+    print(f"watch end: {what} {why}; watch ended {now}")
     try:
         os.makedirs(os.path.dirname(o.log) or ".", exist_ok=True)
         with open(o.log, "a") as f:

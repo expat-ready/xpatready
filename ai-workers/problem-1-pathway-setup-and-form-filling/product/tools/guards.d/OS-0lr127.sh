@@ -5,4 +5,5 @@ MUT="$MUT"'
 LR127 merged|product/tools/watch-done.py|s/why = None if d\["state"\] == "open" else/why = None if True else/|check-watch-done.sh
 LR127 queue|product/tools/watch-done.py|s/why = None if queued else/why = None if True else/|check-watch-done.sh
 LR127 unread|product/tools/watch-done.py|s/        return 2$/        return 0/|check-watch-done.sh
-LR127 log|product/tools/watch-done.py|s/            f.write(f"{now}\\t{what}\\t{why}\\n")/            pass/|check-watch-done.sh'
+LR127 log|product/tools/watch-done.py|s/            f.write(f"{now}\\t{what}\\t{why}\\n")/            pass/|check-watch-done.sh
+LR127 when|product/tools/watch-done.py|s/                at = ist(d.get("merged_at") if why == "merged" else d.get("closed_at"))/                at = None/|check-watch-done.sh'
