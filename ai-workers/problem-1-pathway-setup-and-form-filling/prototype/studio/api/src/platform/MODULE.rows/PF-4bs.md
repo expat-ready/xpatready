@@ -1,0 +1,2 @@
+Entry points: PF-4bs part 2a: `SignInDoor` and `SignInPort` (`identity/session/sign-in.ts`): POST /api/platform/session/sign-in (email, password → step code or set-up, a sealed 15-minute attempt) and POST /api/platform/session/sign-in/code (attempt, authenticator code → token); `LocalSignIn` (the stand-in: Sample password, RFC 6238 codes); per-email, per-address and per-attempt limits in the task's memory; `PlatformIdentity.localSessionAfterCode`; the lookup `platform_staff_of_email` (migration 20261126100000).
+Tests: tests/check_pf4bs_sign_in.ts

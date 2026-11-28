@@ -6,8 +6,16 @@ import { OpenRead } from "../../../core.ts";
 import { parseInput, strict } from "../../http/input.ts";
 import { AnyStaff, PermissionKeys, StaffSignIn, staffOf, type StaffContext } from "../keys.ts";
 import { PlatformSession } from "./service.ts";
+import { SignInDoor } from "./sign-in.ts";
 
 type R = { platform?: StaffContext };
+type Rq = { ip?: string; socket?: { remoteAddress?: string }; headers?: Record<string, string | string[] | undefined> };
+/** PF-4bs part 2a (concept §2; review M3, break M2): the sign-in doors' address is the last X-Forwarded-For hop, the one
+ *  the load balancer (the one trusted hop) appended; with no header, the socket's. Exported for the check. */
+export const signInAddressOf = (r: Rq) => {
+  const h = r.headers?.["x-forwarded-for"], last = (Array.isArray(h) ? h.join(",") : h ?? "").split(",").map((x) => x.trim()).filter(Boolean).pop();
+  return String(last ?? r.ip ?? r.socket?.remoteAddress ?? "unknown").slice(0, 64);
+};
 /** PF-28 part 2a (R1.10): the sign-in code, through the one input rule (an unknown field or a wrong type: 422; no code: 401). */
 export const CallbackInput = strict({ code: z.string().optional() });   // no code is the door's own 401 SIGN_IN_CODE_REFUSED (check_forms_qa53 DOORS: a sign-in door answers its exact status), never a 422   // its length is the service's check: an over-long code is "used or expired" (review m4); the body limit bounds it
 
@@ -22,6 +30,16 @@ export class PlatformSessionController {
   signOutEverywhere(@Req() r: R, @Param("id") id: string) { return this.s.signOutEverywhere(staffOf(r), id); }
   @Post("staff/:id/reset-two-step") @HttpCode(200) @PermissionKeys("agent/staff:manage")
   resetTwoStep(@Req() r: R, @Param("id") id: string) { return this.s.resetTwoStep(staffOf(r), id); }
+}
+
+/** PF-4bs part 2a: our own sign-in page's doors (session/sign-in.ts), a controller of their own. */
+@Controller("api/platform")
+export class PlatformSignInController {
+  constructor(@Inject(SignInDoor) private readonly door: SignInDoor) {}
+  @Post("session/sign-in") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the email and password are the proof: there is no session yet")
+  signIn(@Body() b: unknown, @Req() r: Rq) { return this.door.password(b, signInAddressOf(r)); }
+  @Post("session/sign-in/code") @HttpCode(200) @Header("Cache-Control", "no-store") @StaffSignIn("the sealed attempt and the authenticator code are the proof")
+  signInCode(@Body() b: unknown, @Req() r: Rq) { return this.door.code(b, signInAddressOf(r)); }
 }
 
 @OpenRead("the invitation link itself: the token is the only key (PF-4b, BR-4)")
