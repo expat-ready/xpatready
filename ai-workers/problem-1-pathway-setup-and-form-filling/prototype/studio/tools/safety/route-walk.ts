@@ -16,7 +16,7 @@
 // input (400, 422) or looks the record up (404) before it checks the caller never reaches the permission check here:
 // a hole behind those checks answers 400/404/422, not 2xx, and is NOT seen (planted on #4044: a client past a removed
 // duty check got 400; READ_ONLY past an @AnyStaff got 422 and 503). The summary prints how many wrong-role writes
-// stopped there, and how many platform-plane writes the READ_ONLY bearer got past the guard (the guard runs before the
+// stopped there, and how many writes the READ_ONLY bearer got past the guard (platform plane, keyed /api/runtime retries, /api/system) (the guard runs before the
 // handler, so anything but 401/403 there means the declared keys let READ_ONLY in): ROUTE_WALK_VERBOSE=1 lists them.
 // LR-161 part 2, LR-187: the writes READ_ONLY gets past the guard (platform plane, the bearer retry of keyed
 // /api/runtime routes, and /api/system) are judged too: each must be on
@@ -125,6 +125,8 @@ function selfTest(): number {
     ["a simulated-plane write the client made (no retry) is not a past-guard write", !pastGuardCounts("wrong-role", true, "simulated", false, 404)],
     ["a firm token's write past the /api/system guard counts as past the guard", pastGuardCounts("wrong-role", true, "system", false, 422)],
     ["a read is never a past-guard write", !pastGuardCounts("wrong-role", false, "platform", false, 200)],
+    ["a write the guard refused (403) is never a past-guard write", !pastGuardCounts("wrong-role", true, "simulated", true, 403)],
+    ["a signed-out write is never a past-guard write", !pastGuardCounts("signed-out", true, "platform", false, 422)],
     ["a past-guard line the guard now refuses is stale", stale(readPast("PUT /api/platform/me/account # own\n").allowed, new Set()).includes("PUT /api/platform/me/account")],
     ["a past-guard line without a reason is refused", readPast("PUT /api/x\n").errors.length === 1],
     ["parameters are filled", fill("/api/cases/:id/files/:fileId?") === `/api/cases/${ID}/files/${ID}`],
