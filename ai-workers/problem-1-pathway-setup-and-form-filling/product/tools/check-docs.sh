@@ -71,7 +71,7 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         # here). When no capability row does and every such backlog row is tooling, qa, records or the Lead's (its area
         # cell), nothing a person can see carries it: it changes the workflow too (P-618, P-619, P-631 passed this way).
         grep -qE "^\| C[0-9.]+ .*\b$id\b" "$PH/qa/CAPABILITIES.md" 2>/dev/null && continue
-        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md 2>/dev/null | cut -d'|' -f3)
+        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md "$PH"/history/BACKLOG-done-*.md 2>/dev/null | cut -d'|' -f3)   # LR-091: done rows too
         [ -n "$areas" ] || continue
         printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
       esac

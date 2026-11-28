@@ -51,4 +51,9 @@ jobs:
             exit 0
           fi
           git show "$BASE:$B" > "$RUNNER_TEMP/BACKLOG-base.md" 2>/dev/null || : > "$RUNNER_TEMP/BACKLOG-base.md"
+          # LR-091: the base's done rows (history/BACKLOG-done-*.md) go beside it, so rows moved out earlier are old rows
+          mkdir -p "$RUNNER_TEMP/history"
+          for f in $(git ls-tree --name-only "$BASE" "$(dirname "$B")/history/" | grep '/BACKLOG-done-[^/]*\.md$'); do
+            git show "$BASE:$f" > "$RUNNER_TEMP/history/$(basename "$f")"
+          done
           python3 -I "$T/trace-requirements.py" --check "$RUNNER_TEMP/BACKLOG-base.md"

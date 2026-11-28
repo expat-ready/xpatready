@@ -534,6 +534,9 @@ def cmd_render(ctx):
 
 def cmd_check(ctx, old_backlog):
     old_text = pathlib.Path(old_backlog).read_text(encoding="utf-8") if pathlib.Path(old_backlog).exists() else ""
+    # LR-091: the base's done rows (history/BACKLOG-done-*.md beside the base file; trace.yml writes them) are old rows too
+    for q in sorted((pathlib.Path(old_backlog).parent / "history").glob("BACKLOG-done-*.md")):
+        old_text += "\n" + q.read_text(encoding="utf-8")
     old_shaped = {r.id for r in parse_backlog(old_text) if r.shaped}
     old_lines = set(old_text.split("\n"))
     decs, tids = decisions(ctx.read("decisions")), trace_ids(ctx.read("trace"))

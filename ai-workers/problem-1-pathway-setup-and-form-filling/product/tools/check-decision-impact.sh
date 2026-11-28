@@ -23,6 +23,11 @@ printf '| P-807 | 21 Nov | Kind: tooling. No impact words. |\n| ~~P-811~~ | 21 N
 ok "rows before P-808 and struck-through rows are not impact-checked" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 printf '| P-811 | 21 Nov | Kind: workflow. The big-impact choice. |\n' | dec; run
 ok "a lower-case impact inside another word is not the Impact statement" "$([ $r = 1 ] && echo "$out" | grep -q 'NO IMPACT: P-811' && echo 1)" "exit $r: $out"
+printf '| P-807 | 21 Nov | Built later. Impact: none. |\n' | dec; run
+ok "LR-091 control: a decision carried by no capability and no backlog row fails" "$([ $r = 1 ] && echo "$out" | grep -q 'NO CAPABILITY: P-807' && echo 1)" "exit $r: $out"
+mkdir -p "$P/history"; printf '| B51 | runtime | a done row moved word for word (P-807) |\n' > "$P/history/BACKLOG-done-2026-11-28.md"; run
+ok "LR-091: a backlog row moved to history/BACKLOG-done-*.md still carries its decision" "$([ $r = 0 ] && echo "$out" | grep -q 'P-807 →.* backlog B51' && echo 1)" "exit $r: $out"
+rm -rf "$P/history"
 sed -i 's/^EXEMPT=" P-764 /EXEMPT=" P-780 P-764 /' "$DI"; printf '| P-780 | 21 Nov | Kind: workflow. Impact: none. |\n' | dec; run
 ok "a new ID added to the frozen EXEMPT list fails (E15: tag the row instead)" "$([ $r = 1 ] && echo "$out" | grep -q 'EXEMPT FROZEN: P-780' && echo 1)" "exit $r: $out"
 finish

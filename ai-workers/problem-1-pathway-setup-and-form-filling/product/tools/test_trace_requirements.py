@@ -203,6 +203,25 @@ class Fixture(unittest.TestCase):
         finally:
             (self.d / "history" / "BACKLOG-done-2026-11-28.md").unlink()
 
+    def test_check_after_the_move_reads_the_bases_done_rows(self):
+        # LR-091 (review B1): the PR after the move. Its base has the row only in history/BACKLOG-done-*.md (trace.yml
+        # writes the base's done files beside the base file); the head the same. Not a new row: passes. Without the
+        # base's done file it would read as new, shaped, with no Source: fails (the comparison can fail).
+        row = "| FO-1 | runtime | Old | a test | waits on: none |"
+        base = self.d / "base"
+        (base / "history").mkdir(parents=True, exist_ok=True)
+        (base / "old.md").write_text(backlog(["| FO-3 | runtime | Book | a test | waits on: none |"]))
+        (self.d / "history").mkdir(exist_ok=True)
+        (self.d / "history" / "BACKLOG-done-2026-11-28.md").write_text(backlog([row]))
+        head = backlog(["| FO-3 | runtime | Book | a test | waits on: none |"])
+        try:
+            self.assertEqual(self.run_tool("--check", str(base / "old.md"), backlog_text=head)[0], 1)
+            (base / "history" / "BACKLOG-done-2026-11-28.md").write_text(backlog([row]))
+            code, out = self.run_tool("--check", str(base / "old.md"), backlog_text=head)
+            self.assertEqual(code, 0, out)
+        finally:
+            (self.d / "history" / "BACKLOG-done-2026-11-28.md").unlink()
+
     # ---- check (CI)
     def test_check_fails_a_new_row_with_no_source_and_passes_one_with_it(self):
         base = backlog(["| FO-1 | runtime | Old | a test | waits on: none |"])
