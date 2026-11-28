@@ -5,13 +5,22 @@
 //                 /api/platform, /api/front-office, /api/system  a bearer token of a READ_ONLY staff member of the Sample firm,
 //                   added to the copy by the walk (the seed has none) and signed in on the local stand-in; a firm's token on /api/system is the wrong plane, so any 2xx there counts;
 //                 /api/public                                    not walked (public by design; signed-out covers it);
-//                 everything else (the simulated-person plane)    x-actor "user-P", a client with only the answer duty.
-// A 2xx is unexpected unless the route is a read a READ_ONLY member holds (a GET on the platform plane), or the route
-// and mode are on the reviewed list beside this file (tools/safety/route-walk-reviewed.txt: "<mode> <VERB> <path> #
-// why"). A listed line that no longer answers 2xx is reported too (the list only shrinks). Path parameters get one
-// fixed id, a write gets "{}", so a handler that looks the record up before it checks the caller answers 404 here: the
-// walk proves "never a 2xx", the static sweep (route-sweep.ts) reads the order of checks. US$0, live AI off (the copy's
-// default), no model call; run only against a disposable isolated copy (writes that are allowed really happen).
+//                 everything else (the simulated-person plane)    x-actor "user-P", a client with only the answer duty;
+//                   a route there that answers the client 401 (a keyed /api/runtime route wants a platform bearer) is
+//                   called again with the READ_ONLY bearer, and that answer is judged (review I-1 on #4044).
+// A 2xx is unexpected unless the route is a read a READ_ONLY member holds (a GET with the bearer), or the route and
+// mode are on the reviewed list beside this file (tools/safety/route-walk-reviewed.txt: "<mode> <VERB> <path> # why").
+// A listed line that no longer answers 2xx is reported too (the list only shrinks). The session's own sign-out runs
+// last, other sign-out routes just before it, so no wrong-role call meets a dead token.
+// LIMITS (review I-2 on #4044): path parameters get one fixed id and a write gets "{}", so a handler that checks its
+// input (400, 422) or looks the record up (404) before it checks the caller never reaches the permission check here:
+// a hole behind those checks answers 400/404/422, not 2xx, and is NOT seen (planted on #4044: a client past a removed
+// duty check got 400; READ_ONLY past an @AnyStaff got 422 and 503). The summary prints how many wrong-role writes
+// stopped there, and how many platform-plane writes the READ_ONLY bearer got past the guard (the guard runs before the
+// handler, so anything but 401/403 there means the declared keys let READ_ONLY in): ROUTE_WALK_VERBOSE=1 lists them.
+// "Never a 2xx for an empty write" is what this walk proves; the static sweep (route-sweep.ts) reads the order of checks.
+// US$0, live AI off (the copy's default), no model call; run only against a disposable isolated copy (allowed writes
+// really happen). The database must be the one isolated.sh started for this port (its comment names the port).
 //   PLATFORM_IDENTITY=local zsh studio/tools/isolated.sh safety_walk 4612 start && tsx studio/tools/safety/route-walk.ts 4612 xr_studio_safety_walk
 //   tsx studio/tools/safety/route-walk.ts --self-test     the judging rules on planted answers; exit 0 when each is right
 // Exit 1 when anything is reported (report-only in safety.yml at first).
@@ -44,12 +53,15 @@ export function readList(text: string): { allowed: Set<string>; errors: string[]
 }
 
 /** One answer judged: null when fine, else the reason it is reported. */
-export function judge(mode: Mode, verb: string, path: string, status: number, allowed: Set<string>): string | null {
+export function judge(mode: Mode, verb: string, path: string, status: number, allowed: Set<string>, bearer = false): string | null {
   if (status < 200 || status > 299) return null;
   if (allowed.has(key(mode, verb, path))) return null;
-  if (mode === "wrong-role" && planeOf(path) === "platform" && (verb === "GET" || verb === "HEAD")) return null;
+  if (mode === "wrong-role" && (planeOf(path) === "platform" || bearer) && (verb === "GET" || verb === "HEAD")) return null;
   return `${mode} ${verb} ${path} answered ${status}`;
 }
+
+/** Walk order: the caller's own session/sign-out last (it ends the token), other sign-out routes just before it. */
+export const order = (path: string) => (/\/session\/sign-?out$/i.test(path) ? 2 : /sign-?out/i.test(path) ? 1 : 0);
 
 /** Listed lines that did not answer 2xx this run (fixed or gone): the list must shrink with them. */
 export const stale = (allowed: Set<string>, seen2xx: Set<string>) => [...allowed].filter((k) => !seen2xx.has(k));
@@ -71,6 +83,9 @@ function selfTest(): number {
     ["a firm token reading /api/system is reported", judge("wrong-role", "GET", "/api/system/firms", 200, allowed) !== null],
     ["signed out, a platform read is reported", judge("signed-out", "GET", "/api/platform/me", 200, allowed) !== null],
     ["a listed line that stopped answering 2xx is stale", stale(allowed, new Set()).includes("signed-out GET /api/whoami")],
+    ["READ_ONLY reading a keyed runtime route (bearer retry) is fine", judge("wrong-role", "GET", "/api/runtime/clients", 200, allowed, true) === null],
+    ["READ_ONLY writing a keyed runtime route (bearer retry) is reported", judge("wrong-role", "POST", "/api/runtime/cases", 201, allowed, true) !== null],
+    ["the session's own sign-out runs after every other route", order("/api/platform/session/sign-out") > order("/api/platform/staff/:id/sign-out-everywhere") && order("/api/platform/staff/:id/sign-out-everywhere") > order("/api/cases")],
     ["parameters are filled", fill("/api/cases/:id/files/:fileId?") === `/api/cases/${ID}/files/${ID}`],
   ];
   let bad = 0;
@@ -96,8 +111,14 @@ async function call(port: number, r: Route, headers: Record<string, string>): Pr
 async function walk(port: number, db: string): Promise<number> {
   const { allowed, errors } = readList(readFileSync(LIST, "utf8"));
   for (const e of errors) console.log(`::warning::${e}`);
-  // The seed has no READ_ONLY member: the walk adds one to this disposable copy (an isolated copy's database only).
-  if (!/^xr_studio_[a-z0-9_]+$/.test(db)) { console.error(`refused: ${db} is not an isolated copy's database (xr_studio_<name>)`); return 2; }
+  // The seed has no READ_ONLY member: the walk adds one to this disposable copy. Only the database isolated.sh started
+  // for this very port (its comment: "isolated.sh server pid … port <port> …"); never the demo or a lane's database.
+  const psql = (d: string, q: string) => execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", d, "-XAtqc", q], { encoding: "utf8" }).trim();
+  const note = /^xr_studio_[a-z0-9_]+$/.test(db) && !/^xr_studio_(demo|screens|forms|runtime|evidence|qa)$/.test(db)
+    ? psql("postgres", `select coalesce(shobj_description(oid, 'pg_database'), '') from pg_database where datname = '${db}'`) : "";
+  if (!new RegExp(`^isolated\\.sh server pid \\d+ port ${port} `).test(note)) {
+    console.error(`refused: ${db} is not the database isolated.sh started for port ${port} (comment: "${note}")`); return 2;
+  }
   const actor = "lr161-read-only";
   execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", db, "-XAtqc",
     `with f as (select id from platform_firm where key = 'sample-firm'),
@@ -112,28 +133,34 @@ async function walk(port: number, db: string): Promise<number> {
     token = ((await r.json().catch(() => ({}))) as { token?: string }).token ?? "";
   }
   if (!token) console.log("::warning::the READ_ONLY member could not sign in (start the copy with PLATFORM_IDENTITY=local): the platform and system planes were walked signed out only");
-  // A route that ends the caller's session (sign-out) runs last, or every later wrong-role call would be a plain 401.
-  const ends = (r: Route) => /sign-?out/i.test(r.path);
-  const all = routes(join(STUDIO, "api", "src")).sort((x, y) => Number(ends(x)) - Number(ends(y)));
+  const all = routes(join(STUDIO, "api", "src")).sort((x, y) => order(x.path) - order(y.path));
   const counts = new Map<string, number>(), reported: string[] = [], seen2xx = new Set<string>();
+  const unreached: string[] = [], pastGuard: string[] = [];
   for (const r of all) {
     const plane = planeOf(r.path);
     const tries: [Mode, Record<string, string> | null][] = [["signed-out", {}],
       ["wrong-role", plane === "public" ? null : plane === "simulated" ? { "x-actor": "user-P" } : token ? { authorization: `Bearer ${token}` } : null]];
     for (const [mode, headers] of tries) {
       if (!headers) continue;
-      const status = await call(port, r, headers);
-      if (process.env.ROUTE_WALK_VERBOSE) console.log(`${mode} ${status} ${r.verb} ${r.path}`);   // every answer, for a reviewer
+      let status = await call(port, r, headers), bearer = plane !== "simulated";
+      // I-1: a keyed /api/runtime route answers the client 401 (it wants a platform bearer): ask again with the bearer.
+      if (mode === "wrong-role" && plane === "simulated" && status === 401 && token) { status = await call(port, r, { authorization: `Bearer ${token}` }); bearer = true; }
+      if (process.env.ROUTE_WALK_VERBOSE) console.log(`${mode}${bearer && mode === "wrong-role" ? " (bearer)" : ""} ${status} ${r.verb} ${r.path}`);   // every answer, for a reviewer
+      const write = r.verb !== "GET" && r.verb !== "HEAD";
+      if (mode === "wrong-role" && write && ![401, 403].includes(status) && (status < 200 || status > 299)) unreached.push(`${status} ${r.verb} ${r.path}`);
+      if (mode === "wrong-role" && write && plane === "platform" && ![401, 403].includes(status)) pastGuard.push(`${status} ${r.verb} ${r.path}`);
       const c = `${mode} ${status >= 200 && status < 300 ? "2xx" : String(status)}`;
       counts.set(c, (counts.get(c) ?? 0) + 1);
       if (status >= 200 && status < 300) seen2xx.add(key(mode, r.verb, r.path));
-      const why = judge(mode, r.verb, r.path, status, allowed);
+      const why = judge(mode, r.verb, r.path, status, allowed, bearer);
       if (why) reported.push(`${why} (${r.file}:${r.line})`);
     }
   }
   for (const s of stale(allowed, seen2xx)) reported.push(`listed but no longer 2xx (take it off route-walk-reviewed.txt): ${s}`);
   for (const line of reported) console.log(`::warning::${line}`);
   console.log(`${all.length} routes walked; answers: ${[...counts].sort().map(([k, n]) => `${k} ×${n}`).join(", ")}`);
+  if (process.env.ROUTE_WALK_VERBOSE) for (const u of pastGuard) console.log(`past the guard: ${u}`);
+  console.log(`not proven (I-2): ${unreached.length} wrong-role writes stopped before a permission check (400/404/422/5xx with "{}"); ${pastGuard.length} platform-plane writes got the READ_ONLY bearer past the guard (not 401/403; ROUTE_WALK_VERBOSE=1 lists them)`);
   console.log(reported.length ? `${reported.length} unexpected` : "0 unexpected 2xx");
   return reported.length || errors.length ? 1 : 0;
 }

@@ -11,7 +11,7 @@ signed-out GET /api/public/web-address/suggestion # sign-up's web-address sugges
 # The simulated-person plane, as the client (x-actor user-P):
 wrong-role GET /api/health # the health check answers anyone
 wrong-role GET /api/session # who-am-I: any known person reads who they are
-wrong-role GET /api/releases # CaseRead (core.ts): the Open-a-case release list admits any known person, clients included (asked on the PR)
+wrong-role GET /api/releases # by design under CaseRead (core.ts): a client's 200 on the Open-a-case release list; any known person reads it (tech lead, 28 Nov)
 # The platform plane, as a READ_ONLY member of the Sample firm:
 wrong-role PUT /api/front-office/booking-timings # "{}" changes no field; the service checks each changed field's key (timings.ts write)
 wrong-role PUT /api/front-office/me/video # AnyStaff: each member saves their own video link

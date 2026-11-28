@@ -5,7 +5,8 @@
 # changes something must be refused to nobody by a guard, a declared permission or a check on its handler's straight
 # path (role or identity, counted apart), or be on the reviewed list (studio/tools/safety/route-sweep.ts). Each tool runs its planted self-test first.
 # LR-161: job "walk" calls every route live on a seeded copy, signed out and with a wrong role (route-walk.ts).
-# Read-only token, no secrets, package scripts off. US$0, no model call. Turning it into a refusal is a later Lead call.
+# Read-only token, no secrets; package scripts off in job "safety" (job "walk" runs cloud-setup.sh, whose npm ci runs
+# them, as pr-suites does). US$0, no model call. Turning it into a refusal is a later Lead call.
 name: safety
 on:
   pull_request:
@@ -92,8 +93,8 @@ jobs:
         timeout-minutes: 15
         run: |
           cd "$S"
+          trap 'zsh tools/isolated.sh safety_walk 4612 stop' EXIT   # set before the start: a failed start still stops
           PLATFORM_IDENTITY=local zsh tools/isolated.sh safety_walk 4612 start --ttl 20
-          trap 'zsh tools/isolated.sh safety_walk 4612 stop' EXIT
           rc=0; ./node_modules/.bin/tsx --tsconfig api/tsconfig.json tools/safety/route-walk.ts 4612 xr_studio_safety_walk > "$RUNNER_TEMP/walk.txt" || rc=$?
           cat "$RUNNER_TEMP/walk.txt"
           { echo "### Route walk (LR-161, report only)"; sed 's/^::warning::/- /' "$RUNNER_TEMP/walk.txt"; } >> "$GITHUB_STEP_SUMMARY"
