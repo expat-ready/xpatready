@@ -51,7 +51,10 @@ GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN
 export GITHUB_METER_DIR="${GITHUB_METER_DIR:-$STATE_DIR/github-meter}"
 GH_METER_START="$STATE_DIR/meter-start.$$"; gm=$(bash "$TOOLS/github-meter.sh" start "$GH_METER_START" 2>&1); say "$gm"
 gf=$(bash "$TOOLS/github-meter.sh" fits lead-watch-full 2>&1); gfrc=$?
-if [ "$gfrc" = 1 ]; then ACT "github budget: ${gf#meter: }: a full check would not fit; run the lite check (lead-watch.sh lite, LR-175) until the reset (rules/github-limits.md)"; rm -f "$GH_METER_START"; exit "$act"; fi
+if [ "$gfrc" = 1 ]; then ACT "github budget: ${gf#meter: }: a full check would not fit; no GitHub step ran (the lite check comes with LR-175; until then wait for the reset; rules/github-limits.md)"
+  # The stamp still moves (a check ran; the standbys' gap alarm must not fire, LR-175's incident), atomic as in step 0.
+  now=$(date +%s); stamp="$STATE_DIR/last-check"; rm -f "$GH_METER_START"
+  echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"; exit $(( act + 1 )); fi   # +1: never the "only the constraint" exit 1
 [ "$gfrc" = 2 ] && say "github budget unknown: the full check runs (${gf#meter: })"
 
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.

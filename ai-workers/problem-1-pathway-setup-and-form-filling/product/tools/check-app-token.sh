@@ -37,7 +37,7 @@ case "$m $u" in
   *) echo "unexpected $m $u" >> "$FX/calls.log"; exit 22;;
 esac
 EOF
-printf '#!/bin/sh\n[ "$1 $2" = "auth token" ] && { echo "%s"; exit 0; }\necho "gh saw ${GH_TOKEN:-none}" >> "$FX/gh.log"; echo "[]"\n' "$FAKE_USER" > "$T/bin/gh"
+printf '#!/bin/sh\n[ "$1 $2" = "auth token" ] && { echo "%s"; exit 0; }\necho "gh saw ${GH_TOKEN:-none}" >> "$FX/gh.log"\ncase "$GH_TOKEN $*" in ghs_*notinstalled*) echo "HTTP 404: Not Found (https://api.github.com/repos/x)" >&2; exit 1;; esac\necho "[]"\n' "$FAKE_USER" > "$T/bin/gh"
 chmod +x "$T/bin/curl" "$T/bin/gh"
 export FX="$T" FAKE_TOK="$FAKE_APP" XR_GITHUB_API="https://stand-in.invalid" GITHUB_METER_DIR="$T/meter" GH_METER_CALLS="$T/meter/calls.tsv"
 A=(XR_APP=on XR_APP_ID=123456 XR_APP_INSTALLATION_ID=98765 XR_APP_KEY_FILE="$T/keys/app.pem")
@@ -70,21 +70,30 @@ rm -f "$C"; at env FAKE_MODE=bad "${A[@]}"; ok "GitHub refuses the JWT: exit 2, 
 m0=$(mints); mkdir -p "$T/repo" && git -C "$T/repo" init -q && cp "$T/keys/app.pem" "$T/repo/app.pem"
 out=$(cd "$T/repo" && env XR_APP=on PATH="$T/bin:$PATH" TMPDIR="$T/tmp" XR_APP_ID=123456 XR_APP_INSTALLATION_ID=98765 XR_APP_KEY_FILE="$T/repo/app.pem" bash "$TOOLS/app-token.sh" 2>&1); r=$?; printf '%s\n' "$out" >> "$T/all-out.log"
 ok "a key inside a repository is refused (exit 2), no request" "$([ $r = 2 ] && grep -q 'inside the repository' <<<"$out" && [ "$(mints)" = "$m0" ] && echo 1)" "exit $r: $out"
+ln -s "$T/repo/app.pem" "$T/keys/link.pem"; m0=$(mints)
+out=$(cd "$T/repo" && env XR_APP=on PATH="$T/bin:$PATH" TMPDIR="$T/tmp" XR_APP_ID=123456 XR_APP_INSTALLATION_ID=98765 XR_APP_KEY_FILE="$T/keys/link.pem" bash "$TOOLS/app-token.sh" 2>&1); r=$?
+ok "a key path outside that links into a repository is refused too" "$([ $r = 2 ] && grep -q 'inside the repository' <<<"$out" && [ "$(mints)" = "$m0" ] && echo 1)" "exit $r: $out"
 at env XR_APP=on XR_APP_ID=12x XR_APP_INSTALLATION_ID=98765 XR_APP_KEY_FILE="$T/keys/app.pem"; ok "a non-numeric App id: exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 
 # gh.sh and the meter: reads on the App token when configured, the user token when not; writes always on the user token.
 rm -f "$C"
 ghs() { (cd "$T" && env PATH="$T/bin:$PATH" TMPDIR="$T/tmp" GH_TOKEN="$FAKE_USER" "$@" >/dev/null 2>&1); tail -1 "$T/gh.log" | sed 's/^gh saw //'; }
-[ "$(ghs "${A[@]}" bash "$TOOLS/gh.sh" api repos/o/r/pulls)" = "$FAKE_APP" ]; r1=$?
-[ "$(ghs XR_APP=off bash "$TOOLS/gh.sh" api repos/o/r/pulls)" = "$FAKE_USER" ]; r2=$?
+[ "$(ghs "${A[@]}" bash "$TOOLS/gh.sh" api "repos/{owner}/{repo}/pulls")" = "$FAKE_APP" ]; r1=$?
+[ "$(ghs XR_APP=off bash "$TOOLS/gh.sh" api "repos/{owner}/{repo}/pulls")" = "$FAKE_USER" ]; r2=$?
 ok "gh.sh: a read goes on the App token when configured, the user token when not" "$([ $r1 = 0 ] && [ $r2 = 0 ] && echo 1)" "$(cat "$T/gh.log" 2>&1)"
-for c in "pr view 5" "pr list" "api graphql -f query={viewer{login}}" "api -X GET search/issues -f q=x" "run list"; do
+for c in "pr view 5" "pr list" "pr view 5 -R expat-ready/xpatready" "api repos/expat-ready/xpatready/issues/comments?since=x --paginate" "api /repos/{owner}/{repo}/actions/runs -q .total_count" "api -X GET repos/{owner}/{repo}/pulls -f state=open" "run list"; do
   # shellcheck disable=SC2086
   got=$(ghs "${A[@]}" bash "$TOOLS/gh.sh" $c); ok "gh.sh read on the App token: gh $c" "$([ "$got" = "$FAKE_APP" ] && echo 1)" "$got"; done
-for c in "pr comment 5 --body Reviewer" "pr edit 5 --add-label review" "pr merge 5" "issue comment 5 --body x" "api -X POST repos/o/r/issues/5/comments" "api --method PATCH repos/o/r/pulls/5" "api repos/o/r/issues/5/labels -f labels[]=x" "api graphql -f query=mutation{x}" "api repos/o/r/pulls --input body.json" "label create x"; do
+for c in "pr comment 5 --body Reviewer" "pr edit 5 --add-label review" "pr merge 5" "issue comment 5 --body x" "api -X POST repos/{owner}/{repo}/issues/5/comments" "api --method PATCH repos/{owner}/{repo}/pulls/5" "api repos/{owner}/{repo}/issues/5/labels -f labels[]=x" "api graphql -f query=mutation{x}" "api repos/{owner}/{repo}/pulls --input body.json" "label create x"; do
   # shellcheck disable=SC2086
   got=$(ghs "${A[@]}" bash "$TOOLS/gh.sh" $c); ok "gh.sh write stays on the user token (the gates check the commenter): gh $c" "$([ "$got" = "$FAKE_USER" ] && echo 1)" "$got"; done
-ok "gh.sh logs one line per call for the meter" "$([ "$(grep -c 'api repos/o/r/pulls' "$T/meter/calls.tsv" 2>/dev/null)" -ge 2 ] && [ "$(grep -c 'pr comment' "$T/meter/calls.tsv")" = 1 ] && echo 1)" "$(cat "$T/meter/calls.tsv" 2>&1)"
+# Reads the App cannot make (installed only on xpatready; no /user) stay on the user token (review round 1 of #4092).
+for c in "api user --jq .login" "api repos/expat-ready/xpatready-backup -q .pushed_at" "api repos/o/r/pulls" "pr view 5 -R other/repo" "pr list --repo=other/repo" "api graphql -f query={viewer{login}}" "api -X GET search/issues -f q=x" "repo view other/repo"; do
+  # shellcheck disable=SC2086
+  got=$(ghs "${A[@]}" bash "$TOOLS/gh.sh" $c); ok "gh.sh read outside the App's reach stays on the user token: gh $c" "$([ "$got" = "$FAKE_USER" ] && echo 1)" "$got"; done
+: > "$T/gh.log"; got=$(ghs "${A[@]}" bash "$TOOLS/gh.sh" api "repos/{owner}/{repo}/notinstalled")
+ok "an App read refused with 404 is asked once more on the user token" "$([ "$got" = "$FAKE_USER" ] && [ "$(sed -n 1p "$T/gh.log")" = "gh saw $FAKE_APP" ] && [ "$(grep -c '' "$T/gh.log")" = 2 ] && echo 1)" "$(cat "$T/gh.log")"
+ok "gh.sh logs one line per call for the meter" "$([ "$(grep -c 'api repos/{owner}/{repo}/pulls' "$T/meter/calls.tsv" 2>/dev/null)" = 3 ] && [ "$(grep -c 'notinstalled' "$T/meter/calls.tsv")" = 1 ] && [ "$(grep -c 'pr comment' "$T/meter/calls.tsv")" = 1 ] && echo 1)" "$(cat "$T/meter/calls.tsv" 2>&1)"
 top=$(cd "$T" && env PATH="$T/bin:$PATH" TMPDIR="$T/tmp" GH_TOKEN="$FAKE_USER" "${A[@]}" bash "$TOOLS/github-meter.sh" top 2>&1); printf '%s\n' "$top" >> "$T/all-out.log"
 ok "meter top line with the App: installation kind, 15000/h, 'org App token in use (reads)', the user token's remaining for writes" "$(grep -q 'org App installation (ghs_) · limit 15000/h · used 10 · remaining 14990' <<<"$top" && grep -q 'org App token in use (reads) · user token (writes) remaining 4990 of 5000' <<<"$top" && echo 1)" "$top"
 top=$(cd "$T" && env XR_APP=off PATH="$T/bin:$PATH" TMPDIR="$T/tmp" GH_TOKEN="$FAKE_USER" bash "$TOOLS/github-meter.sh" top 2>&1); printf '%s\n' "$top" >> "$T/all-out.log"

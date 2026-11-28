@@ -8,6 +8,9 @@ LR174 fits|product/tools/github-meter.sh|s/if \[ "\$REMAIN" -ge "\$b" \]; then/i
 LR174 top|product/tools/lead-watch.sh|s/2>&1); say "\$gm"$/2>\&1)/|check-github-budget.sh
 LR174 cache|product/tools/app-token.sh|s/exp - 300/exp - 0/|check-app-token.sh
 LR174 inrepo|product/tools/app-token.sh|/case "\$real" in "\$r"\/\*)/d|check-app-token.sh
-LR174 ghapp|product/tools/gh.sh|s/then export GH_TOKEN="\$t"; fi/then :; fi/|check-app-token.sh
+LR174 ghapp|product/tools/gh.sh|s/out=\$(GH_TOKEN="\$t" GH_SH_INNER=1/out=$(GH_SH_INNER=1/|check-app-token.sh
+LR174 scope|product/tools/gh.sh|s/rate_limit) ;; \*) return 1;; esac/rate_limit) ;; *) ;; esac/|check-app-token.sh
+LR174 retry|product/tools/gh.sh|s/^  if \[ "\$rc" = 0 \] /  if true /|check-app-token.sh
+LR174 stamp|product/tools/lead-watch.sh|s/^  echo "\$now" > "\$stamp.\$\$" \&\& mv -f "\$stamp.\$\$" "\$stamp"; exit/  exit/|check-github-budget.sh
 LR174 writes|product/tools/gh.sh|s/"api "\*) ;; \*) return 1;;/"api "*) ;; *) return 0;;/|check-app-token.sh
 LR174 pem|product/tools/push-guard.sh|s/gz.pem)/gz)/|check-push-guard-fixtures.sh'

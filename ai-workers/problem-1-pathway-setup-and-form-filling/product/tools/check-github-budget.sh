@@ -60,7 +60,8 @@ printf 'lead-watch-full\t2800\tline\n' > "$BF"
 echo 4900 > "$T/used"
 out=$(cd "$TOOLS" && GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$TOOLS/lead-watch.sh" 2>/dev/null); r=$?
 ok "lead-watch: the first line is the GitHub budget" "$(head -1 <<<"$out" | grep -q '^github token user OAuth (gho_, gh CLI) · limit 5000/h · used 4900 · remaining 100' && echo 1)" "$(head -3 <<<"$out")"
-ok "lead-watch over budget: one ACT naming the lite check, exit 1, no fetch, nothing but /rate_limit asked" "$([ $r = 1 ] && grep -q '^ACT   github budget: 100 remaining is under lead-watch-full.s budget 2800 .*lead-watch.sh lite' <<<"$out" && [ ! -s "$T/fetch.log" ] && [ ! -s "$T/unexpected.log" ] && [ "$(wc -l <<<"$out")" -le 3 ] && echo 1)" "exit $r: $out"
+ok "lead-watch over budget: one ACT saying no GitHub step ran, exit 2 (never the healthy 1), no fetch, nothing but /rate_limit asked" "$([ $r = 2 ] && grep -q '^ACT   github budget: 100 remaining is under lead-watch-full.s budget 2800 .*no GitHub step ran' <<<"$out" && [ ! -s "$T/fetch.log" ] && [ ! -s "$T/unexpected.log" ] && [ "$(wc -l <<<"$out")" -le 3 ] && echo 1)" "exit $r: $out"
+st=$(cat "$T/state/last-check" 2>/dev/null); ok "... and it still writes the check stamp, so the standbys' gap alarm stays quiet" "$([ -n "$st" ] && [ $(( $(date +%s) - st )) -lt 60 ] && echo 1)" "stamp: ${st:-none}"
 
 # The Lead's machine: the live meter log is judged against the real budget lines (skipped where there is none, as in CI).
 LIVE="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}/github-meter/meter.tsv"
