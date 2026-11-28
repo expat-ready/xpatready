@@ -43,6 +43,14 @@ ok "an unreadable memory lists the stale lines again (never hides them)" "$(grep
 out=$(printf '%s\n' "$IN" | python3 -I "$A" --name retry --state "$T/s" --now not-a-time 2>&1)
 ok "anything wrong here: every detector line passes unchanged, with one ACT saying why" "$(grep -q 'check_a.ts passed only on retry 2 times' <<< "$out" && grep -q 'act-age.py could not judge' <<< "$out" && echo 1)" "$out"
 LW="$TOOLS/lead-watch.sh"
+# retry-watch's health ACTs as it prints them (an old "reading again from"), through step 2i's own --live read from
+# lead-watch.sh: they describe this check, so they stay (round 3 of #3837: a lost memory was hidden as stale)
+LV=$(python3 -I -c 'import re,sys; m=re.search(r"--name retry --state \"\$STATE_DIR\" --live \x27([^\x27]*)\x27", open(sys.argv[1]).read()); print(m.group(1) if m else "")' "$LW")
+hl='ACT   retry: memory unreadable: /x/retry-watch.json; reading again from 12 Nov 13:30 IST
+ACT   retry: comments read only to 20 Nov 09:00 IST (40 reads): the next check reads on
+ACT   retry: check_a.ts passed only on retry 2 times, newest on #3001 at 18 Nov 10:15 IST: no PR names its fix'
+o=$(printf '%s\n' "$hl" | python3 -I "$A" --name retry4 --state "$T/s" --now "$NOW" --live "$LV" 2>&1)
+ok "step 2i keeps retry-watch's health ACTs live (memory lost, comments behind) though their dates are old; a stale pass still leaves" "$([ -n "$LV" ] && grep -q '^ACT   retry: memory unreadable' <<< "$o" && grep -q '^ACT   retry: comments read only to' <<< "$o" && ! grep -q '^ACT   retry: check_a' <<< "$o" && echo 1)" "lv=$LV / $o"
 # step 9's did-not-run test, read from lead-watch.sh, on act-age's output for a week of stale-only checks (round 2 of #3837)
 RX=$(python3 -I -c 'import re,sys; m=re.search(r"^grep -qE .(\^\(outside[^\x27]*). <<<\"\$od\"", open(sys.argv[1]).read(), re.M); print(m.group(1) if m else "")' "$LW")
 st='ACT outside: 3 SomeVendor: stuck for 230 h (since 16 Nov 21:40 IST)'

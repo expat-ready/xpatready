@@ -177,7 +177,9 @@ sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&
 fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
 # 2i. Retry-only passes (A348, founder 24 Nov): one ACT per suite that passed only on retry until a PR names its fix.
 # OS-85 part 2: an ACT about a pass over 72 h old goes to a weekly stale line (act-age.py); a new pass shows at once.
-rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1 | python3 -I "$TOOLS/act-age.py" --name retry --state "$STATE_DIR"); echo "$rw"; act=$((act + $(grep -c '^ACT' <<<"$rw"))); seen "$rw"
+# retry-watch's own health ACTs (a lost memory, comments read only to an old time) are about this check, whatever date
+# they quote: live (round 3 of #3837).
+rw=$(python3 -I "$TOOLS/retry-watch.py" --state "$STATE_DIR" 2>&1 | python3 -I "$TOOLS/act-age.py" --name retry --state "$STATE_DIR" --live '^ACT   retry: (memory |comments read only to)'); echo "$rw"; act=$((act + $(grep -c '^ACT' <<<"$rw"))); seen "$rw"
 grep -qE '^(retry |ACT   retry)' <<<"$rw" || ACT "retry: retry-watch.py did not run ($(head -1 <<<"$rw"))"
 fresh "retry-watch.py: CI's retry comments and the PRs naming a fix (gh.sh), what earlier checks found in $STATE_DIR"
 
