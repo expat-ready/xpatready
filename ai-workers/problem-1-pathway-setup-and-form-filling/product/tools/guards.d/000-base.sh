@@ -603,7 +603,7 @@ MUT="$MUT"'
 LR156 age|product/tools/lead-age.sh|s/^    \[ "\$age_h" -gt "\$H" \] \&\& want=/    false \&\& want=/|check-lead-age.sh
 LR156 ci|product/tools/lead-age.sh|s/^    if \[ "\$gap_h" -gt "\$H" \]; then$/    if false; then/|check-lead-age.sh
 LR156 keep|product/tools/lead-age.sh|s/^      if \[ "\$extra" != 0 \]; then$/      if false; then/|check-lead-age.sh
-LR154 push|product/tools/lead-check-guard.sh|s/^  \[ "\$pushed" = yes \] \&\& exit 0$/  exit 0/|check-lane-read.sh
+LR154 push|product/tools/lead-check-guard.sh|s/^  \[ "\$pushed" = yes \] \&\& passed$/  passed/|check-lane-read.sh
 LR147 read|product/tools/lane-death.sh|s/^      \[\[ "\$t" =~ .*/      continue/|check-lane-death.sh
 LR146 hour|product/tools/nudge-lane.sh|s/ -lt "\$min" \]; then$/ -lt 0 ]; then/|check-nudge-lane.sh
 OS86 gate|product/tools/switch.sh|s/^    if \[ ! -s "\$D\/baseline" \]; then$/    if false; then/|check-switch.sh

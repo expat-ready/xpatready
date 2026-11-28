@@ -463,5 +463,10 @@ fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json fr
 # judges every 10 min with no Mac running (a red lead-check-gap status on main over 20 min). Not pushed is an ACT.
 if [ "${LEAD_STAMP_PUSH:-on}" != off ] && case "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" in lead|lead-stale) true;; *) false;; esac; then
   sp=$(bash "$TOOLS/lead-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
+# LR-167 (founder A455): the end-of-run stamp the Lead's Stop hook asks of a check turn (lead-check-guard.sh): written only
+# here, after every step ran, as "<epoch> <commits this script's copy is behind origin/main> <its head> <minutes arg>".
+# Behind is counted on origin/main as step 0b fetched it; after a failed fetch it can read low (the next fetch corrects it).
+fb=$(git -C "$TOOLS" rev-list --count HEAD..origin/main 2>/dev/null || echo 9999)
+echo "$(date +%s) $fb $(git -C "$TOOLS" rev-parse HEAD 2>/dev/null) $SINCE" > "$STATE_DIR/full-check.$$" && mv -f "$STATE_DIR/full-check.$$" "$STATE_DIR/full-check"
 echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
 exit "$act"
