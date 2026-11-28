@@ -68,11 +68,12 @@ st=$(cat "$T/state/last-check" 2>/dev/null); ok "... and it still writes the che
 C="$T/toolscopy"; cp -R "$TOOLS" "$C"; printf '#!/bin/sh\n[ "$1" = whoami ] && echo lead\n' > "$C/lane.sh"
 printf '#!/bin/sh\necho "push $*" >> "%s/stamp.log"; [ -e "%s/stamp-fail" ] && { echo "check stamp not pushed: refused"; exit 1; }; echo "check stamp pushed"\n' "$T" "$T" > "$C/lead-stamp.sh"
 echo 4900 > "$T/used"; rm -f "$T/state/last-check"
-out=$(cd "$TOOLS" && GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null); r=$?
+out=$(cd "$TOOLS" && LEAD_STAMP_PUSH=on GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null); r=$?
 ok "budget-short exit in the Lead's copy: the stamp is pushed (LR-168), no extra ACT, exit 2" "$([ $r = 2 ] && grep -q '^push ' "$T/stamp.log" && grep -q '^check stamp pushed$' <<<"$out" && [ "$(grep -c '^ACT' <<<"$out")" = 1 ] && echo 1)" "exit $r: $out | $(cat "$T/stamp.log" 2>&1)"
-touch "$T/stamp-fail"; out=$(cd "$TOOLS" && GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null); r=$?
+touch "$T/stamp-fail"; out=$(cd "$TOOLS" && LEAD_STAMP_PUSH=on GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null); r=$?
 ok "... a push that fails is an ACT (exit 3)" "$([ $r = 3 ] && grep -q '^ACT   check stamp not pushed' <<<"$out" && echo 1)" "exit $r: $out"
 rm -f "$T/stamp-fail" "$T/stamp.log"; out=$(cd "$TOOLS" && LEAD_STAMP_PUSH=off GH_TOKEN=gho_StandIn LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$C/lead-watch.sh" 2>/dev/null)
+ok "... LEAD_STAMP_PUSH=off (every guard test's default, guard-test-lib.sh) pushes nothing" "$([ "$(bash -c '. "$1/guard-test-lib.sh"; echo "$LEAD_STAMP_PUSH"' _ "$TOOLS")" = off ] && echo 1)" "guard-test-lib.sh does not export LEAD_STAMP_PUSH=off"
 ok "... LEAD_STAMP_PUSH=off pushes nothing" "$([ ! -s "$T/stamp.log" ] && echo 1)" "$(cat "$T/stamp.log" 2>&1)"
 
 # The Lead's machine: the live meter log is judged against the real budget lines (skipped where there is none, as in CI).

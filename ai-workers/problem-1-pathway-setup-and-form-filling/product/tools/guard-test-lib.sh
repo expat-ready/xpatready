@@ -13,6 +13,9 @@ PRODREL="ai-workers/problem-1-pathway-setup-and-form-filling/product"
 unset XR_RECORDS; export PRIVATE_HOME_DIR="${TMPDIR:-/tmp}/no-private-home.$$"
 # LR-174: no test reaches the Lead's real GitHub App key (~/.config/expat-ready/lead-app.pem); check-app-token.sh turns it on with a throwaway one.
 export XR_APP=off
+# LR-168 + LR-174 (review on #4092): no test pushes the Lead's real check stamp (lead-stamp.sh push from a copy that
+# lane.sh calls the Lead's, on the Mac, would fake a Lead check on GitHub); a test that wants the push turns it on.
+export LEAD_STAMP_PUSH=off
 docs_copy() {  # $1 dir → a git copy at $1 with product/tools/check-docs.sh and STATE.md (one current_lead line)
   mkdir -p "$1/$PRODREL/tools" && cp "$TOOLS/check-docs.sh" "$TOOLS/current-lead.sh" "$TOOLS/records-dir.sh" "$1/$PRODREL/tools/"
   git -C "$1" init -q -b main && git -C "$1" config user.email t@t && git -C "$1" config user.name t && git -C "$1" config commit.gpgsign false
