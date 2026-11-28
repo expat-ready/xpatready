@@ -15,7 +15,9 @@ today() { TZ=Asia/Kolkata date -d "@$now" +%Y-%m-%d 2>/dev/null || TZ=Asia/Kolka
 root=$(g rev-parse --show-toplevel 2>/dev/null) || { echo "ACT   stale copy (LR-166): $D is not a git copy: clone one: git clone https://github.com/expat-ready/xpatready.git"; exit 3; }
 note=""
 if [ -z "${COPY_GATE_NOFETCH:-}" ]; then
-  g -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || note=" (origin was not fetched now: judged on the origin/main held here)"
+  # Bounded on HTTPS (lowSpeed) and on ssh (a connect and keep-alive limit, unless the caller set its own GIT_SSH_COMMAND).
+  GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o ConnectTimeout=15 -o ServerAliveInterval=5 -o ServerAliveCountMax=3}" \
+    g -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch -q origin main 2>/dev/null || note=" (origin was not fetched now: judged on the origin/main held here)"
 fi
 clone="git clone https://github.com/expat-ready/xpatready.git \"$(dirname "$root")/xpatready-$(today)\" && cd \"$(dirname "$root")/xpatready-$(today)\" && git switch -c lead/$(today)"
 g rev-parse -q --verify "$M^{commit}" >/dev/null && mb=$(g merge-base HEAD "$M" 2>/dev/null) \
@@ -25,8 +27,12 @@ line="${behind} behind $M, base ${age_h} h older than its tip"
 if [ "$behind" -le "$B" ] && [ "$age_h" -le "$H" ]; then echo "copy   gate ok: $line$note (LR-166: at most $B behind, $H h)"; exit 0; fi
 why=""; [ "$behind" -gt "$B" ] && why="over $B behind"; [ "$age_h" -gt "$H" ] && why="${why:+$why and }base over $H h old"
 unpushed=$(g rev-list --count HEAD --not --remotes 2>/dev/null || echo "?"); dirty=$(g status --porcelain --untracked-files=no 2>/dev/null | head -1)
-if [ "$unpushed" = 0 ] && [ -z "$dirty" ]; then
+# switch -C also resets a local lead/<today> that is not checked out: one holding a commit not on main gets the clone command
+# (as lead-age.sh recut, review of #3926 Major; review of LR-166).
+extra=0; new="lead/$(today)"
+[ "$(g branch --show-current 2>/dev/null)" != "$new" ] && g rev-parse -q --verify "refs/heads/$new" >/dev/null && extra=$(g rev-list --count "$new" --not "$M" 2>/dev/null || echo "?")
+if [ "$unpushed" = 0 ] && [ -z "$dirty" ] && [ "$extra" = 0 ]; then
   cmd="git -C \"$root\" fetch origin main && git -C \"$root\" switch -C lead/$(today) $M && git -C \"$root\" config branch.lead/$(today).remote origin && git -C \"$root\" config branch.lead/$(today).merge refs/heads/lead/$(today)"
-else cmd="$clone (this copy has ${unpushed} commit(s) only here${dirty:+ and changed files}: push them from it, never lost)"; fi
+else cmd="$clone (this copy has ${unpushed} commit(s) only here${dirty:+ and changed files}$([ "$extra" = 0 ] || echo "; its $new holds $extra commit(s) not on main"): push them from it, never lost)"; fi
 echo "ACT   stale copy (LR-166): $line ($why)$note: refused; $cmd"
 exit 3

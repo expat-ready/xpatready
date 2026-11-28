@@ -4,7 +4,9 @@ TESTS="$TESTS check-copy-gate.sh"   # LR-166: stale copy refused, not warned
 MUT="$MUT"'
 LR166 behind|product/tools/copy-gate.sh|s/if \[ "\$behind" -le "\$B" \] \&\& \[ "\$age_h" -le "\$H" \]; then/if [ "$age_h" -le "$H" ]; then/|check-copy-gate.sh
 LR166 age|product/tools/copy-gate.sh|s/if \[ "\$behind" -le "\$B" \] \&\& \[ "\$age_h" -le "\$H" \]; then/if [ "$behind" -le "$B" ]; then/|check-copy-gate.sh
-LR166 recut|product/tools/copy-gate.sh|s/if \[ "\$unpushed" = 0 \] \&\& \[ -z "\$dirty" \]; then/if true; then/|check-copy-gate.sh
+LR166 recut|product/tools/copy-gate.sh|s/if \[ "\$unpushed" = 0 \] \&\& \[ -z "\$dirty" \] \&\& \[ "\$extra" = 0 \]; then/if true; then/|check-copy-gate.sh
 LR166 watch|product/tools/lead-watch.sh|s/^  \[ "\$cgr" = 0 \] /  true /|check-copy-gate.sh
 LR166 own|product/tools/lead-watch.sh|s/cg=\$(bash "\$TOOLS\/copy-gate.sh" "\$TOOLS" 2>\&1)/cg=$(bash "$TOOLS\/copy-gate.sh" . 2>\&1)/|check-copy-gate.sh
-LR166 start|product/tools/session-start.sh|s/^ctx=\$(\[ -n "\${gate:-}" \] \&\& { echo "\$gate"; echo; }; /ctx=$(/|check-copy-gate.sh'
+LR166 start|product/tools/session-start.sh|s/^ctx=\$(\[ -n "\${gate:-}" \] \&\& { echo "\$gate"; echo; }; /ctx=$(/|check-copy-gate.sh
+LR166 dirty|product/tools/copy-gate.sh|s/if \[ "\$unpushed" = 0 \] \&\& \[ -z "\$dirty" \] \&\& \[ "\$extra" = 0 \]; then/if [ "$unpushed" = 0 ] \&\& [ "$extra" = 0 ]; then/|check-copy-gate.sh
+LR166 today|product/tools/copy-gate.sh|s/if \[ "\$unpushed" = 0 \] \&\& \[ -z "\$dirty" \] \&\& \[ "\$extra" = 0 \]; then/if [ "$unpushed" = 0 ] \&\& [ -z "$dirty" ]; then/|check-copy-gate.sh'

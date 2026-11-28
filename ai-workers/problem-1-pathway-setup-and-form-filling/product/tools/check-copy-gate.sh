@@ -36,6 +36,16 @@ echo mine > "$T/behind/mine.txt"; git -C "$T/behind" add mine.txt; git -C "$T/be
 out=$(bash "$T/behind/$G" "$T/behind"); r=$?
 ok "a stale copy with a commit only here gets the clone command, not the recut" "$([ "$r" = 3 ] && grep -q 'git clone ' <<<"$out" && ! grep -q 'switch -C' <<<"$out" && echo 1)" "rc=$r $out"
 git -C "$T/behind" reset -q --hard HEAD~1
+echo changed >> "$T/behind/log.txt"
+out=$(bash "$T/behind/$G" "$T/behind"); r=$?
+ok "a stale copy with a changed tracked file gets the clone command, not the recut" "$([ "$r" = 3 ] && grep -q 'git clone ' <<<"$out" && grep -q 'changed files' <<<"$out" && ! grep -q 'switch -C' <<<"$out" && echo 1)" "rc=$r $out"
+git -C "$T/behind" checkout -q -- log.txt
+# a local lead/<today> (not checked out) holding a commit not on main would be reset by the recut: the clone command instead
+td=$(TZ=Asia/Kolkata date +%Y-%m-%d)
+git -C "$T/behind" branch -q "lead/$td" origin/main && git -C "$T/behind" checkout -q "lead/$td" && echo rec > "$T/behind/rec.txt" && git -C "$T/behind" add rec.txt && git -C "$T/behind" commit -qm "unpushed record" && git -C "$T/behind" checkout -q lead/behind
+out=$(bash "$T/behind/$G" "$T/behind"); r=$?
+ok "a local lead/<today> holding an unpushed record: the clone command, never the recut that would reset it" "$([ "$r" = 3 ] && grep -q 'git clone ' <<<"$out" && grep -q "lead/$td holds 1 commit" <<<"$out" && ! grep -q 'switch -C' <<<"$out" && echo 1)" "rc=$r $out"
+git -C "$T/behind" branch -q -D "lead/$td"
 # base over 24 h older than main's tip, only 2 behind
 git clone -q "$T/origin.git" "$T/old" 2>/dev/null; cd "$T/seed" || exit 2
 c "late 1" $((NOW + 26 * 3600)); c "late 2" $((NOW + 26 * 3600)); git push -q origin main
