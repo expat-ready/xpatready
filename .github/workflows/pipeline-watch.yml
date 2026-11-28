@@ -1,0 +1,69 @@
+# Pipeline watch (OS-84; tech lead 26 Nov, founder ask A400: "every watcher must run inside the pipeline, not only in a
+# Lead session"). Runs the Lead's existing detectors against GitHub (sle-watch.py's Q target, proof-read-watch.py,
+# merge-wake.py --post, owed-watch.py) and posts each act as one line of a comment on the PR it names, so a cloud lane
+# subscribed to its own PR is woken (as OS-49) and the tech lead reads it; acts that name no PR go to the job summary.
+# No duplicate: each line carries a hidden key; the same act on the same PR is posted again only after 24 h
+# (product/tools/pipeline-watch.py). Main's copy only: every trigger here runs the default branch's file and checks out
+# main; no PR code is fetched or run. Writes only comments (issues and pull-requests: write, as comment-run.yml and
+# queue-gate.yml hold for a PR comment); merge-wake.py's memory is kept in the Actions cache, saved even when a run is red
+# (review round 1 of #3819: a lost memory would post the same wake again). Every 10 minutes, and on a merge to main, a ci run on main (a full run) and a comment by someone with
+# write access (GitHub drops schedules for hours: OS-83). A comment posted here by GITHUB_TOKEN starts no run.
+# Test: product/tools/check-pipeline-watch.sh. US$0 (GitHub's machines), no model call.
+name: pipeline-watch
+on:
+  schedule:
+    - cron: "3,13,23,33,43,53 * * * *"   # every 10 min, off the top of the hour
+  workflow_dispatch:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  issue_comment:
+    types: [created]
+permissions: {}
+concurrency:
+  group: pipeline-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    # A comment only from someone with write access: anyone can comment on this repository (OS-83 review m4); and only
+    # one with the words the detectors read (OS-78 (a): a comment-triggered job skips the rest): a tech-lead answer or
+    # question, "Ready for Lead read", a "Reviewer:" verdict. contains() ignores case; && binds before ||.
+    if: >-
+      github.event_name != 'issue_comment' ||
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      && (contains(github.event.comment.body, 'lead') || contains(github.event.comment.body, 'reviewer:'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, issues: write, pull-requests: write, actions: read, checks: read }
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      # fetch-depth 0 above brings every branch tip to refs/remotes/origin/*, which merge-wake.py reads (never checked out)
+      - name: merge-wake memory (Actions cache, restored)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/watch-state/merge-wake.json
+          key: pipeline-watch-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: pipeline-watch-state-
+      - name: open pull requests (merge-wake.py reads them as lead-watch.sh step 2b saves them)
+        run: |
+          mkdir -p "$RUNNER_TEMP/watch-state"
+          gh pr list --repo "${{ github.repository }}" --state open --limit 200 --json number,title,body,isDraft,headRefName,createdAt,labels,isCrossRepository > "$RUNNER_TEMP/watch-state/prs-body.json"
+      - name: pipeline watch (posts each act on its PR)
+        run: python3 -I "$P/tools/pipeline-watch.py" --repo "${{ github.repository }}" --post --state "$RUNNER_TEMP/watch-state" --summary "$GITHUB_STEP_SUMMARY"
+      - name: merge-wake memory (Actions cache, saved even when the watch is red)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/watch-state/merge-wake.json
+          key: pipeline-watch-state-${{ github.run_id }}-${{ github.run_attempt }}
