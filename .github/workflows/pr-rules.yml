@@ -1,6 +1,7 @@
 # PR body and size rules (P-611, row G-4 (2), (3), (6); P-526, P-606, P-608, P-610): the body has a "Done when" that
 # names its test and a "Duplicate check:" line; the PR is under 800 changed lines, tests included, unless the body names
-# a recorded exception ("Size exception: P-NNN"); every agent, skill and hook agrees on Opus 5.5 medium (P-788). Re-runs when the
+# an exception: the label "size: exception" with a line "Size exception: <reason>" (P-857 (5)), or a recorded row
+# ("Size exception: P-NNN"); every agent, skill and hook agrees on Opus 5.5 medium (P-788). Re-runs when the
 # body is edited. Merge-queue PRs (mergify/*) carry a generated body and are skipped; a records-only PR (by its file
 # list, records-only.sh; their own queue) passes with the rule steps skipped. No "labeled": a label must never re-run
 # the check the queue waits on (as ci.yml, review 6 Nov).
@@ -85,7 +86,7 @@ jobs:
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         # Test: product/tools/check-checks-changed.sh.
         run: printf '%s\n' "$BODY" | timeout 30 python3 -I "$T/checks-changed.py" --base HEAD^1 --summary "$GITHUB_STEP_SUMMARY" || { r=$?; echo "::error title=Checks changed (A351 C2)::the check could not run or ran out of time (exit $r), so this step fails (LR-043, fail closed)"; exit 1; }
-      - name: under 800 changed lines of code and tests, or a recorded exception
+      - name: under 800 changed lines of code and tests, or a size exception (label and reason, P-857; or a recorded row)
         if: "${{ !cancelled() && steps.rec.outputs.records != 'yes' }}"
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -98,7 +99,12 @@ jobs:
           # P-686: a records-only PR (every path, both sides of a rename, a record by records-only.sh) is not size-limited.
           REC=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
             --jq '.[] | .filename, (.previous_filename // empty)' | bash "$T/records-only.sh" is-records --files) || REC=no
-          printf '%s\n' "$BODY" | bash "$T/pr-size.sh" "$CODE" 0 "$REC"
+          # P-857 (5): the label "size: exception" with a "Size exception: <reason>" body line passes over 800. Read from
+          # GitHub now (no "labeled" trigger, see the top); a failed read fails the step (LR-043, fail closed).
+          NAMES=$(gh api --paginate "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" --jq '.[].name') \
+            || { echo "::error title=size (P-857)::the PR's labels could not be read, so this step fails (LR-043, fail closed)"; exit 1; }
+          LAB=no; grep -qxF 'size: exception' <<< "$NAMES" && LAB=yes
+          printf '%s\n' "$BODY" | bash "$T/pr-size.sh" "$CODE" 0 "$REC" "$LAB"
       # One model rule (P-788, A420): settings, agent files, skills, instruction files and the two hooks agree on
       # Opus 5.5 medium; any disagreement fails, naming the file and line. Runs on records-only PRs too: WAY-OF-WORKING.md
       # is a record the Lead edits, and the check reads it. Test: product/tools/check-model-rule.sh.
