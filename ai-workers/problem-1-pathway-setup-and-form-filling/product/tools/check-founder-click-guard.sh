@@ -43,10 +43,10 @@ for m in 'Recommend: at 07:00, open https://github.com/expat-ready/xpatready/pul
   r=$(stop lead "$m"); ok "refused (21 Nov): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
 for m in 'Next step: add the Done when line to #2578 (I will do it in the built-in browser).' 'I edited the PR description of #2578 in the built-in browser.' 'I added the Done when line to #2578 in the built-in browser.' 'The lane fixed one line in #2452.' 'Open https://github.com/expat-ready/xpatready/pull/2578 to see it merged.'; do
   r=$(stop lead "$m"); ok "passes (21 Nov): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
-r=$(stop qa "$click"); ok "a non-Lead copy is untouched" "$([ "$r" = pass ] && echo 1)" "got $r"
-r=$(stop unbound "$click"); ok "... and an unbound copy" "$([ "$r" = pass ] && echo 1)" "got $r"
+r=$(stop qa "$click"); ok "LR-176: a lane's copy (qa) is refused too (every session, not only the Lead's)" "$([ "$r" = block ] && echo 1)" "got $r"
+r=$(stop unbound "$click"); ok "LR-176: ... and an unbound copy" "$([ "$r" = block ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" --arg m "$click" '{cwd:$d,last_assistant_message:$m}' | FAKE_LANE=lead bash "$G")
-ok "the refusal says the fix text: do it in the built-in browser (P-752) (P-778 E-c)" "$(jq -e '.reason | contains("do it in the built-in browser (P-752")' <<<"$out" >/dev/null && echo 1)" "$out"
+ok "the refusal says the fix text: do it yourself now, with the session's own tools (P-752, LR-176)" "$(jq -e '.reason | contains("Rule LR-176:") and contains("Fix: do it yourself now (P-752") and contains("its own tools")' <<<"$out" >/dev/null && echo 1)" "$out"
 # ENF-778a E-c (P-778): close, archive, reopen, label, dispatch, "Run workflow", merge and press, in a message or an ask line
 for m in 'Please close #2413, it is superseded.' 'Could you archive the session of lane forms-2?' 'You need to merge the PR when green.' \
          'Please press Run workflow on the nightly.' 'Can you dispatch the nightly workflow?' 'Please hit Run workflow on lead-watch.' \
@@ -96,6 +96,29 @@ for m in 'I can merge #12 now, then archive the forms lane.' 'You can see #2322 
   r=$(stop lead "$m"); ok "passes (Lead 7, last round): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 q=$(sed -n '/python3 -I -c /,/^. "\$1"; }/p' "$G" | sed '1d;$d' | grep -c "'")
 ok "the Python program inside the bash single quotes has no ' (one would end it, and every check would pass silently)" "$([ "$q" = 0 ] && echo 1)" "$q line(s) with '"
+# LR-176 (founder A455, 15:5x IST): every session; asks to the founder or the Lead for a step the session's own tools can do
+for m in 'Could you re-run the failed ci job on #4087?' 'Waiting for the Lead to label #4084.' 'Please start a session for the forms lane.' \
+         'Can you post the Approve line on #4085?' 'The founder needs to open the PR from the Create PR button.' \
+         'Ask the tech lead to re-run the pr-suites parts.' 'Lead: please comment on #4086 with the reviewer line.' \
+         'Could you set the variable READY_GATE in the repository settings?' 'Please open a PR for this branch.'; do
+  for ln in screens lead; do r=$(stop $ln "$m"); ok "LR-176 refused ($ln copy): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done; done
+for m in 'I re-ran the failed ci job on #4087; it is green.' 'Ready for Lead read 1291e0113a4a4120856edb58af5b9a3b81866b83' \
+         'The Lead labels it after the read.' 'Question for the tech lead: keep LR-169 narrow or wide? I recommend narrow.' \
+         'Opening the PR was refused: "Permission for this action was denied by the Claude Code auto mode classifier." Please open it from the Create PR button.' \
+         '> Permission for this action was denied.
+Please open #4090 from the Create PR button.' \
+         'Please sign in to claude.ai again; then I start the forms session myself.' 'I started the forms session and posted the Approve line on #4085.'; do
+  r=$(stop screens "$m"); ok "LR-176 passes (lane copy): ${m%%$'\n'*}" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+r=$(stop screens 'Opening the PR was refused, please open it from the Create PR button.'); ok "LR-176: a refusal named but not quoted word for word is still refused" "$([ "$r" = block ] && echo 1)" "got $r"
+# review of LR-176: a quoted status word is no refused call; reports of what someone else was asked pass; more asks block
+for m in 'The board says "this lane is blocked by a red merge batch since noon". Please label #12.' 'The ci "blocked" status is gone. Please label #12.' 'Please label #12. See the `blocked` column in the board.' \
+         'Note: auto-merge stays "not allowed" for drafts. Please open a PR for this branch.' \
+         'Could the Lead re-run the ci job on #12?' 'Over to you to re-run the ci job on #12.' 'Over to you: re-run the ci job on #12.' \
+         '#12 needs your label.' 'Lead: label it when green.' 'Over to you to label #12.'; do
+  r=$(stop screens "$m"); ok "LR-176 r1 refused: $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'The founder asked the Lead to start a session for forms; I started it.' 'The founder told the Lead to re-run the ci job; it is green now.' \
+         'I reminded the Lead to set the variable; done.'; do
+  r=$(stop screens "$m"); ok "LR-176 r1 passes (a report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 # LR-170 (founder A455, 28 Nov): past-tense reports pass; a present-tense wait for the founder's click still asks.
 for m in "The app's lane starts sat as cards waiting for your click" 'Each became a card waiting for your click'; do
   r=$(stop lead "$m"); ok "passes (LR-170, a report, not a request): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
@@ -124,8 +147,8 @@ ok "... a sign-in ask and a row not addressed to the founder are not flagged" "$
 ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
 grep -q 'founder-click-guard.sh" --state "$RECS/STATE.md"' "$TOOLS/lead-watch.sh" && grep -q "grep -c '^ACT' <<<\"\$fc\"" "$TOOLS/lead-watch.sh"
 ok "lead-watch.sh runs the STATE count and counts its ACT lines" "$([ $? = 0 ] && echo 1)"
-grep -q '^\[ "\$LANE" = lead \] && { fc=$(printf .%s. "\$input" | bash "\$PH/tools/founder-click-guard.sh"' "$TOOLS/stop-check.sh"
-ok "stop-check.sh runs the guard in the Lead's copy" "$([ $? = 0 ] && echo 1)"
+grep -q '^fc=$(printf .%s. "\$input" | bash "\$PH/tools/founder-click-guard.sh"' "$TOOLS/stop-check.sh"
+ok "stop-check.sh runs the guard in every copy (LR-176; was the Lead's only)" "$([ $? = 0 ] && echo 1)"
 jq -e '[.hooks.Stop[].hooks[].command | select(test("stop-check.sh"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "settings.json runs stop-check.sh on Stop" "$([ $? = 0 ] && echo 1)"
 finish

@@ -3,7 +3,7 @@
 # skills, agents, settings, decisions, the backlog), (2) rules files pass check-docs: in any copy but the Lead's, only
 # lines about files this branch changed against origin/main block (P-756); lines about the Lead's records alone (WORKFLOW
 # LOCK, RULES LAG, RULES register, STATE size) are a warning, enforced by CI on records PRs, (3) explicit any in live code does
-# not rise (skipped when studio packages are not installed), (4) in the Lead's copy, the last message does not ask the founder
+# not rise (skipped when studio packages are not installed), (4) in every copy (LR-176), the last message does not ask the founder or the Lead
 # to click on GitHub, claude.ai or a console (founder-click-guard.sh, ENF-763), (6) in the Lead's copy, no question for the
 # tech lead waits over 20 min (product) or 60 min (tooling) unanswered (question-gate.py, ENF-778a E-a, P-778). Uncommitted or unpushed work is a note, never a block:
 # the pull request is the record (no state file to update on every reply).
@@ -78,7 +78,8 @@ else
   echo "stop-check: no studio packages ($APP/node_modules/typescript missing) — skipping the any-count (run npm ci)" >&2
 fi
 # (4) ENF-763 (P-752/P-763): the Lead's turn does not end asking the founder to click on GitHub, claude.ai or a console.
-[ "$LANE" = lead ] && { fc=$(printf '%s' "$input" | bash "$PH/tools/founder-click-guard.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null); [ -n "$fc" ] && reasons="$reasons$fc"$'\n'; }
+# LR-176 (founder A455): in every copy, the Lead's and every lane's, asking the founder or the Lead for a step its own tools can do.
+fc=$(printf '%s' "$input" | bash "$PH/tools/founder-click-guard.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null); [ -n "$fc" ] && reasons="$reasons$fc"$'\n'
 # (6) ENF-778a E-a (P-778): in the Lead's copy, no turn ends while a product question for the tech lead waits over 20 min,
 # or a tooling one over 60, with no Lead answer since (question-gate.py, from lead-watch's SLE dump; a missing or stale
 # dump is a note, never a block, and stop_hook_active above lets the next stop through).
