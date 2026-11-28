@@ -55,8 +55,9 @@ command -v zsh >/dev/null && echo "zsh $(zsh --version | cut -d' ' -f2)"
 echo "== python helpers (api PY path, hash-pinned)"
 VENV="$ROOT/.tools/solution-1-prototype/.venv"
 case "$(uname -s)" in Linux) LOCK="$P/prototype/env/requirements-linux.lock";; *) LOCK="$P/prototype/env/requirements.lock";; esac
-# LR-180 (qa #4083): python-helpers.sh never stops the set-up; a gap (a python3 whose wheels the lock does not pin, no
-# venv module) is one WARNING naming it, and the rest (PostgreSQL, the schema) still runs.
+# LR-180 (qa #4083): in a session python-helpers.sh never stops the set-up; a gap (a python3 whose wheels the lock does
+# not pin, no venv module) is one WARNING naming it, and the rest (PostgreSQL, the schema) still runs. In CI (CI set) the
+# same WARNING stops it (exit 1), because CI's tests call the venv's python.
 [ -x "$VENV/bin/python" ] || python3 -c 'import venv, ensurepip' 2>/dev/null || apt python3-venv || true
 bash "$P/product/tools/python-helpers.sh" "$VENV" "$LOCK"
 
