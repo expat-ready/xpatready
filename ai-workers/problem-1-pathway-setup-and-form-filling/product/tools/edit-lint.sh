@@ -21,7 +21,10 @@ rel="${f#"$STUDIO"/}"
 case "$rel" in *.d.ts | node_modules/* | */node_modules/* | evidence/* | dist/* | */dist/*) exit 0 ;; esac
 case "$rel" in *.ts | *.tsx | *.js | *.mjs | *.cjs | *.mts | *.cts) ;; *) exit 0 ;; esac
 [ -x "$STUDIO/node_modules/.bin/eslint" ] && [ -f "$STUDIO/eslint.edit.config.js" ] || exit 0
-out=$(cd "$STUDIO" && timeout 15 node_modules/.bin/eslint -c eslint.edit.config.js --pass-on-unpruned-suppressions --no-warn-ignored -- "$rel" 2>&1)
+# GNU timeout: `timeout` on Linux, `gtimeout` (Homebrew coreutils) on the Mac. Neither: run uncapped; the hook's own 20 s
+# timeout in settings.json still ends it (review of #4158: a bare `timeout` gave 127 on the Mac, so the hook said nothing).
+CAP="$(command -v timeout || command -v gtimeout || true)"
+out=$(cd "$STUDIO" && ${CAP:+"$CAP" 15} node_modules/.bin/eslint -c eslint.edit.config.js --pass-on-unpruned-suppressions --no-warn-ignored -- "$rel" 2>&1)
 rc=$?
 [ "$rc" = 1 ] || exit 0
 { echo "edit-lint (LR-181): eslint found new problems in $rel. Fix them now; CI's studio-lint job reports them too."

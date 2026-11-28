@@ -35,6 +35,9 @@ ok "unreadable hook input: exit 0" "$([ "$rc" = 0 ] && ! called && echo 1)" "rc=
 mv "$S/node_modules/.bin/eslint" "$T/eslint"; STUB_RC=1 hook "$S/web/src/pages/a.tsx"
 ok "a copy without the studio's node_modules: exit 0, silent" "$([ "$rc" = 0 ] && [ -z "$err" ] && echo 1)" "rc=$rc $err"
 mv "$T/eslint" "$S/node_modules/.bin/eslint"
+NB="$T/notimeout"; mkdir -p "$NB"; for d in /usr/local/bin /usr/bin /bin; do for b in "$d"/*; do n=$(basename "$b"); case "$n" in timeout|gtimeout) continue;; esac; [ -e "$NB/$n" ] || ln -s "$b" "$NB/$n"; done; done
+: > "$STUB_LOG"; err=$(printf '{"tool_input":{"file_path":"%s"}}' "$S/web/src/pages/a.tsx" | STUB_RC=1 PATH="$NB" bash "$Q/tools/edit-lint.sh" --hook 2>&1 >/dev/null); rc=$?
+ok "no timeout and no gtimeout on PATH (a Mac without coreutils): eslint still runs, uncapped, and its findings show" "$([ "$rc" = 2 ] && called && grep -q no-unused-vars <<<"$err" && echo 1)" "rc=$rc $err"
 R="$(cd "$TOOLS/../../../.." && pwd)"
 if [ -f "$R/.claude/settings.json" ]; then
   w=$(python3 -I - "$R/.claude/settings.json" <<'EOF'
@@ -56,7 +59,7 @@ if [ -x "$RS/node_modules/.bin/eslint" ] && [ -f "$RS/eslint.edit.config.js" ]; 
 r=json.loads(sys.stdin.read())["rules"]; s=lambda k: (r.get(k) or [0])[0]
 print(s("react-hooks/rules-of-hooks"), s("react-hooks/exhaustive-deps"), s("react-hooks/static-components"), s("@typescript-eslint/no-unused-vars"))' <<<"$cfg" 2>&1)
   ok "real edit config: rules-of-hooks and exhaustive-deps on, the compiler rule off, the CI rules kept" "$([ "$on" = "2 2 0 2" ] && echo 1)" "$on"
-  s=$(date +%s%N); (cd "$RS" && timeout 15 node_modules/.bin/eslint -c eslint.edit.config.js --pass-on-unpruned-suppressions --no-warn-ignored -- web/src/runtime/questionnaire.tsx >/dev/null 2>&1); e=$(( ($(date +%s%N) - s) / 1000000 ))
-  ok "real eslint, edit config, the largest React file: under 2 s cold (LR-083's bar)" "$([ "$e" -lt 2000 ] && echo 1)" "${e} ms"
+  s=$(date +%s%N); (cd "$RS" && node_modules/.bin/eslint -c eslint.edit.config.js --pass-on-unpruned-suppressions --no-warn-ignored -- web/src/runtime/questionnaire.tsx >/dev/null 2>&1); lrc=$?; e=$(( ($(date +%s%N) - s) / 1000000 ))
+  ok "real eslint, edit config, the largest React file: it lints (exit 0 or 1) under 2 s cold (LR-083's bar)" "$([ "$lrc" -le 1 ] && [ "$e" -lt 2000 ] && echo 1)" "exit $lrc, ${e} ms"
 else echo "SKIP  the real studio eslint: node_modules not installed in this copy"; fi
 finish

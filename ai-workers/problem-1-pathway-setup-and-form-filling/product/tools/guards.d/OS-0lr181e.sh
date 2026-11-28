@@ -7,4 +7,5 @@ LR181e studio-only|product/tools/edit-lint.sh|s/^case "\$f" in "\$STUDIO"\/\*) .
 LR181e source-only|product/tools/edit-lint.sh|s/^case "\$rel" in \*\.ts .*$/:/|check-edit-lint.sh
 LR181e skip-list|product/tools/edit-lint.sh|s/^case "\$rel" in \*\.d\.ts .*$/:/|check-edit-lint.sh
 LR181e edit-config|product/tools/edit-lint.sh|s/ -c eslint.edit.config.js//|check-edit-lint.sh
-LR181e crash-quiet|product/tools/edit-lint.sh|s/^\[ "\$rc" = 1 \] /[ "$rc" != 0 ] /|check-edit-lint.sh'
+LR181e crash-quiet|product/tools/edit-lint.sh|s/^\[ "\$rc" = 1 \] /[ "$rc" != 0 ] /|check-edit-lint.sh
+LR181e mac-timeout|product/tools/edit-lint.sh|s/^CAP=.*$/CAP=timeout/|check-edit-lint.sh'
