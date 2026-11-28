@@ -41,7 +41,7 @@ jobs:
       group: lead-read-${{ github.event.pull_request.number || github.event.issue.number || 'sweep' }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
           persist-credentials: false

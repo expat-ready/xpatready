@@ -69,20 +69,20 @@ ok("W11 walks.yml runs on a push to main: the plan finds the merged PR from this
   && /pulls\/\$n" --jq "select\(\.merged_at != null and \.merge_commit_sha == \\"\$SHA\\"\) \| \.number"/.test(plan)
   && /continue-on-error: \$\{\{ matrix\.j\.expect == 'fail' \|\| github\.event_name == 'push' \}\}/.test(walk)
   && /--title-file "\$RUNNER_TEMP\/title\.txt" --pr "\$PRN"/.test(plan) && /echo "pr=\$PRN"/.test(plan) && /pr: \$\{\{ steps\.p\.outputs\.pr \}\}/.test(code)
-  && /if: github\.event_name == 'push'\s*\n\s*uses: actions\/upload-artifact@v4\s*\n\s*with: \{ name: walk-plan,/.test(plan)
-  && /if: always\(\) && github\.event_name == 'push'\s*\n\s*uses: actions\/upload-artifact@v4\s*\n\s*with:\s*\n\s*name: walk-result-\$\{\{ matrix\.j\.name \}\}\s*\n\s*path: \$\{\{ runner\.temp \}\}\/walk\/walk\.json/.test(walk)
-  && /- if: github\.event_name != 'pull_request'\s*\n\s*uses: actions\/checkout@v4\s*\n/.test(walk) && !/:\s*write\b/.test(code), { planIf, onPush });
+  && /if: github\.event_name == 'push'\s*\n\s*uses: actions\/upload-artifact@[0-9a-f]{40} # v4\.\d+\.\d+\s*\n\s*with: \{ name: walk-plan,/.test(plan)
+  && /if: always\(\) && github\.event_name == 'push'\s*\n\s*uses: actions\/upload-artifact@[0-9a-f]{40} # v4\.\d+\.\d+\s*\n\s*with:\s*\n\s*name: walk-result-\$\{\{ matrix\.j\.name \}\}\s*\n\s*path: \$\{\{ runner\.temp \}\}\/walk\/walk\.json/.test(walk)
+  && /- if: github\.event_name != 'pull_request'\s*\n\s*uses: actions\/checkout@[0-9a-f]{40} # v4\.\d+\.\d+\s*\n/.test(walk) && !/:\s*write\b/.test(code), { planIf, onPush });
 const r = readFileSync(join(ROOT, ".github", "workflows", "walk-report.yml"), "utf8"), rc = r.replace(/^\s*#.*$/gm, "");
 ok("W12 walk-report.yml: main's copy on walks' completed runs, only for a push to main of this repository; write scopes on its one job only; main's checkout without the token; artifacts from that run; the PR checked as merged with that commit before one comment",
   /on:\s*\n\s*workflow_run:\s*\n\s*workflows: \[walks\]\s*\n\s*types: \[completed\]/.test(rc) && !/\n  (push|pull_request|pull_request_target|issue_comment|workflow_dispatch):/.test(rc)
   && /\npermissions: \{\}/.test(rc) && /if: \$\{\{ github\.event\.workflow_run\.event == 'push' && github\.event\.workflow_run\.head_branch == 'main' && github\.event\.workflow_run\.head_repository\.full_name == github\.repository \}\}/.test(rc)
   && /permissions: \{ contents: read, actions: read, pull-requests: write, issues: write \}/.test(rc) && (rc.match(/write/g) ?? []).length === 2
-  && /uses: actions\/checkout@v4\s*\n\s*with: \{ persist-credentials: false \}/.test(rc) && !/\bref:/.test(rc) && (rc.match(/run-id: "\$\{\{ github\.event\.workflow_run\.id \}\}"/g) ?? []).length === 2
+  && /uses: actions\/checkout@[0-9a-f]{40} # v4\.\d+\.\d+\s*\n\s*with: \{ persist-credentials: false \}/.test(rc) && !/\bref:/.test(rc) && (rc.match(/run-id: "\$\{\{ github\.event\.workflow_run\.id \}\}"/g) ?? []).length === 2
   && /\[\[ "\$PR" =~ \^\[1-9\]\[0-9\]\{0,6\}\$ \]\]/.test(rc) && /merge_commit_sha == "'"\$SHA"'"/.test(rc) && /\n\s*\[ "\$m" = true \] \|\| \{ [^}\n]*exit 1; \}\n/.test(rc) && rc.indexOf('[ "$m" = true ]') < rc.indexOf("issues/$PR/comments")
   && /walk-plan\.mjs" comment --plan/.test(rc) && /--attempt "\$ATTEMPT"/.test(rc) && !/secrets\./.test(rc)
   // review m4: a download that failed is red (exit 1), never "merged no PR"; the paths read are the paths downloaded to
-  && /id: plan\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@v4\s*\n\s*with: \{ name: walk-plan, path: "\$\{\{ runner\.temp \}\}\/walk-data\/plan"/.test(rc)
-  && /id: results\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@v4\s*\n\s*with: \{ pattern: "walk-result-\*", path: "\$\{\{ runner\.temp \}\}\/walk-data\/results"/.test(rc)
+  && /id: plan\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@[0-9a-f]{40} # v4\.\d+\.\d+\s*\n\s*with: \{ name: walk-plan, path: "\$\{\{ runner\.temp \}\}\/walk-data\/plan"/.test(rc)
+  && /id: results\s*\n\s*continue-on-error: true\s*\n\s*uses: actions\/download-artifact@[0-9a-f]{40} # v4\.\d+\.\d+\s*\n\s*with: \{ pattern: "walk-result-\*", path: "\$\{\{ runner\.temp \}\}\/walk-data\/results"/.test(rc)
   && /d="\$RUNNER_TEMP\/walk-data"/.test(rc) && /--plan "\$d\/plan\/plan\.json" --results "\$d\/results"/.test(rc)
   && /if \[ "\$PLAN_DL" != success \] \|\| \[ ! -f "\$d\/plan\/plan\.json" \]; then\n[^\n]*exit 1\n\s*fi/.test(rc) && /\[ "\$RESULTS_DL" = success \] \|\| \{ [^}\n]*exit 1; \}/.test(rc)
   && /PLAN_DL: "\$\{\{ steps\.plan\.outcome \}\}", RESULTS_DL: "\$\{\{ steps\.results\.outcome \}\}"/.test(rc) && !/run:[^\n]*\$\{\{/.test(rc) && !/\$\{\{[^}]*(head_branch|display_title|head_commit)[^}]*\}\}/.test(rc.replace(/\n    if: .*/, "")), rc.slice(0, 800));

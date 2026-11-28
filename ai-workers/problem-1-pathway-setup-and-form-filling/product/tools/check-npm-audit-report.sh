@@ -26,13 +26,13 @@ printf '{"error":{"code":"ENOLOCK","summary":"This command requires an existing 
 for j in '' '{' '[]' '{"error":{"summary":"x"}}' '{"metadata":{"vulnerabilities":{}},"vulnerabilities":{}}' '{"vulnerabilities":{"a":{"severity":"high"}},"metadata":{"vulnerabilities":{"critical":0,"high":0,"moderate":0,"low":0,"info":0,"total":0}}}'; do printf '%s' "$j" > "$T/h"; run; ok "fail: '${j:0:36}' is no audit: exit 2, never 0 findings" "$([ "$(has 'not read')" = 1 ] && [ "$(has rc=2)" = 1 ] && ! grep -q 'packages with a finding' <<<"$o" && echo 1)" "$o"; done
 aud "$T/b"; aud "$T/h" 'x::error title=y::z|<b>=high'; run --base "$T/b"; ok "no workflow command or markup can be made of a package name" "$(! grep -qE '[a-z]::error|<b>' <<<"$o" && ! grep -q '<b>' "$T/sum" && echo 1)" "$o"
 o=$(python3 - "$TOOLS/../../../../.github/workflows/studio-audit.yml" "$TOOLS/../../../../.mergify.yml" "$TOOLS/../../../../.github/workflows/guards.yml" <<'P' 2>&1
-import sys, yaml
+import re, sys, yaml
 t = open(sys.argv[1]).read(); w = yaml.safe_load(t); on = w.get("on", w.get(True)); j = w["jobs"]["audit"]; s = j["steps"]
 def p(k, v): print("%s=%d" % (k, bool(v)))
 lock = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package"
 p("paths", set(on) == {"pull_request"} and {lock + ".json", lock + "-lock.json", lock[:-7] + ".npmrc"} <= set(on["pull_request"]["paths"]))
 p("read_only", w["permissions"] == {} and j["permissions"] == {"contents": "read"} and "secrets." not in t and s[0]["with"]["persist-credentials"] is False and s[0]["with"]["fetch-depth"] == 2)
-p("report_only", len(w["jobs"]) == 1 and s[0]["uses"] == "actions/checkout@v4" and all(x.get("continue-on-error") is True for x in s[1:]))
+p("report_only", len(w["jobs"]) == 1 and re.fullmatch(r"actions/checkout@[0-9a-f]{40}", s[0]["uses"]) and all(x.get("continue-on-error") is True for x in s[1:]))
 p("npm_ci", s[2]["run"] == 'cd "$S" && npm ci --ignore-scripts --no-audit --no-fund')
 a = s[3]["run"]
 p("audit", 'for v in head base; do npm audit --prefix "$RUNNER_TEMP/$v" --package-lock-only --json --registry=https://registry.npmjs.org/ --offline=false --include=prod --include=dev --include=optional --include=peer > "$RUNNER_TEMP/$v.json" || true; done' in a and 'cp "$S/$f" "$RUNNER_TEMP/head/$f" || true' in a and 'git show "HEAD^1:$S/$f" > "$RUNNER_TEMP/base/$f" || true' in a and '--base "$RUNNER_TEMP/base.json" --summary "$GITHUB_STEP_SUMMARY"' in s[3]["run"])

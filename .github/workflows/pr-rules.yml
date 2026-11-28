@@ -38,7 +38,7 @@ jobs:
       T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
       BODY: "${{ github.event.pull_request.body }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 2   # the merge commit and its first parent (main), for cleanup-pr-check.sh
       - name: records only? (records-only.sh on the PR's file list; then the rule steps are skipped and the check passes)
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0   # main's PR merge commits: which parts have merged, and when the gate reached main
           filter: blob:none
@@ -133,7 +133,7 @@ jobs:
       contents: read
       pull-requests: write   # the label outside-wave only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
