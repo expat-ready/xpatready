@@ -19,9 +19,13 @@ if [ ! -x "$VENV/bin/python" ]; then
   [ -f "$LOCK" ] || gap "the lock is missing"   # only when a venv is to be made: a missing lock never deletes a working one
   mkdir -p "$(dirname "$VENV")"
   "$PY" -m venv "$VENV" 2>/dev/null || gap "$PY -m venv failed (python3-venv missing?)"
-  # pip's own reason, without its [notice] lines: the "DO NOT MATCH" line, the package line and the hash it got
+  # pip's own reason, without its [notice] lines: the ERROR line cut at its first sentence, the package line with the
+  # wheel's file name only (no URL, no "(from -r ...)") and the hash it got, so "Got <hash>" fits under the 400 cap
+  # (LR-184, review of #4101: the full ERROR sentence and URL pushed it out).
   out=$("$VENV/bin/pip" install -q --require-hashes --no-deps --only-binary :all: -r "$LOCK" 2>&1) ||
-    gap "pip refused the lock: $(printf '%s\n' "$out" | grep -v '^\[notice\]' | grep -E '==|DO NOT MATCH|Got|ERROR' | tr -s ' \t' ' ' | sed 's/^ //' | tail -4 | paste -sd ';' - | cut -c1-400)"
+    gap "pip refused the lock: $(printf '%s\n' "$out" | grep -v '^\[notice\]' | grep -E '==|DO NOT MATCH|Got|ERROR' \
+      | sed -E '/^ERROR:/s/\. .*$/./; s#https?://[^ ]*/##; s# \(from -r .*$##; s/:$//' | tr -s ' \t' ' ' | sed 's/^ //' \
+      | tail -4 | paste -sd ';' - | cut -c1-400)"
 fi
 "$VENV/bin/python" -c "import pypdf, cryptography, zxingcpp; print('pypdf', pypdf.__version__)" 2>/dev/null ||
   gap "the installed venv cannot import pypdf, cryptography and zxingcpp"
