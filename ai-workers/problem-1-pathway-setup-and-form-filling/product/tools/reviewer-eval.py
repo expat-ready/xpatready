@@ -82,8 +82,13 @@ def caught(c, text):
         return False, "approved"
     names = [n for f in c["files"] for n in (f, os.path.basename(f))]
     on_file = False
+    section = ""   # a "## Important" / "## Nit" heading tags the findings under it (first run, RT-08)
     for para in re.split(r"\n\s*\n|\n(?=\s*(?:[-*]|\d+\.)\s)", text):
-        if re.search(r"\bImportant\b", para) and any(n in para for n in names):
+        head = re.match(r"\s*#+\s*(Important|Nit|Pre-existing)\b", para, re.I)
+        if head:
+            section = head.group(1).lower()
+        tagged = re.search(r"\b(Nit|Pre-existing)\b", para[:80]) is None and (section == "important" or re.search(r"\bImportant\b", para))
+        if tagged and any(n in para for n in names):
             on_file = True
             if not c.get("match") or re.search(c["match"], para, re.I):
                 return True, f"{v[-1]}, Important on {c['files'][0]}"

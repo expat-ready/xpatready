@@ -46,5 +46,10 @@ python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));d[0]["match"]="one to
 e score "$A" --set "$D/set.json" >/dev/null
 grep -q '^RT-01 #101 CAUGHT' "$D/out"; ok "match: the Important on the bug file that describes the bug is caught" $?
 grep -q '^RT-05 #105 MISSED  Block, Important on a.ts but for another problem' "$D/out"; ok "match: the bug file named for another problem is missed" $?
+printf '## Important\n\n**1. Off by one.**\n`src/a.ts:3` loops one too far.\n\n## Nit\n\n**2. Naming.** `src/a.ts:9`.\n\nReviewer: Changes %s\n' "$M" > "$A/RT-06.md"
+printf '1 Important, 1 Nit\n\n## Nit\n\n**1.** `src/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$A/RT-07.md"
+e score "$A" --set "$D/set.json" >/dev/null
+grep -q '^RT-06 #106 CAUGHT' "$D/out"; ok "a finding under a '## Important' heading counts as Important" $?
+grep -q '^RT-07 #107 MISSED' "$D/out"; ok "the same finding under '## Nit' does not" $?
 echo "check-reviewer-eval: $pass passed, $fail failed"
 [ "$fail" = 0 ]
