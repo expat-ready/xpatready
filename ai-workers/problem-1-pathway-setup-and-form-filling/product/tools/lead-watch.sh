@@ -55,7 +55,7 @@ export GITHUB_METER_DIR="${GITHUB_METER_DIR:-$STATE_DIR/github-meter}"
 GH_METER_START="$STATE_DIR/meter-start.$$"; gm=$(bash "$TOOLS/github-meter.sh" start "$GH_METER_START" 2>&1); say "$gm"
 gf=$(bash "$TOOLS/github-meter.sh" fits lead-watch-full 2>&1); gfrc=$?
 if [ "$gfrc" = 1 ]; then echo "ACT   github budget: ${gf#meter: }: a full check would not fit; the lite check runs instead (LR-175) until the reset (rules/github-limits.md)"; rm -f "$GH_METER_START" "$SEEN"
-  bash "$TOOLS/lead-watch-lite.sh" "$SINCE"; exit $(( $? + 1 )); fi
+  bash "$TOOLS/lead-watch-lite.sh" "$SINCE"; exit $(( $? + 2 )); fi   # the lite check writes the stamp; +1 its ACT, +1 never the healthy exit 1
 [ "$gfrc" = 2 ] && say "github budget unknown: the full check runs (${gf#meter: })"
 
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.

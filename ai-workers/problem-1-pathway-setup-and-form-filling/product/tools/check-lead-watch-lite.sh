@@ -83,5 +83,5 @@ ok "comments unreadable: an ACT, and the stamp is still written" "$(grep -q '^AC
 echo full > "$T/state/last-check-mode"; echo 1 > "$T/state/last-check"; echo 4900 > "$T/used"; : > "$T/gh.log"
 lite 30
 ok "full check over budget: one ACT, then the lite check runs and writes the stamp with mode lite" "$(grep -q '^ACT   github budget: 100 remaining is under lead-watch-full.*the lite check runs instead' <<<"$out" && grep -q 'mode lite' <<<"$out" && [ "$(cat "$T/state/last-check-mode")" = lite ] && [ "$(cat "$T/state/last-check")" != 1 ] && echo 1)" "$out"
-ok "... the stall guard still sees the missed checks, and exit counts every ACT" "$(grep -q '^ACT   previous check ran' <<<"$out" && [ $r = "$(grep -c '^ACT' <<<"$out")" ] && echo 1)" "exit $r: $out"
+ok "... the stall guard still sees the missed checks; exit = every ACT + 1 (never the healthy 1)" "$(grep -q "^ACT   previous check ran" <<<"$out" && [ $r = "$(( $(grep -c "^ACT" <<<"$out") + 1 ))" ] && echo 1)" "exit $r: $out"
 finish

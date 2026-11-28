@@ -24,7 +24,7 @@ case "$XR_APP_ID$XR_APP_INSTALLATION_ID" in *[!0-9]*) echo "app-token: XR_APP_ID
 key="$XR_APP_KEY_FILE"
 [ -f "$key" ] && [ -r "$key" ] || { echo "app-token: XR_APP_KEY_FILE is not a readable file" >&2; exit 2; }
 # Never a key from inside the repository (this tools copy's, or the copy the caller stands in).
-real=$(cd "$(dirname "$key")" 2>/dev/null && pwd -P)/$(basename "$key")
+real=$(python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$key")   # a symlink into the repository is caught too
 for r in "$(git -C "$TOOLS" rev-parse --show-toplevel 2>/dev/null)" "$(git rev-parse --show-toplevel 2>/dev/null)"; do
   [ -n "$r" ] || continue; r=$(cd "$r" && pwd -P)
   case "$real" in "$r"/*) echo "app-token: refused: the key file is inside the repository ($r); keep it outside, e.g. ~/.config/expat-ready/lead-app.pem" >&2; exit 2;; esac
