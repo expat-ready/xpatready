@@ -18,6 +18,7 @@ def load(name, file):
 
 g = load("gh_graphql", "gh_graphql.py")
 sle = load("sle_watch", "sle-watch.py")
+prw = load("proof_read_watch", "proof-read-watch.py")
 
 
 def node(n, comments=(), labeled=(), files=None):
@@ -64,8 +65,14 @@ class Bundle(unittest.TestCase):
         got = g.pr_bundle("o/r", [7], comments=False, files=True, run=lambda q: {"repository": {"p7": node(7, files=["a", "b"])}})
         self.assertEqual(got[7]["files"], ["a", "b"])
         big = node(7, files=["x"]); big["files"]["totalCount"] = 101
-        with self.assertRaises(g.GraphQLError):
-            g.pr_bundle("o/r", [7], comments=False, files=True, run=lambda q: {"repository": {"p7": big}})
+        self.assertIsNone(g.pr_bundle("o/r", [7], comments=False, files=True, run=lambda q: {"repository": {"p7": big}})[7]["files"])
+        ren = node(7, files=["x"]); ren["files"]["nodes"][0]["changeType"] = "RENAMED"
+        self.assertIsNone(g.pr_bundle("o/r", [7], comments=False, files=True, run=lambda q: {"repository": {"p7": ren}})[7]["files"])
+
+    def test_comments_complete_only_when_all_were_read(self):
+        many = node(7, [C1]); many["comments"]["totalCount"] = 101
+        self.assertFalse(g.pr_bundle("o/r", [7], run=lambda q: {"repository": {"p7": many}})[7]["comments_complete"])
+        self.assertTrue(g.pr_bundle("o/r", [7], run=lambda q: {"repository": {"p7": node(7, [C1])}})[7]["comments_complete"])
 
     def test_failures_raise(self):
         for answer in ({}, {"repository": None}, {"repository": {}}):
@@ -142,6 +149,51 @@ class SleFetch(unittest.TestCase):
         self.assertEqual(snap["prs"][0]["approved_at"], "2026-11-28T09:00:00Z")
         self.assertEqual(snap["github"], "REST: GraphQL not used (HTTP 403)")
 
+
+
+class ProofReadPrefetch(unittest.TestCase):
+    """proof-read-watch: candidates' comments and files from GraphQL; a PR with more comments than were read, or a renamed
+    file, keeps its REST read; a GraphQL failure leaves every read on REST."""
+    def bundle_g(self, answer):
+        class G:
+            PR_BATCH = 20
+            @staticmethod
+            def pr_bundle(repo, numbers, comments, files):
+                return g.pr_bundle(repo, numbers, files=True, run=lambda q: {"repository": answer})
+        return G
+
+    def source(self, gql):
+        src, calls = prw.Source(None, gql=gql), []
+        src.page = lambda name, path, n: calls.append(name) or []
+        return src, calls
+
+    def test_cached_reads_and_per_pr_rest(self):
+        many = node(8, [C1]); many["comments"]["totalCount"] = 150                       # comments not all read
+        ren = node(9, [C1], files=["new.sh"]); ren["files"]["nodes"][0]["changeType"] = "RENAMED"
+        src, calls = self.source(self.bundle_g({"p7": node(7, [C1], files=["a.sh"]), "p8": dict(many, files={"totalCount": 0, "nodes": []}), "p9": ren}))
+        src.prefetch([7, 8, 9])
+        self.assertEqual(src.get("comments_7", "x")[0]["body"], "Reviewer: Approve abcdef1")
+        self.assertEqual(src.get("files_7", "x"), [{"filename": "a.sh"}])
+        src.get("comments_8", "x"); src.get("files_9", "x"); src.get("files_8", "x"); src.get("comments_9", "x")
+        self.assertEqual(calls, ["comments_8", "files_9"])                                 # only those two by REST
+        self.assertEqual(src.github, "graphql: 3 PRs in 1 queries; REST for 1 comment and 1 file reads")
+
+    def test_graphql_failure_leaves_rest(self):
+        class G:
+            PR_BATCH = 20
+            @staticmethod
+            def pr_bundle(*a, **k):
+                raise g.GraphQLError("HTTP 403")
+        src, calls = self.source(G)
+        src.prefetch([7])
+        src.get("comments_7", "x"); src.get("files_7", "x")
+        self.assertEqual(calls, ["comments_7", "files_7"])
+        self.assertEqual(src.github, "REST: GraphQL not used (HTTP 403)")
+
+    def test_fixture_runs_never_query(self):
+        src = prw.Source("/nonexistent")
+        src.prefetch([7])
+        self.assertIsNone(src.github)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

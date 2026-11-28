@@ -6,11 +6,13 @@ the same day: sle-watch spent ~242 REST requests a run (79 per-PR comment reads,
 (points, not requests), and one query here reads PR_BATCH PRs.
 
   pr_bundle(repo, numbers, comments=True, labels=False, files=False) ->
-      {number: {"comments": [REST-shaped issue comment, oldest first], "labeled": [{"created_at", "label"}],
-                "files": [path, ...]}}
+      {number: {"comments": [REST-shaped issue comment, oldest first], "comments_complete": bool,
+                "labeled": [{"created_at", "label"}], "files": [path, ...] or None}}
 Comments come back in the REST shape the tools already read (created_at, body, author_association, user {login, type};
 a bot's login gets REST's "[bot]" suffix). REST's ?per_page=100 gave a PR's oldest 100 comments; this gives its newest
-COMMENTS (the newer ones are the ones the checks judge). Any failure raises GraphQLError: each caller then reads the
+COMMENTS (the newer ones are the ones the checks judge); comments_complete says whether that is all of them. files is
+None for a PR with over FILES files or a renamed or copied file (no previous path in GraphQL): read it by REST. Any
+failure raises GraphQLError: each caller then reads the
 same data through REST as before and says which path it took. GraphQL is refused (HTTP 403) from cloud sessions, so
 there the REST path runs; on the Mac the query runs through gh.sh (its TLS fallback cannot send a query: the REST path
 then runs). Test: test_gh_graphql.py (recorded responses, no network).
@@ -52,7 +54,7 @@ def query_for(owner, name, numbers, comments, labels, files):
             f.append("timelineItems(itemTypes: [LABELED_EVENT], last: %d) { nodes { ... on LabeledEvent { createdAt "
                      "label { name } } } }" % LABELS)
         if files:
-            f.append("files(first: %d) { totalCount nodes { path } }" % FILES)
+            f.append("files(first: %d) { totalCount nodes { path changeType } }" % FILES)
         parts.append("p%d: pullRequest(number: %d) { %s }" % (int(n), int(n), " ".join(f)))
     return 'query { repository(owner: %s, name: %s) { %s } }' % (json.dumps(owner), json.dumps(name), " ".join(parts))
 
@@ -86,12 +88,13 @@ def pr_bundle(repo, numbers, comments=True, labels=False, files=False, run=None)
             e = {}
             if comments:
                 e["comments"] = [rest_comment(c) for c in p["comments"]["nodes"]]
+                e["comments_complete"] = p["comments"]["totalCount"] <= COMMENTS   # every comment, or only the newest
             if labels:
                 e["labeled"] = [{"created_at": x["createdAt"], "label": (x.get("label") or {}).get("name")}
                                 for x in p["timelineItems"]["nodes"] if x]
-            if files:
-                if p["files"]["totalCount"] > FILES:
-                    raise GraphQLError("PR #%d has over %d files" % (n, FILES))
-                e["files"] = [x["path"] for x in p["files"]["nodes"]]
+            if files:   # None: over FILES, or a rename or copy (GraphQL gives no previous path): read that PR by REST
+                fs = p["files"]
+                e["files"] = None if fs["totalCount"] > FILES or any(
+                    x.get("changeType") in ("RENAMED", "COPIED") for x in fs["nodes"]) else [x["path"] for x in fs["nodes"]]
             out[n] = e
     return out

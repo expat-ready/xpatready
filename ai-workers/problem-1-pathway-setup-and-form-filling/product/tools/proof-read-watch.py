@@ -46,8 +46,34 @@ def ist(d):
 class Source:
     """Live reads through gh.sh, or fixture files: closed.json, open.json, comments_<n>.json, files_<n>.json."""
 
-    def __init__(self, fixture):
-        self.fixture = fixture
+    def __init__(self, fixture, gql=None):
+        self.fixture, self.gql, self.cache, self.github = fixture, gql, {}, None
+
+    def prefetch(self, numbers):
+        """LR-098 (P-860): the candidates' comments and files in a few GraphQL queries (gh_graphql.py) instead of two REST
+        reads each. A PR whose comments were not all read, or whose files have a rename (no previous path in GraphQL),
+        keeps its REST reads; any GraphQL failure leaves every read on REST. Live only, unless a test passes gql."""
+        if self.fixture and not self.gql:
+            return
+        try:
+            g = self.gql
+            if g is None:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("gh_graphql", os.path.join(HERE, "gh_graphql.py"))
+                g = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(g)
+            bundle = g.pr_bundle(REPO, numbers, comments=True, files=True)
+        except Exception as e:
+            self.github = "REST: GraphQL not used (%s)" % str(e)[:120]
+            return
+        for n, e in bundle.items():
+            if e.get("comments_complete"):
+                self.cache["comments_%d" % n] = e["comments"]
+            if e.get("files") is not None:
+                self.cache["files_%d" % n] = [{"filename": f} for f in e["files"]]
+        self.github = "graphql: %d PRs in %d queries; REST for %d comment and %d file reads" % (
+            len(numbers), -(-len(numbers) // g.PR_BATCH), sum(1 for n in numbers if "comments_%d" % n not in self.cache),
+            sum(1 for n in numbers if "files_%d" % n not in self.cache))
 
     def page(self, name, path, n):
         if self.fixture:
@@ -70,6 +96,8 @@ class Source:
     def get(self, name, path, stop=None):
         """Every page (review M1: one page of closed PRs covered ~8.5 h of the 24 h window). stop(page) ends early once
         the rest is outside the window; running out of pages is an error, never a silent cut."""
+        if name in self.cache:
+            return self.cache[name]
         out = []
         for n in range(1, MAX_PAGES + 1):
             pg = self.page(name, path, n)
@@ -177,11 +205,15 @@ def main(argv):
         closed = src.get("closed", "repos/%s/pulls?state=closed&sort=updated&direction=desc" % REPO,
                          stop=lambda pg: ts(pg[-1]["updated_at"]) < cutoff)
         openp = src.get("open", "repos/%s/pulls?state=open" % REPO)
+        src.prefetch([p["number"] for p in openp if not p.get("draft") and not p["head"]["ref"].startswith("mergify/")
+                      and LABEL not in [l["name"] for l in p.get("labels", [])]])
         a1, says = proof(closed, openp, now)
         a2 = read_wait(src, openp, now, read_paths())
     except Exception as e:  # a failed read is an ACT, never a silent pass
         print("ACT   proof/read watch could not run: %s" % str(e)[:160])
         return 1
+    if src.github:   # LR-098: which path read the comments and files
+        print("github " + src.github)
     for s in says:
         print(s)
     for a in a1 + a2:
