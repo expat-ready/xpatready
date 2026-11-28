@@ -8,8 +8,8 @@ disable-model-invocation: true
 # PR Steward house rules (LR-149)
 
 PR Steward reads this file from the default branch before it works on a pull request here. It sits under the
-protected paths (`.claude/` is read first by the tech lead, `product/tools/lead-read-paths.txt`; owned in
-`.github/CODEOWNERS`): a change to it waits for the tech lead's read. P = `ai-workers/problem-1-pathway-setup-and-form-filling/product`,
+protected paths (`.claude/` is read first by the tech lead, `product/tools/lead-read-paths.txt`; CODEOWNERS too
+once LR-061 lands): a change to it waits for the tech lead's read. P = `ai-workers/problem-1-pathway-setup-and-form-filling/product`,
 S = `ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio`.
 
 ## What you may do
@@ -25,6 +25,8 @@ These paths decide how the pipeline judges a pull request, so no automatic fix m
   agents), `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`.
 * Migrations and the schema: `S/prisma/` (any file under `prisma/migrations/` or `prisma/schema/`).
 * The pipeline tools: `P/tools/` (guards, queue gate, label guard, the quarantine list) and `S/tools/`.
+* Any other read-first path in `P/tools/lead-read-paths.txt` (for example `S/prisma.config.ts` and the permission
+  machinery under `S/api/src/platform/identity/`).
 * The records, in P: `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`, `design/lab-register-*.md`,
   `qa/CAPABILITIES.md`, `qa/BUGS.md`.
 * Never skip, disable, quarantine or weaken a test or a check to turn it green.
@@ -37,8 +39,8 @@ the fix you would make>`.
 2. Live AI stays off and the cost stays US$0: never set a `STUDIO_*_LIVE` switch and never press a priced button.
 
 ## Test before every push
-* The suites the change can affect, as the `pr-suites` check runs them:
-  `bash P/tools/run-suites.sh --changed origin/main..HEAD --direct --retry`
+* The suites the change can affect, picked as the `pr-suites` check picks them (by module cards; its `--demo` and
+  `--shard` are left out, `--demo` resets the demo): `bash P/tools/run-suites.sh --changed origin/main..HEAD --modules --retry`
 * A suite that failed once and passes on its one fresh retry is a flaky suite: say so in your comment with both
   results; never retry more than once, and never add it to a quarantine list (that list is a pipeline tool).
 * A suite that fails twice is a real failure: fix its cause, or ask the tech lead as above.

@@ -17,9 +17,9 @@ python3 -I - "$ROOTD" <<'PY'
 import os, re, shutil, sys, tempfile
 SKILL = ".claude/skills/steward/SKILL.md"
 LRP = "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-read-paths.txt"
-NEVER = [".github/", ".mergify.yml", ".githooks/", ".claude/", "prisma/migrations/", "prisma/schema/", "P/tools/",
-         "STATE.md", "RULES.md", "DECISIONS.md", "BACKLOG.md"]
-MUST = ["cloud-setup.sh", "run-suites.sh --changed", "one fresh retry", "Question for the tech lead",
+NEVER = [".github/", ".mergify.yml", ".githooks/", ".claude/", "REVIEW.md", "CLAUDE.md", "AGENTS.md", "prisma/migrations/",
+         "prisma/schema/", "P/tools/", "S/tools/", "lead-read-paths.txt", "STATE.md", "RULES.md", "DECISIONS.md", "BACKLOG.md"]
+MUST = ["cloud-setup.sh", "run-suites.sh --changed origin/main..HEAD --modules", "one fresh retry", "Question for the tech lead",
         "never approve, merge or label", "`Reviewer:`", "Never skip, disable, quarantine or weaken a test"]
 
 def check(root):
@@ -31,7 +31,8 @@ def check(root):
         return [f"W0 {SKILL}: no front matter naming `name: steward`"]
     fm, body, errs = m.group(1), text[m.end():], []
     for k, v in (("user-invocable", "false"), ("disable-model-invocation", "true")):
-        if not re.search(rf"^{k}:\s*{v}\s*$", fm, re.M): errs.append(f"W1 front matter lacks `{k}: {v}`")
+        vals = re.findall(rf"^{k}:\s*(\S+)\s*$", fm, re.M)   # exactly one line, with this value (a second line would win)
+        if vals != [v]: errs.append(f"W1 front matter must hold one `{k}: {v}` line (found {vals or 'none'})")
     never = body.split("## Never touch", 1)[1].split("\n## ", 1)[0] if "## Never touch" in body else ""
     for p in NEVER:
         if p not in never: errs.append(f"W2 the 'Never touch' section does not name {p}")
@@ -55,13 +56,19 @@ def run(skill, lrp=None):
         return sorted({e[:2] for e in check(d)})
     finally:
         shutil.rmtree(d, ignore_errors=True)
+# The fixtures are built from the real file, so it must pass first: a broken real file prints its own lines and stops.
+errs = check(root)
+for e in errs: print("FAIL  " + e)
+if errs: sys.exit(1)
 fixtures = [
-    ("the real file", real, None, None),
     ("file missing", None, None, "W0"),
     ("a switch off", real.replace("disable-model-invocation: true", "disable-model-invocation: false"), None, "W1"),
+    ("a second switch line", real.replace("user-invocable: false", "user-invocable: true\nuser-invocable: false"), None, "W1"),
+    ("AGENTS.md dropped from Never touch", real.replace("`AGENTS.md`", "`X.md`"), None, "W2"),
     ("migrations dropped from Never touch", real.replace("prisma/migrations/", "prisma/m/"), None, "W2"),
     (".github/ only outside Never touch", real.replace("* `.github/` (workflows", "* (workflows"), None, "W2"),
     ("no test before push", real.replace("run-suites.sh --changed", "run-suites.sh"), None, "W3"),
+    ("a different suite pick", real.replace("--modules --retry", "--direct --retry"), None, "W3"),
     ("protected path removed", real, lrp_real.replace("^\\.claude/\n", ""), "W4"),
 ]
 failed = 0
@@ -71,8 +78,5 @@ for name, skill, lrp, want in fixtures:
     print(("ok    " if ok else "FAIL  ") + f"fixture: {name} -> {got or 'clean'}"); failed += not ok
 if failed:
     print(f"FAIL  {failed} self-test fixture(s): the check cannot be trusted"); sys.exit(1)
-errs = check(root)
-for e in errs: print("FAIL  " + e)
-if errs: sys.exit(1)
 print(f"PASS  {SKILL}: both switches set, {len(NEVER)} never-touch paths, {len(MUST)} pipeline rules, protected path kept")
 PY
