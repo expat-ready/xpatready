@@ -53,7 +53,16 @@ run() {   # "<kind> <file>" → runs it; prints PASS or FAIL
     test) case "$f" in *.py) out=$(timeout "$TIMEOUT" python3 -I "$f" 2>&1);; *) out=$(timeout "$TIMEOUT" bash "$f" 2>&1);; esac; st=$?;;
     selftest) case "$f" in *.py) out=$(timeout "$TIMEOUT" python3 -I "$f" --self-test 2>&1);; *.mjs) out=$(timeout "$TIMEOUT" node "$f" --self-test 2>&1);; *) out=$(timeout "$TIMEOUT" bash "$f" --self-test 2>&1);; esac; st=$?;;
   esac
-  if [ "$st" = 0 ]; then echo "PASS  $k $f"; else echo "FAIL  $k $f (exit $st)"; printf '%s\n' "$out" | tail -20 | sed 's/^/      /'; return 1; fi
+  if [ "$st" = 0 ]; then echo "PASS  $k $f"; return 0; fi
+  echo "FAIL  $k $f (exit $st)"
+  # Every FAIL line of the output first, then its last 20 lines (lab lane, 27 Nov, Lead 7 on #3918): a test that runs
+  # other tests (check-guards.sh runs ~80) printed its failing line early, and tail -20 alone hid it on four PRs.
+  failing "$out" | sed 's/^/      /'
+  printf '%s\n' "$out" | tail -20 | sed 's/^/      /'; return 1
+}
+
+failing() {   # the FAIL lines of one output, at most 40, each once
+  printf '%s\n' "$1" | grep -E '(^|[[:space:]])FAIL([[:space:]:]|$)' | awk '!seen[$0]++' | head -40 | sed 's/^ *//; s/^/failing: /'
 }
 
 main() {   # stdin: changed paths
@@ -87,6 +96,10 @@ self_test() {
   for x in sh py mjs yml json; do ok "lint refuses a broken .$x" "$(lint "$d/x.$x" >/dev/null 2>&1 || echo 1)" "passed"; done
   printf 'echo fine\n' > "$d/y.sh"; ok "lint passes a sound .sh" "$(lint "$d/y.sh" && echo 1)" "failed"
   ok "a failing run is FAIL and non-zero" "$(run lint "$d/x.sh" >/dev/null 2>&1 || echo 1)" "passed"
+  # A test whose FAIL line comes before its last 20 lines is still named (Lead 7 on #3918: tail -20 hid it).
+  { echo 'echo "PASS  first"; echo "FAIL  early-case.sh (zsh is missing; nothing was checked)"'; echo 'for i in $(seq 30); do echo "PASS  later-$i"; done; exit 1'; } > "$d/check-z.sh"
+  got=$(run test "$d/check-z.sh" 2>&1)
+  ok "an early FAIL line is printed although 30 PASS lines follow it" "$(grep -q 'failing: FAIL  early-case.sh (zsh is missing' <<< "$got" && grep -q 'PASS  later-30' <<< "$got" && echo 1)" "$got"
   rm -rf "$d"
   [ "$bad" = 0 ] && echo "all passed"; return $bad
 }

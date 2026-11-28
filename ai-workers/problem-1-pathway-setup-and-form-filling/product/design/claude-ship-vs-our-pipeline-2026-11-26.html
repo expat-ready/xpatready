@@ -1,0 +1,223 @@
+<title>Claude Ship and Our Pipeline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one reading column; a stage-by-stage coverage board is the centrepiece, then accounts, QA, plan. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#1b2230; --muted:#5b6577; --line:#d9dee7;
+  --accent:#2f4fd8; --accent-soft:#e6ebff;
+  --yes:#0f8a6a; --yes-soft:#dcf3ec; --part:#b26a00; --part-soft:#fbeed8; --no:#8a93a3; --no-soft:#eceff3; --risk:#b3261e; --risk-soft:#fbe4e2;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151d; --panel:#181e29; --fg:#e7eaf0; --muted:#9aa4b6; --line:#2b3342;
+  --accent:#8ea2ff; --accent-soft:#232c4d;
+  --yes:#4cc9a4; --yes-soft:#163a31; --part:#f0ad4e; --part-soft:#3d2d14; --no:#7d8798; --no-soft:#232a36; --risk:#ff8a80; --risk-soft:#3d1c1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151d; --panel:#181e29; --fg:#e7eaf0; --muted:#9aa4b6; --line:#2b3342;
+  --accent:#8ea2ff; --accent-soft:#232c4d;
+  --yes:#4cc9a4; --yes-soft:#163a31; --part:#f0ad4e; --part-soft:#3d2d14; --no:#7d8798; --no-soft:#232a36; --risk:#ff8a80; --risk-soft:#3d1c1a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1040px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:clamp(28px,4.4vw,42px)} h2{font-size:24px} h3{font-size:17px}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hero{display:grid;gap:14px}
+.thesis{font-size:19px;max-width:62ch}
+.thesis b{color:var(--accent)}
+section{display:grid;gap:16px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fact{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:6px;min-width:0}
+.fact .k{font-family:var(--mono);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.fact .v{font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.chip.yes{background:var(--yes-soft);color:var(--yes)} .chip.part{background:var(--part-soft);color:var(--part)} .chip.no{background:var(--no-soft);color:var(--no)}
+.chip.keep{background:var(--accent-soft);color:var(--accent)} .chip.trial{background:var(--part-soft);color:var(--part)}
+.board{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.n{font-family:var(--mono);color:var(--muted);width:28px;font-variant-numeric:tabular-nums}
+td .sub{color:var(--muted);font-size:13px;display:block;margin-top:2px}
+tr.gap td{background:linear-gradient(90deg,var(--risk-soft),transparent 60%)}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.step{flex:1 1 84px;min-width:84px;border-radius:8px;padding:8px 8px 10px;font-size:12px;font-weight:600;display:grid;gap:4px;border:1px solid var(--line)}
+.step span{font-family:var(--mono);font-weight:400;font-size:11px;opacity:.8}
+.step.yes{background:var(--yes-soft);color:var(--yes);border-color:transparent}
+.step.part{background:var(--part-soft);color:var(--part);border-color:transparent}
+.step.no{background:var(--no-soft);color:var(--muted);border-color:transparent}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:grid;gap:10px;min-width:0;align-content:start}
+.card.bad{border-top:4px solid var(--risk)} .card.good{border-top:4px solid var(--yes)}
+ul{margin:0;padding-left:18px;display:grid;gap:6px}
+li{max-width:70ch}
+.lost{color:var(--risk);font-weight:600} .kept{color:var(--yes);font-weight:600}
+.qa{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.big{font-family:var(--display);font-size:44px;font-weight:700;color:var(--risk);line-height:1}
+.plan{display:grid;gap:12px}
+.move{display:grid;grid-template-columns:120px 1fr;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.move .when{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);font-weight:500}
+.move h3{margin-bottom:4px}
+.keepbox{display:flex;flex-wrap:wrap;gap:8px}
+.keepbox .chip{font-size:13px;padding:5px 11px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{font-family:var(--display);font-size:26px;display:block;font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--muted)}
+.risks{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.risk{background:var(--risk-soft);border-radius:10px;padding:12px 14px;font-size:14px}
+.risk b{color:var(--risk)}
+.src{font-size:13px;color:var(--muted)} .src a{color:var(--accent)}
+.src ol{padding-left:18px;display:grid;gap:4px}
+code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+@media (max-width:560px){.move{grid-template-columns:1fr}.qa{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Research for the founder · Lead 3 · 26 Nov 2026, 14:5x IST</div>
+  <h1>Claude Ship and our pipeline</h1>
+  <p class="thesis">Claude Ship gets a pull request <b>ready to merge</b>. It reviews the code, fixes failing checks and conflicts, and applies an approval policy. It does <b>not</b> merge, deploy or test the running app. Of our 11 delivery stages it fully covers <b>2</b> and partly covers <b>3</b>. Our merge queue, our test suites and our qa proof stay.</p>
+  <div class="flow" aria-label="Our 11 stages coloured by Claude Ship coverage">
+    <div class="step no">Shape row<span>1</span></div>
+    <div class="step no">Build<span>2</span></div>
+    <div class="step part">Self-checks<span>3</span></div>
+    <div class="step yes">Review<span>4</span></div>
+    <div class="step part">Approve / label<span>5</span></div>
+    <div class="step no">CI suites<span>6</span></div>
+    <div class="step yes">Fix red CI<span>7</span></div>
+    <div class="step no">Merge queue<span>8</span></div>
+    <div class="step no">Demo update<span>9</span></div>
+    <div class="step no">qa proof<span>10</span></div>
+    <div class="step part">Checks, switch<span>11</span></div>
+  </div>
+  <div class="legend"><span class="chip yes">Claude Ship covers it</span><span class="chip part">Partly</span><span class="chip no">Not covered</span></div>
+</header>
+
+<section>
+  <div class="eyebrow">What it is</div>
+  <h2>Three agents for GitHub, plus a command on your own machine</h2>
+  <p>"Solves DevOps end to end" is not Anthropic's wording. Anthropic says it helps "get your team's GitHub pull requests ready to merge" (Claude Code docs).</p>
+  <div class="facts">
+    <div class="fact"><span class="k">Announced</span><span class="v">23 Nov 2026</span><span>Three days ago.</span></div>
+    <div class="fact"><span class="k">Code Review</span><span class="v">Generally available</span><span>A separate agent reads each change against the code around it.</span></div>
+    <div class="fact"><span class="k">PR Steward</span><span class="v">Public beta</span><span>One cloud session per pull request. It fixes failing checks, merges the base branch in, and answers review comments. It is built not to approve or merge.</span></div>
+    <div class="fact"><span class="k">Claude Approvals</span><span class="v">Public beta</span><span>A policy file sets how many approvals each path needs. It cannot read CI results.</span></div>
+    <div class="fact"><span class="k"><code>/ship</code> and <code>/steward</code></span><span class="v">Local clone only</span><span>Commit, push, open a pull request, self-review, then watch. "Cloud sessions don't have them." You merge it yourself.</span></div>
+    <div class="fact"><span class="k">Who can have it</span><span class="v">Team and Enterprise only</span><span>The org agents are billed from organisation usage credits, apart from plan usage. Eligible Enterprise orgs get credits worth at least $10,000 if claimed by 15 Jan 2027.</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Stage by stage</div>
+  <h2>What it would replace in our pipeline, and what it can't</h2>
+  <div class="board">
+  <table>
+    <thead><tr><th>#</th><th>Stage</th><th>Who does it today</th><th>Claude Ship</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>Shape the row<span class="sub">Done when, decisions, duplicate check</span></td><td>Lead, founder decisions</td><td><span class="chip no">No</span></td><td><span class="chip keep">Keep</span></td></tr>
+      <tr><td class="n">2</td><td>Build<span class="sub">one row = one pull request</span></td><td>Cloud builders (<code>/next</code>), about 12 lanes</td><td><span class="chip no">No</span><span class="sub"><code>/ship</code> only commits work you have already written, and cloud builders can't run it.</span></td><td><span class="chip keep">Keep</span></td></tr>
+      <tr><td class="n">3</td><td>Self-checks</td><td>Builder runs the affected suites, push guard</td><td><span class="chip part">Partly</span><span class="sub">The watch runs your tests. It skips git hooks, so our push guard would not run there.</span></td><td><span class="chip keep">Keep</span></td></tr>
+      <tr><td class="n">4</td><td>Independent review and breaker</td><td>Reviewer agent and breaker agent; up to 7 review rounds</td><td><span class="chip yes">Yes</span><span class="sub">Code Review (generally available)</span></td><td><span class="chip trial">Trial swap</span><span class="sub">Keep the breaker for money, permissions and the schema</span></td></tr>
+      <tr><td class="n">5</td><td>Approve and label</td><td>Label guard, Lead read, <code>lead-pr.sh</code>, many rules</td><td><span class="chip part">Partly</span><span class="sub">Claude Approvals: approvals required per path</span></td><td><span class="chip trial">Trial swap</span><span class="sub">The Lead stays the approver for money, schema and migrations</span></td></tr>
+      <tr><td class="n">6</td><td>CI suites</td><td><code>ci.yml</code>, 4 shards, full run, nightly</td><td><span class="chip no">No</span><span class="sub">It fixes checks. It doesn't provide them.</span></td><td><span class="chip keep">Keep</span></td></tr>
+      <tr><td class="n">7</td><td>Fix red CI, conflicts, comments</td><td>Lanes and the Lead chase them; 3-minute watch</td><td><span class="chip yes">Yes</span><span class="sub">PR Steward, on every eligible pull request</span></td><td><span class="chip trial">Trial swap</span></td></tr>
+      <tr class="gap"><td class="n">8</td><td>Merge</td><td>Mergify queues (product, records), batches of 6</td><td><span class="chip no">No</span><span class="sub">There is no merge queue. It warns that auto-merge can merge "without anyone acting".</span></td><td><span class="chip keep">Keep</span></td></tr>
+      <tr><td class="n">9</td><td>Demo update</td><td><code>demo-update.yml</code></td><td><span class="chip no">No</span></td><td><span class="chip keep">Keep</span></td></tr>
+      <tr class="gap"><td class="n">10</td><td>qa proof (Works)</td><td>qa lanes, walks, journey tests, CAPABILITIES</td><td><span class="chip no">No</span><span class="sub">It doesn't run the app or check acceptance criteria.</span></td><td><span class="chip keep">Keep: our biggest gap vs Ship</span></td></tr>
+      <tr><td class="n">11</td><td>Lead checks and account switch</td><td>lead-watch, STATE, RESUME, standby Leads</td><td><span class="chip part">Partly</span><span class="sub">The org agents belong to the organisation, so they would survive an account switch</span></td><td><span class="chip trial">Simplifies, if we have an org</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Is it doing QA verification?</div>
+  <div class="qa">
+    <div class="big">No</div>
+    <div style="display:grid;gap:8px">
+      <p>None of Claude Ship's pages mention running the app, browser or end-to-end tests, or acceptance criteria. Code Review reads code. PR Steward only fixes checks that are already failing. <code>/ship</code> reviews its own work in the same session.</p>
+      <p>So Ship can make "merged" faster, but it cannot make anything "Works". That stays with our qa lanes and walks, which are how we got to 64 of 110 rows Works.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Our account switches</div>
+  <h2>How it behaves when you switch accounts every few days</h2>
+  <div class="two">
+    <div class="card bad">
+      <h3>Today: individual accounts, switched at 95% weekly</h3>
+      <ul>
+        <li><span class="lost">Lost at each switch:</span> cloud builder sessions, the Lead's check and watch, Auto-fix. These belong to one claude.ai account and don't move to another.</li>
+        <li><span class="lost">Not available at all:</span> Code Review, PR Steward and Approvals, which need a Team or Enterprise organisation.</li>
+        <li><code>/ship</code> and <code>/steward</code> work only on the Mac, never in our cloud builders. A watch ends when a usage limit hits, so it stops right when we switch.</li>
+        <li><span class="kept">Survives:</span> GitHub (branches, pull requests, labels, Mergify) and the repository records. That is why STATE and RESUME carry us over.</li>
+      </ul>
+    </div>
+    <div class="card good">
+      <h3>With a Claude Team or Enterprise organisation</h3>
+      <ul>
+        <li><span class="kept">Survives switches:</span> PR Steward, Code Review and Approvals are tied to the organisation and its GitHub App, not to one person's account.</li>
+        <li>Their usage comes from organisation credits, not from the weekly plan we keep running out of.</li>
+        <li>Our GitHub is already Enterprise Cloud, so only the Claude side is missing.</li>
+        <li><span class="lost">Still lost:</span> builder sessions started from a personal account. Building still needs lanes, so the switch routine shrinks but doesn't go away.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Should we simplify?</div>
+  <h2>Yes, in stages 4, 5, 7 and 11. Prove it with a trial before deleting anything.</h2>
+  <p>We have built a lot of machinery around getting a pull request merged. Ship now does part of that job, so we should stop building our own version of those parts and test Ship's against ours.</p>
+  <div class="stats">
+    <div class="stat"><b>81</b><span>OS items listed, about 76 not live</span></div>
+    <div class="stat"><b>155</b><span>rules; 94 of them prose only</span></div>
+    <div class="stat"><b>98</b><span>tool files in <code>product/tools</code></span></div>
+    <div class="stat"><b>8</b><span>GitHub workflows</span></div>
+    <div class="stat"><b>81–85%</b><span>of a pull request's time is waiting in the queue</span></div>
+    <div class="stat"><b>209</b><span>label holds that waited on a Lead read (one for 55 h)</span></div>
+  </div>
+  <div class="plan">
+    <div class="move"><div class="when">Now · free</div><div><h3>Freeze the overlapping OS work</h3><p>Pause OS items that rebuild what Ship does: automatic labelling and approvals (OS-01, OS-02, queue gate), chasing red pull requests, and review-round tooling. Product rows and proof carry on as planned (A403).</p></div></div>
+    <div class="move"><div class="when">Your decision</div><div><h3>Set up a Claude Team or Enterprise organisation for this repository</h3><p>It is the only way to get the three agents, and the only way agents survive account switches. Cost: seats plus usage credits, with a spend cap set before PR Steward is turned on (it has none by default). Check whether we qualify for the Enterprise credits by 15 Jan 2027.</p></div></div>
+    <div class="move"><div class="when">48 h trial</div><div><h3>Ship against our own flow, on a few lanes</h3><p>Turn on Code Review and PR Steward, with Approvals in observe mode. Mergify, CI and qa stay as they are. Measure against the week before: Approve-to-merged time, batch failure rate, Lead labels per day, and credits spent. Adopt only if all of these improve and quality does not drop.</p></div></div>
+    <div class="move"><div class="when">After the trial</div><div><h3>Retire what Ship replaced, shrink the rules</h3><p>Remove the label-guard pieces, the review-round tooling and red-PR chasing that Ship covers. Cut RULES down to what Ship doesn't cover. The Lead's job becomes shaping rows, the Lead read for money, schema and migrations, and proof.</p></div></div>
+  </div>
+  <h3>Keep, whatever we decide</h3>
+  <div class="keepbox">
+    <span class="chip keep">Mergify merge queue</span><span class="chip keep">CI suites and nightly</span><span class="chip keep">qa proof and walks (Works)</span><span class="chip keep">Breaker for money, permissions, schema</span><span class="chip keep">Lead read of migrations</span><span class="chip keep">Official-source rule for immigration facts</span><span class="chip keep">STATE / RESUME in the repository</span>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Risks to manage</div>
+  <div class="risks">
+    <div class="risk"><b>Beta.</b> PR Steward and Approvals are three days old and in public beta.</div>
+    <div class="risk"><b>Merging without a person.</b> Auto-merge plus a Steward push can merge with nobody acting. Keep Mergify's label condition and branch protection, and keep the Claude app off the bypass list.</div>
+    <div class="risk"><b>Approvals is blind to CI.</b> Keep <code>ci</code> as its own required check.</div>
+    <div class="risk"><b>Spend.</b> PR Steward has no limit until we set one. Set a cap per repository first.</div>
+    <div class="risk"><b>Guards skipped.</b> The watch skips git hooks, and it spots secrets by file name only. Our CI guards must keep doing that job.</div>
+  </div>
+</section>
+
+<section class="src">
+  <div class="eyebrow">Sources (read 26 Nov 2026)</div>
+  <ol>
+    <li><a href="https://claude.com/resources/articles/introducing-claude-ship">Introducing Claude Ship</a>: announcement, 23 Nov 2026</li>
+    <li><a href="https://code.claude.com/docs/en/claude-ship">Claude Ship docs</a>: plans, the three agents, billing</li>
+    <li><a href="https://code.claude.com/docs/en/ship-command">/ship command docs</a>: local clone only, "Merge the pull request yourself"</li>
+    <li><a href="https://code.claude.com/docs/en/pr-steward-security">PR Steward security</a>: never approves or merges, spend limits</li>
+    <li><a href="https://code.claude.com/docs/en/approvals">Claude Approvals</a>: path policy, cannot read CI</li>
+    <li><a href="https://code.claude.com/docs/en/routines">Scheduled tasks</a> and <a href="https://code.claude.com/docs/en/claude-code-on-the-web">Claude Code on the web</a>: tied to one claude.ai account</li>
+    <li>Our side: <code>WAY-OF-WORKING.md</code>, <code>RULES.md</code>, <code>design/os-manual-enforcement-2026-11-26.md</code>, <code>RESUME-ON-NEW-ACCOUNT.md</code>, <code>.github/workflows/</code>, <code>.mergify.yml</code> (counts on 26 Nov)</li>
+  </ol>
+  <p>The account-switch behaviour is inferred from the docs; no page covers switching directly. The two key claims (Team and Enterprise only, no QA or deploy) were checked a second time against the pages.</p>
+</section>
+
+</div>

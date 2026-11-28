@@ -18,7 +18,10 @@ its label comes from records-only.sh is-records and must agree with the case's e
 the cases cannot drift apart), and the label name the queues use must be the one records-only.sh prints. A missing
 records-only.sh fails the check. Then it breaks the configuration on purpose and expects each
 break to be caught, so the check is shown to fail, not only to pass. Runs no suite, US$0. It does not replace Mergify's
-own validation (the "Configuration changed" check on the PR).
+own validation (the "Configuration changed" check on the PR). F2 and F4 (P-853, founder A446, 27 Nov): the top-level
+priority rule "fixes-main" puts a PR whose body has a "Fixes main:" line first among the waiting PRs, never interrupting
+a running batch, and the queue "pipeline" needs the aggregate check "guards" green whenever guards.yml runs on the PR
+(its regex is compared with guards.yml's `paths` on every tracked file).
   python3 -I product/screens/B119/check-queue-rules.py [path/to/.mergify.yml]
 It lives in B119's row folder because product/tools/ is the tech lead's; the PR proposes running it in CI.
 """
@@ -95,6 +98,7 @@ def case(what, files, record, want, title="evidence: something", labels=("review
 
 
 A = f"{P}/prototype/studio"
+G = ("ci", "pr-rules", "guards")  # F4 (P-853): a pipeline PR on guards.yml's paths also needs guards green
 F = ("ci", "queue-fresh", "pr-rules")  # B194: app code also needs the status queue-fresh (queue-gate.sh); E6 (P-772): and pr-rules
 CASES = [  # what, files, a record by #1139's definition?, the queue it must join
     case("the daily records PR: STATE, DECISIONS, BACKLOG, RULES", [f"{R}/STATE.md", f"{R}/DECISIONS.md", f"{R}/BACKLOG.md", f"{R}/RULES.md"], True, "records", "lead: records 6 Nov"),
@@ -118,22 +122,27 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("app code with pr-rules not green: no queue (E6, P-772)", [f"{A}/api/src/demo.ts"], False, None, "runtime: C4.11 — x",
          checks=("ci", "queue-fresh")),
     case("a qa script (.cjs) is not a record", [f"{R}/qa/walks/x/walk.cjs"], False, "product"),
-    case("a tool under product/tools/, even a .md: pipeline (P-717 (a))", [f"{R}/tools/README.md"], False, "pipeline"),
+    case("a tool under product/tools/, even a .md: pipeline (P-717 (a))", [f"{R}/tools/README.md"], False, "pipeline", checks=G),
     case("this row's checker (.py under screens/)", [f"{R}/screens/B119/check-queue-rules.py"], False, "product"),
     case("a JSON file under screens/", [f"{R}/screens/12/fixture.json"], False, "product"),
-    case("the merge queue file itself: pipeline (P-717 (a))", [".mergify.yml"], False, "pipeline"),
+    case("the merge queue file itself: pipeline (P-717 (a))", [".mergify.yml"], False, "pipeline", checks=G),
     case("a workflow: pipeline (P-717 (a))", [".github/workflows/ci.yml"], False, "pipeline"),
-    case("a skill: pipeline (P-717 (a))", [".claude/skills/next/SKILL.md"], False, "pipeline"),
+    case("a skill: pipeline (P-717 (a))", [".claude/skills/next/SKILL.md"], False, "pipeline", checks=G),
     case("agent rules and a git hook: pipeline", ["AGENTS.md", "CLAUDE.md", ".githooks/pre-push"], False, "pipeline"),
     case("a workflow plus app code: product (one non-pipeline file is enough)", [".github/workflows/ci.yml", f"{A}/api/src/core.ts"], False, "product", checks=F),
     # Fast route (lab lane, 27 Nov; P-847): pipeline work may carry records; the queue "pipeline" is the tooling queue.
-    case("a tool plus a record: pipeline (fast route, P-847), never product or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "pipeline"),
-    case("a skill plus a design note and a screenshot: pipeline (P-847)", [".claude/skills/next/SKILL.md", f"{R}/design/lab-register-2026-11-27.md", f"{R}/design/x.png"], False, "pipeline"),
+    case("a tool plus a record: pipeline (fast route, P-847), never product or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "pipeline", checks=G),
+    case("a skill plus a design note and a screenshot: pipeline (P-847)", [".claude/skills/next/SKILL.md", f"{R}/design/lab-register-2026-11-27.md", f"{R}/design/x.png"], False, "pipeline", checks=G),
     case("a tool, a record and app code: product (app code never in pipeline)", [f"{R}/tools/x.sh", f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product", checks=F),
     case("a workflow plus a JSON file under screens/: product (not a record)", [".github/workflows/guards.yml", f"{R}/screens/12/fixture.json"], False, "product"),
     case("records only, label missing (records-label.yml not run yet): pipeline, never product (P-847)", [f"{R}/STATE.md"], None, "pipeline"),
     case("records only, labelled: still records, not pipeline (P-847)", [f"{R}/STATE.md", f"{R}/design/x.md"], True, "records"),
     case("a look-alike pipeline path: tools/ outside product/", [f"{A}/tools/gate-b.mjs"], False, "product", checks=F),
+    # F4 (P-853): guards.yml runs on the PR's files → its aggregate check "guards" must be green; it does not run → not held.
+    case("a tool with guards not green: no queue (F4)", [f"{R}/tools/x.sh"], False, None),
+    case("the merge queue file with guards not green: no queue (F4)", [".mergify.yml"], False, None),
+    case("a guarded skill and a workflow, guards not green: no queue (F4)", [".claude/skills/lead/SKILL.md", ".github/workflows/ci.yml"], False, None),
+    case("an unguarded skill (guards.yml does not run): pipeline without guards (F4)", [".claude/skills/screen-build/SKILL.md"], False, "pipeline"),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
@@ -197,6 +206,11 @@ def problems(cfg, have_script):
             out.append("queue pipeline: allow_checks_interruption set (a pipeline PR must not restart a running product batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
+    # OS-50 (P-733, P-820): near-Proven product PRs first. The product queue's priority rule "near-proven" holds for a body
+    # with a "Completes: R1.<n>" line (as item-proof.mjs reads it) and for no other body; it never restarts a running batch.
+    out += near_proven(cfg)
+    out += fixes_main(cfg)
+    out += guards_required(cfg)
     # P-717 (a), whatever the order (P-827 lists pipeline first, so routing alone no longer shows it): product keeps its
     # own pipeline-path exclusion, the same pattern pipeline selects with, so no PR falls between the two queues.
     paths = {q.get("name"): [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)
@@ -215,6 +229,118 @@ def problems(cfg, have_script):
             out.append(f"{c['what']}: {e}"); continue
         if note: out.append(f"{c['what']}: {note}")
         elif got != c["want"]: out.append(f"{c['what']}: joins {got!r}, want {c['want']!r}")
+    return out
+
+
+FIXES = [("Fixes main: run 19912 red fast", True), ("**Fixes main:** guards red on main", True), ("- Fixes main: #3953", True),
+         ("> Fixes main: fast", True), ("Plan.\nFixes main: red main 27 Nov\nDone when: x", True), ("fixes main: guards", True),
+         ("Fixes main: none", False), ("Fixes main: n/a", False), ("Fixes main: No", False), ("Fixes main:", False),
+         ("Fixes main:\nDone when: x", False), ("no such line", False), ("this PR fixes main: in prose", False),
+         ("Completes: R1.5", False), ("1. Fixes main: fast red", True), ("Fixes main: no-op revert of #3950", True),
+         ("**Fixes main:** none", False), ("**Fixes main:** n/a", False), ("Fixes main: **none**", False),
+         ("Fixes main: `none`", False), ("Fixes main: _no_", False), ("Fixes main: **", False)]
+
+
+def fixes_main(cfg):
+    """F2 (P-853, P-214): the top-level priority rule fixes-main (Mergify refuses priority_rules inside a queue rule, #3825)."""
+    out = [f"queue {q.get('name')}: has priority_rules, which Mergify refuses inside a queue rule (put them at the top level)"
+           for q in cfg.get("queue_rules", []) if "priority_rules" in q]
+    rules = [r for r in cfg.get("priority_rules") or [] if isinstance(r, dict) and r.get("name") == "fixes-main"]
+    if not rules:
+        return out + ["priority_rules: no rule 'fixes-main' at the top level (F2: a PR that fixes main goes first)"]
+    r = rules[0]; conds = r.get("conditions") or []
+    if r.get("priority") != "high":   # medium is Mergify's default: no priority at all
+        out.append(f"priority rule fixes-main has priority {r.get('priority')!r}, not high")
+    if r.get("allow_checks_interruption") is not False:
+        out.append("priority rule fixes-main does not set allow_checks_interruption: false (it must not restart a running batch)")
+    if not conds:
+        return out + ["priority rule fixes-main has no conditions (every PR would go first)"]
+    try:
+        for body, want in FIXES:
+            if all(holds(c, {"body": body, "label": ["review: approved"]}) for c in conds) != want:
+                out.append(f"priority rule fixes-main {'misses' if want else 'takes'} the body {body!r}")
+        if all(holds(c, {"body": "Fixes main: fast", "label": ["records"]}) for c in conds):
+            out.append("priority rule fixes-main takes a records PR (it needs -label = records)")
+    except (ValueError, re.error) as e:
+        out.append(f"priority rule fixes-main cannot be read ({e})")
+    return out
+
+
+def _glob(g):
+    """A GitHub Actions paths filter glob as a regex: ** any characters, * any but a slash."""
+    o, i = "", 0
+    while i < len(g):
+        if g.startswith("**", i): o += ".*"; i += 2
+        elif g[i] == "*": o += "[^/]*"; i += 1
+        else: o += re.escape(g[i]); i += 1
+    return re.compile(o + r"\Z")
+
+
+def guards_required(cfg):
+    """F4 (P-853): the queue pipeline needs the aggregate check guards whenever guards.yml runs on the PR."""
+    pipe = next((q for q in cfg.get("queue_rules", []) if q.get("name") == "pipeline"), {})
+    pats = []
+    for c in pipe.get("queue_conditions", []):
+        subs = c.get("or") if isinstance(c, dict) and list(c) == ["or"] else None
+        if not isinstance(subs, list) or not all(isinstance(x, str) for x in subs): continue
+        subs = [x.replace(" ", "") for x in subs]
+        if "check-success=guards" in subs and len(subs) == 2:
+            pats += [x[len("-files~="):] for x in subs if x.startswith("-files~=")]
+    if len(pats) != 1:
+        return ["queue pipeline: queue_conditions lack 'or: [check-success = guards, -files ~= <guards.yml paths>]' (F4)"]
+    try:
+        wf = yaml.safe_load(open(os.path.join(ROOT, ".github/workflows/guards.yml"), encoding="utf-8"))
+        on = wf.get("on", wf.get(True)) or {}
+        globs = on["pull_request"]["paths"]
+        rx = re.compile(pats[0])
+    except (OSError, KeyError, TypeError, AttributeError, yaml.YAMLError, re.error) as e:
+        return [f"queue pipeline: the guards rule cannot be compared with guards.yml's paths ({e}) (F4)"]
+    files = subprocess.run(["git", "-C", ROOT, "ls-files", "-z"], capture_output=True, text=True).stdout.split("\0")
+    probes = {g.replace("**", "p/q.x").replace("*", "p") for g in globs}   # a glob with no tracked file under it (review m2)
+    files = sorted({f for f in files if f} | probes | {"x/" + g for g in probes})   # "x/…": an unanchored regex takes it
+    gx = [_glob(g) for g in globs]
+    out = []
+    for f in files:
+        want, got = any(x.match(f) for x in gx), rx.search(f) is not None
+        if want != got:
+            out.append(f"queue pipeline: the guards rule {'misses' if want else 'takes'} {f} "
+                       f"({'guards.yml runs on it' if want else 'guards.yml does not run on it'}) (F4)")
+            if len(out) >= 5: break
+    return out
+
+
+NEAR = [("Completes: R1.10", True), ("**Completes:** R1.5, R1.6", True), ("- Completes: R1.3", True),
+        ("> Completes: R1.42", True), ("Plan.\nCompletes: R1.77\nDone when: x", True),
+        ("Completes: none", False), ("no completes line", False), ("Completes R1.4 (no colon)", False),
+        ("the PR says Completes: R1.4 in prose", False), ("Completes: OS-50", False)]
+
+
+def near_proven(cfg):
+    """OS-50: the top-level priority rule near-proven (Mergify refuses priority_rules inside a queue rule, #3825)."""
+    out = [f"queue {q.get('name')}: has priority_rules, which Mergify refuses inside a queue rule (put them at the top level)"
+           for q in cfg.get("queue_rules", []) if "priority_rules" in q]
+    rules = [r for r in cfg.get("priority_rules") or [] if r.get("name") == "near-proven"]
+    if not rules:
+        return out + ["priority_rules: no rule 'near-proven' at the top level (OS-50: a PR that completes an R1 item goes first)"]
+    r = rules[0]
+    if r.get("priority") != "high":   # medium is Mergify's default: no priority at all (round 1 m2 of #3825)
+        out.append(f"queue product: priority rule near-proven has priority {r.get('priority')!r}, not high")
+    if r.get("allow_checks_interruption") is not False:
+        out.append("queue product: priority rule near-proven does not set allow_checks_interruption: false (it must not restart a running batch)")
+    for body, want in NEAR:
+        try:
+            got = all(holds(c, {"body": body, "label": ["review: approved"]}) for c in r.get("conditions") or [])
+        except (ValueError, re.error) as e:
+            out.append(f"queue product: priority rule near-proven cannot be read ({e})"); break
+        if not r.get("conditions"):
+            out.append("queue product: priority rule near-proven has no conditions (every PR would go first)"); break
+        if got != want:
+            out.append(f"queue product: priority rule near-proven {'misses' if want else 'takes'} the body {body!r}")
+    try:
+        if all(holds(c, {"body": "Completes: R1.10", "label": ["records"]}) for c in r.get("conditions") or []):
+            out.append("queue product: priority rule near-proven takes a records PR (it needs -label = records)")
+    except (ValueError, re.error) as e:
+        out.append(f"queue product: priority rule near-proven cannot be read ({e})")
     return out
 
 
@@ -258,6 +384,30 @@ def mutations(cfg):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
     def swap12(c):
         c = copy.deepcopy(c); c["queue_rules"][1], c["queue_rules"][2] = c["queue_rules"][2], c["queue_rules"][1]; return c
+    def prio(c, fn):   # OS-50: a changed near-proven rule (top level)
+        c = copy.deepcopy(c); fn(c); return c
+    def inqueue(c):   # the rule moved back inside the product queue, where Mergify refuses it (#3825)
+        c = copy.deepcopy(c)
+        for q in c["queue_rules"]:
+            if q["name"] == "product": q["priority_rules"] = c.pop("priority_rules")
+        return c
+    def fm_change(c, fn):   # F2: a changed fixes-main rule (top level); not named prio (#3825's helper)
+        c = copy.deepcopy(c); fn(next(r for r in c["priority_rules"] if r["name"] == "fixes-main")); return c
+    def fm_drop(c):
+        c = copy.deepcopy(c); c["priority_rules"] = [r for r in c["priority_rules"] if r["name"] != "fixes-main"]; return c
+    def fm_inqueue(c):   # the rule moved inside the pipeline queue, where Mergify refuses it (#3825)
+        c = copy.deepcopy(c); r = next(r for r in c["priority_rules"] if r["name"] == "fixes-main")
+        c["priority_rules"].remove(r)
+        next(q for q in c["queue_rules"] if q["name"] == "pipeline")["priority_rules"] = [r]
+        return c
+    def guards_or(c, fn):   # F4: the pipeline queue's guards condition changed
+        c = copy.deepcopy(c)
+        q = next(q for q in c["queue_rules"] if q["name"] == "pipeline")
+        q["queue_conditions"] = [y for y in (fn(x) if isinstance(x, dict) and "check-success=guards" in str(x).replace(" ", "") else x
+                                             for x in q["queue_conditions"]) if y is not None]
+        return c
+    def narrow(x):   # guards required only for .mergify.yml
+        return {"or": [s if s.startswith("check") else "-files ~= ^\\.mergify\\.yml$" for s in x["or"]]}
     def no_verdicts(c):
         c = copy.deepcopy(c); c["queue_rules"] = [q for q in c["queue_rules"] if q["name"] != "verdicts"]; return c
     return [
@@ -288,6 +438,27 @@ def mutations(cfg):
         ("pipeline interrupts running checks (P-827)", interrupt(cfg, "pipeline")),
         ("verdicts listed after pipeline (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
+        ("no top-level near-proven priority rule (OS-50)", prio(cfg, lambda q: q.pop("priority_rules", None))),
+        ("near-proven inside the product queue, where Mergify refuses it (#3825)", inqueue(cfg)),
+        ("near-proven takes records PRs (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"conditions": [q["priority_rules"][0]["conditions"][0]]}))),
+        ("near-proven interrupts running checks (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"allow_checks_interruption": True}))),
+        ("near-proven matches any body (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"conditions": ["body ~= ."]}))),
+        ("near-proven matches Completes anywhere in prose (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"conditions": ["body ~= Completes:\\s*R1"]}))),
+        ("near-proven at low priority (OS-50)", prio(cfg, lambda q: q["priority_rules"][0].update({"priority": "low"}))),
+        ("no top-level fixes-main priority rule (F2)", fm_drop(cfg)),
+        ("fixes-main inside the pipeline queue, where Mergify refuses it (F2, #3825)", fm_inqueue(cfg)),
+        ("fixes-main interrupts running checks (F2)", fm_change(cfg, lambda r: r.update({"allow_checks_interruption": True}))),
+        ("fixes-main without allow_checks_interruption: false (F2)", fm_change(cfg, lambda r: r.pop("allow_checks_interruption"))),
+        ("fixes-main matches every PR (F2)", fm_change(cfg, lambda r: r.update({"conditions": ["body ~= ."]}))),
+        ("fixes-main has no conditions (F2)", fm_change(cfg, lambda r: r.update({"conditions": []}))),
+        ("fixes-main matches 'Fixes main' anywhere in prose (F2)", fm_change(cfg, lambda r: r.update({"conditions": ["body ~= (?i)Fixes main:\\s*\\S", "-label = records"]}))),
+        ("fixes-main counts 'Fixes main: none' (F2)", fm_change(cfg, lambda r: r.update({"conditions": ["body ~= (?im)^[\\s>*-]*(\\*\\*|__)?Fixes main(\\*\\*|__)?\\s*:(\\*\\*|__)?[ \\t]*\\S", "-label = records"]}))),
+        ("fixes-main takes records PRs (F2)", fm_change(cfg, lambda r: r.update({"conditions": [x for x in r["conditions"] if "records" not in x]}))),
+        ("fixes-main at medium priority, Mergify's default (F2)", fm_change(cfg, lambda r: r.update({"priority": "medium"}))),
+        ("pipeline drops the guards condition (F4)", guards_or(cfg, lambda x: None)),
+        ("pipeline needs guards only for .mergify.yml (F4)", guards_or(cfg, narrow)),
+        ("pipeline's guards condition needs ci instead of guards (F4)", guards_or(cfg, lambda x: {"or": [s.replace("guards", "ci") if s.startswith("check") else s for s in x["or"]]})),
+        ("pipeline never needs guards (the files branch matches nothing) (F4)", guards_or(cfg, lambda x: {"or": [s if s.startswith("check") else "-files ~= ^$x" for s in x["or"]]})),
     ]
 
 
@@ -311,7 +482,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
+        passed += 1; print("PASS  order verdicts, pipeline, product, records (P-827); verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts; fixes-main PRs first, never interrupting (F2); pipeline needs guards on guards.yml's paths (F4); near-proven product PRs first, never interrupting (OS-50)")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

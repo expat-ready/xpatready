@@ -425,6 +425,35 @@ scopes:
 # Lead-tool fixes are on main (the pipeline queue's comment below; undo: move pipeline back after product).
 # product/screens/B119/check-queue-rules.py reads this file and fails when the queues stop routing that way. The daily
 # records PR (P-336) stays.
+# OS-50 (P-733, P-820; full-power #129; OS-PM 4, 26 Nov): a PR that completes a Release 1 item goes first among the PRs
+# waiting in its queue, so the next proof lands sooner. Its body has a "Completes: R1.<n>" line, read as CI's item-proof.mjs
+# and proof-read-watch.py read it (optionally a list item, quote or bold); a records PR never. Top level, as Mergify reads
+# priority rules (inside a queue rule it refused the file: "Extra inputs are not permitted", #3825). No
+# allow_checks_interruption: it goes ahead of waiting PRs only, never restarting a running batch. Checked by
+# product/screens/B119/check-queue-rules.py.
+# F2 (P-853, founder A446, 27 Nov; P-214): a PR that fixes main (a red main, or a red `fast` or `guards` check) goes first
+# among the PRs waiting in its queue, so the PRs blocked behind the fix wait less. queue-gate.sh and lead-watch.sh name no
+# main fix (no label, no body line), so the PR body says so on a line of its own, "Fixes main: <the red run or check>"
+# (optionally a list item, numbered item, quote or bold; "Fixes main: none", "no" or "n/a", bold or not, does not count);
+# a records PR never. The
+# queue's conditions are unchanged: the label, green ci, guards (F4) and the rest still hold. Top level, as Mergify reads
+# priority rules (inside a queue rule it refused the file, #3825). No allow_checks_interruption: it goes ahead of waiting
+# PRs only, never restarting a running batch. Checked by product/screens/B119/check-queue-rules.py.
+# Both rules share one top-level list; near-proven stays first (check-queue-rules.py's OS-50 rows edit priority_rules[0]).
+priority_rules:
+  - name: near-proven
+    conditions:
+      - body ~= (?m)^[\s>*-]*(\*\*|__)?Completes(\*\*|__)?\s*:(\*\*|__)?\s*R1\.\d+
+      - -label = records
+    priority: high
+    allow_checks_interruption: false
+  - name: fixes-main
+    conditions:
+      - body ~= (?im)^[\s>*-]*(\d+[.)][ \t]+)?(\*\*|__)?Fixes main(\*\*|__)?[ \t]*:[ \t*_`]*(?!(none|no|n/a)(?![a-z0-9/-]))[^\s*_`]
+      - -label = records
+    priority: high
+    allow_checks_interruption: false
+
 queue_rules:
   - name: verdicts
     batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
@@ -468,6 +497,15 @@ queue_rules:
       - or:
           - check-success = xfa-engine
           - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
+      # F4 (P-853, founder A446, 27 Nov): a pipeline PR whose guards are red never merges (one did while guards was
+      # optional). guards.yml runs only on its `paths`, so the aggregate job `guards` is required when the PR touches one
+      # of them; a PR touching none gets no run and is not held. Keep this regex in step with guards.yml's `paths` block:
+      # check-queue-rules.py compares them on every tracked file.
+      # Two workflow names are split by a group, studio-(audit) and red-on-(old): their checks test that those report-only
+      # workflows are never named in this file as required (their two check-*.sh tests); the paths match the same.
+      - or:
+          - check-success = guards
+          - -files ~= ^(\.claude/settings\.json$|\.claude/skills/(lead|next|qa)/|\.github/workflows/(comment-run|label-guard|nightly|guards|studio-(audit)|red-on-(old)|pr-rules)\.yml$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves\.(tsv|md)$|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/(isolated\.sh|test-copies\.sh|item-proof\.mjs)$|\.mergify\.yml$|CONTRIBUTING\.md$|\.github/pull_request_template\.md$)
     merge_conditions:
       - check-success = ci
     merge_method: merge

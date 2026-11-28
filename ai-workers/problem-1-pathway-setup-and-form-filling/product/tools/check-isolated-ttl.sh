@@ -3,6 +3,7 @@
 # studio whose database, server and port tools are stand-ins (a "server" is a process that holds a port file), with a
 # minute shortened to a second (ISOLATED_TTL_UNIT=1): a copy stops itself at its --ttl, a stop or a new start ends the
 # old timer, start refuses a 5th copy, and the qa and next skills start and stop a copy in the same command. Needs zsh.
+# zsh comes from cloud-setup.sh, guards.yml's zsh step, and ci.yml fast's tooling-route zsh step (27 Nov, Lead 7 on #3918).
 #   bash product/tools/check-isolated-ttl.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
