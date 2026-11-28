@@ -117,6 +117,11 @@
           },
           {
             "type": "command",
+            "command": "python3 -I \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/shell-trap-guard.py --hook",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "if": "Bash(gh pr review*)",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
             "timeout": 15,

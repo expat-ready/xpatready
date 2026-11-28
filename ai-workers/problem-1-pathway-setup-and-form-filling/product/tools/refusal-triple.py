@@ -8,7 +8,7 @@ up to WINDOW lines above and below it (where the message is built: above in the 
 before or after it. The text must hold:
   rule id  "Rule <id>:"   (<id> as P-788, ENF-771, LR-054, B193, OS-26: letters, then digits)
   fix      "Fix:"         (what passes: the allowed command, the step, or who to ask)
-The reason is the prose between them. Scope: the 14 guards in GUARDS (the refusals agents meet at run time: the hooks in settings.json and the
+The reason is the prose between them. Scope: the guards in GUARDS (the refusals agents meet at run time: the hooks in settings.json and the
 guards they call; a new guard is added here by hand); CI checks that exit non-zero take the triple as each is touched (triage 27 Nov, LR-051 class B).
   python3 -I product/tools/refusal-triple.py [--tools DIR]   → one line per site missing a part; exit 1 when any
 Test: check-refusal-triple.sh. US$0, no network.
@@ -17,7 +17,8 @@ import os, re, sys
 
 GUARDS = ["agent-model-guard.sh", "away-guard.sh", "founder-click-guard.sh", "gmail-start-check.sh",
           "lane-preflight.sh", "lead-act-check.sh", "lead-check-guard.sh", "lead-read-guard.sh", "merge-guard.sh",
-          "queued-push-guard.sh", "resource-claim-guard.sh", "stop-check.sh", "ist-time-guard.py", "wip-guard.py"]
+          "queued-push-guard.sh", "resource-claim-guard.sh", "stop-check.sh", "ist-time-guard.py", "wip-guard.py",
+          "shell-trap-guard.py"]
 WINDOW = 4
 SITE = re.compile(r'permissionDecision"?\s*:\s*"deny"|decision"?\s*:\s*"block"|reasons="(\$reasons)?- (?!note:)')   # a stop-check part is a site too (its "- note:" line is not a refusal)
 RULE = re.compile(r'Rule [A-Z][A-Za-z]*-?[0-9][0-9A-Za-z()]*:')
