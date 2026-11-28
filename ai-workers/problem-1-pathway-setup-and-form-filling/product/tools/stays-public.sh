@@ -9,7 +9,8 @@
 #   bash product/tools/stays-public.sh [<repository root>]        bash product/tools/stays-public.sh --self-test
 set -u
 LIST="$(dirname "$0")/stays-public.txt"
-mapfile -t STAYS < <(grep -v '^#' "$LIST" | grep .)
+# Read line by line, not mapfile: the Mac's bash is 3.2 (no mapfile). Spaces around a line are dropped.
+STAYS=(); while IFS= read -r f; do f="${f#"${f%%[![:space:]]*}"}"; f="${f%"${f##*[![:space:]]}"}"; [ -n "$f" ] && STAYS+=("$f"); done < <(grep -v '^#' "$LIST" 2>/dev/null)
 [ "${#STAYS[@]}" -gt 0 ] || { echo "STAYS PUBLIC: $LIST is missing or empty: nothing is checked (LR-119)"; exit 1; }
 check() { local root=$1 f bad=0
   for f in "${STAYS[@]}"; do [ -e "$root/$f" ] || { echo "STAYS PUBLIC: $f is missing from xpatready: GitHub, Mergify or Claude read it only here (LR-119)"; bad=1; }; done
