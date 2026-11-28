@@ -2,29 +2,15 @@
 # LR-119 (private split, design/private-split-plan-2026-11-27.md step 5; lab register 27 Nov): what stays in xpatready.
 # GitHub, Mergify and Claude read these files only in this repository (founder, 27 Nov: hooks, workflows and .mergify.yml
 # stay here), and fork and Dependabot PRs get no secrets, so a required check can never read them from the private one.
-# Each line below must exist on xpatready; the Claude settings must still hold their hooks; ci.yml (the required "ci"
+# Each line of stays-public.txt (every workflow, the builders' agents and skills, ...) must exist on xpatready; the Claude settings must still hold their hooks; ci.yml (the required "ci"
 # check) must not name the private repository. A missing one is a line on stdout and exit 1. check-docs.sh runs it on
-# every pull request (ci.yml, records rules) and in the Stop hook. CODEOWNERS and approvals.yml join this list in the PR
+# every pull request (ci.yml, records rules) and in the Stop hook. CODEOWNERS and approvals.yml join the list in the PR
 # that adds them (ship-security rows; not on main on 28 Nov).
 #   bash product/tools/stays-public.sh [<repository root>]        bash product/tools/stays-public.sh --self-test
 set -u
-STAYS=(
-  ".github/workflows/ci.yml"
-  ".github/workflows/pr-rules.yml"
-  ".github/workflows/queue-gate.yml"
-  ".github/workflows/nightly.yml"
-  ".github/dependabot.yml"
-  ".mergify.yml"
-  ".githooks/pre-commit"
-  ".githooks/pre-push"
-  ".githooks/commit-msg"
-  ".claude/settings.json"
-  ".claude/skills/next/SKILL.md"
-  ".claude/skills/qa/SKILL.md"
-  "REVIEW.md"
-  "CLAUDE.md"
-  "AGENTS.md"
-)
+LIST="$(dirname "$0")/stays-public.txt"
+mapfile -t STAYS < <(grep -v '^#' "$LIST" | grep .)
+[ "${#STAYS[@]}" -gt 0 ] || { echo "STAYS PUBLIC: $LIST is missing or empty: nothing is checked (LR-119)"; exit 1; }
 check() { local root=$1 f bad=0
   for f in "${STAYS[@]}"; do [ -e "$root/$f" ] || { echo "STAYS PUBLIC: $f is missing from xpatready: GitHub, Mergify or Claude read it only here (LR-119)"; bad=1; }; done
   if [ -f "$root/.claude/settings.json" ] && ! grep -q '"hooks"' "$root/.claude/settings.json"; then echo "STAYS PUBLIC: .claude/settings.json holds no hooks: Claude reads a project's hooks only from this repository (LR-119)"; bad=1; fi
