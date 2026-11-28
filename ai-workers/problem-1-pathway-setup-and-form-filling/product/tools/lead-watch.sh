@@ -433,6 +433,11 @@ lsw=$(python3 -I "$TOOLS/lane-start-watch.py" --state "$RECS/STATE.md" --view "$
 grep -qE '^(lanes running: |ACT   lane start: )' <<<"$lsw" || lsw="ACT   lane start: lane-start-watch.py did not run ($(head -1 <<<"$lsw"))"
 echo "$lsw"; act=$((act + $(grep -c '^ACT' <<<"$lsw"))); seen "$lsw"
 fresh "lane-start-watch.py: STATE.md in $RECS, the saved app view, origin/* as the last fetch saw it"
+# 13a2. LR-173 (founder P-861): dropped and deferred rows never get lost: register rows on main whose DROP names no other
+# home or whose DEFERRED names no trigger are one ACT; each DEFERRED row whose date trigger is due is an ACT.
+rr=$(python3 -I "$TOOLS/register-rows.py" lines --ref origin/main 2>&1); grep -qE '^(deferred: |ACT   )' <<<"$rr" || rr="ACT   register rows: register-rows.py did not run ($(head -1 <<<"$rr"))"
+echo "$rr"; act=$((act + $(grep -c '^ACT' <<<"$rr"))); seen "$rr"
+fresh "register-rows.py lines: the lab register on origin/main (step 0b's fetch)"
 # 13b. Ready rows per lane (E11, P-599 (1): at least two ready rows per lane at all times): the board's own count
 # (data.json › backlog.by_lane) for the four /next lanes; one ACT per lane under two, an unread count is an ACT too.
 lr=$(python3 -I "$TOOLS/owed-watch.py" lanes --board "$BOARD" 2>&1); echo "$lr"; act=$((act + $(grep -c '^ACT' <<<"$lr"))); seen "$lr"

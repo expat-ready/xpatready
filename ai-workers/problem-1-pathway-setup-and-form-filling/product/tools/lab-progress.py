@@ -3,7 +3,7 @@
 
 Usage: lab-progress.py [--ref origin/main]
 Reads design/lab-register-2026-11-27.md on the ref (default origin/main), counts live rows (not DROP,
-not MERGED-INTO) by gate (Status starts with Built / Proven), and compares with the plan the founder
+not MERGED-INTO, not DEFERRED: those are counted apart, LR-173) by gate (Status starts with Built / Proven), and compares with the plan the founder
 was given (A420): all Built by 27 Nov 23:00 IST, all Proven by 28 Nov 10:00 IST.
 The rate is measured from the previous run's snapshot (kept in $TMPDIR/lab-progress.log), never assumed.
 Prints one line, starting 🟢 on track or 🔴 off track. Exit 0 always (a report, not a gate).
@@ -14,17 +14,21 @@ from datetime import datetime, timezone, timedelta
 IST = timezone(timedelta(hours=5, minutes=30))
 BUILT_BY = datetime(2026, 11, 27, 23, 0, tzinfo=IST)
 PROVEN_BY = datetime(2026, 11, 28, 10, 0, tzinfo=IST)
-ref = sys.argv[sys.argv.index('--ref') + 1] if '--ref' in sys.argv else 'origin/main'
+ref = sys.argv[sys.argv.index('--ref') + 1] if '--ref' in sys.argv else (sys.argv[sys.argv.index('--file') + 1] if '--file' in sys.argv else 'origin/main')
 here = os.path.dirname(os.path.abspath(__file__))
 rel = os.path.relpath(os.path.join(here, '..', 'design', 'lab-register-2026-11-27.md'),
                       subprocess.run(['git', 'rev-parse', '--show-toplevel'], cwd=here, capture_output=True, text=True).stdout.strip())
-text = subprocess.run(['git', 'show', f'{ref}:{rel}'], cwd=here, capture_output=True, text=True).stdout
-live = built = proven = 0
+text = (open(sys.argv[sys.argv.index('--file') + 1], encoding='utf-8').read() if '--file' in sys.argv
+        else subprocess.run(['git', 'show', f'{ref}:{rel}'], cwd=here, capture_output=True, text=True).stdout)   # --file: tests
+live = built = proven = deferred = 0
 for line in text.split('\n'):
     if not re.match(r'^\| LR-\d+', line):
         continue
     c = [x.strip() for x in line.split('|')]
     if len(c) < 11 or c[4].startswith(('DROP', 'MERGED-INTO')):
+        continue
+    if c[4].startswith('DEFERRED'):   # LR-173 (P-861): out of the goal, counted apart (register-rows.py due watches their triggers)
+        deferred += 1
         continue
     live += 1
     st = c[8]
@@ -45,7 +49,8 @@ try:
 except Exception:
     pass
 try:
-    open(log, 'a').write(f'{time.time():.0f} {built} {proven}\n')
+    if '--file' not in sys.argv:   # a test or by-hand run on a file never feeds the measured rate
+        open(log, 'a').write(f'{time.time():.0f} {built} {proven}\n')
 except Exception:
     pass
 h_left = max((BUILT_BY - now).total_seconds() / 3600, 0.01)
@@ -57,4 +62,5 @@ if rate and rate > 0:
     eta = ' · Built ETA at this rate ' + (now + timedelta(hours=(live - built) / rate)).strftime('%d %b %H:%M IST')
 rate_s = 'not yet measured' if rate is None else f'{rate:.1f} rows/h'
 print(f'{mark} lab: Built {built}/{live} ({100*built//live}%), Proven {proven}/{live} ({100*proven//live}%) on {ref} · '
-      f'plan Built 27 Nov 23:00, Proven 28 Nov 10:00 IST · need {need:.1f} rows/h, measured {rate_s}{eta}')
+      f'plan Built 27 Nov 23:00, Proven 28 Nov 10:00 IST · need {need:.1f} rows/h, measured {rate_s}{eta} · '
+      f'{deferred} deferred (out of the goal)')
