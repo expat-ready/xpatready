@@ -26,7 +26,7 @@ const send = async (copy: string, files: Buffer[], actor = OFFICER) => {
   return { status: r.status, body: await r.json().catch(() => null) as any };
 };
 const words = (r: { body: any }) => String(r.body?.detail ?? r.body?.message ?? "");
-const plain = (s: string) => s.length > 20 && !/^(File too large|Too many files|Unexpected field|Internal server error|Bad Request|Payload Too Large)$/i.test(s.trim());
+const plain = (s: string) => s.length > 20 && !/^(File too large|Too many files|Unexpected (file )?field|Internal server error|Bad Request|Payload Too Large)$/i.test(s.trim());
 
 (async () => {
   // A fresh generated IMM 5257 copy on the r1d case whose release files it by PDF upload (not the Online fixture case).

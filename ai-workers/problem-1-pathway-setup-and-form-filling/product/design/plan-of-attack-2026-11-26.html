@@ -1,0 +1,282 @@
+<title>Release 1 Plan of Attack</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column of plan sections; tables scroll inside their own box; status as chips. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --fg:#17202b; --muted:#5a6676; --line:#dfe3ea;
+  --accent:#1f5fbf; --accent-soft:#e6eefb;
+  --ok:#1d7a46; --ok-soft:#e3f3ea; --warn:#9a6200; --warn-soft:#fbf0d9; --bad:#b3261e; --bad-soft:#fbe5e3;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f141a; --panel:#161d26; --fg:#e6ebf2; --muted:#9aa7b8; --line:#2a3442;
+  --accent:#7aa8ff; --accent-soft:#1b2a44;
+  --ok:#5fcf8f; --ok-soft:#14301f; --warn:#f0b956; --warn-soft:#33270f; --bad:#ff8a80; --bad-soft:#3a1715; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#161d26; --fg:#e6ebf2; --muted:#9aa7b8; --line:#2a3442;
+  --accent:#7aa8ff; --accent-soft:#1b2a44;
+  --ok:#5fcf8f; --ok-soft:#14301f; --warn:#f0b956; --warn-soft:#33270f; --bad:#ff8a80; --bad-soft:#3a1715; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:980px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:2rem;font-weight:700}
+h2{font-size:1.4rem;font-weight:600;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h3{font-size:1.05rem;font-weight:600}
+p{margin:0;max-width:72ch}
+.sub{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:12px}
+.eyebrow{font-family:var(--mono);font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font-family:var(--display);font-size:1.6rem;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:.85rem}
+.box{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:.92rem}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-family:var(--display);font-weight:600;background:var(--accent-soft);color:var(--fg)}
+tr:last-child td{border-bottom:none}
+td.num,th.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+code,.id{font-family:var(--mono);font-size:.85em}
+.chip{display:inline-block;font-size:.78rem;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.ok{background:var(--ok-soft);color:var(--ok)} .warn{background:var(--warn-soft);color:var(--warn)} .bad{background:var(--bad-soft);color:var(--bad)} .info{background:var(--accent-soft);color:var(--accent)}
+.needs{border:1px solid var(--bad);background:var(--bad-soft);border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.needs ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.step{flex:1 1 150px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.step .eyebrow{color:var(--accent)}
+.step p{font-size:.88rem;color:var(--muted)}
+ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;max-width:78ch}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+footer{color:var(--muted);font-size:.85rem}
+</style>
+
+<div class="wrap">
+
+<header style="display:flex;flex-direction:column;gap:8px">
+  <div class="eyebrow">Pathway Configurator · Release 1 · Lead 1, new account · v2 · 26 Nov 2026, 11:42 IST</div>
+  <h1>Release 1 Plan of Attack</h1>
+  <p class="sub">The whole plan from end to end: where we are, how a capability gets to Works, what we decided and how we decided it, how each rule is enforced, today's work and the path to 12 Dec. v2 adds the 15-a-day plan. Three independent read-only audits (every unfinished capability, all 58 open PRs, the operating-system backlog and merge capacity) checked the whole plan for gaps and duplicates. Every number was read from GitHub or main this morning; estimates say so.</p>
+</header>
+
+<section>
+  <h2>The 15-a-day plan in one screen</h2>
+  <p><b>What the audits found.</b> Merge capacity is <b>not</b> the limit. At today's settings the queue can merge about 75-110 app PRs a day (estimate). Fifteen capabilities a day need about 55-75 PRs: 15 × about 3 parts, plus fix-ups. Three things were stopping us:</p>
+  <ul class="plain">
+    <li><b>Supply:</b> no lanes ran during the switch, so only 1 PR was in the queue.</li>
+    <li><b>main's own guards were red:</b> R1.113-R1.121 had no waves line, which turned every PR's guards red. Fixed by <b>#3800</b>, labelled 11:4x.</li>
+    <li><b>Red batches and Lead waits:</b> 29% of batches failed in 48 h, mostly flaky suites. Each failure bounces PRs back for a Lead step, and 7 lanes were waiting on a round allowance from me (answered 11:3x).</li>
+  </ul>
+  <div class="stats">
+    <div class="stat"><b>15</b><span>proven per 24 h: the target</span></div>
+    <div class="stat"><b>7-8</b><span>proven per 12 h</span></div>
+    <div class="stat"><b>2</b><span>proven per 3 h, on average once flowing</span></div>
+    <div class="stat"><b>55-75</b><span>app PRs merged per 24 h needed (estimate)</span></div>
+    <div class="stat"><b>29% → under 15%</b><span>red batches: the one number to move</span></div>
+    <div class="stat"><b>~18</b><span>lanes at once: 12 builders, 3 qa, 2 OS, 1 shaping</span></div>
+  </div>
+  <p><b>Honest forecast (estimate).</b> The first 24 h start from zero: lanes are new, the canary had not pushed by 11:42, and 4 of the near rows need a ruling or a qa run first. Expect <b>10-13 in the first 24 h</b> (to 12:00 on 27 Nov), then <b>15 a day</b> once the operating-system fixes below are live and red batches are under 15%. That reaches 72 or more by about 27 Nov night and all 110 around 3-4 Dec, if the outside-account rows open on 27-28 Nov.</p>
+</section>
+
+<section>
+  <h2>Order of work: queues and lanes</h2>
+  <p><b>Merge queues</b> (on main now, in priority order): <span class="chip info">verdicts</span> qa proofs → <span class="chip info">pipeline</span> operating system and checks (P-827) → <span class="chip info">product</span> → <span class="chip info">records</span>. Operating-system PRs touch only tools, workflows and records, so they never hold product back. Inside product, the next fix (OS-50) puts PRs that complete a capability first.</p>
+  <h3>Operating system first: what goes live, in this order</h3>
+  <div class="box"><table>
+    <tr><th class="num">#</th><th>Item</th><th>PR / owner</th><th>Gain</th><th>Status 11:42</th></tr>
+    <tr><td class="num">1</td><td>main's guards green: waves list carries R1.113-R1.121</td><td>#3800 · Lead</td><td>unblocks every PR</td><td><span class="chip info">labelled</span></td></tr>
+    <tr><td class="num">2</td><td>check-guards.sh chain, merged one at a time to avoid conflicts: #3787 → #3693 (records PR in one command) → #3699 (old records PRs are an ACT) → #3696 (one-page Lead start) → #3715 (verify skill) → #3506 (the Lead runs main's tools) → #3661 (P-823 auto-label after a fresh Approve) → #3742</td><td>tooling lane + Lead reads</td><td>ends most Lead label waits (209 holds in 72 h)</td><td><span class="chip warn">lane on #3696 #3715 #3506</span></td></tr>
+    <tr><td class="num">3</td><td>P-731 ruling, then OS-05 auto-requeue after a green full run</td><td>Lead ruling; OS-PM lane</td><td>no Lead step per bounced PR (57 red batches in 48 h)</td><td><span class="chip warn">ruling owed by the Lead today</span></td></tr>
+    <tr><td class="num">4</td><td>Top flaky suites fixed or set aside: check_forms_qa53, check_pf24w_environment, check_csw3_firm_scope (OS-51, OS-08)</td><td>flaky-suites lane</td><td>red batches 29% → about 15%</td><td><span class="chip bad">not started</span></td></tr>
+    <tr><td class="num">5</td><td>pr-suites before the label becomes blocking once its 24 h warning is clean (OS-01 via OS-13)</td><td>Lead</td><td>red caught on the PR, not in the batch</td><td><span class="chip warn">window ends 27 Nov ~00:46</span></td></tr>
+    <tr><td class="num">6</td><td>Refresh suite-times.tsv so the 24 shards balance</td><td>OS-PM</td><td>batch 32 → 21-25 min (+15-30% capacity)</td><td><span class="chip bad">not started</span></td></tr>
+    <tr><td class="num">7</td><td>OS-50 near-Proven PRs first; OS-78 comment workflows exit early</td><td>OS-PM</td><td>shorter time to Proven; fewer queued runs</td><td><span class="chip bad">not started</span></td></tr>
+    <tr><td class="num">8</td><td>OS-68 idle-lane ACT, OS-69 finished-lane ACT, OS-07 walks after a qa merge</td><td>OS-PM</td><td>no lane sits idle unseen; faster proof</td><td><span class="chip bad">not started</span></td></tr>
+  </table></div>
+  <p class="sub">Settings stay as they are until red batches are under 15%: four batches checked at once, batch size 2. More parallel checks only help above about 120 PRs a day.</p>
+  <h3>Product: capabilities in build-and-prove order</h3>
+  <p>Nearest to Works first (P-820). One lane per capability until Proven (P-733). The migration order below is fixed.</p>
+  <div class="box"><table>
+    <tr><th>Tier</th><th>Capabilities</th><th>What is left</th><th>Who</th><th>Expect (IST)</th></tr>
+    <tr><td><span class="chip ok">A · proof or ruling only</span></td><td>R1.10 checking every input · R1.55 withdraw and re-issue · R1.96 reversals and write-offs · R1.45 firm templates</td><td>Every missing part has merged since qa's last score. R1.96 needs my ruling on whether FO-7s4 is in scope; R1.45 on whether FO-5p is.</td><td>qa 1 and 2; Lead rulings by 14:00</td><td>4 by 20:00 26 Nov</td></tr>
+    <tr><td><span class="chip ok">B · one PR left</span></td><td>R1.87 our access to a firm's data (#3675) · R1.57 card payment (#3633 labelled, then #3692 j_57) · R1.56 invoices (FO-7s2 after #3633) · R1.112 video links (#3418)</td><td>Merge, then the journey and proof</td><td>fix-up lanes; R1.56/57 builder</td><td>3-4 by 06:00 27 Nov</td></tr>
+    <tr><td><span class="chip warn">C · 2-3 parts</span></td><td>R1.60 deposit on signature (#3681, then part b) · R1.111 statements (#3753, FO-7s5) · R1.79 reports (#3734, PF-R2cm, PF-R3) · R1.85 data requests (#3713, PF-21rs pages) · R1.58 trust or operating (FO-7s3b, plus a missing row for the move-to-case route) · R1.35 contacts import (#3644 → #3705 → PF-10s) · R1.95 custom fields (#3639, PF-22v, PF-22s) · R1.64 resumable upload (#3640 + #3303 → #3698)</td><td>One builder each</td><td>one builder per row</td><td>4-6 by 12:00 27 Nov; the rest by 28 Nov</td></tr>
+    <tr><td><span class="chip warn">C · outside accounts</span></td><td>R1.54 e-signature (BoldSign) · R1.66 virus scan (AWS) · R1.15 secrets (AWS) · R1.1 hosting in Canada (AWS, PF-8c deploy)</td><td>Staging redeploy on the 25 Nov keys first</td><td>Lead in the AWS console (you are signed in); one builder</td><td>27-28 Nov</td></tr>
+    <tr><td><span class="chip bad">D · 4 or more parts</span></td><td>R1.76 notes and timeline · R1.3 walls between firms · R1.5 staff sign-in · R1.34 person export · R1.62 client portal · R1.61 sign and pay · R1.22 suspend and exit · R1.105 keep periods · R1.97 audit chain (#2129 labelled) · R1.75 tasks · R1.36 automation · R1.107 provincial streams · R1.106 Express Entry scores · R1.91 billing (Stripe) · R1.43 calendar sync (Google) · R1.52 mailbox (OAuth, WhatsApp) · R1.98 corporate clients</td><td>Builders start where a lane frees up, oldest open PR first</td><td>builders as capacity allows</td><td>28 Nov to 3 Dec</td></tr>
+    <tr><td><span class="chip bad">Not shaped</span></td><td>R1.113-R1.121 (P-842: maintenance mode, banner, settings registry, staff timeout, staff admin, analytics, integrations status, global templates, firm switches)</td><td>No BACKLOG rows, parts or wave until today. Five can be lifted from the team's code (P-842), through the lift gate. Their specifics stay out of this public repo (P-504).</td><td>Lead shapes; one shaping lane</td><td>rows by 27 Nov; builds 28 Nov onward</td></tr>
+  </table></div>
+  <h3>Fixed merge order where files collide</h3>
+  <ul class="plain">
+    <li><b>Migrations</b> (main's newest is 20261125150000): #2129 audit chain alone first → #3675 → #3733 → #3647 → #3701 → #3646. Then re-stamped, one at a time: #3639, #3649, #3411, #3681, #3635, #3418, #3219, #3478.</li>
+    <li><b>platform.prisma</b> (#3733, #3646, #3639, #3635, #3418, #3411) and <b>.mergify.yml migration scopes</b> (8 PRs): one at a time. After each merge, the next PR reruns <code>migration-slots.py mergify --write</code>.</li>
+    <li><b>Stacked chains:</b> #3217 → #3479 · #3644 → #3705 · #3411 → #3650 → #3686 · #3640 + #3303 → #3698 · #3649 → #3694 · #3633 → #3692.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>12-hour and 3-hour plan</h2>
+  <div class="box"><table>
+    <tr><th>Window (IST)</th><th>Operating system</th><th>Product and proof</th><th>Proven, cumulative (estimate)</th></tr>
+    <tr><td class="num">26 Nov 12-15</td><td>#3800 merges; guards go green; the check-guards chain starts (#3787, #3693); P-731 ruling</td><td>The 5 fix-up lanes return 10 PRs to the queue; #3633 and #2129 enter the queue; builders start on R1.56/57, R1.58, R1.111, R1.79, R1.85, R1.35, R1.95, R1.64</td><td class="num">64 → 65</td></tr>
+    <tr><td class="num">15-18</td><td>#3699, #3696, #3715; flaky-suites lane on qa53, pf24w, csw3</td><td>qa proves R1.10 and R1.55; rulings for R1.96 and R1.45; #3675 R1.87 merges</td><td class="num">66-67</td></tr>
+    <tr><td class="num">18-21</td><td>#3506, #3661 (P-823 live); OS-05 build</td><td>R1.96, R1.45 proven; R1.87 walk and proof; #3418, #3681 merge</td><td class="num">68-69</td></tr>
+    <tr><td class="num">21-24</td><td>suite-times refresh; OS-50</td><td>R1.57 (#3692 after #3633); R1.112 proof</td><td class="num">70-71 <span class="chip info">12 h checkpoint</span></td></tr>
+    <tr><td class="num">27 Nov 00-03</td><td>OS-01 blocking (window clean)</td><td>R1.56 FO-7s2; R1.60 part b</td><td class="num">71-72</td></tr>
+    <tr><td class="num">03-06</td><td>OS-68, OS-69</td><td>R1.111, R1.79</td><td class="num">72-73</td></tr>
+    <tr><td class="num">06-09</td><td>OS-78, OS-07</td><td>R1.85, R1.58</td><td class="num">73-75</td></tr>
+    <tr><td class="num">09-12</td><td>review: red batch share over 24 h</td><td>R1.35, R1.64; staging redeploy; account rows start</td><td class="num">74-77 <span class="chip info">24 h checkpoint</span></td></tr>
+  </table></div>
+  <p class="sub">Each 30-minute check compares this table with main's <code>qa/CAPABILITIES.md</code>. A late row gets a named recovery in the report. After the first 24 h the rate target is 15 a day: 7-8 per 12 h, about 2 per 3 h.</p>
+</section>
+
+<section>
+  <h2>Gaps and duplicates found, and the fix</h2>
+  <div class="box"><table>
+    <tr><th style="width:34%">Found</th><th>Fix</th></tr>
+    <tr><td>Nine P-842 rows (R1.113-R1.121) with no wave, no BACKLOG rows and no parts</td><td>Waves line: #3800. Rows shaped by the Lead with a shaping lane, lift-first.</td></tr>
+    <tr><td>Parts with no BACKLOG row: R1.58 move-to-case route · R1.98 FO-4c corporate prospect screen (QA-604) · R1.22 case-side export section · R1.5 QA-643 passkey setting · PF-4bs table row</td><td>Lead adds the rows in the next records PR (P-582: nothing left out silently).</td></tr>
+    <tr><td>Rows with a part but no PR (R1.3 CS-W2-W4, R1.1 PF-8c, R1.58 FO-7s3b, R1.111 FO-7s5, R1.66 PF-F3, R1.106 and R1.107 parts, R1.43, R1.52, R1.98, R1.75, R1.36, R1.62 PF-4pw, R1.76 CS-NT1t, R1.97 AUD-2c, R1.85 PF-21rs pages)</td><td>Builders, in the tier order above</td></tr>
+    <tr><td>No two PRs build the same part. Overlaps: #3371 and #3681 (R1.60 rules file only on the unmerged #3371); #3771 and #3758 both name PF-4ps</td><td>#3371 lands as records first; #3771 waits for #3758's concept</td></tr>
+    <tr><td>Superseded or overtaken: #3220 (FO-6ds concept already on main), #3177 (J-61 challenge)</td><td>Close #3220; land #3177 as a record</td></tr>
+    <tr><td>Concept PRs whose screens are built: #3214, #2896, #2332, #3471</td><td>Land as records (P-526c)</td></tr>
+    <tr><td>Stale with no owner over 40 h: #3421, #3217, #3219, #3424, #3406, #3478, #2915, and builder-less #3644, #3649, #3411, #3753, #3697, #3713</td><td>One builder per capability picks them up in tier order; #2915 is landed or closed by the Lead</td></tr>
+    <tr><td>Proof owed on Works rows: R1.24 (#3191, #3216), R1.42 (#3208), R1.50 (#3381)</td><td>qa re-checks them (they stay counted unless a Major appears)</td></tr>
+    <tr><td>P-822 guard took #3693's label although pr-suites run 45657876626 is green on its head</td><td>Guard bug: a fix row for OS-PM; relabel after a fresh pr-suites run</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Decisions I am taking now (Lead's call, recorded)</h2>
+  <div class="box"><table>
+    <tr><th style="width:30%">Decision</th><th>Impact (P-254)</th></tr>
+    <tr><td>Building cap 8 → 12 at once while red batches stay under 20% (back to 8 if they rise above). Plus 3 qa, 2 OS and 1 shaping lane.</td><td>Time: needed for 15 a day. Cost: tokens only. At about 18 lanes, this account's 61% left lasts about 10-12 h (estimate from the 25 Nov burn), so <b>the next account switch is likely tonight around 22:00-24:00 IST</b>. Quality: unchanged, the gates stay.</td></tr>
+    <tr><td>Round allowances given on 7 PRs; any further round over the cap goes to the Lead's diff read</td><td>Time: unblocks 7 lanes now. Quality: diff-only re-reviews, the reviewer still approves the exact head.</td></tr>
+    <tr><td>The pipeline queue's check fixes land first (P-214, P-827)</td><td>Already the rule; confirmed in this order</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Where we are this morning</h2>
+  <div class="stats">
+    <div class="stat"><b>64 / 110</b><span>capabilities proven Works (main, 11:1x)</span></div>
+    <div class="stat"><b>17</b><span>Partial: some parts built</span></div>
+    <div class="stat"><b>29</b><span>Not built (9 added by P-842)</span></div>
+    <div class="stat"><b>0</b><span>merges since 01:58 IST (no Lead or lanes during the switch)</span></div>
+    <div class="stat"><b>39%</b><span>weekly use on this account; resets 28 Nov 20:29 IST</span></div>
+    <div class="stat"><b>58</b><span>open PRs (23 drafts); about 12 approved but stuck</span></div>
+  </div>
+  <p>Release 1 is all 110 capabilities together. The date is 12 Dec and the aim is 6-7 Dec (P-609, P-815, P-842). If we are under 72 proven on 1 Dec, the date is decided again (P-609).</p>
+</section>
+
+<section>
+  <h2>Your three questions</h2>
+  <div class="box"><table>
+    <tr><th style="width:26%">Question</th><th>Answer</th></tr>
+    <tr><td>Can I manage lanes through computer use or Chrome until the built-in browser has claude.ai?</td><td>Partly. Computer use can <b>see</b> your Chrome. It shows this account's claude.ai/code sidebar (Lead 2, Lead 3, qa 1 and my session), but browsers are view-only for computer use, so I cannot click or type there. Claude in Chrome is not connected, and you said you cannot sign in to the extension. Everything else runs without the browser: GitHub through the shell (labels, re-runs, comments), starting and messaging sessions through the app.</td></tr>
+    <tr><td>Does this hurt quality or speed?</td><td><b>Quality: no.</b> Reviews, checks, qa proof and merges all run on GitHub, unchanged.<br><b>Speed: a little.</b> An idle cloud lane wakes reliably only when someone types in its prompt box on claude.ai. Without that, an idle lane can sit until a message gets through (the 25 Nov plan found 24 of 41 lanes idle). Fix: sign the built-in browser in to claude.ai. If you don't have the password, the pane's <b>⋮</b> menu can import your Chrome sign-in. Tick <b>claude.ai only</b>.</td></tr>
+    <tr><td>Are all the keys in AWS and GitHub?</td><td><b>Mostly in place by the 25 Nov record.</b> The outside-accounts sitting closed at 11:04 IST on 25 Nov: Stripe (test), AWS, BoldSign, Google, Zoom and WhatsApp opened; the key check passed; the Stripe secret was set in GitHub (P-821). This morning I saw the staging secrets in AWS Secrets Manager (Canada region, two pages): Google client secret, Stripe, BoldSign, Zoom, database and file keys, last read 24-25 Nov. I did not open any values. <b>Owed:</b> staging must redeploy before the app sees the new keys (OS-71, PF-8c). Microsoft sign-in and the alarm are not confirmed.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>How a capability gets to Works</h2>
+  <p>A capability (an R1 row) is a chain of parts. Each part is one PR of under 800 changed lines (P-610). It passes these stations in order. The row counts only when its last part is proven on main by qa (P-339, P-636: only Proven counts).</p>
+  <div class="flow">
+    <div class="step"><span class="eyebrow">1 · Shape</span><h3>Row ready</h3><p>Lead: duplicate check, touch list, acceptance test, "Done when", founder decisions answered (P-526).</p></div>
+    <div class="step"><span class="eyebrow">2 · Build</span><h3>Cloud builder</h3><p>One row per session, fresh branch, pushes each step; checks its own change in a browser (OS-72).</p></div>
+    <div class="step"><span class="eyebrow">3 · Review</span><h3>Fresh Opus reviewer</h3><p>Approves an exact head. A breaker also runs for money, schema, permissions or a new screen (P-303).</p></div>
+    <div class="step"><span class="eyebrow">4 · Label</span><h3>review: approved</h3><p>Only on "Reviewer: Approve &lt;sha&gt;" and green checks (P-385). The Lead reads migrations and tools first (P-423).</p></div>
+    <div class="step"><span class="eyebrow">5 · Merge queue</span><h3>Mergify batches</h3><p>Pipeline queue ahead of product (P-827). A failed batch needs a green full run before the PR is relabelled (P-731).</p></div>
+    <div class="step"><span class="eyebrow">6 · Proof</span><h3>qa on main</h3><p>Gate A: walk by screens. Gate B: pack green on main, re-run, fresh reader. An open Major keeps it Partial (P-305).</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>What we decided, and how</h2>
+  <p><b>How decisions are made.</b> You give product direction only; the Lead owns the pipeline, money inside the caps and everything else (P-384, P-486). Immigration facts come from official sources with page, quote and date, never guessed (P-170). Questions that our decisions, canada.ca or best practice settle are ruled by the Lead and recorded (P-294, P-797). Preference questions come to you one at a time with a recommendation (P-390). Big items get a fresh Opus reviewer's challenge first (P-521). Every decision is a row in <code>DECISIONS.md</code>, which is only ever appended to. <code>RULES.md</code> is the one current page and lags it by at most 3 rows (P-440).</p>
+  <div class="box"><table>
+    <tr><th style="width:22%">Area</th><th>The decisions that drive the work</th></tr>
+    <tr><td>Goal and order</td><td>Release 1 = 110 together, 12 Dec, aim 6-7 Dec (P-609, P-842). The v4 control-room plan is <b>the</b> plan (A386). Pipeline fixes first, then the nearest Partials, then Not built only where a Partial needs it (P-827, P-820). Finish before starting, with WIP limits per group (P-622, P-623). Pick order each check: red main, merged work awaiting qa, blockers, Partials, drafted, new (P-418).</td></tr>
+    <tr><td>What counts</td><td>Works = pack green on main's head on GitHub's machines, an independent re-run, and a fresh reader's verdict (P-339). Merges never count as progress; only Proven does (P-636, A260).</td></tr>
+    <tr><td>Builders and qa</td><td>One row per session and per PR (P-278); no duplicates (P-526); merge main only on a conflict (P-270); at most two review rounds, then the Lead decides (P-277); live AI off, US$0 in every lane (P-175); builders never edit records (P-314).</td></tr>
+    <tr><td>Tech lead</td><td>Check every 30 minutes with the fixed prompt (F-6Nov); read every lane and act on a stalled one at once (P-339b, P-647); never cancel a CI run (P-371); measure the flow and fix the one constraint (P-738); two standby Leads and a hand-over at 200k context (P-286, P-446); always committed and resumable (P-557).</td></tr>
+    <tr><td>Money and accounts</td><td>Outside accounts in one sitting; you type every key; test mode, US$0 (P-821). Only you create accounts, keys or purchases (P-551). Paid AI runs within a day cap, with the worst cost reserved first (P-295). The weekly plan is never a limit: switch accounts at 95-96% (P-461, A386).</td></tr>
+    <tr><td>Models</td><td>Everything on Opus 5.5 medium; any other model or effort is named to you with the reason (P-788, P-608).</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>How the rules are enforced</h2>
+  <p>A rule we can check by machine gets a hook, a CI check or a script (P-611a). Each enforcer starts as a warning and blocks only after it has been clean for 24 hours or 10 PR runs (P-717 b). The main enforcers today:</p>
+  <div class="box"><table>
+    <tr><th>Enforcer</th><th>What it stops</th><th>Where</th></tr>
+    <tr><td><code>label-guard</code>, <code>queue-gate</code></td><td>A label without an exact-head Approve and green checks; a red head in the queue (P-385, P-822)</td><td>CI</td></tr>
+    <tr><td><code>pr-rules</code>: size, duplicate check, waves, module cards</td><td>PRs over 800 lines, missing "Duplicate check:", work outside the open waves</td><td>CI</td></tr>
+    <tr><td>Gate B (<code>gate-b.mjs</code>)</td><td>Claiming Works while an open Major or Critical names the capability</td><td>CI</td></tr>
+    <tr><td><code>lane-preflight.sh</code> and the brief check</td><td>Starting a Mac lane without disk or load room; a brief with no model and effort line</td><td>Hook (it refused my first standby brief this morning)</td></tr>
+    <tr><td><code>stop-check.sh</code>, <code>merge-guard.sh</code></td><td>Lanes editing records; anyone but the Lead merging or closing</td><td>Hook</td></tr>
+    <tr><td><code>lead-check-guard.sh</code>, ENF-778a</td><td>A wrong check prompt; a Lead turn ending while a lane's question has waited over 20 minutes</td><td>Hook</td></tr>
+    <tr><td><code>check-docs.sh</code></td><td>STATE over 12 KB, RULES lagging, more than one current Lead</td><td>Script and Stop hook (it made me trim STATE today)</td></tr>
+    <tr><td>push guard (<code>.githooks/pre-push</code>)</td><td>Pushing sources, code, archives, PDFs, databases or secrets</td><td>Hook and CI</td></tr>
+  </table></div>
+  <h3>Operating-system go-live (v4 plan), measured this morning</h3>
+  <div class="box"><table>
+    <tr><th class="num">#</th><th>What goes live</th><th>PR</th><th>Status</th></tr>
+    <tr><td class="num">1</td><td>Pipeline queue ahead of product (P-827)</td><td>#3643</td><td><span class="chip ok">merged 25 Nov</span></td></tr>
+    <tr><td class="num">2</td><td>Cloud setup stops on a failed step</td><td>#3623</td><td><span class="chip ok">merged 25 Nov 20:28 UTC</span></td></tr>
+    <tr><td class="num">3</td><td>pr-suites green before the label (P-822)</td><td>#3632</td><td><span class="chip ok">merged 25 Nov</span></td></tr>
+    <tr><td class="num">4</td><td>Auto-label additive migrations, money and routes after a fresh Approve (P-823)</td><td>#3661</td><td><span class="chip warn">open</span></td></tr>
+    <tr><td class="num">5</td><td>One OS backlog on main (P-828)</td><td>#3651</td><td><span class="chip ok">merged 25 Nov</span></td></tr>
+    <tr><td class="num">6</td><td>Auto-requeue and full run on ask</td><td>OS-05, OS-06</td><td><span class="chip warn">not seen on main</span></td></tr>
+    <tr><td class="num">7</td><td>No Lead turn ends with a question waiting; founder-click guard</td><td>#3667, #3665</td><td><span class="chip ok">merged 25 Nov</span></td></tr>
+    <tr><td class="num">8</td><td>A merge wakes the lane that waits on it</td><td>OS-49</td><td><span class="chip warn">open</span></td></tr>
+    <tr><td class="num">9</td><td>The Lead runs main's tools</td><td>#3506</td><td><span class="chip warn">open, fix-up lane started</span></td></tr>
+    <tr><td class="num">10</td><td>Records PR in one command; one-page Lead start</td><td>#3693, #3696</td><td><span class="chip info">#3693 labelled 11:1x</span> <span class="chip warn">#3696 lane started</span></td></tr>
+    <tr><td class="num">11</td><td>Report-only checks graduate to blocking, one at a time</td><td>OS-13</td><td><span class="chip warn">due 27 Nov</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>The constraint and the known risks</h2>
+  <div class="box"><table>
+    <tr><th style="width:28%">Risk</th><th>Evidence</th><th>Fix</th></tr>
+    <tr><td>Approved work stuck before the queue</td><td>About 12 approved PRs conflict with main, have a red rule check or wait on a Lead read. Nothing merged for 9 hours.</td><td>Five fix-up lanes started at 11:2x; Lead reads at every check.</td></tr>
+    <tr><td>Red merge batches</td><td>7 of 22 batches red in the 6 hours to 00:03, mostly flaky browser suites</td><td>#3760 set three suites aside; P-822 makes pr-suites pass before the label. Watch the red share over 24 hours.</td></tr>
+    <tr><td>Nightly full run red</td><td>26 Nov: <code>check_uxa1_counts_browser</code> (already set aside) and <code>check_fo7s3a_payments_trust_browser</code> (walk timed out)</td><td>Part 7 re-run at 11:1x. If it fails again, a fix row with the R1.58 owner.</td></tr>
+    <tr><td>Merged work with no proof</td><td>About 23 merges have no qa proof, including R1.96 (#3792)</td><td>qa 1 started; up to 3 qa lanes.</td></tr>
+    <tr><td>Idle lanes not seen</td><td>The built-in browser is not signed in to claude.ai</td><td>Import your Chrome sign-in (claude.ai only) into the pane.</td></tr>
+    <tr><td>Staging not on the new keys</td><td>The keys were set 25 Nov; there is no deploy after a secret change</td><td>OS-71 / PF-8c: restart the staging service through AWS (you are signed in).</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>The longer view to 12 Dec</h2>
+  <div class="box"><table>
+    <tr><th>When (IST)</th><th>What happens</th><th>Who</th><th>How we know</th></tr>
+    <tr><td class="num">26 Nov, now to 14:00</td><td>The canary proves this account pushes. Five fix-up lanes return #3418, #3681, #3692, #3734, #3623, #3696, #3715, #3506, #3647 and #3701 to the queue. Lead reads of #2129, #3647, #3701, #3715, #3696 and #3506.</td><td>Lead, 5 cloud lanes</td><td>The queue is never empty; merges resume</td></tr>
+    <tr><td class="num">26 Nov, 12:00 to 20:00</td><td>qa proves the unproven merges, nearest to Works first (R1.96 first). Up to 3 qa lanes.</td><td>qa 1 to 3</td><td>Proven rises on main</td></tr>
+    <tr><td class="num">26 Nov evening</td><td>Builders on the 17 Partials nearest to proven (R1.10, R1.29, R1.55, R1.56, R1.58, R1.76, R1.85, R1.87 and the rest), one session per capability, at most 8 building at once.</td><td>Cloud builders</td><td>Each Partial has a lane and an open PR</td></tr>
+    <tr><td class="num">26-27 Nov</td><td>The operating system finishes: #3661 (P-823), OS-49, #3506, OS-13 graduation; verify (OS-72) decided 27 Nov 12:00.</td><td>OS-PM lane, Lead</td><td>Lead-read holds fall toward 0; fewer red batches</td></tr>
+    <tr><td class="num">27-28 Nov</td><td>Staging redeploys on the new keys. The account rows start: Stripe R1.22, R1.57, R1.61, R1.91; BoldSign R1.54, R1.55; OAuth R1.43, R1.52, R1.112; AWS R1.1, R1.5, R1.15, R1.66; alarm R1.13.</td><td>Lead in the browser, you for sign-ins</td><td>Account rows reach Partial, then Works</td></tr>
+    <tr><td class="num">28 Nov to 1 Dec</td><td>The smallest Not-built rows (R1.34, R1.35, R1.75, R1.64 first), then the rest.</td><td>Builders</td><td>72 or more by 1 Dec (the P-609 line)</td></tr>
+    <tr><td class="num">1 to 12 Dec</td><td>The rest of the 110, release gate, your D17 and D20 walks.</td><td>All</td><td>110 proven</td></tr>
+  </table></div>
+  <p><b>Forecast (estimate).</b> At the 22-24 Nov net rate of 4.7 a day, from 64 we pass 72 around 28 Nov and reach about 87 by 1 Dec. All 110 by 12 Dec needs about 2.8 a day, and the 6-7 Dec aim about 4.2 a day. On 25 Nov we proved 9. The remaining rows are longer chains than the finished ones, so treat the early dates as optimistic.</p>
+</section>
+
+<section class="needs">
+  <h2 style="border:none;padding:0">What I need from you</h2>
+  <ol>
+    <li><b>Sign in to claude.ai in the browser pane with a code.</b> The cookie import did not take: claude.ai asks this device to sign in again. On the pane's sign-in page choose <b>Continue with email</b>, enter this account's email, then type the code from your inbox. If this account uses Google, choose Continue with Google and sign in there.</li>
+    <li><b>Look at the qa 1 session on claude.ai/code once.</b> No cloud lane on this account had pushed to GitHub by 11:42. If it shows a GitHub or permission error, connect GitHub for this account in claude.ai settings. On an earlier switch the lanes stayed silent for 13 hours because of exactly this.</li>
+    <li><b>Reply here a few times a day</b>, even one word. Cloud sessions start only in a turn you type, and the 12 builders plus the 2 qa, 2 OS and 1 shaping lanes in this plan start at your next message.</li>
+    <li><b>A second account ready for tonight.</b> At about 18 lanes, this account is likely to reach 95% around 22:00-24:00 IST (estimate). I push STATE and the resume block by 94%.</li>
+  </ol>
+  <p class="sub">Still owed from 25 Nov: hand checks of R1.24 and R1.109, then R1.2, R1.82, R1.12, R1.37, R1.21 and R1.65, one at a time with links. Decide when you can: the staging test mailbox for FD-10 (I recommend Amazon SES in our own AWS account).</p>
+</section>
+
+<footer>Sources: origin/main (<code>qa/CAPABILITIES.md</code>, <code>RULES.md</code> as of P-842), GitHub PRs and runs at 11:1x-11:3x IST, the claude.ai/code sidebar seen in Chrome, AWS Secrets Manager names (no values), <code>design/control-room-2026-11-25.html</code> (v4 to v7). Kept by the tech lead; refreshed when the plan changes.</footer>
+</div>
