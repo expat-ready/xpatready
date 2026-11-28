@@ -80,3 +80,40 @@ Not checked: CI on this head; a real 07:40 runner tick; S3 files of kept classes
 
 **To fix before Approve:** B1, B2, M1, M2, M3.
 Reviewer: Block f9faf8699b2151684a25717a05d1c45c8cf6bd95
+
+## Round 2: diff-only review of f484b3e25c580d0177f240eb28b21dd059a23a70 (`git diff f9faf8699..f484b3e25`)
+**Verdict: Approve** on f484b3e25c580d0177f240eb28b21dd059a23a70. No Blocker or Major is open; 4 Minors remain.
+
+Evidence:
+* `check_pf21d_fo_eraser` 34/34 at this head (a separate worktree).
+* `j_85` with this head's journey and eraser, on an isolated copy on :4437: W5 passes 3/3 (19/21 overall; W1 and W2 still wait for PF-21rs and PF-17, as on main).
+* A scratch script, run as xr_app under PF-12's walls: a `plat_complaint` about the person (with its RECEIVED event) answers KEPT, "case or complaint rows 1".
+* The diff touches no server route, the job, or the merge or erasure suites, so I did not re-run those.
+
+**Round 1 findings, each re-checked:**
+* B1, closed. eraser.ts activity_log now counts lines keyed on the person, on their merged-away records, and on their leads, prospects, calls, notes, bookings, company links, retainers, identity checks and conflict checks. It also counts any line whose detail or summary holds their email or phone. The new test makes a person through the real `arrive()` and gets KEPT.
+* B2, closed. `awaiting_other_eraser` counts `case_client` and `plat_complaint`. RLS lets xr_app see both in the firm's scope (`plat_complaint` is firm-filtered, which I proved with a real row; `case_client` has no RLS).
+* M1, closed. j_85 runs the job on the walled client and reads `family_name`.
+* M2, partly closed. A live-schema probe column replaces the tautology, conflict checks have a positive case, and a KEEP → KEPT_SQL tie was added. See m-R2-1.
+* M3, closed. Records merged into the person are anonymised, recursively and in this firm only. Their test checks name, email and phone.
+* m1-m5, closed. Matches are counted. The note is in words, grouped, with each group's label first; Sample appears only on the Sample classes, and money and the activity log are called floors. `close_note` and `recommended` are seeded and read. An already-anonymised record is never renamed, and the test answers NOTHING.
+
+**Your question: is the structural tie enough for consent, signing, retainer, identity and money?**
+* Not for all five. I removed each class from KEPT_SQL in turn and re-ran the tie (test :199-201).
+  * Consent, signing, money and do-not-contact: the tie fails, as it should.
+  * Retainer, identity_check and conflict_check: the tie **still passes**, because `fo_retainer`, `fo_identity_check` and `fo_conflict_check` also appear in the activity_log query's CTE. Conflict checks have their own positive case, so retainer and identity_check are left with no effective proof.
+* I count this as a Minor, not a Major:
+  * by read, each of those count queries is correct (live columns; a wrong column or enum fails the run);
+  * a person the app creates always has a `lead.created` line, so they stay KEPT through activity_log anyway.
+* A tie that proves only "the table is named somewhere" does not prove the predicate, so it is not a substitute for one positive row per class.
+
+**Minors (round 2):**
+* **m-R2-1.** Make the tie per class: each KEEP reason starts with its class name ("retainer: …"), so check that *that* class's own query names the table. Better, add one positive row for retainer and identity_check (fixtures exist in their own suites). `client_financial` is the floor that matters most, and a positive money row would be worth adding too.
+* **m-R2-2.** Anonymising merged-away records touches person records other than the order's. That goes past the letter of port rule 3 ("that one person record") and next to SA-11-40 rule 6. Say so in the PR body as a departure, or get the Lead's nod.
+  * Note for 2b-2: an unmerge after erasure restores the survivor's pre-merge values from `survivor_before` (merge/service.ts:331). The request already reads HELD naming the merge records, so it is truthful today.
+* **m-R2-3.** activity_log runs `strpos` over `detail::text || summary` for every audit line of the firm, for each order. That is fine at Sample scale and the job is daily, but watch it when a firm's log is large.
+* **m-R2-4.** `awaiting_other_eraser` counts even after CS-X2 or 2c register (nothing checks the registry), so those PRs must drop their table from it. The `plat_complaint` half has no test here; I proved it by hand.
+
+Journey score (reviewer), round 2: **8.75/10, pass** (no 0): task ½→1, feedback and state 0→1, correct data 0→1, plain words ½→1. Next step stays ½ (staff get no date for "not yet erasable"), and trust and sources stays ½ (m-R2-2). That is 7 of 8 applicable criteria, scaled.
+
+Reviewer: Approve f484b3e25c580d0177f240eb28b21dd059a23a70

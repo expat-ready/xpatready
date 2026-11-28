@@ -15,6 +15,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { needVisitorVisa, openCase, prepare, sql as copySql } from "../acceptance/lib/m3.ts";
 import { recorder } from "./runtime/api.ts";
+import { CSW1_PART2 } from "./runtime/sample-firms.ts";
 
 const { ok, summary } = recorder();
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261126090000_shared__csw2_firm_id";
@@ -34,7 +35,9 @@ function scratch(name: string) {
   const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
   for (const d of all.filter((x) => x < NEW)) file(join(MIG, d, "migration.sql"));
   const drop = () => execFileSync(join(BIN, "dropdb"), [...pg, "--if-exists", "--force", DB]);
-  return { sql, err, file, drop, rest: () => { for (const d of all.filter((x) => x > NEW)) file(join(MIG, d, "migration.sql")); } };
+  // CS-W1 part 2 (20261126160000) makes the firm required; this suite's part-1-era checks run on the migrations before
+  // it; part 2 has its own suite check_csw1_part2.ts.
+  return { sql, err, file, drop, rest: () => { for (const d of all.filter((x) => x > NEW && x < CSW1_PART2)) file(join(MIG, d, "migration.sql")); } };
 }
 
 // One case's rows in all nine tables: n is 1, 2 or 3 (sample-firm, sample-solo, a key with no platform firm).

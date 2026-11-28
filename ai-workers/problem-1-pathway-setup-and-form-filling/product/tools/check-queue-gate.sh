@@ -28,6 +28,10 @@ case "$m $p" in
   "GET issues/"*/comments*) n=${p#issues/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] || { echo '[]'; exit 0; }
     if [ -f "$FX/comments-extra-$n.json" ] && [ -f "$FX/comments-$n.json" ]; then jq -s add "$FX/comments-$n.json" "$FX/comments-extra-$n.json"; else serve "comments-$n.json"; fi;;
   "GET issues?"*) [ "${pg:-1}" = 1 ] && serve issues.json || echo '[]';;
+  "GET actions/workflows/pr-suites.yml/runs?event=workflow_dispatch"*) [ -f "$FX/sdisp.json" ] && cat "$FX/sdisp.json" || echo '{"workflow_runs":[]}';;   # OS-87
+  "POST actions/workflows/pr-suites.yml/dispatches") [ -n "${FAIL_SDISPATCH:-}" ] && { echo '{"message":"no"}'; exit 22; }; echo "SDISPATCH $(echo "$d" | jq -r '.ref + " " + .inputs.pr + " " + .inputs.head')" >> "$FX/log"; echo '';;
+  "GET actions/workflows/pr-suites.yml/runs"*) [ -f "$FX/suiteruns.json" ] && cat "$FX/suiteruns.json" || echo '{"workflow_runs":[]}';;   # OS-82
+  "GET check-runs/"*/annotations*) c=${p#check-runs/}; serve "annot-${c%%/*}.json";;
   "GET commits/"*/check-runs?check_name=pr-suites*) s=${p#commits/}; serve "suites-${s%%/*}.json";;   # P-822
   "GET commits/"*/check-runs*) s=${p#commits/}; serve "checks-${s%%/*}.json";;
   "GET actions/runs/"*) serve "run-${p#actions/runs/}.json";;
@@ -315,6 +319,22 @@ ok "failed batch: ... and naming it is allowed" "$(grep -qx 'LABEL 7' <<< "$log"
 rm -f "$T/fx/jobs-900.json"; run label 7
 ok "failed batch: its failed parts cannot be read: refused, never passed by an empty list" "$(nolabel && grep -q 'cannot be read' <<< "$out" && echo 1)" "$out / $log"
 jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
+# OS-05 (Lead 3's ruling, 27 Nov): the covered line from run data. Full run 50 is green on the head (above).
+jobs 50 "shard (3):success" "regression (C1.1 C1.2, 2):success" "fast:success" "ci:success"; cov "nothing yet"; run label 7
+ok "OS-05: every failed part passed in the green full run on the head, no person's line: labelled, and the gate writes the line naming each part with its run" "$(grep -qx 'LABEL 7' <<< "$log" && grep -qF 'COMMENT 7 Batch failures covered: 900: `regression (C1.1 C1.2, 2)` (run 50), `shard (3)` (run 50)' <<< "$log" && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "github-actions[bot]"}, author_association: "NONE", body: "Batch failures covered: 900: `regression (C1.1 C1.2, 2)` (run 50), `shard (3)` (run 50)\n\n**Queue gate (OS-05):** written from run data"}]' > "$T/fx/comments-7.json"; run label 7
+ok "OS-05: the gate's line already on the PR: labelled, never posted twice" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q '^COMMENT 7 Batch failures covered' <<< "$log" && echo 1)" "$out / $log"
+jobs 50 "shard (3):failure" "regression (C1.1 C1.2, 2):success" "ci:failure"; cov "nothing yet"; run label 7
+ok "OS-05: a part still red in the full run: refused, a person writes the line" "$(nolabel && ! grep -q '^COMMENT 7 Batch failures covered' <<< "$log" && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "$out / $log"
+jobs 50 "regression (C1.1 C1.2, 2):success" "fast:success"; cov "nothing yet"; run label 7
+ok "OS-05: a failed part missing from the full run's jobs: refused" "$(nolabel && echo 1)" "$out / $log"
+jobs 50 "shard (3):success" "regression (C1.1 C1.2, 2):success"; nofull; full 51 7 $HEAD1 completed failure; full 50 7 $OLD completed success; cov "nothing yet"; run label 7
+ok "OS-05: the green full run is on another head, the head's own is red: refused" "$(nolabel && ! grep -q '^COMMENT 7 Batch failures covered' <<< "$log" && echo 1)" "$out / $log"
+nofull; full 50 7 $HEAD1 completed success; HEADS=$HEAD1 RELABEL=1 run proof 7
+ok "OS-05: proof with RELABEL=1 and every failed part green in the full run: exit 0 (no person's line needed)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+jobs 50 "shard (3):success" "regression (C1.1 C1.2, 2):failure"; HEADS=$HEAD1 RELABEL=1 run proof 7
+ok "OS-05: proof with RELABEL=1 and a part red in the full run: exit 1, the line is asked" "$([ $r = 1 ] && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "exit $r: $out"
+rm -f "$T/fx/jobs-50.json"
 cov "nothing yet"; run eligible 7
 ok "failed batch: eligible (the sweep) does not ask for the line: a batch's other PRs keep their label" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 LAT=2026-11-19T04:10:00Z run eligible 7
@@ -461,7 +481,10 @@ ok "event dequeued: a red full run on the same head: nothing started (a fix and 
 nofull; rm -f "$T/fx/pulls.json"; deq 7
 ok "event dequeued with no failed batch (a conflict, or by hand): no full run" "$([ $r = 0 ] && [ -z "$log" ] && grep -q 'no failed batch' <<< "$out" && echo 1)" "exit $r: $out / $log"
 fail7; deq 7 labeled "review: approved"
-ok "event: the review label is not dequeued: no full run (fresh only)" "$(! grep -q DISPATCH <<< "$log" && echo 1)" "exit $r: $out / $log"
+ok "OS-87 (a): the review label put on a head a failed batch held, with no full run: the full run starts by itself (was: fresh only)" "$(grep -qx "DISPATCH main 7 $HEAD1" <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (B206):\*\*' <<< "$log" && echo 1)" "exit $r: $out / $log"
+rm -f "$T/fx/pulls.json"; deq 7 labeled "review: approved"
+ok "OS-87 (a): the review label on a PR no failed batch held: no full run" "$(! grep -q '^DISPATCH' <<< "$log" && echo 1)" "exit $r: $out / $log"
+fail7
 deq 7 unlabeled dequeued
 ok "event: dequeued taken off: no full run" "$(! grep -q DISPATCH <<< "$log" && echo 1)" "exit $r: $out / $log"
 cmt 7 o OWNER "Reviewer: Approve $OLD"; deq 7
@@ -557,6 +580,99 @@ W2="$(git -C "$TOOLS" rev-parse --show-toplevel)/.github/workflows/queue-gate.ym
 ok "P-822: queue-gate.yml wakes when pr-suites ends, as when ci ends" "$(python3 -I -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); print("ok" if set(d[True]["workflow_run"]["workflows"]) == {"ci", "pr-suites"} else "no")' "$W2" | grep -qx ok && echo 1)" "$(grep -n 'workflows:' "$W2")"
 suites $HEAD1 completed success; prj 7 $HEAD1
 
+# --- OS-82 (OS-PM 4, 26 Nov): a tools-only PR whose only pr-suites run predates the job "pr-suites" (#3632, 25 Nov 19:16
+# UTC) has no "pr-suites" check run: its plan succeeded and the job "parts" was skipped (the change reaches no suite).
+# label-guard.sh asks proof with RELABEL=1; #3693 lost its label this way at 05:43 UTC. Only that exact shape counts.
+oldrun() {  # oldrun <head> <run conclusion> <parts conclusion> [plan annotation title] [pr-suites job conclusion] → run 99
+  echo '{"check_runs": []}' > "$T/fx/suites-$1.json"
+  jq -n --arg h "${SR_HEAD:-$1}" --arg co "$2" --argjson n "${SR_PRS:-[7]}" --arg b "${SR_BASE:-main}" --arg st "${SR_STATUS:-completed}" '{workflow_runs: [{id: 99,
+    path: ".github/workflows/pr-suites.yml", event: "pull_request", head_sha: $h, status: $st, conclusion: (if $co == "" then null else $co end),
+    run_started_at: "2026-11-25T16:48:17Z", created_at: (env.SR_CREATED // "2026-11-25T16:48:15Z"), pull_requests: ($n | map({number: ., base: {ref: $b}}))}]}' > "$T/fx/suiteruns.json"
+  jq -n --arg pc "$3" --arg x "${5:-}" '{jobs: ([{id: 990, name: "plan", conclusion: "success"},
+    {id: 991, name: (if $pc == "skipped" then "parts" else "parts (1)" end), conclusion: $pc}]
+    + (if $x == "" then [] else [{id: 992, name: "pr-suites", conclusion: $x}] end))}' > "$T/fx/jobs-99.json"
+  jq -n --arg t "${4:-}" --arg lv "${SR_LEVEL:-warning}" 'if $t == "" then [] elif $t == "-" then [{title: "", annotation_level: $lv}] else [{title: $t, annotation_level: $lv}] end' > "$T/fx/annot-990.json"; }
+TOOLF=ai-workers/x/product/tools/records-pr.sh
+prj 7 $HEAD1 false "review: approved"; files 7 "$TOOLF"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; NOSUITES=1 cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: tools-only PR, its pr-suites run skipped parts (no job pr-suites yet): a label just put on is kept (label-guard proof exit 0)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped "pr-suites (report only)"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the old plan warned (pr-base or the picker failed, so parts were skipped): refused" "$([ $r = 1 ] && grep -q 'pr-suites is not green' <<< "$out" && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success success; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: parts ran (no check pr-suites): refused, only skipped parts count" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped "" failure; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run has a job pr-suites (red) but no check run read: refused, that job decides" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 failure skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run itself ended red: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_STATUS=in_progress oldrun $HEAD1 "" skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run has not ended: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "SR_BASE=side:a run of a PR into a side branch"; do
+  ( export "${c%%:*}"; oldrun $HEAD1 success skipped ); SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+  ok "OS-82: ${c#*:}: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+done
+oldrun $HEAD1 success skipped -; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): the old plan step died before its warning (an untitled warning): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=failure oldrun $HEAD1 success skipped -; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): a failure annotation on plan (\"Process completed with exit code 1\"): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=notice oldrun $HEAD1 success skipped "pr-suites (report only)"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a pr-suites-titled annotation at any level: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+SR_LEVEL=notice oldrun $HEAD1 success skipped "Some notice"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a notice annotation on plan is no failure: kept" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF" "$S/api/src/form.ts"; oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review M1): the PR changes app code (change-kind.sh may have crashed into \"no suite\"): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF" "$S/README.md" "ai-workers/x/product/STATE.md"; oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a doc under prototype/ is not app code: kept" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$TOOLF"; SR_CREATED=2026-11-25T19:16:45Z oldrun $HEAD1 success skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82 (review m1): a run created when #3632 merged or later (it should have the job pr-suites): refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped; rm -f "$T/fx/jobs-99.json"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the run's jobs cannot be read: proof exit 2 (the guard fails closed, never a silent keep)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped; rm -f "$T/fx/annot-990.json"; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: the plan's annotations cannot be read: proof exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+oldrun $HEAD1 success skipped; suites $HEAD1 completed failure; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-82: a real pr-suites check run (red) on the head wins over an old run's skipped parts" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+rm -f "$T/fx/suiteruns.json" "$T/fx/jobs-99.json" "$T/fx/annot-990.json"; prj 7 $HEAD1; files 7 "$S/api/src/form.ts"; suites $HEAD1 completed success
+
+# --- OS-87 (Lead 2, 26 Nov): a reviewed head with no pr-suites run of its own (or a skipped one: pushed while a draft) gets
+# one by workflow_dispatch, once per head, logged on the PR; that run, named "pr-suites PR #<n> <head>", counts for P-822.
+sd() {  # sd <id> <pr> <head> <status> <conclusion> [branch] [job pr-suites conclusion] → the newest dispatched pr-suites run
+  jq -n --argjson id "$1" --arg t "pr-suites PR #$2 $3" --arg s "$4" --arg c "$5" --arg b "${6:-main}" '{workflow_runs: [{id: $id, display_title: $t,
+    path: ".github/workflows/pr-suites.yml", event: "workflow_dispatch", head_branch: $b, status: $s, conclusion: (if $c == "" then null else $c end), created_at: "2026-11-26T08:00:00Z"}]}' > "$T/fx/sdisp.json"
+  jq -n --arg j "${7:-success}" '{jobs: [{name: "plan", conclusion: "success"}, {name: "pr-suites", conclusion: $j}]}' > "$T/fx/jobs-$1.json"; }
+rm -f "$T/fx/pulls.json" "$T/fx/sdisp.json"; prj 7 $HEAD1; files 7 "$S/api/src/form.ts"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; NOSUITES=1 cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+suites $HEAD1 completed skipped; SG=block TRIG=approve run label 7
+ok "OS-87 (b): Approve on a head whose only pr-suites run was skipped (a draft's push): a pr-suites run starts on it, with a comment; no label yet" "$(grep -qx "SDISPATCH main 7 $HEAD1" <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (OS-87):\*\* the head 111111111 has no pr-suites run of its own' <<< "$log" && ! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+echo '{"check_runs": []}' > "$T/fx/suites-$HEAD1.json"; SG=block TRIG=approve run label 7
+ok "OS-87 (b): Approve on a head with no pr-suites run at all: one starts" "$(grep -qx "SDISPATCH main 7 $HEAD1" <<< "$log" && echo 1)" "$out / $log"
+sd 61 7 $HEAD1 in_progress ""; SG=block TRIG=approve run label 7
+ok "OS-87: once per head: the gate's run already running: nothing started, the label waits (pending)" "$(! grep -q SDISPATCH <<< "$log" && ! grep -q '^LABEL' <<< "$log" && grep -q 'pr-suites run 61 (started by the queue gate) has not ended' <<< "$out" && echo 1)" "$out / $log"
+sd 61 7 $HEAD1 completed success; SG=block TRIG=approve run label 7
+ok "OS-87: the gate's run green (its job pr-suites success): labelled, nothing started" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -q SDISPATCH <<< "$log" && echo 1)" "$out / $log"
+SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "OS-87: ... and the label guard's proof keeps a label put on that head (exit 0)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+sd 61 7 $HEAD1 completed success main failure; SG=block TRIG=approve run label 7
+ok "OS-87: the gate's run whose job pr-suites is red: refused, nothing started again (fix and push)" "$(! grep -q '^LABEL' <<< "$log" && ! grep -q SDISPATCH <<< "$log" && grep -q 'failure on 111111111: its pr-suites run 61' <<< "$out" && echo 1)" "$out / $log"
+for c in "side:a run on another ref (a branch's pr-suites.yml)" "$OLD:a run named for another head"; do
+  if [ "${c%%:*}" = side ]; then sd 61 7 $HEAD1 completed success side; else sd 61 7 $OLD completed success; fi
+  SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+  ok "OS-87: ${c#*:} does not count: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+done
+rm -f "$T/fx/sdisp.json"; rm -f "$T/fx/jobs-61.json"
+printf '{"workflow_run": {"event": "workflow_dispatch", "path": ".github/workflows/pr-suites.yml", "display_title": "pr-suites PR #7 %s", "pull_requests": []}}' $HEAD1 > "$T/fx/ev.json"; sd 61 7 $HEAD1 completed success; ev workflow_run
+ok "OS-87: the gate's pr-suites run ends (workflow_run): the gate judges PR 7 from the run's name and labels it" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "exit $r: $out / $log"
+rm -f "$T/fx/sdisp.json"
+cmt 7 o OWNER "Reviewer: Approve $OLD"; SG=block TRIG=approve run label 7
+ok "OS-87: no Approve on the head: no pr-suites run started (its code would run in a run of main)" "$(! grep -q SDISPATCH <<< "$log" && echo 1)" "$out / $log"
+cmt 7 o OWNER "Reviewer: Approve $HEAD1"; prj 7 $HEAD1 true; SG=block TRIG=approve run label 7
+ok "OS-87: a draft: no pr-suites run started" "$(! grep -q SDISPATCH <<< "$log" && echo 1)" "$out / $log"
+prj 7 $HEAD1; jq '.head.repo.full_name = "evil/fork"' "$T/fx/pr-7.json" > "$T/fx/x.json" && mv "$T/fx/x.json" "$T/fx/pr-7.json"; SG=block TRIG=approve run label 7
+ok "OS-87: a fork's head: no pr-suites run started" "$(! grep -q SDISPATCH <<< "$log" && echo 1)" "$out / $log"
+prj 7 $HEAD1 false "review: approved"; SG=block TRIG=approve run label 7
+ok "OS-87: a head already labelled gets its missing pr-suites run on an Approve too" "$(grep -qx "SDISPATCH main 7 $HEAD1" <<< "$log" && echo 1)" "$out / $log"
+prj 7 $HEAD1; export FAIL_SDISPATCH=1; SG=block TRIG=approve run label 7; unset FAIL_SDISPATCH
+ok "OS-87: GitHub refuses the dispatch: the run is red (exit 2), no comment claims a start" "$([ $r = 2 ] && ! grep -q '(OS-87)' <<< "$log" && echo 1)" "exit $r: $out / $log"
+suites $HEAD1 completed success; rm -f "$T/fx/sdisp.json"
+W87="$(git -C "$TOOLS" rev-parse --show-toplevel)/.github/workflows/queue-gate.yml"
+ok "OS-87: queue-gate.yml wakes when the gate's pr-suites run (workflow_dispatch on main, \"pr-suites PR #\") ends" "$(grep -qF "(github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'main' && startsWith(github.event.workflow_run.display_title, 'pr-suites PR #'))" "$W87" && echo 1)" "no wake clause"
 # --- P-823 (founder, 25 Nov): read first (workflows, permissions, destructive migrations) or read after the label (money,
 # additive migrations, public routes); a migration is judged on the PR's added lines, never its name. PR 9 is drawn for
 # the 1-in-3 after-read (9 mod 3 = 0), PR 7 is not.

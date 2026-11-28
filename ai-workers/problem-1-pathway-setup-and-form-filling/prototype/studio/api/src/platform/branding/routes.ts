@@ -27,7 +27,8 @@ class BrandingUploadWords implements NestInterceptor {
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: unknown })?.message ?? e.message) : "";
       if (e instanceof HttpException && isImageKind(kind)) {
         if (e.getStatus() === 413 && /File too large/i.test(msg)) { try { tooLarge(kind); } catch (w) { return throwError(() => w); } }
-        if (/Too many (files|parts|fields)|Unexpected field/i.test(msg)) {
+        // multer's LIMIT_UNEXPECTED_FILE reads "Unexpected file field" since @nestjs/platform-express 11.2 ("Unexpected field" before)
+        if (/Too many (files|parts|fields)|Unexpected (file )?field/i.test(msg)) {
           const detail = 'Send one PNG or JPEG file, in the field "file". Allowed here: PNG and JPEG. Nothing was stored.';
           return throwError(() => new HttpException({ type: "https://expatready.local/problems/one-file", title: "Not saved", status: 400, detail, message: detail, code: "ONE_FILE" }, 400));
         }

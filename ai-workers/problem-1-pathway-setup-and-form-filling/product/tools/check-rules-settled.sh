@@ -96,6 +96,11 @@ printf '#!/bin/sh\ncase "$*" in *repos/o/r/pulls/77/files*previous_filename*) [ 
 base="$T"; step() { o=$(PATH="$T/bin:$PATH" DOWN="${3:-}" F="$1" BODY="$2" RUNNER_TEMP="$T/tmp" T="$T/tools" bash "$base/step.sh" 2>&1; echo "rc=$?"); }
 step "$M" x; ok "the step warns, exit 0" "$(grep -q '^::warning' <<<"$o" && grep -q 'changes migration' <<<"$o" && grep -q 'rc=0' <<<"$o" && echo 1)" "$o"
 step "$M" "Rules settled: a (P-801)"; ok "the step passes a settled body" "$(grep -q '^ok ' <<<"$o" && ! grep -q '::warning' <<<"$o" && echo 1)" "$o"
-step "$M" "Rules settled: a (P-801)" 1; ok "fail: a file list that cannot be read is a warning, never ok" "$(grep -q 'file list could not be read' <<<"$o" && ! grep -q '^ok' <<<"$o" && grep -q 'rc=0' <<<"$o" && echo 1)" "$o"
-mv "$T/tools/rules-settled.py" "$T/tools/x"; step "$M" x; ok "fail: a check that cannot run is a warning" "$(grep -q 'could not run' <<<"$o" && grep -q 'rc=0' <<<"$o" && echo 1)" "$o"
+# LR-043 (fail closed): the rules' verdict stays a warning, but a rule that cannot read its input or run fails the step.
+step "$M" "Rules settled: a (P-801)" 1; ok "fail: a file list that cannot be read fails the step, never ok (LR-043)" "$(grep -q 'file list could not be read' <<<"$o" && ! grep -q '^ok' <<<"$o" && grep -q 'rc=1' <<<"$o" && echo 1)" "$o"
+mv "$T/tools/rules-settled.py" "$T/tools/x"; step "$M" x; ok "fail: a check that cannot run fails the step (LR-043)" "$(grep -q 'could not run' <<<"$o" && grep -q 'rc=1' <<<"$o" && echo 1)" "$o"
+printf 'raise SystemExit(2)\n' > "$T/tools/rules-settled.py"; step "$M" x; ok "fail: a check that cannot read its input (exit 2) fails the step (LR-043)" "$(grep -q '::error' <<<"$o" && grep -q 'rc=1' <<<"$o" && echo 1)" "$o"
+# The other fail-closed paths of pr-rules (LR-043, LR-134, LR-141), run from here until a guards.d row (OS-85) lists them.
+# A guard copy (check-guards.sh --mutate) holds no PR template, so there the rows test this file's own cases only.
+[ -f "$TOOLS/../../../../.github/pull_request_template.md" ] && { o=$(bash "$TOOLS/check-pr-rules-closed.sh" 2>&1); ok "check-pr-rules-closed.sh: every planted pr-rules failure fails" "$([ $? = 0 ] && echo 1)" "$(grep -v '^PASS' <<<"$o" | tail -5)"; }
 finish
