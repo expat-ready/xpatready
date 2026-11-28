@@ -87,6 +87,35 @@ def private_state(private_only=False):
     return slurp(p) if p and os.path.exists(p) else None
 
 
+# LR-091 (P-188, Lead 13's option (a), 28 Nov): BACKLOG's done rows move word for word to history/BACKLOG-done-*.md.
+# Every reader that looks a row up by id reads BACKLOG.md and those files joined, so a move changes no number on the board.
+BACKLOG_DONE_PREFIX = "BACKLOG-done-"
+
+
+def backlog_join(main, parts):
+    """BACKLOG.md's text with each history/BACKLOG-done-*.md text after it (oldest name first); None when main is None."""
+    if main is None:
+        return None
+    return main + "".join("\n" + t for t in parts)
+
+
+def done_names(names):
+    """The history/BACKLOG-done-*.md basenames among names, sorted."""
+    return sorted(n for n in (os.path.basename(x) for x in names) if n.startswith(BACKLOG_DONE_PREFIX) and n.endswith(".md"))
+
+
+def read_backlog():
+    """BACKLOG.md of this copy joined with its history/BACKLOG-done-*.md files."""
+    h = os.path.join(P, "history")
+    return backlog_join(read("BACKLOG.md"), [slurp(os.path.join(h, n)) for n in done_names(os.listdir(h) if os.path.isdir(h) else [])])
+
+
+def git_backlog(sha):
+    """BACKLOG.md at a commit joined with the history/BACKLOG-done-*.md files at that commit."""
+    names = done_names((git_out("ls-tree", "--name-only", sha, f"{REL}/history/") or "").split())
+    return backlog_join(git_out("show", f"{sha}:{REL}/BACKLOG.md"), [git_out("show", f"{sha}:{REL}/history/{n}") or "" for n in names])
+
+
 def read(rel):
     if rel == "STATE.md":
         return private_state()   # the private copy first, else this copy's (records-dir.sh)
@@ -309,7 +338,7 @@ def decisions_last(n=5):
 
 
 def backlog(merged_ids, inpr_ids, text=None):
-    t = text if text is not None else (read("BACKLOG.md") or "")
+    t = text if text is not None else (read_backlog() or "")
     owners, sec, rows, xrows = [], None, [], 0
     prev, hdr = None, None
     for line in t.splitlines():
@@ -1197,6 +1226,10 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
         t = (private_state(True) if rel == "STATE.md" else None) or git_out("show", f"{rsha}:{REL}/{rel}")   # PS-1b: private copy first
         if t is not None:
             wt(f"files/{REL}/{rel}", t)
+    for n in done_names((git_out("ls-tree", "--name-only", rsha, f"{REL}/history/") or "").split()):   # LR-091
+        t = git_out("show", f"{rsha}:{REL}/history/{n}")
+        if t is not None:
+            wt(f"files/{REL}/history/{n}", t)
     # P-602 (4): MVP-CHECKLIST.md history on the records sha: every commit in the 48 h before taken_at, plus the newest one
     # before that (the checklist as it stood at the window's start); git/checklist_records.jsonl + git/checklist_records/<sha>.md
     ck_rel, cut48 = f"{REL}/MVP-CHECKLIST.md", (NOW - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1495,7 +1528,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
         rid = brief_id(os.path.basename(name))
         if rid:
             br.setdefault(rid, f"design/briefs/{os.path.basename(name)} @{rsha[:9]}")
-    for rid, line in parse_backlog(git_out("show", f"{rsha}:{REL}/BACKLOG.md") or "")["lines"].items():
+    for rid, line in parse_backlog(git_backlog(rsha) or "")["lines"].items():
         if re.search(r"briefs/" + re.escape(rid) + _END, line):
             br.setdefault(rid, f"BACKLOG.md row {rid} names briefs/{rid}")
     wj("briefs.json", br)
@@ -1553,6 +1586,11 @@ class Snap:
                 if full.replace(os.sep, "/").endswith("/" + prel):
                     return slurp(full)
         return None
+
+    def backlog(self):
+        """BACKLOG.md at records_sha joined with the history/BACKLOG-done-*.md files the snapshot holds (LR-091)."""
+        h = self.path(f"files/{REL}/history")
+        return backlog_join(self.file("BACKLOG.md"), [slurp(os.path.join(h, n)) for n in done_names(os.listdir(h) if os.path.isdir(h) else [])])
 
     def checklist_history(self):
         """[(time, text)] of MVP-CHECKLIST.md commits on the records sha (P-602 (4)); None when the snapshot has none."""
@@ -2060,7 +2098,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     gh_src = f"GitHub snapshot {taken}"
     notes, invariants = [], []
 
-    ck_text, bl_text, plan_text = snap.file("MVP-CHECKLIST.md"), snap.file("BACKLOG.md"), snap.file("cockpit/plan.json")
+    ck_text, bl_text, plan_text = snap.file("MVP-CHECKLIST.md"), snap.backlog(), snap.file("cockpit/plan.json")
     ck = parse_checklist(ck_text)
     bl = parse_backlog(bl_text)
     plan = json.loads(plan_text) if plan_text else {"dates": []}
@@ -4694,7 +4732,7 @@ def main():
         merged_ids.add(x)
     for p in prs:
         inpr_ids.update(re.findall(idre, p["title"]))
-    owners, brows, bylane, xrows = backlog(merged_ids, inpr_ids, text=snap.file("BACKLOG.md") or "")
+    owners, brows, bylane, xrows = backlog(merged_ids, inpr_ids, text=snap.backlog() or "")
 
     # quality
     bugs = []

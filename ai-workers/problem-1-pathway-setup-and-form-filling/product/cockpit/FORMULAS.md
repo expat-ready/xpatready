@@ -72,6 +72,8 @@ Shown "W of S" with "started · I idle: <names>". **Departs from the brief's "id
 | Not mapped | capabilities with no requirement id | checklist, BACKLOG | parsed | — |
 **BACKLOG rows (one rule, both scripts; fixed 16 Nov):** a BACKLOG row is a table line whose first cell, with `**` and `` ` `` removed, is a row id; the first such line wins. So `| **FO-7mv** |` is row FO-7mv. Until 16 Nov the board read only a plain first cell (`| FO-7mv |`) and the check removed the bold, which was listed here as an accepted limit; it showed on board 7 (07:06 IST 16 Nov) as "Numbers disagree: ready_rows" 7 vs 8 once FO-7mv got its brief (#1867): the board never saw the row. Now both say 8. Test: `test_bold_first_cell_is_a_backlog_row_in_both_scripts`. Reconciliation keys: `ready_rows`, `capabilities_not_mapped` (exact).
 
+**Done rows moved out (LR-091, 28 Nov):** BACKLOG.md's done rows move word for word to `history/BACKLOG-done-*.md`. Both scripts read BACKLOG.md and then those files (oldest name first) as one text, so a moved row is still a row, and the first line still wins. The snapshot holds the done files under `files/<repo path>/history/`. Test: `BacklogDone` in test_cockpit_data.py (the board's data and the reconciliation are unchanged by a sample move; the same rows only deleted do change them).
+
 ## Rules caught today (A70: internal, inside Health item 4, not in the top strip)
 | Number | Formula | Source | Class |
 |---|---|---|---|

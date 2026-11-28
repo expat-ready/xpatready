@@ -259,6 +259,10 @@ class Ctx:
         if name == "decisions" and p.exists() and p.resolve() == (PRODUCT / "DECISIONS.md").resolve():
             for q in sorted((PRODUCT / "decisions").glob("DECISIONS-*.md")):
                 text += "\n" + q.read_text(encoding="utf-8")
+        # LR-091: BACKLOG's done rows moved word for word to history/BACKLOG-done-*.md (beside the BACKLOG read) still resolve.
+        if name == "backlog" and p.exists():
+            for q in sorted((p.parent / "history").glob("BACKLOG-done-*.md")):
+                text += "\n" + q.read_text(encoding="utf-8")
         return text
 
 
