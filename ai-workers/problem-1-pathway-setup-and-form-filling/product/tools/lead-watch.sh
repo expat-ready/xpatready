@@ -45,6 +45,15 @@ export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"; rm -f "$GH_TLS_NOTE_ONCE"   #
 GH_TOKEN="${GH_TOKEN:-$(command gh auth token 2>/dev/null)}"; if [ -n "$GH_TOKEN" ]; then export GH_TOKEN; else unset GH_TOKEN; fi   # the token is read once a run, not once a call
 . "$TOOLS/fresh-lib.sh"   # ENF-803 (P-803): every section says when and from where it read; cached answers over 10 min refused
 
+# 000. LR-174 (founder A455; rules/github-limits.md): the GitHub budget is the top line: token kind, limit, used, remaining,
+# whether the org App token is in use (github-meter.sh, GET /rate_limit, free). A full check that would not fit the
+# remaining budget (github-budget.tsv, lead-watch-full) runs no GitHub step: one ACT, and the lite check instead (LR-175).
+export GITHUB_METER_DIR="${GITHUB_METER_DIR:-$STATE_DIR/github-meter}"
+GH_METER_START="$STATE_DIR/meter-start.$$"; gm=$(bash "$TOOLS/github-meter.sh" start "$GH_METER_START" 2>&1); say "$gm"
+gf=$(bash "$TOOLS/github-meter.sh" fits lead-watch-full 2>&1); gfrc=$?
+if [ "$gfrc" = 1 ]; then ACT "github budget: ${gf#meter: }: a full check would not fit; run the lite check (lead-watch.sh lite, LR-175) until the reset (rules/github-limits.md)"; rm -f "$GH_METER_START"; exit "$act"; fi
+[ "$gfrc" = 2 ] && say "github budget unknown: the full check runs (${gf#meter: })"
+
 # 00. Whose tools, how old a copy, whose plan: before anything else (A363, A368, founder 24 Nov), each a line or the first ACTs.
 fr=$(python3 -I "$TOOLS/tools-fresh.py" 2>&1); grep -qE '^(tools  |ACT   tools)' <<<"$fr" || fr="ACT   tools: tools-fresh.py did not run ($(head -1 <<<"$fr"))"
 fe=""; grep -qE '^(tools  |ACT   tools: not main)' <<<"$fr" && fe=1; ca=$(FETCHED=$fe bash "$TOOLS/copy-age.sh" 2>&1); r=$?; [ "$r" = 1 ] && ca="ACT   $ca: over 24 h: start a fresh lead/<today> from origin/main (WAY-OF-WORKING, P-388)"; [ "$r" -gt 1 ] && ca="ACT   $ca"
@@ -451,5 +460,8 @@ fresh "focus-truth.py: focus-list.md and qa/CAPABILITIES.md on origin/main (fetc
 cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "$BOARD" \
   --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
 fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board as step 11 accepted it (over $FRESH_MAX_MIN min: not measured)"
+# LR-174: this run's GitHub cost from the x-ratelimit headers, logged per script; a script over its budget line is an ACT.
+gs=$(bash "$TOOLS/github-meter.sh" stop lead-watch-full "$GH_METER_START" 2>&1); echo "$gs"; rm -f "$GH_METER_START"
+gb=$(bash "$TOOLS/github-meter.sh" budget 2>&1) || ACT "github budget: $(grep '^FAIL' <<<"$gb" | sed 's/^FAIL  //' | paste -sd ';' -) (github-budget.tsv; cut its calls, LR-098)"
 echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
 exit "$act"

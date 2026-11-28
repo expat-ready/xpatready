@@ -9,9 +9,10 @@ set -u
 GDIR="$(cd "$(dirname "$0")" && pwd)"; HERE="$(git rev-parse --show-toplevel)"; cd "$HERE" || exit 2
 
 # Never on GitHub (P-81): sources/, code/, archive/, local tools, databases/dumps, archives, env/secret files, every PDF
-# except the manifest-checksummed official blanks under official-sources/ (P-83, enforced below).
+# except the manifest-checksummed official blanks under official-sources/ (P-83, enforced below), and any .pem key file
+# (LR-174: the org App's private key lives outside the repository).
 # A bare name too: lane worktrees link .tools (lane.sh setup), and a link is a file, not a folder.
-PATH_RE='(^|/)(sources|code|archive|\.tools)/|^(sources|code|archive|\.tools)$|(^|/)\.tools$|\.(pdf|zip|tar\.gz|dump|sql\.gz)$|(^|/)\.env(\.|$)'
+PATH_RE='(^|/)(sources|code|archive|\.tools)/|^(sources|code|archive|\.tools)$|(^|/)\.tools$|\.(pdf|zip|tar\.gz|dump|sql\.gz|pem)$|(^|/)\.env(\.|$)'
 # Secrets: private keys and the well-known token shapes, plus high-entropy key=value assignments.
 SECRET_RE='-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22}|sk-[A-Za-z0-9_-]{20}|xox[baprs]-[A-Za-z0-9-]{10}|AIza[0-9A-Za-z_-]{35}|(password|passwd|api[_-]?key|secret|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9._~+/=-]{16,}'
 # S1 (OS-PM 3, 25 Nov): a value that is wholly an UPPER_SNAKE constant name (with at least one underscore, so an
