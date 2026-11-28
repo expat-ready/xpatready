@@ -48,10 +48,11 @@ every push to main.
 
 ```bash
 git fetch --shallow-since=2026-10-20 origin main
-python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/measures.py --days 7 --until 2026-11-27T18:30:00Z --ref 5eb375d1c61c667ccad711b40e29664bb7e3883d
+python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/measures.py --days 7 --until 2026-11-27T18:30:00Z --ref 5eb375d1c61c667ccad711b40e29664bb7e3883d --line
 ```
 
-Its output on 28 Nov: `deploys 575 (82.1/day), app 238 (34.0/day) | lead time median 3.0 h p90 23.9 h (n 575) | change
+If the fetch fails on a clone that is already shallow (`error in object: unshallow`), the tool still runs when its
+history check passes. Its output on 28 Nov (tabs shown as `|`; without `--line` the same values print as a block): `deploys 575 (82.1/day), app 238 (34.0/day) | lead time median 3.0 h p90 23.9 h (n 575) | change
 fail rate 1% (3/238) | recovery median 15.9 h (n 1, open 0) | rework rate 6% (37/575) | newly Works 42 (6.0/day), net
 +42, 67/110 | tokens unreadable (cockpit/usage-log.tsv has no reading in the window; last 15 Nov 22:04 IST) | deploy job
 cancelled 139, failure 86, success 350`. The three failures: revert of cf67c2bde (merged 27 Nov 22:23 IST), revert of
