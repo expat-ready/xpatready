@@ -150,6 +150,10 @@ try {
   const two = new FormData(); two.append("file", new Blob([PNG], { type: "image/png" }), "a.png"); two.append("file", new Blob([PNG], { type: "image/png" }), "b.png");
   const twoR = await fetch(`${base}/api/platform/branding/logo`, { method: "PUT", headers: { authorization: `Bearer ${owner}` }, body: two }), twoB = await twoR.json();
   ok("PF-13 DW3 fail: two files in one upload → 400 \"Send one PNG or JPEG file\", nothing stored", twoR.status === 400 && twoB.detail.startsWith("Send one PNG or JPEG file") && FILTER_KEEPS.test(twoB.detail), twoB);
+  // A file in the wrong field (multer's "Unexpected file field" since NestJS 11.2, "Unexpected field" before): the same words.
+  const wrong = new FormData(); wrong.append("photo", new Blob([PNG], { type: "image/png" }), "a.png");
+  const wrongR = await fetch(`${base}/api/platform/branding/logo`, { method: "PUT", headers: { authorization: `Bearer ${owner}` }, body: wrong }), wrongB = await wrongR.json();
+  ok("PF-13 DW3 fail: a file in a field other than \"file\" → 400 \"Send one PNG or JPEG file\", nothing stored", wrongR.status === 400 && wrongB.code === "ONE_FILE" && wrongB.detail.startsWith("Send one PNG or JPEG file"), wrongB);
 
   // ------------------------------------------------------------------------------------------------ DW9 the banner
   const bigBanner = await up(owner, "banner", pngOfSize(2 * MB + 1));
