@@ -28,3 +28,4 @@ The desk is where the founder talks strategy, integration and plain-words explan
 * Look only at whether the track file changed (modification time and "Decisions so far"); challenge and record new decisions in the same turn. Never re-read the whole file on a check.
 * **Desk notes home:** once the founder's private repository exists (P-589), a script run by each check copies the desk folder there when it has changed; until then STATE lists the folder. The desk never runs git.
 * **Measure (P-597):** for the desk's next 5 steps, count findings added after its draft (by the Lead, the challenger or the founder) and the founder's reversals; judged on Opus 5.5 medium (P-788).
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

@@ -45,3 +45,4 @@ When `--changed` selects ALL (a shared contract), run only the suites of the fil
 ## 6. Reply
 **Report to the current Lead (founder, 6 Nov):** after each step, label, blocker or question, SendMessage the current Lead one line: its session id and title come from `bash P/tools/current-lead.sh` (else the ListAgents "Lead N ·" row that is not "(ended)" or "standby"; numbers restart per series (P-433), so never pick by the highest number; if more than one, post the PR comment only). The PR comment stays the record; a cloud lane that lists no Lead posts the comment only.
 One short report when the PR is open or merged: link, what changed in plain words, the checks, any question for the tech lead. The PR is the record.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.
