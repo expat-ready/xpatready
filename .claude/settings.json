@@ -168,6 +168,19 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Edit|Write|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/edit-lint.sh --hook",
+            "timeout": 20,
+            "statusMessage": "eslint on the edited studio file (LR-181)"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
