@@ -12,3 +12,4 @@ Read `ai-workers/problem-1-pathway-setup-and-form-filling/product/domain/TAXONOM
 4. Cross-pathway dependence (a worker's permit relying on an employer's LMIA or offer) is a **"supported by" link**; multi-step journeys are **"follows" links**; never shared configuration.
 5. Test any new or renamed node against the validation table; add a row for a new kind of case.
 6. Real names, forms, fees and thresholds come from the immigration expert; label everything else Sample; check IRCC's current pages before calling a program current.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

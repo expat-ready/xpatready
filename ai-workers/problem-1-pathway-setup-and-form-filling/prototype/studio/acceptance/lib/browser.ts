@@ -7,17 +7,28 @@
 // and CLS (the worst layout-shift session window so far: shifts under 1 s apart, at most 5 s, none after an input) at
 // most 0.1. Warning only (P-717 (b)): a miss prints WARN (and a GitHub warning in CI), never fails a pack. A client-side
 // route change keeps the load's LCP: read the first settle after a goto. Test: tests/check_os73_vitals_browser.ts.
-import { existsSync } from "node:fs";
+// LR-125 (lab register, founder A425; Loops article: "If any step fails, fix the issue and rerun from step 1"): the strict
+// self-check of the journey-test skill. With JOURNEY_STRICT=1 (or walker(base, { strict: true })) settle throws on a
+// console error (console.error, or a failed resource the browser logs as one, except a handled 4xx), a page error, or a vitals miss, so the
+// replay fails instead of warning. Off by default: the packs keep STANDARDS §9's warning budget (P-717 (b)) until the
+// Lead rules it blocks. Every console error is collected in both modes (consoleErrors). Test:
+// tests/check_lr125_strict_browser.ts.
 import { chromium, type Browser, type Page } from "playwright";
+import launchLib from "./launch-options.cjs";
+const { launchOptions } = launchLib;
 
 export const LCP_BUDGET_MS = 2500, CLS_BUDGET = 0.1;
+const HANDLED_4XX = /Failed to load resource: the server responded with a status of 4\d\d\b/;
 export type Vital = { what: string; path: string; lcpMs: number | null; cls: number; over: string[] };
-export type Walker = { browser: Browser; errors: string[]; vitals: Vital[]; open: (actor: string, width?: number) => Promise<Page>; settle: (p: Page, what: string) => Promise<void>; text: (p: Page) => Promise<string>; close: () => Promise<void> };
+export type Walker = { browser: Browser; strict: boolean; errors: string[]; consoleErrors: string[]; vitals: Vital[]; open: (actor: string, width?: number) => Promise<Page>; settle: (p: Page, what: string) => Promise<void>; text: (p: Page) => Promise<string>; close: () => Promise<void> };
 
-export async function walker(base: string): Promise<Walker> {
+export async function walker(base: string, opts: { strict?: boolean } = {}): Promise<Walker> {
+  const strict = opts.strict ?? process.env.JOURNEY_STRICT === "1";
   // The channel "chrome" as the suites use it (cloud-setup.sh links the image's Chromium there on Linux); else Chromium.
-  const browser = await chromium.launch(existsSync("/opt/google/chrome/chrome") || process.platform === "darwin" ? { channel: "chrome", headless: !process.env.QA_HEADED } : { headless: !process.env.QA_HEADED });
+  // One rule for every check since LR-179: acceptance/lib/launch-options.cjs.
+  const browser = await chromium.launch(launchOptions({ headless: !process.env.QA_HEADED }));
   const errors: string[] = [];
+  const consoleErrors: string[] = [];
   const vitals: Vital[] = [];
   const open = async (actor: string, width = 1440) => {
     const ctx = await browser.newContext({ viewport: { width, height: 900 }, baseURL: base });
@@ -39,6 +50,7 @@ export async function walker(base: string): Promise<Walker> {
     });
     const p = await ctx.newPage();
     p.on("pageerror", (e) => errors.push(`${p.url()}: ${String(e).slice(0, 200)}`));
+    p.on("console", (m) => { if (m.type() === "error") consoleErrors.push(`${p.url()}: ${m.text().slice(0, 200)}`); });
     return p;
   };
   /** Waits until the page has settled; throws with the page's address when it has not within 30 s. */
@@ -49,25 +61,34 @@ export async function walker(base: string): Promise<Walker> {
       if (Date.now() - start > 30_000) throw new Error(`${what}: still "Loading" after 30 s (${p.url()})`);
       await p.waitForTimeout(250);
     }
-    await vital(p, what);
+    const v = await vital(p, what);
+    if (!strict) return;
+    // LR-125: zero errors over the whole run, so one left by an earlier step fails here too; then this page's vitals.
+    // A handled 4xx (an error journey's 400/409 shown to the person) logs Chrome's own "Failed to load resource ... status
+    // of 4xx" line: not a fault of the page, so it does not count (review of #4045); a 5xx or the page's own errors do.
+    const why = [...errors.map((e) => `page error ${e}`), ...consoleErrors.filter((e) => !HANDLED_4XX.test(e)).map((e) => `console error ${e}`)];
+    if (v?.over.length) why.push(...v.over);
+    if (why.length) throw new Error(`${what}: strict self-check failed (JOURNEY_STRICT; fix it and rerun from step 1): ${why.join("; ").slice(0, 600)}`);
   };
   /** OS-73: reads the page's counters (after two frames, so the last paint's entries are in) and prints one VITALS line. */
   const vital = async (p: Page, what: string) => {
     const v = await p.evaluate(() => new Promise<{ lcp: number; cls: number } | null>((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() =>
       done((window as unknown as { __xrVitals?: { lcp: number; cls: number } }).__xrVitals ?? null), 0))))).catch(() => null);
-    if (!v) return;
+    if (!v) return null;
     const path = new URL(p.url()).pathname, lcpMs = v.lcp > 0 ? Math.round(v.lcp) : null, over: string[] = [];
     if (lcpMs !== null && lcpMs > LCP_BUDGET_MS) over.push(`LCP over ${LCP_BUDGET_MS / 1000} s`);
     if (v.cls > CLS_BUDGET) over.push(`CLS over ${CLS_BUDGET}`);
-    vitals.push({ what, path, lcpMs, cls: v.cls, over });
+    const rec = { what, path, lcpMs, cls: v.cls, over };
+    vitals.push(rec);
     const line = `VITALS ${path} LCP ${lcpMs === null ? "none" : `${lcpMs} ms`} CLS ${v.cls.toFixed(3)} ${over.length ? `WARN ${over.join(", ")}` : "ok"} (${what})`;
     console.log(line);
-    if (over.length && process.env.GITHUB_ACTIONS) console.log(`::warning title=OS-73 vitals::${line}`);
+    if (over.length && process.env.GITHUB_ACTIONS && !strict) console.log(`::warning title=OS-73 vitals::${line}`);
+    return rec;
   };
   /** Everything a person reads on the page: the visible text plus button names, tooltips and placeholders. */
   const text = (p: Page) => p.evaluate(() => {
     const attrs = [...document.querySelectorAll("[title],[aria-label],[placeholder]")].flatMap((e) => ["title", "aria-label", "placeholder"].map((a) => e.getAttribute(a) ?? "")).filter(Boolean);
     return `${document.body.innerText}\n${attrs.join("\n")}`.replace(/[ \t]+/g, " ");
   });
-  return { browser, errors, vitals, open, settle, text, close: () => browser.close() };
+  return { browser, strict, errors, consoleErrors, vitals, open, settle, text, close: () => browser.close() };
 }

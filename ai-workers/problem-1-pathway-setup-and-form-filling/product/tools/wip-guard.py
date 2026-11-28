@@ -105,9 +105,9 @@ def main():
     if not blocked:
         return 0
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-        "permissionDecisionReason": "Finish before starting (P-622 (1), P-623 (1)): no new build row in a module group with "
+        "permissionDecisionReason": "Rule P-622: finish before starting (P-622 (1), P-623 (1)): no new build row in a module group with "
         f"{MAX_WAITING} capabilities waiting for qa or one waiting over {MAX_HOURS} h. Full: " + "; ".join(blocked) +
-        ". Get qa's verdicts on those first, or start a fix for an open qa bug (name its QA-n in the prompt)."}}))
+        ". Fix: get qa's verdicts on those first, or start a fix for an open qa bug (name its QA-n in the prompt)."}}))
     return 0
 
 

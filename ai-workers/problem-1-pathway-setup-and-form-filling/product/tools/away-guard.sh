@@ -11,5 +11,5 @@ set -u
 cat >/dev/null
 flag="${AWAY_FLAG:-/tmp/claude-$(id -u)/away}"
 [ -e "$flag" ] || exit 0
-jq -n --arg r "The founder is away (flag $flag), so this question would wait with no one to answer it (P-388). Write it as a card at the top of STATE (P-530), go on with your recommended option, and remove the flag when the founder is back." \
+jq -n --arg r "Rule P-388: the founder is away (flag $flag), so this question would wait with no one to answer it. Fix: write it as a card at the top of STATE (P-530), go on with your recommended option, and remove the flag when the founder is back." \
   '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'

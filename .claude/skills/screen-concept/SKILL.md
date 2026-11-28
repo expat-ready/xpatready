@@ -38,3 +38,4 @@ Assume the concept is wrong until it survives. Read `concept.md`, `design/`, `PR
 1. Fix every Blocker and Major, or record why not in the Lead response.
 2. **With a board:** the founder's early look and Go. **No board:** the tech lead approves after the independent challenge (P-223 (4)); the founder reviews it next morning and changes become follow-up rows.
 3. Record answers in `concept.md` and decisions in `DECISIONS.md`; put the row at the top of its area in `BACKLOG.md` with its owner, and start a builder with `/next <area> <row>`.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

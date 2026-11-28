@@ -71,7 +71,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   step("bulk fail: nothing ticked is 400 'Tick the rows to change.'", r.status === 400 && /Tick the rows/.test(r.body?.detail ?? ""), r.body?.detail);
 
   // ------------------------------------------------------------------ browser
-  const b = await chromium.launch({ headless: process.env.QA_HEADED !== "1" });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions({ headless: process.env.QA_HEADED !== "1" }));
   for (const width of [1440, 1024]) {
     const p = await (await b.newContext({ viewport: { width, height: 900 } })).newPage();
     await p.goto(BASE); await p.evaluate(() => { try { localStorage.setItem("xr-actor", "user-A"); } catch { /* */ } });
