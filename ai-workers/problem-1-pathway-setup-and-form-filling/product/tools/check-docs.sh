@@ -77,7 +77,7 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         # here). When no capability row does and every such backlog row is tooling, qa, records or the Lead's (its area
         # cell), nothing a person can see carries it: it changes the workflow too (P-618, P-619, P-631 passed this way).
         grep -qE "^\| C[0-9.]+ .*\b$id\b" "$PH/qa/CAPABILITIES.md" 2>/dev/null && continue
-        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md 2>/dev/null | cut -d'|' -f3)
+        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md "$PH"/history/BACKLOG-done-*.md 2>/dev/null | cut -d'|' -f3)   # LR-091: done rows too
         [ -n "$areas" ] || continue
         printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
       esac
@@ -211,6 +211,12 @@ PY
       echo "MISSING LINK in ${f#$ROOT/}: $ref"
     done
   done
+  # LR-119: the files GitHub, Mergify and Claude read only in this repository stay in it (private split step 5); the
+  # check proves itself on a planted break first, so a broken check cannot pass quietly.
+  if [ -f "$PH/tools/stays-public.sh" ]; then
+    bash "$PH/tools/stays-public.sh" --self-test >/dev/null 2>&1 || echo "STAYS PUBLIC: stays-public.sh --self-test fails: the check itself is broken"
+    bash "$PH/tools/stays-public.sh" "$ROOT"
+  fi
 } | sort -u > "$out"
 # Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
 # HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while

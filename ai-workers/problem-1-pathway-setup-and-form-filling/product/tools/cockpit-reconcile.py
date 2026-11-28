@@ -47,7 +47,7 @@ Common definitions
   tokens shaped like PF-4, FO-12b, BK-17, B5-filings, PF-L, AUD-1, DB-SPLIT;
   decision ids P-n and bug ids QA-n are dropped; "BK-22 to BK-24" expands to
   BK-22, BK-23, BK-24. qa capability ids such as C6.2 are not BACKLOG ids.
-* BACKLOG ids: lines of BACKLOG.md starting with "|" whose first cell is an id,
+* BACKLOG ids: lines of BACKLOG.md (joined with history/BACKLOG-done-*.md beside it, LR-091) starting with "|" whose first cell is an id,
   header or not (BACKLOG continues tables after bullet lines); first occurrence
   wins on duplicates.
 * Cited id not in BACKLOG (§11 R4): in a row whose Status is not "Shaped" it
@@ -777,6 +777,11 @@ def compute(snap):
         else snap.find("files_main/", "qa/CAPABILITIES.md")
     ck_text = snap.text(ck_path) if ck_path else None
     bl_text = snap.text(bl_path) if bl_path else None
+    if bl_text is not None:   # LR-091: done rows moved word for word to history/BACKLOG-done-*.md count as BACKLOG rows
+        hdir = bl_path.rsplit("/", 1)[0] + "/history/"
+        done = sorted(q for q in snap.paths() if q.startswith(hdir) and q[len(hdir):].startswith("BACKLOG-done-")
+                      and q.endswith(".md") and "/" not in q[len(hdir):])
+        bl_text += "".join("\n" + (snap.text(q) or "") for q in done)
     cap_text = snap.text(cap_path) if cap_path else None
 
     # --- Works on main

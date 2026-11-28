@@ -9,7 +9,8 @@
 # Founder 1 Nov night (reverses P-210's limit of one): the repository is public, so batches run free on GitHub's
 # machines, not the one Mac; up to 6 batches are checked at once, each assuming the ones ahead of it pass.
 merge_queue:
-  max_parallel_checks: 4   # Lead 4, 22 Nov 15:47 IST (pipeline fix, P-214): 12 to 4. At 15:44 IST 10 batches ran at once, each with
+  max_parallel_checks: 12   # Lead 13, 28 Nov 16:4x IST (pipeline fix, P-214; queue-depth.py: 0 of 20 batches failed, under 10%: 12; GitHub
+  # Enterprise Cloud runners since 18 Nov). Before: 4, by Lead 4, 22 Nov 15:47 IST (pipeline fix, P-214): 12 to 4. At 15:44 IST 10 batches ran at once, each with
   # 17-27 jobs waiting for a machine: 113 jobs running, 163 workflow runs queued, nothing merged since 14:35 IST. Fewer
   # batches at a time let the front batches finish instead of all starving. 12 was CI-SPEED-1 (founder A253, 21 Nov),
   # set when 74 jobs ran with no shortage; load has since doubled. Earlier: 6 (P-739), 3 (CK-1).
@@ -486,7 +487,8 @@ queue_rules:
   # Undo: move pipeline back after product when P-827 ends (this block below product's; check-queue-rules.py's order
   # and engineering-approved-setup.json's queue_order with it).
   - name: pipeline
-    batch_size: 2
+    batch_size: 4   # Lead 13, 28 Nov (P-214): was 2 (P-715, set at 40% failed batches); 0 of the last 20 batches failed and 13 lab PRs
+    # waited in this one-at-a-time queue (capacity 1), so a batch of 4 halves the wait; undo: 2.
     batch_max_failure_resolution_attempts: 2
     batch_max_wait_time: 2 min
     queue_conditions:
