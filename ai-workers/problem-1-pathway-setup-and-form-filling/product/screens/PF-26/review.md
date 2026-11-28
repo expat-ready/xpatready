@@ -96,3 +96,32 @@ the graph do not apply. No app copy was started, so no port was used (never :440
 * **Not tested:** a real screen reader, an intended user's walk, a database, and a typecheck (memory).
 
 Verdict: Changes daa8f8c76d80306230875c7e74ab226e7b7aec6f
+
+## Round 2 (diff-only: `git diff daa8f8c76…6eb8fe565`, head 6eb8fe5653f1290e801380e57abef7a298a2819c, 25 Nov IST)
+Ran at the new head: `check_pf26_person_export_port.ts` 23 passed, 0 failed; `check-port-contracts.mjs` 34 ports, 0 problems. Break
+script in the scratchpad only (`r2.mts`); the tree is unchanged.
+
+| Item | Status | Evidence |
+|---|---|---|
+| M1 | **Fixed** | contract.ts:103-111. The new self-test feeds `all-deleted` and `twice-deleted` exporters, and both fail. A good exporter still passes; one answering `deleted: null` is refused. |
+| m1 | Fixed | The `any-firm` and `own-only` exporters now fail by name (test :66-69), so removing either contract check turns the suite red. |
+| m2 | Fixed (nit left) | An own `__proto__` key fails the build. Not caught: a key below 64 levels (`hasProtoKey`, person-export.ts:113) is still dropped without an error, as is a getter that is clean on its first read. Neither is a realistic answer. |
+| m3 | Fixed (nit left) | The message gives the issue code only; tried NaN, empty title, `deleted: false` and an extra key, and no data appears. Our own schema's messages hold no data, so ":custom" could say "deleted is true or absent" instead. |
+| m4 | Fixed | A 20,000-deep item fails as the module's ExporterFailed. Three 200 MB strings fail as `exporter (package) failed: … too large`. |
+| m5 | Fixed | Mixed-case ids come out lower-case, and a duplicate that differs only in case is refused ("each record once"). |
+| m6 | Fixed | The header says the PDF is part 5. |
+| m7 | Partly | shape.md:28-32 adds a 503 until every module named has registered. The list `front-office.*`, `case-side`, `client-money` is still loose: a wildcard opens once 3a's sales exporter registers, before 3b, and the platform's exporters (messages, consent, 3b) are not on it. Part 2 should name each module. |
+| m8 | Open, carried to part 2 | The question now has options and keeps the reason out of the audit line. Part 2's proof cell (shape.md:20) still says "audit lines hold … the reason", which contradicts option (a). j_34 step 2 still builds the reason before any decision. Part 2's reviewer needs a recorded decision. |
+| m9 | Mostly | Language, the possible match, the failure step and the read-only proof are now placed. Family links are not: `party_relationship` (cases.prisma:320) is on the case side, and part 4's list does not name it; 3a names only `fo_company_contact`. |
+
+Nit on the contract's harness note (contract.ts:84): say that the deleted row and the merged row carry no `marker`. A harness that
+puts `marker` in the deleted row fails a good exporter. That fails loudly, so it is safe.
+
+Still open, all Minor and none in this part's code: m7's module list, m8's audit-line contradiction and the decision, m9's family links,
+and part 2's package size limit. They belong in part 2's and part 4's PRs.
+
+Journey score, round 2: next step obvious ½ (the shape cell contradicts option (a), and the loose module list) · task completed, plain
+words, feedback and state, correct data, error recovery, speed, and trust and sources 1 each · accessibility and visual quality N/A.
+That is 7.5 of 8 applicable, **9.4/10: pass**.
+
+Verdict: Approve 6eb8fe5653f1290e801380e57abef7a298a2819c

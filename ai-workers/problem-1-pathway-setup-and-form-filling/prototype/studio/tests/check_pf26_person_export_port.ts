@@ -100,8 +100,8 @@ ok("PF-26 fail (AG-2-93 rules 3, 11; SA-11-40; review M1, m1): exporterCases cat
 }
 
 // ------------------------------------------------------------------- the feature file
-ok("PF-26 pass/fail: the feature file registers PersonExportRegistry as a provider (modules inject it), no controller yet (part 2)",
-  Array.isArray(feature.providers) && feature.providers.includes(PersonExportRegistry) && !("controllers" in feature), feature);
+ok("PF-26 pass/fail: the feature file registers PersonExportRegistry as a provider (modules inject it) beside part 2's controller and service",
+  Array.isArray(feature.providers) && feature.providers.includes(PersonExportRegistry) && feature.controllers?.length === 1, feature);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
