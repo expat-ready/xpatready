@@ -9,7 +9,7 @@ is about ten times larger. Plan subagents, no paid API call, live AI off.
 ## 2026-11-28 14:1x IST (TZ=Asia/Kolkata date), first run, lane automation-measures-2
 
 * Reviewer: fresh general-purpose subagent on Opus (P-303), one per case, blind brief from `reviewer-eval.py brief`,
-  each in a git worktree detached at the culprit's merge commit, REVIEW.md as on main 70d00f54c (with §8).
+  each in a git worktree detached at the culprit's merge commit, main's REVIEW.md (70d00f54c) plus this PR's §8, copied into the scratchpad.
 * Pilot first (LR-128 rule): RT-15 and RT-11, 0 of 2, ~125k tokens each; the brief and scoring held, so the other 14
   ran in batches of at most 5.
 * **Result: caught 3 of 16 (18%), 2,014,339 tokens (about 126k per review).** Caught RT-03 (stale generated waves.md),
@@ -23,6 +23,9 @@ is about ten times larger. Plan subagents, no paid API call, live AI off.
   the diff well and found real other problems, but did not check the diff against the repository's own checks.
   That is the input for the next reviewer-brief change (not made here: REVIEW.md changes are their own row).
 * Answers: `reviewer-test-runs/2026-11-28/RT-*.md`.
+* Scorer revised 28 Nov 17:18 IST after Claude Code Review on #4078 (1 Important, 3 Nit): it now judges whole findings
+  (sub-bullets stay with their finding), matches the bug file by path (a same-named file elsewhere does not count),
+  and resets the severity at every heading. Re-scored on these 16 answers: caught 3 of 16, unchanged.
 
 ```
 RT-01 #3924 MISSED  Changes, Important on check-docs.sh but for another problem (match: syntax|empty .?then|if\b.*\bthen|mutant|row 6)

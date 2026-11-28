@@ -51,5 +51,14 @@ printf '1 Important, 1 Nit\n\n## Nit\n\n**1.** `src/a.ts:3` loops one too far.\n
 e score "$A" --set "$D/set.json" >/dev/null
 grep -q '^RT-06 #106 CAUGHT' "$D/out"; ok "a finding under a '## Important' heading counts as Important" $?
 grep -q '^RT-07 #107 MISSED' "$D/out"; ok "the same finding under '## Nit' does not" $?
+# Code Review on #4078: whole findings, path-boundary file match, every heading resets the section.
+python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));[c.__setitem__("match","one too far") for c in d[7:10]];json.dump(d,open(sys.argv[1],"w"))' "$D/set.json"
+printf '1 Important, 0 Nit\n\n## Findings\n\n**1. Important: off by one** (bug class: off-by-one)\n- **Where:** `src/a.ts:3`\n- **What goes wrong:** the loop runs one too far.\n\nReviewer: Changes %s\n' "$M" > "$A/RT-08.md"
+printf '1 Important\n\n1. Important: `lib/other/a.ts:3` loops one too far.\n\nReviewer: Changes %s\n' "$M" > "$A/RT-09.md"
+printf '1 Important\n\n## Important\n\n1. Important: `x.ts:1` wrong label.\n\n## Checked and fine\n\n- `src/a.ts:3` loops one too far, which is intended.\n\nReviewer: Changes %s\n' "$M" > "$A/RT-10.md"
+e score "$A" --set "$D/set.json" >/dev/null
+grep -q '^RT-08 #108 CAUGHT' "$D/out"; ok "one finding laid out as Where/What sub-bullets is judged whole: caught" $?
+grep -q '^RT-09 #109 MISSED' "$D/out"; ok "a file of the same name on another path (other/a.ts) is not the bug file" $?
+grep -q '^RT-10 #110 MISSED' "$D/out"; ok "a note under '## Checked and fine' after '## Important' is not an Important finding" $?
 echo "check-reviewer-eval: $pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -73,24 +73,66 @@ def brief(c, review="REVIEW.md"):
             f"`Reviewer: <Approve|Changes|Block> {c['culprit_merge_sha']}`. Do not edit files or post anything.")
 
 
+# A finding starts at a heading or a top-level finding line: a numbered item ("1." or "**1." or "**I1."), or a bullet
+# that opens with a severity tag. Sub-bullets and blank lines stay in the finding, so its file, tag and description
+# are judged together (Code Review on #4078: a split at every bullet scored RT-09's layout as missed).
+START = re.compile(r"^(#+\s|\*\*[A-Za-z]?\d+[.)]|\d+[.)]\s|[-*]\s+\**(?:Important|Nit|Pre-existing)\b)")
+SEV = re.compile(r"^\s*#+\s*(Important|Nits?|Nitpicks?|Pre-existing)\b", re.I)
+COUNT = re.compile(r"^\W*\d+ Important\b")   # the summary's count line is not a finding
+
+
+def findings(text):
+    chunks, cur = [], []
+    for line in text.splitlines():
+        if START.match(line) and cur:
+            chunks.append(cur)
+            cur = []
+        cur.append(line)
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def names_file(path, text):
+    """The finding names this file: its repo path or a suffix of it at a "/" boundary (the bare file name included),
+    never the tail of a different path (platform/MODULE.md is not front-office/MODULE.md)."""
+    parts = path.split("/")
+    for i in range(len(parts)):
+        suf = "/".join(parts[i:])
+        for m in re.finditer(re.escape(suf), text):
+            before = text[m.start() - 1] if m.start() else " "
+            after = text[m.end()] if m.end() < len(text) else " "
+            if not re.match(r"[\w./-]", before) and not re.match(r"[\w]", after):
+                return True
+    return False
+
+
 def caught(c, text):
-    """(caught?, why): Changes or Block, and an Important finding that names a bug file (path or file name)."""
+    """(caught?, why): Changes or Block, and an Important finding that names a bug file and describes the bug."""
     v = VERDICT.findall(text)
     if not v:
         return False, "no verdict line"
     if v[-1].lower() == "approve":
         return False, "approved"
-    names = [n for f in c["files"] for n in (f, os.path.basename(f))]
     on_file = False
-    section = ""   # a "## Important" / "## Nit" heading tags the findings under it (first run, RT-08)
-    for para in re.split(r"\n\s*\n|\n(?=\s*(?:[-*]|\d+\.)\s)", text):
-        head = re.match(r"\s*#+\s*(Important|Nit|Pre-existing)\b", para, re.I)
-        if head:
-            section = head.group(1).lower()
-        tagged = re.search(r"\b(Nit|Pre-existing)\b", para[:80]) is None and (section == "important" or re.search(r"\bImportant\b", para))
-        if tagged and any(n in para for n in names):
+    section = ""   # set by a severity heading ("## Important", "## Nits"), cleared by any other heading
+    for lines in findings(text):
+        if lines[0].lstrip().startswith("#"):
+            head = SEV.match(lines[0])
+            section = ("nit" if head.group(1).lower().startswith("nit") else head.group(1).lower()) if head else ""
+            lines = [l for l in lines[1:] if l.strip()]   # text right under the heading is judged as one finding
+            if not lines:
+                continue
+        first, body = lines[0], "\n".join(lines)
+        if COUNT.match(first):
+            continue
+        if re.search(r"\b(Nit|Nits|Pre-existing)\b", first):
+            tagged = False
+        else:
+            tagged = bool(re.search(r"\bImportant\b", first)) or section == "important"
+        if tagged and any(names_file(f, body) for f in c["files"]):
             on_file = True
-            if not c.get("match") or re.search(c["match"], para, re.I):
+            if not c.get("match") or re.search(c["match"], body, re.I):
                 return True, f"{v[-1]}, Important on {c['files'][0]}"
     if on_file:
         return False, f"{v[-1]}, Important on {os.path.basename(c['files'][0])} but for another problem (match: {c['match']})"
