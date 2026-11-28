@@ -79,7 +79,17 @@ def slurp(p):
         return f.read()
 
 
+def private_state(private_only=False):
+    """STATE.md where the Lead's records are (private split PS-1b: records-dir.sh; --private: the private copy only)."""
+    d = subprocess.run(["bash", os.path.join(HERE, "records-dir.sh")] + (["--private"] if private_only else []),
+                       capture_output=True, text=True).stdout.strip()
+    p = os.path.join(d, "STATE.md") if d else ""
+    return slurp(p) if p and os.path.exists(p) else None
+
+
 def read(rel):
+    if rel == "STATE.md":
+        return private_state()   # the private copy first, else this copy's (records-dir.sh)
     p = os.path.join(P, rel)
     return slurp(p) if os.path.exists(p) else None
 
@@ -1184,7 +1194,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
             "main_at": ((main_c.get("commit") or {}).get("committer") or {}).get("date")}   # Stuck now (A134): the last merge to main
     # records files at records_sha (files/<repo path>)
     for rel in SNAP_FILES:
-        t = git_out("show", f"{rsha}:{REL}/{rel}")
+        t = (private_state(True) if rel == "STATE.md" else None) or git_out("show", f"{rsha}:{REL}/{rel}")   # PS-1b: private copy first
         if t is not None:
             wt(f"files/{REL}/{rel}", t)
     # P-602 (4): MVP-CHECKLIST.md history on the records sha: every commit in the 48 h before taken_at, plus the newest one
@@ -1208,7 +1218,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # extra (not in the shared layout; read only by cockpit-data.py): records lag for the strip and Health item 3
     main_local = msha if sh(["git", "-C", ROOT, "cat-file", "-e", msha + "^{commit}"]).returncode == 0 else None
     main_ref = main_local or (git_out("rev-parse", "origin/main") or "").strip() or None
-    st = git_out("show", f"{rsha}:{REL}/STATE.md") or ""
+    st = private_state(True) or git_out("show", f"{rsha}:{REL}/STATE.md") or ""
     m = re.search(r"this branch: `([^`]+)`", st)
     state_branch = m.group(1) if m else None
     sref = rsha if state_branch == branch else ((git_out("rev-parse", "--verify", "-q", state_branch) or "").strip() or None) if state_branch else None

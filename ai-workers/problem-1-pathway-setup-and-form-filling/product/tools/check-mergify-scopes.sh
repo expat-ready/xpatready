@@ -208,7 +208,8 @@ if not (pp and pl and pp == pl): bad.append(f"the product and pipeline queues do
 else:
     r = re.compile(pp[0])
     for f, pipe in ((".github/workflows/ci.yml", True), ("ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/x.sh", True),
-                    ("ai-workers/problem-1-pathway-setup-and-form-filling/product/STATE.md", False),
+                    ("ai-workers/problem-1-pathway-setup-and-form-filling/product/STATE.md", True),   # fast route (P-847): records ride along
+                    ("ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/12/fixture.json", False),
                     ("ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", False)):
         n += 1
         if (r.search(f) is None) != pipe: bad.append(f"pipeline pattern: {f} is{'' if pipe else ' not'} pipeline work, read the other way")
@@ -223,7 +224,7 @@ else:
 # records) with no condition of its own, and in job "ci" on the notes path, so the PR that adds a module folder fails itself.
 # A self-test first proves each way of losing that is caught (check-guards' --mutate copy has no module cards, so this
 # script cannot be mutation-tested there; the self-test stands in, as in check-queue-run-scope.sh).
-NOTES_IF = "env.MODE != 'same' && (env.KIND == 'notes')"
+NOTES_IF = "env.MODE != 'same' && (env.ROUTE == 'docs')"   # fast route (P-847): the docs route holds the notes path
 def ci_bad(text):
     ci = yaml.safe_load(text); on = ci.get("on", ci.get(True)) or {}; jobs = ci.get("jobs") or {}; out = []
     runs = lambda job, cond: [s for s in (jobs.get(job) or {}).get("steps") or [] if "check-mergify-scopes.sh" in (s.get("run") or "") and s.get("if") == cond]
@@ -375,5 +376,13 @@ del FOLDERS["platform-admin"]
 if not any("_shared/" in x for x in owners_bad(src, files + [ST + "web/src/modules/_shared/deep/routes.tsx"])): bad.append("self-test: a _ folder with a nested routes.tsx is skipped")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
-sys.exit(1 if bad else 0)
+# OS-50 (OS-PM 4, 26 Nov): the queues' routing and the near-Proven priority rule, B119's check-queue-rules.py (it runs no
+# suite and reads .mergify.yml only); until now nothing in CI ran it.
+q = subprocess.run([sys.executable, "-I", os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/screens/B119/check-queue-rules.py"),
+                    os.path.join(root, ".mergify.yml")], capture_output=True, text=True, cwd=root)
+last = (q.stdout.strip().splitlines() or ["no output"])[-1]
+if q.returncode != 0:
+    print("\n".join(l for l in q.stdout.splitlines() if l.startswith("FAIL"))[:2000] or q.stderr[:400])
+print(f"{'PASS' if q.returncode == 0 else 'FAIL'}  queue rules (check-queue-rules.py, B119, OS-50): {last}")
+sys.exit(1 if bad or q.returncode != 0 else 0)
 PY

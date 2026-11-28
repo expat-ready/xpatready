@@ -17,7 +17,7 @@ Also before: verification has no console-error or page-speed gate; library docs 
 | ID | Hand-off | Article row | Owner lane | Done when (pass/fail) | After (evidence) |
 |---|---|---|---|---|---|
 | L-1 | /goal on every builder and lab brief: "Done when test passes, stop after N tries" | 10, 26 | lab-automation | the brief template and `/next` carry it; a check fails a brief without it | |
-| L-2 | Lead's manual checks encoded: labels via Claude Approvals, relabels gone, money/schema/permission reads as policy rules | 5, 33 | ship-security + lab-automation | a PR merges with no Lead label; approvals.yml routes risky paths to review | |
+| L-2 | Lead's manual checks encoded: labels via Claude Approvals (the approver, P-849, no machine account), relabels gone, risky paths need Code Review pass (Lead after-read stays, P-823) | 5, 33 | ship-security + lab-automation | a PR merges with no Lead label; approvals.yml routes risky paths to review | |
 | L-3 | Watches off the Mac: queue/CI health and qa-after-merge as cloud routines or GitHub events; Lead's judgment check stays | 13, 15 | lab-automation | a merge starts qa with no person (run link); health watch runs with the Mac off | |
 | L-4 | Routines for recurring work: dependency upgrades, qa after merge (Opus 5.5 medium, founder 27 Nov) | 16, 17 | ship-security + lab-automation | a scheduled run opens an upgrade PR; qa routine log | |
 | L-5 | Stricter self-check: zero new console errors, Core Web Vitals budget (web.dev, cited), rerun every check after a failure | 7, 8 | lab-automation | journey-test fails on a planted console error and a slow page | |
