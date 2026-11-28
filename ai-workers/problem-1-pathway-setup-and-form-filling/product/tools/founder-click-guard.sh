@@ -39,12 +39,17 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   r"|\b(open|create|raise) (a|the|its|this|that|my|our) ([\w-]+ )?(pr|pull request)s?\b|\bcreate pr\b"
   r"|\bopen (it|them|this|that)\b[^.\n]{0,40}\b(button|pr|pull request|github|claude\.ai|browser)\b"
   r"|\bstart (a |the |this |that |its |new )?([\w-]+ ){0,2}(session|lane)s?\b"
+  r"|\bneeds? your (label|click|merge|approval|ok)\b"
   r"|\b(set|change|turn on|turn off|enable|disable|flip) (the |a |this |that )?([\w-]+ ){0,3}(setting|variable|secret|toggle|option|switch)\b"
   + (r"|\b(close|merge|label|archive|dispatch) #\d+" if mode == "state" else ""), I)
 # LR-176: a request to the founder or the Lead in the third person ("waiting for the Lead to label #12", "the founder needs
 # to open the PR", "ask the tech lead to re-run it").
 WHO = re.compile(r"\b(ask(s|ing)?|need(s|ing)?|want(s|ing)?|wait(s|ing)? (on|for)|over to)\s+(the\s+)?(tech\s+)?(lead|founder)(\s+\d+)?\s+to\b"
-  r"|\b(the\s+)?(tech\s+)?(lead|founder)(\s+\d+)?\s+(needs to|should|must|has to|have to|will need to|to)\s+\w", I)
+  r"|\b(the\s+)?(tech\s+)?(lead|founder)(\s+\d+)?\s+(needs to|should|must|has to|have to|will need to|to)\s+\w"
+  r"|\b(could|can|would|will)\s+(the\s+)?(tech\s+)?(lead|founder)\b|\bover to you\b|\bneeds? your (label|click|merge|approval|ok)\b"
+  r"|\b(lead|founder)(\s+\d+)?[:,]\s*(please\s+)?(label|merge|re-?run|open|start|comment|post|set|close|reopen|archive|dispatch|trigger|add|mark|press|click)\b", I)
+# A report of what someone else was asked ("the founder asked the Lead to start it; I started it") is not a request.
+TOLD = re.compile(r"\b(asked|told|reminded|wanted|got|let)\s+(the\s+)?(tech\s+)?(lead|founder)(\s+\d+)?\s+to\b", I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 # Not an ask (review 2 of #3665): the Lead offering to do it, or telling the founder not to.
 NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))((\s+|,\s+then\s+)(?!(please|pls|could|so|but|otherwise|you|your|or|while|if|when)\b)[\w#][\w#-]*)*"  # an offer: to the end of its clause, whose verbs the Lead does
@@ -64,10 +69,11 @@ IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
   r"|verification code|payment|billing|credit card|\bnew (account|key|token)\b|create (a |an )?(new )?account|\b(api|access|secret|ssh) key"
   r"|personal access token|permission[- ]widen|widen(ing)? (the |a )?(permission|access)|grant(ing)? (the |a )?(permission|access)|P-551|P-387", I)
-# LR-176: or a refused tool call quoted word for word: a quoted span (or a "> " line) that itself says denied, refused,
-# blocked, not allowed or forbidden.
-REFUSED = re.compile(r"[\"\u201c`][^\"\u201d`\n]{0,200}\b(denied|refused|blocked|not allowed|forbidden|not permitted)\b[^\"\u201d`\n]{0,200}[\"\u201d`]"
-  r"|(^|\n)>\s[^\n]{0,200}\b(denied|refused|blocked|not allowed|forbidden|not permitted)\b", I)
+# LR-176: or a refused tool call quoted word for word: a quoted span (or a "> " line) of 25 characters or more that says
+# denied, refused, blocked, not allowed or not permitted AND names what refused it (a permission, the classifier, a hook,
+# a policy, a guard, the tool or the call), so a quoted status word ("blocked") never exempts a message (review of LR-176).
+_R = r"(?=[^\"\u201d`\n]*\b(denied|refused|blocked|not allowed|not permitted)\b)(?=[^\"\u201d`\n]*\b(permission|classifier|hook|policy|guard|tool|call|auto mode)\b)"
+REFUSED = re.compile(r"[\"\u201c`]" + _R + r"[^\"\u201d`\n]{25,}[\"\u201d`]" + r"|(^|\n)>\s" + _R.replace("[^\"\u201d`\n]", "[^\n]") + r"[^\n]{25,}", I)
 def asks(chunk, need_you):
     out = []
     for s in re.split(r"(?<=[.!?])\s+|\n+|;\s+|\s\(\w\)\s", chunk):
@@ -76,7 +82,7 @@ def asks(chunk, need_you):
         # "No need to wait: please merge #12" still asks and "Would you like me to merge it?" does not.
         k = NOT_ASK.sub(" OFFERED ", s) if need_you else s
         imp = any(IMP.search(p) for p in re.split(r"OFFERED[\s,:;-]*|,\s+", k))   # after a cut span, or after a leading clause (Lead 7)
-        you = YOU.search(k) or WHO.search(k) or any(YOURS.search(c) and not PAST.search(c) for c in re.split(r"[,;:]\s+|\s+(?:and|so|but|then|while)\s+", k))
+        you = YOU.search(k) or (WHO.search(k) and not TOLD.search(k)) or any(YOURS.search(c) and not PAST.search(c) for c in re.split(r"[,;:]\s+|\s+(?:and|so|but|then|while)\s+", k))
         if k and ASK.search(k) and (not need_you or you or imp) and not ONLY.search(s):
             out.append(re.sub(r"\s+", " ", s)[:140])
     return out

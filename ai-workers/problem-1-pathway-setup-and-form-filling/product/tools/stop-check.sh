@@ -80,7 +80,6 @@ fi
 # (4) ENF-763 (P-752/P-763): the Lead's turn does not end asking the founder to click on GitHub, claude.ai or a console.
 # LR-176 (founder A455): in every copy, the Lead's and every lane's, asking the founder or the Lead for a step its own tools can do.
 fc=$(printf '%s' "$input" | bash "$PH/tools/founder-click-guard.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null); [ -n "$fc" ] && reasons="$reasons$fc"$'\n'
-
 # (6) ENF-778a E-a (P-778): in the Lead's copy, no turn ends while a product question for the tech lead waits over 20 min,
 # or a tooling one over 60, with no Lead answer since (question-gate.py, from lead-watch's SLE dump; a missing or stale
 # dump is a note, never a block, and stop_hook_active above lets the next stop through).

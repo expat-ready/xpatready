@@ -110,6 +110,15 @@ Please open #4090 from the Create PR button.' \
          'Please sign in to claude.ai again; then I start the forms session myself.' 'I started the forms session and posted the Approve line on #4085.'; do
   r=$(stop screens "$m"); ok "LR-176 passes (lane copy): ${m%%$'\n'*}" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 r=$(stop screens 'Opening the PR was refused, please open it from the Create PR button.'); ok "LR-176: a refusal named but not quoted word for word is still refused" "$([ "$r" = block ] && echo 1)" "got $r"
+# review of LR-176: a quoted status word is no refused call; reports of what someone else was asked pass; more asks block
+for m in 'The board says "this lane is blocked by a red merge batch since noon". Please label #12.' 'The ci "blocked" status is gone. Please label #12.' 'Please label #12. See the `blocked` column in the board.' \
+         'Note: auto-merge stays "not allowed" for drafts. Please open a PR for this branch.' \
+         'Could the Lead re-run the ci job on #12?' 'Over to you to re-run the ci job on #12.' 'Over to you: re-run the ci job on #12.' \
+         '#12 needs your label.' 'Lead: label it when green.' 'Over to you to label #12.'; do
+  r=$(stop screens "$m"); ok "LR-176 r1 refused: $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'The founder asked the Lead to start a session for forms; I started it.' 'The founder told the Lead to re-run the ci job; it is green now.' \
+         'I reminded the Lead to set the variable; done.'; do
+  r=$(stop screens "$m"); ok "LR-176 r1 passes (a report): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 # LR-170 (founder A455, 28 Nov): past-tense reports pass; a present-tense wait for the founder's click still asks.
 for m in "The app's lane starts sat as cards waiting for your click" 'Each became a card waiting for your click'; do
   r=$(stop lead "$m"); ok "passes (LR-170, a report, not a request): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
