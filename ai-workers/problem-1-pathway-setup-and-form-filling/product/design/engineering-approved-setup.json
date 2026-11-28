@@ -67,8 +67,8 @@
   {
    "version": "1.9.0",
    "date": "2026-11-28",
-   "change": "P-861 (LR-172): P-827's one-time \"pipeline first\" ends; the queue pipeline moves back after product. queue_order becomes verdicts > product > pipeline > records. product's own pipeline-path clause (files ~= ^(?!(...)), the same pattern pipeline selects with) keeps a pipeline-only PR out of product, so it falls through to pipeline; the top-level priority rules near-proven and fixes-main are unchanged; pipeline still never sets allow_checks_interruption.",
-   "approval": "founder, P-861 (records PR #4073), passed on by the tech lead (Lead 13, 28 Nov): product ahead of pipeline, verdicts and the fixes-main priority kept"
+   "change": "P-861 (LR-172): P-827's one-time \"pipeline first\" ends; the queue pipeline moves back after product. queue_order becomes verdicts > product > pipeline > records. product's own pipeline-path clause (files ~= ^(?!(...)), the same pattern pipeline selects with) keeps a pipeline-only PR out of product, so it falls through to pipeline; the top-level priority rules near-proven and fixes-main are unchanged and act within their own queue (first among the PRs waiting in it), so a pipeline-only main fix now waits behind product's queue (question to the tech lead on the LR-172 PR); pipeline still never sets allow_checks_interruption.",
+   "approval": "founder, P-861 (records PR #4073), passed on by the tech lead (Lead 13, 28 Nov): product ahead of pipeline, verdicts first; fixes-main unchanged (first within its own queue)"
   }
  ],
  "settings": {

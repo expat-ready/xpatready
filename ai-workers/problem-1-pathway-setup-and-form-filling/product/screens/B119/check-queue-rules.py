@@ -145,7 +145,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("an unguarded .claude file (guards.yml does not run; skills are guarded since lab A2): pipeline without guards (F4)", [".claude/launch.json"], False, "pipeline"),
     case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
-    # P-861 (LR-172): product is listed first, so only product's pipeline-path clause keeps these out of it.
+    # P-861 (LR-172): product is listed before pipeline, so only product's pipeline-path clause keeps these out of it.
     case("pipeline-only with every product check green too (pr-rules, queue-fresh, xfa-engine): pipeline (P-861)",
          [f"{R}/tools/x.sh", ".mergify.yml"], False, "pipeline", checks=("ci", "pr-rules", "guards", "queue-fresh", "xfa-engine")),
     case("pipeline work plus one app file, every check green: product (P-861)", [f"{R}/tools/x.sh", f"{A}/web/src/App.tsx"],
