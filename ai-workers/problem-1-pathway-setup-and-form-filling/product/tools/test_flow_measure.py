@@ -196,6 +196,41 @@ class LeadLines(unittest.TestCase):
         self.assertFalse([l for l in fm.lead_lines(m) if "None" in l])
 
 
+
+class JobsPaging(unittest.TestCase):
+    """LR-098: a 7-day run ended on GitHub's 502 for a 100-job page of one big re-run run; 30 a page works."""
+    def setUp(self):
+        self.real, self.calls = fm.get, []
+
+    def tearDown(self):
+        fm.get = self.real
+
+    def stub(self, fail):
+        def get(url, raw=False):
+            self.calls.append(url)
+            size = int(url.split("per_page=")[1].split("&")[0]); page = int(url.split("page=")[-1])
+            if size == 100 and fail:
+                msg = "Server Error" if fail == "502" else "Not Found"
+                raise SystemExit("GET %s failed: {\"message\": \"%s\"} curl: (22) ... error: %s" % (url, msg, fail))
+            total = 111
+            return {"jobs": [{"id": n} for n in range((page - 1) * size, min(page * size, total))]}
+        fm.get = get
+
+    def test_502_on_100_a_page_falls_back_to_30(self):
+        self.stub("502")
+        self.assertEqual([j["id"] for j in fm.jobs({"id": 7})], list(range(111)))
+        self.assertEqual(sum("per_page=30" in u for u in self.calls), 4)          # 30+30+30+21
+
+    def test_no_fallback_when_100_works(self):
+        self.stub(None)
+        self.assertEqual(len(fm.jobs({"id": 7})), 111)
+        self.assertFalse(any("per_page=30" in u for u in self.calls))
+
+    def test_other_errors_still_end_the_run(self):
+        self.stub("404")
+        with self.assertRaises(SystemExit):
+            fm.jobs({"id": 7})
+
 if __name__ == "__main__":
     r = unittest.main(exit=False, verbosity=1).result
     print(f"{'PASS' if r.wasSuccessful() else 'FAIL'} test_flow_measure.py: {r.testsRun} tests, {len(r.failures) + len(r.errors)} failed")

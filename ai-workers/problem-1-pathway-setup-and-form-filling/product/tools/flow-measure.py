@@ -73,12 +73,19 @@ def runs_since(since, until, max_runs):
     return out[:max_runs]
 
 
-def jobs(run):
+def jobs(run, size=100):
     js, page = [], 1
     while True:
-        d = get(f"{API}/actions/runs/{run['id']}/jobs?filter=all&per_page=100&page={page}")
+        try:
+            d = get(f"{API}/actions/runs/{run['id']}/jobs?filter=all&per_page={size}&page={page}")
+        except SystemExit as e:
+            # LR-098 (28 Nov): GitHub answers 502 to every 100-job page of a big re-run run (45925238406: 111 jobs over
+            # 3 attempts; read 4 times by get(), twice more by hand), so the 7-day run ended there; 30 a page works.
+            if size > 30 and re.search(r"\b50[24]\b|Server Error|Gateway", str(e)):
+                return jobs(run, 30)
+            raise
         js += d.get("jobs", [])
-        if len(d.get("jobs", [])) < 100:
+        if len(d.get("jobs", [])) < size:
             return js
         page += 1
 
