@@ -36,10 +36,11 @@ git clone -q -b main "$T/origin.git" "$T/other" 2>/dev/null; NOW=$((NOW + 900)) 
 o=$(NOW=$((NOW + 1200)) bash "$S" push "$T/copy"); r=$?; tip3=$(git --git-dir="$T/origin.git" rev-parse refs/heads/lead/check-stamp)
 ok "a push after another copy's stamp is still a fast-forward on it" "$([ "$r" = 0 ] && [ "$(git --git-dir="$T/origin.git" rev-list --count "$tip3")" = 4 ] && echo 1)" "rc=$r $o"
 o=$(CHECK_STAMP_REMOTE="$T/nowhere.git" bash "$S" push "$T/copy"); r=$?
-ok "a push that cannot reach the remote: exit 1, one line saying so" "$([ "$r" = 1 ] && grep -q 'NOT pushed' <<<"$o" && echo 1)" "rc=$r $o"
+ok "a push that cannot reach the remote: exit 1, one line saying so, with git's reason" "$([ "$r" = 1 ] && [ "$(wc -l <<<"$o")" = 1 ] && grep -q 'NOT pushed' <<<"$o" && grep -qi 'git: .*\(not\|does not\|fatal\)' <<<"$o" && echo 1)" "rc=$r $o"
+ok "lead-gap.yml's checkout cannot turn the run red" "$(grep -A1 'uses: actions/checkout' "$WF" | grep -q 'continue-on-error: true' && echo 1)"
 # lead-watch pushes it at its end in the Lead's copy only, an ACT when not pushed
 lw="$TOOLS/lead-watch.sh"
-ok "lead-watch.sh pushes the stamp in the Lead's copy (lane.sh whoami = lead) and makes a failed push an ACT" "$(grep -q 'whoami 2>/dev/null)" = lead \]; then' "$lw" && grep -q 'sp=$(bash "$TOOLS/check-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"' "$lw" && echo 1)"
+ok "lead-watch.sh pushes the stamp in the Lead's copy (lane.sh whoami = lead) and makes a failed push an ACT" "$(grep -q 'whoami 2>/dev/null)" in lead|lead-stale) true;;' "$lw" && grep -q 'sp=$(bash "$TOOLS/check-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"' "$lw" && echo 1)"
 # the workflow
 ok "lead-gap.yml runs every 10 min and by hand" "$(grep -q 'cron: "\*/10 \* \* \* \*"' "$WF" && grep -q '^  workflow_dispatch:' "$WF" && echo 1)"
 ok "... with contents: read and statuses: write only" "$(grep -q 'permissions: { contents: read, statuses: write }' "$WF" && grep -q '^permissions: {}' "$WF" && echo 1)"

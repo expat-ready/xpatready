@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
-# Read-only, except step 6b's private sync (P-678). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
+# Read-only, except step 6b's private sync (P-678) and the last step's check stamp push (LR-168). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines; step 15 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 #        bash product/tools/lead-watch.sh app-view-read <<'EOF' (app-view.js's answer) EOF   saves the app view (step 10)
@@ -454,6 +454,6 @@ fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json fr
 echo "spent $((SECONDS - PRE_T0)) s in all · slowest early jobs: $(pre_seconds)"   # each step says its own seconds (2 s and more, at its stamp)
 # LR-168 (founder A455): the Lead's copy pushes this check's stamp to lead/check-stamp, which .github/workflows/lead-gap.yml
 # judges every 10 min with no Mac running (a red lead-check-gap status on main over 20 min). Not pushed is an ACT.
-if [ "${LEAD_STAMP_PUSH:-on}" != off ] && [ "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" = lead ]; then
+if [ "${LEAD_STAMP_PUSH:-on}" != off ] && case "$(bash "$TOOLS/lane.sh" whoami 2>/dev/null)" in lead|lead-stale) true;; *) false;; esac; then
   sp=$(bash "$TOOLS/check-stamp.sh" push "$TOOLS" 2>&1) && echo "$sp" || ACT "$sp"; fi
 exit "$act"

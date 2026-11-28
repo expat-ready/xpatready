@@ -33,8 +33,8 @@ print(e if isinstance(e,int) and not isinstance(e,bool) else "")' "$2" 2>/dev/nu
       tree=$(printf '100644 blob %s\t%s\n' "$blob" "$F" | g mktree) || break
       c=$(GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-lead-watch}" GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-lead-watch@localhost}" GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-lead-watch}" GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-lead-watch@localhost}" \
         g commit-tree "$tree" ${par:+-p "$par"} -m "Lead check stamp $(ist "$now") (LR-168)") || break
-      if g -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 push -q "$R" "$c:$B" 2>/dev/null; then echo "check stamp pushed: $(ist "$now") to lead/check-stamp (${c:0:9}, LR-168)"; exit 0; fi
+      if err=$(g -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 push -q "$R" "$c:$B" 2>&1); then echo "check stamp pushed: $(ist "$now") to lead/check-stamp (${c:0:9}, LR-168)"; exit 0; fi
     done
-    echo "check stamp NOT pushed to lead/check-stamp (LR-168): GitHub's gap alarm will go red in $MAX min unless the next check pushes"; exit 1;;
+    echo "check stamp NOT pushed to lead/check-stamp (LR-168; git: $(printf '%s\n' "${err:-no commit made}" | { grep -iE 'fatal|error|rejected|denied|refused|^ *!' || printf '%s\n' "${err:-no commit made}"; } | grep -v '^ *$' | head -1 | cut -c1-160)): GitHub's gap alarm will go red in $MAX min unless the next check pushes"; exit 1;;
   *) echo "usage: check-stamp.sh push [dir] | judge FILE [now]"; exit 2;;
 esac
