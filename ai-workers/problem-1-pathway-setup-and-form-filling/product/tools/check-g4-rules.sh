@@ -97,4 +97,11 @@ lp mcp__claude-code-remote__create_session $'/next screens B124\nModel: Opus 5.5
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | test("create_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "(7) settings.json runs the preflight hook on create_session too" "$([ $? = 0 ] && echo 1)"
+
+# (8) P-388 as a hook (LR-105): AskUserQuestion is refused while the away flag exists, and only then.
+aw() { out=$(echo '{"tool_name":"AskUserQuestion","tool_input":{}}' | AWAY_FLAG="$T/away" bash "$TOOLS/away-guard.sh" --hook); }
+rm -f "$T/away"; aw; ok "(8) no away flag: the question goes through" "$([ -z "$out" ] && echo 1)" "$out"
+touch "$T/away"; aw; ok "(8) away flag set: the question is refused, naming STATE and P-388" "$([ "$(deny)" = 1 ] && echo "$out" | grep -q 'P-388' && echo "$out" | grep -q 'STATE' && echo 1)" "$out"
+jq -e '[.hooks.PreToolUse[] | select(.matcher == "^AskUserQuestion$") | .hooks[].command | select(test("away-guard.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
+ok "(8) settings.json runs the away hook on AskUserQuestion" "$([ $? = 0 ] && echo 1)"
 finish
