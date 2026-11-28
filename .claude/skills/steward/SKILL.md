@@ -25,8 +25,8 @@ These paths decide how the pipeline judges a pull request, so no automatic fix m
   agents), `REVIEW.md`, `CLAUDE.md`, `AGENTS.md`.
 * Migrations and the schema: `S/prisma/` (any file under `prisma/migrations/` or `prisma/schema/`).
 * The pipeline tools: `P/tools/` (guards, queue gate, label guard, the quarantine list) and `S/tools/`.
-* The records: `P/STATE.md`, `P/RULES.md`, `P/DECISIONS.md`, `P/BACKLOG.md`, `P/design/lab-register-*.md`,
-  `P/qa/CAPABILITIES.md`, `P/qa/BUGS.md`.
+* The records, in P: `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`, `design/lab-register-*.md`,
+  `qa/CAPABILITIES.md`, `qa/BUGS.md`.
 * Never skip, disable, quarantine or weaken a test or a check to turn it green.
 
 If the only fix is in one of these paths, push nothing: comment `Question for the tech lead: <the check, the log line,
