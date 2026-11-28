@@ -271,6 +271,54 @@ class RunsWindow(unittest.TestCase):
     def test_max_runs_keeps_the_newest(self):
         got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"), 10)
         self.assertEqual([r["id"] for r in got], list(range(2499, 2489, -1)))
+        self.assertTrue(fm.runs_since.cut)
+        fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"), 2500)
+        self.assertFalse(fm.runs_since.cut)                                           # exactly N: nothing dropped
+
+    def test_a_run_on_a_day_boundary_is_read_once(self):
+        self.runs.append({"id": 9999, "created_at": "2026-11-27T00:00:00Z"})
+        got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"))
+        self.assertEqual([r["id"] for r in got].count(9999), 1)
+
+
+class JobsCacheAndBudget(unittest.TestCase):
+    """LR-098: a completed run's jobs are read once; a run that cannot afford its calls does not start."""
+    def setUp(self):
+        import tempfile
+        self.real, self.cache, self.calls = fm.get, fm.JOBS_CACHE, []
+        fm.JOBS_CACHE = tempfile.mkdtemp()
+
+        def get(url, raw=False):
+            self.calls.append(url)
+            if url.endswith("/rate_limit"):
+                return {"resources": {"core": {"remaining": self.left}}}
+            return {"jobs": [{"id": 1}]}
+        fm.get, self.left = get, 5000
+
+    def tearDown(self):
+        fm.get, fm.JOBS_CACHE = self.real, self.cache
+
+    def test_completed_runs_are_read_once(self):
+        run = {"id": 5, "run_attempt": 2, "status": "completed"}
+        self.assertEqual(fm.jobs(run), [{"id": 1}]); self.assertEqual(fm.jobs(run), [{"id": 1}])
+        self.assertEqual(len(self.calls), 1)
+        fm.jobs(dict(run, run_attempt=3))                                              # a new attempt is read again
+        self.assertEqual(len(self.calls), 2)
+
+    def test_runs_in_progress_are_not_cached(self):
+        run = {"id": 6, "status": "in_progress"}
+        fm.jobs(run); fm.jobs(run)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_budget_counts_uncached_runs_plus_the_margin(self):
+        runs = [{"id": n, "status": "completed"} for n in range(3000)]
+        fm.jobs(runs[0])
+        ok, need, left = fm.budget_ok(runs)
+        self.assertEqual((ok, need, left), (False, 2999 + fm.BUDGET_MARGIN, 5000))
+        self.left = 6000
+        self.assertTrue(fm.budget_ok(runs)[0])
+
+
 
 if __name__ == "__main__":
     r = unittest.main(exit=False, verbosity=1).result

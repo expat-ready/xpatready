@@ -13,7 +13,9 @@
 # Read-only (GET only; --lead keeps its answer 30 min in $TMPDIR). Usage:
 #   python3 -I product/tools/flow-measure.py --since 2026-11-04T00:00:00Z [--until <time>] [--max-runs N] [--json]
 #   (every ci.yml run in the window is read, a day at a time, a day split while over GitHub's 1000-result list cap;
-#   --max-runs N keeps only the newest N and says so: runs_cut, LR-098)
+#   --max-runs N keeps only the newest N and says so: runs_cut, LR-098). A completed run's jobs are cached in
+#   $FLOW_JOBS_CACHE (default $TMPDIR/flow-measure-jobs); exit 3 when the API calls left this hour do not cover the
+#   uncached runs + a margin (GET /rate_limit), so a run never meets the rate limit halfway.
 #   python3 -I product/tools/flow-measure.py --since today|<time> --lead [--json] [--cache-min 30] [--now <time>]
 # Tests: test_flow_measure.py (no network; run by .github/workflows/cockpit-tests.yml). Needs main's history back to
 # 14 Nov for measures 4 and 5 (a shallow clone's edge is a baseline, never a change: git fetch --shallow-since=2026-11-13 origin main).
@@ -96,10 +98,27 @@ def runs_since(since, until, max_runs=0):
     for r in sorted(out, key=lambda r: r["created_at"], reverse=True):
         if r["id"] not in seen:
             seen.add(r["id"]); uniq.append(r)
+    runs_since.cut = 0 < max_runs < len(uniq)   # runs were dropped by max_runs (runs_cut)
     return uniq[:max_runs] if max_runs > 0 else uniq
 
 
+JOBS_CACHE = os.environ.get("FLOW_JOBS_CACHE") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "flow-measure-jobs")
+
+
+def cache_path(run):
+    return os.path.join(JOBS_CACHE, "%s-%s.json" % (run["id"], run.get("run_attempt") or 1))
+
+
 def jobs(run, size=100):
+    """The run's jobs (all attempts). A completed run's jobs never change, so they are kept in JOBS_CACHE and read once
+    (LR-098: a whole 7-day window is ~4,000 runs, one call each; later runs pay only for the new ones)."""
+    done = run.get("status") == "completed"
+    if done:
+        try:
+            with open(cache_path(run)) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            pass
     js, page = [], 1
     while True:
         try:
@@ -112,8 +131,31 @@ def jobs(run, size=100):
             raise
         js += d.get("jobs", [])
         if len(d.get("jobs", [])) < size:
-            return js
+            break
         page += 1
+    if done:
+        try:
+            os.makedirs(JOBS_CACHE, exist_ok=True)
+            with open(cache_path(run) + ".tmp", "w") as f:
+                json.dump(js, f)
+            os.replace(cache_path(run) + ".tmp", cache_path(run))
+        except OSError:
+            pass   # no cache: the next run reads them again
+    return js
+
+
+BUDGET_MARGIN = 2500   # merged PRs' facts (~2 calls each, ~1,000 merges a week) and the ENF-782b reads
+
+
+def budget_ok(runs):
+    """-> (ok, need, left): the jobs calls still to make (uncached runs) plus BUDGET_MARGIN against the core calls left
+    this hour (GET /rate_limit costs nothing). Unreadable: ok, as before (the run then fails where it fails)."""
+    need = sum(1 for r in runs if not (r.get("status") == "completed" and os.path.exists(cache_path(r)))) + BUDGET_MARGIN
+    try:
+        left = get("https://api.github.com/rate_limit")["resources"]["core"]["remaining"]
+    except (SystemExit, KeyError, TypeError):
+        return True, need, None
+    return left >= need, need, left
 
 
 def secs(j):
@@ -520,6 +562,11 @@ def main():
         return
 
     runs = runs_since(since, until, a.max_runs)
+    ok, need, left = budget_ok(runs)
+    if not ok:   # LR-098: stop before GitHub's rate limit does, mid-run
+        print(f"flow-measure: needs about {need} API calls ({len(runs)} runs, the uncached ones' jobs + {BUDGET_MARGIN}), "
+              f"{left} left this hour: not started; the jobs cache grows as runs are read", file=sys.stderr)
+        sys.exit(3)
     with ThreadPoolExecutor(16) as ex:
         js = list(ex.map(jobs, runs))
     h = {"pr_total": 0.0, "pr_cancelled": 0.0, "pr_failed": 0.0, "pr_earlier_failed": 0.0, "pr_guard": 0.0, "queue_total": 0.0, "queue_thrown": 0.0, "pr_wall": 0.0, "pr_wall_thrown": 0.0}
@@ -577,7 +624,7 @@ def main():
     thrown = h["pr_cancelled"] + h["pr_failed"] + h["pr_earlier_failed"]
     res = {
         "window": f"{a.since} .. {a.until or 'now'}", "runs_read": len(runs),
-        "runs_cut": bool(a.max_runs) and len(runs) >= a.max_runs,
+        "runs_cut": bool(getattr(runs_since, "cut", False)),
         "pr_check_hours": round(h["pr_total"], 1), "thrown_hours": round(thrown, 1),
         "thrown_share": round(100 * thrown / h["pr_total"], 1) if h["pr_total"] else None,
         "cancelled": [n["pr_cancelled"], round(h["pr_cancelled"], 1)], "failed": [n["pr_failed"], round(h["pr_failed"], 1)],
