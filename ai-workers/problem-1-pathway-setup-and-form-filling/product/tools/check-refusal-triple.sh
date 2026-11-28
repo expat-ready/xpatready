@@ -21,6 +21,8 @@ out=$(plant lane-preflight.sh 's/Rule P-734: lane brief/lane brief/'); r=$?
 ok "a site never borrows the next site's markers (lane-preflight's brief refusals, 3 lines apart)" "$([ $r = 1 ] && grep -q '^lane-preflight.sh:[0-9]*: the refusal lacks a rule id' <<<"$out" && echo 1)" "exit $r: $out"
 out=$(plant wip-guard.py 's/ Fix: get qa/ Get qa/'); r=$?
 ok "a Python guard's message, built below its deny line, is read too" "$([ $r = 1 ] && grep -q '^wip-guard.py:[0-9]*: the refusal lacks the allowed fix' <<<"$out" && echo 1)" "exit $r: $out"
+out=$(plant stop-check.sh 's/- Rule P-756: rules files/- Rules files/'); r=$?
+ok "each part of stop-check's composed refusal is a site of its own" "$([ $r = 1 ] && grep -q '^stop-check.sh:[0-9]*: the refusal lacks a rule id' <<<"$out" && echo 1)" "exit $r: $out"
 rm -rf "$T/t"; mkdir "$T/t"; cp "$TOOLS"/*.sh "$TOOLS"/*.py "$T/t/"; rm "$T/t/stop-check.sh"; out=$(python3 -I "$C" --tools "$T/t"); r=$?
 ok "a guard missing from the tree fails (its refusals were not checked)" "$([ $r = 1 ] && grep -q '^stop-check.sh: missing' <<<"$out" && echo 1)" "exit $r: $out"
 # What the guards print: the triple is in the reason an agent reads.
@@ -32,4 +34,10 @@ out=$(jq -n --arg c "$T/g" '{cwd:$c,tool_input:{command:("gh pr " + "close 1")}}
 ok "merge-guard's refusal reads 'Rule P-87: ... Fix: ...'" "$(triple "$out")" "$out"
 out=$(jq -n '{last_assistant_message:"Runners are the bottleneck tonight."}' | bash "$TOOLS/resource-claim-guard.sh")
 ok "resource-claim-guard's refusal reads 'Rule P-771: ... Fix: ...'" "$(triple "$out")" "$out"
+# stop-check's composed refusal: each part names its own rule (review round 1, Important 1).
+docs_copy "$T/s"; SP="$T/s/$PRODREL"; cp "$TOOLS/stop-check.sh" "$TOOLS/lane.sh" "$TOOLS/founder-click-guard.sh" "$TOOLS/resource-claim-guard.sh" "$SP/tools/"
+git -C "$T/s" update-ref refs/remotes/origin/main HEAD; git -C "$T/s" checkout -q -b screens/x; echo '# x' > "$SP/BACKLOG.md"; git -C "$T/s" add -A; git -C "$T/s" commit -qm lead-file
+out=$(jq -n --arg c "$T/s" '{cwd:$c}' | CLAUDE_CODE_REMOTE=true bash "$SP/tools/stop-check.sh" 2>/dev/null)
+ok "stop-check's refusal reads 'Rule P-314: ... Fix: ...'" "$(triple "$out")" "$out"
+ok "... and its part for a lane's edit of a lead file names Rule P-314 and its fix" "$(jq -r '.reason // ""' <<<"$out" | grep -q '^- Rule P-314: this screens copy changed the tech lead.s files.*Fix: undo them' && echo 1)" "$out"
 finish

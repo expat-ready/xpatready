@@ -8,4 +8,6 @@ OS37 fix|product/tools/refusal-triple.py|s/^FIX = re.compile(.*/FIX = re.compile
 OS37 bound|product/tools/refusal-triple.py|s/^            lo = max(i - WINDOW, at\[k - 1\] + 1 if k else 0)/            lo = max(0, i - WINDOW)/|check-refusal-triple.sh
 OS37 below|product/tools/refusal-triple.py|s/^            hi = min(i + WINDOW, /            hi = min(i, /|check-refusal-triple.sh
 OS37 missing|product/tools/refusal-triple.py|s/^            bad.append(f"{g}: missing, so its refusals were not checked"); continue/            continue/|check-refusal-triple.sh
-OS37 printed|product/tools/away-guard.sh|s/Rule P-388: the founder/The founder/|check-refusal-triple.sh'
+OS37 printed|product/tools/away-guard.sh|s/Rule P-388: the founder/The founder/|check-refusal-triple.sh
+OS37 part|product/tools/stop-check.sh|s/reasons="- Rule P-314: this \$LANE copy/reasons="- This $LANE copy/|check-refusal-triple.sh
+OS37 parts|product/tools/refusal-triple.py|s/- (?!note:)/- (?!)/|check-refusal-triple.sh'
