@@ -68,7 +68,7 @@ for l in open(sys.argv[1]):
     for line in re.sub(r"[*_`\r]", "", b).split("\n"):
         if line.startswith(("    ", "\t")): continue
         m = READY.match(line)
-        if m: ready[c["n"]] = (m.group(1).lower(), c["t"])
+        if m and (c["n"] not in ready or c["t"] >= ready[c["n"]][1]): ready[c["n"]] = (m.group(1).lower(), c["t"])   # the newest ready per PR, whatever order GitHub gives
         m = LEAD_READ.match(line)
         if m: read.add((c["n"], m.group(1).lower()))
 done = set(sys.argv[2].split())

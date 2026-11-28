@@ -21,7 +21,9 @@ cat > "$T/bin/gh" <<'EOF'
 echo "gh $*" >> "$FX/gh.log"; echo $(( $(cat "$FX/used") + 1 )) > "$FX/used"
 [ -e "$FX/gh-down" ] && { echo "HTTP 502" >&2; exit 1; }
 case "$2" in */issues/comments*) p=$(sed -n 's/.*[?&]page=\([0-9]*\).*/\1/p' <<<"$2"); python3 -I -c '
-import json, sys; c = json.load(open(sys.argv[1])); p = int(sys.argv[2]); print(json.dumps(c[(p-1)*100:p*100]))' "$FX/comments.json" "${p:-1}";;
+import json, sys; c = json.load(open(sys.argv[1])); p = int(sys.argv[2])
+if "direction=desc" in sys.argv[3]: c = sorted(c, key=lambda x: x["created_at"], reverse=True)   # as GitHub: newest first when asked
+print(json.dumps(c[(p-1)*100:p*100]))' "$FX/comments.json" "${p:-1}" "$2";;
   *) echo "[]";; esac
 EOF
 cat > "$T/bin/curl" <<'EOF'
@@ -37,6 +39,7 @@ NOWZ=$(TZ=UTC date '+%Y-%m-%dT%H:%M:%SZ'); OLDZ=$(TZ=UTC date -d '-3 hours' '+%Y
 python3 -I - "$T/comments.json" "$NOWZ" "$OLDZ" "$S1" "$S2" "$S3" "$S4" <<'PY'
 import json, sys
 f, now, old, s1, s2, s3, s4 = sys.argv[1:]
+import time; T = lambda h: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - h * 3600)); older, mid = T(6), T(2)
 c = lambda n, b, t=now: {"issue_url": f"https://api.github.com/repos/o/r/issues/{n}", "body": b, "created_at": t}
 L = [c(900 + i, "filler comment") for i in range(140)]
 L += [c(12, "Question for the tech lead: which lane?"), c(13, "Question for the tech lead: old one", old),
@@ -48,7 +51,9 @@ L += [c(12, "Question for the tech lead: which lane?"), c(13, "Question for the 
       c(41, "**Ready for Lead read and label: " + s1 + "**.", old), c(42, "**Ready for Lead read: " + s2 + "**.", old),
       c(43, "Ready for Lead read " + s3, old), c(43, "**Lead read the diff:** " + s3),
       c(44, "Ready for Lead read " + s4, old), c(44, "lead read: ok " + s4.upper()),
-      c(45, "Ready for Lead read " + s1, old), c(45, "```\nLead read the diff: " + s1 + "\n```")]
+      c(45, "Ready for Lead read " + s1, old), c(45, "```\nLead read the diff: " + s1 + "\n```"),
+      c(46, "Ready for Lead read " + s1, older), c(46, "Lead read the diff: " + s1, old), c(46, "Ready for Lead read " + s2, mid),
+      c(47, "Ready for Lead read " + s3, older), c(47, "Ready for Lead read " + s4, mid), c(47, "Lead read the diff: " + s4)]
 json.dump(L, open(f, "w"))
 PY
 echo 100 > "$T/used"
@@ -64,7 +69,8 @@ ok "lite: the question in the window is an ACT; an older one and one on a merged
 ok "lite: reads owed: #31 (no read) and #33 (a read of another sha); not #32 (read) nor #77 (merged)" "$(grep -q "^ACT   #31 waits for the Lead's read of $S1" <<<"$out" && grep -q "^ACT   #33 waits for the Lead's read of $S3" <<<"$out" && ! grep -q '#32 waits' <<<"$out" && ! grep -q '#77 waits' <<<"$out" && echo 1)" "$out"
 ok "lite: the bold ready forms are owed too (#41 \"Ready for Lead read and label:\", #42 \"Ready for Lead read:\")" "$(grep -q "^ACT   #41 waits for the Lead's read of $S1" <<<"$out" && grep -q "^ACT   #42 waits for the Lead's read of $S2" <<<"$out" && echo 1)" "$out"
 ok "lite: reads in the gate's grammar count (bold \"Lead read the diff:\", \"lead read: ok\" in any case); one in a code block does not" "$(! grep -q '#43 waits' <<<"$out" && ! grep -q '#44 waits' <<<"$out" && grep -q "^ACT   #45 waits" <<<"$out" && echo 1)" "$out"
-ok "lite: exit = number of ACT lines (6)" "$([ $r = 6 ] && [ "$(grep -c '^ACT' <<<"$out")" = 6 ] && echo 1)" "exit $r"
+ok "lite: the newest ready per PR counts, read newest first: #46 (older read, newer unread) is owed; #47 (older unread, newer read) is not" "$(grep -q "^ACT   #46 waits for the Lead's read of $S2" <<<"$out" && ! grep -q '#47 waits' <<<"$out" && echo 1)" "$out"
+ok "lite: exit = number of ACT lines (7)" "$([ $r = 7 ] && [ "$(grep -c '^ACT' <<<"$out")" = 7 ] && echo 1)" "exit $r"
 n=$(awk -F'\t' '$3=="lead-watch-lite" {print $4}' "$T/state/github-meter/meter.tsv" | tail -1)
 ok "lite: measured from the headers, under 50 requests (2 pages of comments: 2)" "$([ "$n" = 2 ] && [ "$(grep -c '' "$T/gh.log")" = 2 ] && echo 1)" "measured ${n:-none}; gh calls: $(cat "$T/gh.log")"
 ok "lite: the measured cost is within the real budget line (lead-watch-lite in github-budget.tsv)" "$(GITHUB_METER_DIR="$T/state/github-meter" bash "$L/github-meter.sh" budget | grep -q '^ok    lead-watch-lite: 2 of 50' && echo 1)" "$(GITHUB_METER_DIR="$T/state/github-meter" bash "$L/github-meter.sh" budget)"
