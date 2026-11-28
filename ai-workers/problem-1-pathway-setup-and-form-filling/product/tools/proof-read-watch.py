@@ -64,7 +64,7 @@ class Source:
                 spec.loader.exec_module(g)
             bundle = g.pr_bundle(REPO, numbers, comments=True, files=True)
         except Exception as e:
-            self.github = "REST: GraphQL not used (%s)" % str(e)[:120]
+            self.github = "REST: GraphQL not used (%s)" % " ".join(str(e).split())[:120]
             return
         for n, e in bundle.items():
             if e.get("comments_complete"):

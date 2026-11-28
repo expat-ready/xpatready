@@ -108,7 +108,7 @@ def fetch(repo, gql=None):
             len(mine), -(-len(mine) // g.PR_BATCH))
     except Exception as e:   # GraphQLError, or the helper missing: REST, as before
         bundle = None
-        snap["github"] = "REST: GraphQL not used (%s)" % str(e)[:120]
+        snap["github"] = "REST: GraphQL not used (%s)" % " ".join(str(e).split())[:120]
 
     def events(n):
         if bundle is not None:

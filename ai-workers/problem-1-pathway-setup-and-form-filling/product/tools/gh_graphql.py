@@ -7,22 +7,22 @@ the same day: sle-watch spent ~242 REST requests a run (79 per-PR comment reads,
 
   pr_bundle(repo, numbers, comments=True, labels=False, files=False) ->
       {number: {"comments": [REST-shaped issue comment, oldest first], "comments_complete": bool,
-                "labeled": [{"created_at", "label"}], "files": [path, ...] or None}}
+                "labeled": [{"created_at", "label"}], "labeled_complete": bool, "files": [path, ...] or None}}
 Comments come back in the REST shape the tools already read (created_at, body, author_association, user {login, type};
 a bot's login gets REST's "[bot]" suffix). REST's ?per_page=100 gave a PR's oldest 100 comments; this gives its newest
 COMMENTS (the newer ones are the ones the checks judge); comments_complete says whether that is all of them. files is
 None for a PR with over FILES files or a renamed or copied file (no previous path in GraphQL): read it by REST. Any
 failure raises GraphQLError: each caller then reads the
 same data through REST as before and says which path it took. GraphQL is refused (HTTP 403) from cloud sessions, so
-there the REST path runs; on the Mac the query runs through gh.sh (its TLS fallback cannot send a query: the REST path
-then runs). Test: test_gh_graphql.py (recorded responses, no network).
+there the REST path runs; on the Mac the query runs through gh.sh (its TLS fallback, gh-fallback.py, sends it by curl).
+GraphQLError's text is one line (callers print it on one line). Test: test_gh_graphql.py (recorded responses, no network).
 """
 import json
 import os
 import subprocess
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-PR_BATCH, COMMENTS, LABELS, FILES = 20, 100, 50, 100
+PR_BATCH, COMMENTS, LABELS, FILES = 20, 100, 100, 100
 
 
 class GraphQLError(RuntimeError):
@@ -39,7 +39,7 @@ def gh_query(query):
         out = None
     if r.returncode != 0 or not isinstance(out, dict) or out.get("errors") or not out.get("data"):
         why = (out or {}).get("errors") if isinstance(out, dict) else None
-        raise GraphQLError(str(why or r.stderr.strip() or r.stdout.strip() or "gh exit %d" % r.returncode)[:200])
+        raise GraphQLError(" ".join(str(why or r.stderr.strip() or r.stdout.strip() or "gh exit %d" % r.returncode).split())[:200])
     return out["data"]
 
 
@@ -51,7 +51,7 @@ def query_for(owner, name, numbers, comments, labels, files):
             f.append("comments(last: %d) { totalCount nodes { databaseId createdAt body authorAssociation "
                      "author { login __typename } } }" % COMMENTS)
         if labels:
-            f.append("timelineItems(itemTypes: [LABELED_EVENT], last: %d) { nodes { ... on LabeledEvent { createdAt "
+            f.append("timelineItems(itemTypes: [LABELED_EVENT], last: %d) { totalCount nodes { ... on LabeledEvent { createdAt "
                      "label { name } } } }" % LABELS)
         if files:
             f.append("files(first: %d) { totalCount nodes { path changeType } }" % FILES)
@@ -92,6 +92,7 @@ def pr_bundle(repo, numbers, comments=True, labels=False, files=False, run=None)
             if labels:
                 e["labeled"] = [{"created_at": x["createdAt"], "label": (x.get("label") or {}).get("name")}
                                 for x in p["timelineItems"]["nodes"] if x]
+                e["labeled_complete"] = p["timelineItems"].get("totalCount", 0) <= LABELS
             if files:   # None: over FILES, or a rename or copy (GraphQL gives no previous path): read that PR by REST
                 fs = p["files"]
                 e["files"] = None if fs["totalCount"] > FILES or any(

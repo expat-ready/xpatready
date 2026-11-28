@@ -19,6 +19,8 @@ def load(name, file):
 g = load("gh_graphql", "gh_graphql.py")
 sle = load("sle_watch", "sle-watch.py")
 prw = load("proof_read_watch", "proof-read-watch.py")
+os.environ.setdefault("GITHUB_REPOSITORY", "o/r")   # flow-measure reads no git remote at import
+fm = load("flow_measure", "flow-measure.py")
 
 
 def node(n, comments=(), labeled=(), files=None):
@@ -69,6 +71,12 @@ class Bundle(unittest.TestCase):
         ren = node(7, files=["x"]); ren["files"]["nodes"][0]["changeType"] = "RENAMED"
         self.assertIsNone(g.pr_bundle("o/r", [7], comments=False, files=True, run=lambda q: {"repository": {"p7": ren}})[7]["files"])
 
+    def test_labeled_complete_only_when_all_were_read(self):
+        many = node(7, [], [("2026-11-28T09:00:00Z", "review: approved")]); many["timelineItems"]["totalCount"] = 101
+        self.assertFalse(g.pr_bundle("o/r", [7], labels=True, run=lambda q: {"repository": {"p7": many}})[7]["labeled_complete"])
+        few = node(7, []); few["timelineItems"]["totalCount"] = 3
+        self.assertTrue(g.pr_bundle("o/r", [7], labels=True, run=lambda q: {"repository": {"p7": few}})[7]["labeled_complete"])
+
     def test_comments_complete_only_when_all_were_read(self):
         many = node(7, [C1]); many["comments"]["totalCount"] = 101
         self.assertFalse(g.pr_bundle("o/r", [7], run=lambda q: {"repository": {"p7": many}})[7]["comments_complete"])
@@ -88,11 +96,13 @@ class Bundle(unittest.TestCase):
             def __init__(self, rc, out, err=""): self.returncode, self.stdout, self.stderr = rc, out, err
         try:
             for r in (R(1, "", "HTTP 403: GitHub GraphQL is not available"), R(0, '{"errors": [{"message": "x"}]}'),
+                      R(1, "", "<html>\n<body>403\n</body>"),
                       R(0, "not json"), R(1, "")):
                 g.subprocess.run = lambda *a, r=r, **k: r
                 with self.assertRaises(g.GraphQLError) as e:
                     g.gh_query("query { x }")
                 self.assertTrue(str(e.exception))                                          # always a reason
+                self.assertNotIn("\n", str(e.exception))                                    # on one line
             g.subprocess.run = lambda *a, **k: R(0, '{"data": {"repository": {}}}')
             self.assertEqual(g.gh_query("q"), {"repository": {}})
         finally:
@@ -194,6 +204,45 @@ class ProofReadPrefetch(unittest.TestCase):
         src = prw.Source("/nonexistent")
         src.prefetch([7])
         self.assertIsNone(src.github)
+
+
+class FlowMeasureFacts(unittest.TestCase):
+    """flow-measure --lead: merged PRs' files and approval label times from the bundle; REST for a PR whose files or
+    label events were not all read; {} (all REST) when GraphQL fails."""
+    def setUp(self):
+        self.real, self.calls = fm.pr_facts, []
+        fm.pr_facts = lambda n: self.calls.append(n) or (["rest.sh"], [])
+
+    def tearDown(self):
+        fm.pr_facts = self.real
+
+    def test_facts_from_the_bundle_and_per_pr_rest(self):
+        b = {7: {"files": ["a.sh"], "labeled": [{"created_at": "2026-11-28T09:00:00Z", "label": "review: approved"},
+                                                {"created_at": "2026-11-28T09:05:00Z", "label": "queued"}], "labeled_complete": True},
+             8: {"files": None, "labeled": [], "labeled_complete": True},
+             9: {"files": ["b"], "labeled": [], "labeled_complete": False}}
+        self.assertEqual(fm.facts_from(b, 7), (["a.sh"], [fm.t("2026-11-28T09:00:00Z")]))
+        fm.facts_from(b, 8); fm.facts_from(b, 9); fm.facts_from(b, 10)
+        self.assertEqual(self.calls, [8, 9, 10])
+
+    def test_bundle_of_says_its_path(self):
+        fm.GITHUB.clear()
+        self.assertEqual(fm.bundle_of([]), {})                                               # no PRs: no query, graphql path
+        self.assertTrue(fm.GITHUB[-1].startswith("graphql: 0 PRs"))
+
+
+class SleMainLine(unittest.TestCase):
+    def test_the_github_line_is_printed_on_one_line(self):
+        import io, contextlib
+        real = sle.fetch
+        sle.fetch = lambda repo: {"now": "2026-11-28T10:00:00Z", "prs": [], "github": "REST: GraphQL not used (HTTP 403)"}
+        try:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                sle.main(["--grouped", "--board-time", "2026-11-28T10:00:00Z"])
+        finally:
+            sle.fetch = real
+        self.assertIn("sle   github REST: GraphQL not used (HTTP 403)\n", out.getvalue())
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
