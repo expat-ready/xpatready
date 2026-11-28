@@ -18,6 +18,9 @@
 // duty check got 400; READ_ONLY past an @AnyStaff got 422 and 503). The summary prints how many wrong-role writes
 // stopped there, and how many platform-plane writes the READ_ONLY bearer got past the guard (the guard runs before the
 // handler, so anything but 401/403 there means the declared keys let READ_ONLY in): ROUTE_WALK_VERBOSE=1 lists them.
+// LR-161 part 2: the platform-plane writes READ_ONLY gets past the guard are judged too: each must be on
+// route-walk-past-guard.txt ("<VERB> <path> # why"), so a route whose declared access newly lets READ_ONLY in is
+// reported even when its empty write answers 400/404/422; a listed line the guard now refuses is reported as stale.
 // "Never a 2xx for an empty write" is what this walk proves; the static sweep (route-sweep.ts) reads the order of checks.
 // US$0, live AI off (the copy's default), no model call; run only against a disposable isolated copy (allowed writes
 // really happen). The database must be the one isolated.sh started for this port (its comment names the port).
@@ -31,6 +34,7 @@ import { routes, type Route } from "../../tests/lib/routes.ts";
 
 const STUDIO = join(import.meta.dirname, "..", "..");
 const LIST = join(import.meta.dirname, "route-walk-reviewed.txt");
+const PAST = join(import.meta.dirname, "route-walk-past-guard.txt");
 const ID = "00000000-0000-4000-8000-000000000161";
 type Mode = "signed-out" | "wrong-role";
 type Plane = "platform" | "system" | "public" | "simulated";
@@ -67,6 +71,22 @@ export function judge(mode: Mode, verb: string, path: string, status: number, al
 /** Walk order: the caller's own session/sign-out last (it ends the token), other sign-out routes just before it. */
 export const order = (path: string) => (/\/session\/sign-?out$/i.test(path) ? 2 : /sign-?out/i.test(path) ? 1 : 0);
 
+/** The past-guard list: "<VERB> <path> # why"; a line with no reason is refused. */
+export function readPast(text: string): { allowed: Set<string>; errors: string[] } {
+  const allowed = new Set<string>(), errors: string[] = [];
+  text.split("\n").forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) return;
+    const m = /^([A-Z]+) (\/\S*)\s+#\s*(\S.*)$/.exec(line);
+    if (!m) errors.push(`route-walk-past-guard.txt line ${i + 1}: not "<VERB> <path> # why": ${line}`);
+    else allowed.add(`${m[1]} ${m[2]}`);
+  });
+  return { allowed, errors };
+}
+/** A platform-plane write READ_ONLY got past the guard: null when listed, else why it is reported. */
+export const pastGuardJudge = (verb: string, path: string, status: number, allowed: Set<string>) =>
+  [401, 403].includes(status) || allowed.has(`${verb} ${path}`) ? null : `wrong-role ${verb} ${path} got READ_ONLY past the guard (answered ${status}) and is not on route-walk-past-guard.txt`;
+
 /** Listed lines that did not answer 2xx this run (fixed or gone): the list must shrink with them. */
 export const stale = (allowed: Set<string>, seen2xx: Set<string>) => [...allowed].filter((k) => !seen2xx.has(k));
 
@@ -91,6 +111,10 @@ function selfTest(): number {
     ["READ_ONLY reading a keyed runtime route (bearer retry) is fine", judge("wrong-role", "GET", "/api/runtime/clients", 200, allowed, readsHeld("simulated", true)) === null],
     ["READ_ONLY writing a keyed runtime route (bearer retry) is reported", judge("wrong-role", "POST", "/api/runtime/cases", 201, allowed, readsHeld("simulated", true)) !== null],
     ["the session's own sign-out runs after every other route", order("/api/platform/session/sign-out") > order("/api/platform/staff/:id/sign-out-everywhere") && order("/api/platform/staff/:id/sign-out-everywhere") > order("/api/cases")],
+    ["an unlisted platform write READ_ONLY gets past the guard is reported", pastGuardJudge("POST", "/api/front-office/leads", 422, readPast("PUT /api/platform/me/account # own\n").allowed) !== null],
+    ["a listed past-guard write is fine", pastGuardJudge("PUT", "/api/platform/me/account", 422, readPast("PUT /api/platform/me/account # own\n").allowed) === null],
+    ["a guard refusal (403) is never reported as past the guard", pastGuardJudge("POST", "/api/front-office/leads", 403, new Set()) === null],
+    ["a past-guard line without a reason is refused", readPast("PUT /api/x\n").errors.length === 1],
     ["parameters are filled", fill("/api/cases/:id/files/:fileId?") === `/api/cases/${ID}/files/${ID}`],
   ];
   let bad = 0;
@@ -114,7 +138,9 @@ async function call(port: number, r: Route, headers: Record<string, string>): Pr
 }
 
 async function walk(port: number, db: string): Promise<number> {
-  const { allowed, errors } = readList(readFileSync(LIST, "utf8"));
+  const { allowed, errors: listErrors } = readList(readFileSync(LIST, "utf8"));
+  const past = readPast(readFileSync(PAST, "utf8"));
+  const errors = [...listErrors, ...past.errors];
   for (const e of errors) console.log(`::warning::${e}`);
   // The seed has no READ_ONLY member: the walk adds one to this disposable copy. Only the database isolated.sh started
   // for this very port (its comment: "isolated.sh server pid … port <port> …"); never the demo or a lane's database.
@@ -140,7 +166,7 @@ async function walk(port: number, db: string): Promise<number> {
   if (!token) console.log("::warning::the READ_ONLY member could not sign in (start the copy with PLATFORM_IDENTITY=local): the platform and system planes were walked signed out only");
   const all = routes(join(STUDIO, "api", "src")).sort((x, y) => order(x.path) - order(y.path));
   const counts = new Map<string, number>(), reported: string[] = [], seen2xx = new Set<string>();
-  const unreached: string[] = [], pastGuard: string[] = [];
+  const unreached: string[] = [], pastGuard: string[] = [], seenPast = new Set<string>();
   for (const r of all) {
     const plane = planeOf(r.path);
     const tries: [Mode, Record<string, string> | null][] = [["signed-out", {}],
@@ -154,7 +180,11 @@ async function walk(port: number, db: string): Promise<number> {
       if (process.env.ROUTE_WALK_VERBOSE) console.log(`${mode}${mode === "wrong-role" && (plane === "platform" || plane === "system" || retried) ? " (bearer)" : ""} ${status} ${r.verb} ${r.path}`);   // every answer, for a reviewer
       const write = r.verb !== "GET" && r.verb !== "HEAD";
       if (mode === "wrong-role" && write && ![401, 403].includes(status) && (status < 200 || status > 299)) unreached.push(`${status} ${r.verb} ${r.path}`);
-      if (mode === "wrong-role" && write && plane === "platform" && ![401, 403].includes(status)) pastGuard.push(`${status} ${r.verb} ${r.path}`);
+      if (mode === "wrong-role" && write && plane === "platform" && ![401, 403].includes(status)) {
+        pastGuard.push(`${status} ${r.verb} ${r.path}`); seenPast.add(`${r.verb} ${r.path}`);
+        const why = pastGuardJudge(r.verb, r.path, status, past.allowed);
+        if (why) reported.push(`${why} (${r.file}:${r.line})`);
+      }
       const c = `${mode} ${status >= 200 && status < 300 ? "2xx" : String(status)}`;
       counts.set(c, (counts.get(c) ?? 0) + 1);
       if (status >= 200 && status < 300) seen2xx.add(key(mode, r.verb, r.path));
@@ -162,11 +192,12 @@ async function walk(port: number, db: string): Promise<number> {
       if (why) reported.push(`${why} (${r.file}:${r.line})`);
     }
   }
+  if (token) for (const s of [...past.allowed].filter((k) => !seenPast.has(k))) reported.push(`listed but the guard now refuses READ_ONLY (take it off route-walk-past-guard.txt): ${s}`);
   for (const s of stale(allowed, seen2xx)) reported.push(`listed but no longer 2xx (take it off route-walk-reviewed.txt): ${s}`);
   for (const line of reported) console.log(`::warning::${line}`);
   console.log(`${all.length} routes walked; answers: ${[...counts].sort().map(([k, n]) => `${k} ×${n}`).join(", ")}`);
   if (process.env.ROUTE_WALK_VERBOSE) { for (const u of unreached) console.log(`unreached: ${u}`); for (const u of pastGuard) console.log(`past the guard: ${u}`); }
-  console.log(`not proven (I-2): ${unreached.length} wrong-role writes stopped before a permission check (400/404/422/5xx with "{}"); ${pastGuard.length} platform-plane writes got the READ_ONLY bearer past the guard (not 401/403); ROUTE_WALK_VERBOSE=1 lists both`);
+  console.log(`not proven (I-2): ${unreached.length} wrong-role writes stopped before a permission check (400/404/422/5xx with "{}"); ${pastGuard.length} platform-plane writes got the READ_ONLY bearer past the guard (not 401/403; each judged against route-walk-past-guard.txt); ROUTE_WALK_VERBOSE=1 lists both`);
   console.log(reported.length ? `${reported.length} unexpected` : "0 unexpected 2xx");
   return reported.length || errors.length ? 1 : 0;
 }

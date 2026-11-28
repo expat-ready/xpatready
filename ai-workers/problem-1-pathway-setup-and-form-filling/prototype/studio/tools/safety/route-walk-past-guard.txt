@@ -1,0 +1,44 @@
+# Platform-plane writes a READ_ONLY member of the Sample firm gets past the guard (route-walk.ts, LR-161 part 2):
+# "<VERB> <path> # why". The platform guard runs before the handler, so a wrong-role write that answers anything but
+# 401/403 means the route's declared access lets READ_ONLY in. Each line says why that is right for the route (its
+# declared access, read from the code on 28 Nov). A past-guard write not listed here is reported, and so is a listed
+# line that the guard now refuses (the list only shrinks). A change to this list goes through the tech lead's read.
+# A person's own records (AnyStaff, the service scopes to the caller):
+PUT /api/front-office/me/video # AnyStaff: each member's own video link
+POST /api/front-office/me/availability-sets # AnyStaff (OWN): a member's own availability
+PATCH /api/front-office/me/availability-sets/:id # AnyStaff (OWN): a member's own availability
+DELETE /api/front-office/me/availability-sets/:id # AnyStaff (OWN): a member's own availability
+POST /api/front-office/me/time-off # AnyStaff (OWN): a member's own time off
+DELETE /api/front-office/me/time-off/:id # AnyStaff (OWN): a member's own time off
+PUT /api/platform/me/account # AnyStaff: a person's own account record
+PUT /api/platform/me/notifications # agent/notification:manage-preferences: a person's own notification settings
+POST /api/platform/me/notifications/:id/read # AnyStaff: a person marks one of their own notifications read
+POST /api/platform/me/notifications/read-all # AnyStaff: a person marks their own notifications read
+POST /api/platform/me/terms/accept # AnyStaff: a person accepts terms; firm terms need an Owner (checked in the service)
+POST /api/platform/session/sign-out # AnyStaff: a person ends their own session
+PUT /api/platform/staff/:id/credential # AnyStaff: a person's own licence record; another's needs agent/firm-credential:manage (service)
+# The service checks the caller per change (AnyStaff or a list key on the route, the real key in the service):
+PUT /api/front-office/booking-timings # agent/booking-event-type:list; each changed field's key is checked by the service (timings.ts)
+PATCH /api/front-office/booking-types/:id/timings # agent/booking-event-type:list; each changed field's key is checked by the service
+POST /api/front-office/bookings/:id/attendance # AnyStaff: the host answers their own (AG-4-39); others need agent/booking:edit (service)
+PUT /api/front-office/bookings/:id/consult-record # AnyStaff: the booking's own staff; checked by the service
+POST /api/front-office/consultation-agreements/:id/host-link # AnyStaff (SIGNS): the host's own signing link; checked by the service
+POST /api/platform/complaints/:id/acknowledge # AnyStaff (HANDLES): the complaint's handler; checked by the service
+POST /api/platform/complaints/:id/steps # AnyStaff (HANDLES): the complaint's handler; checked by the service
+POST /api/platform/complaints/:id/response-sent # AnyStaff (HANDLES): the complaint's handler; checked by the service
+POST /api/platform/complaints/:id/close # AnyStaff (HANDLES): the complaint's handler; checked by the service
+DELETE /api/platform/complaints/:id # AnyStaff: refused for everyone (a complaint is never deleted); answers 405
+ALL /api/platform/files/uploads # AnyStaff: the staff upload door; its authorize decides what each upload is for
+POST /api/platform/reports/query # AnyStaff (NEEDS): each report's own key is checked by the service
+# A read made by POST (a link, a check or a query; a READ_ONLY member holds the show or list key):
+POST /api/front-office/consultation-agreements/:id/signed-copy/download-link # the read key: a download link to a signed copy
+POST /api/front-office/identity-checks/:id/copy/download-link # agent/document:show: a download link
+POST /api/front-office/signature-requests/:id/download-link # agent/document:show, own or all: a download link
+POST /api/front-office/retainers/:id/firm-signing-link # agent/retainer:show, own or all: the firm's signing link
+POST /api/front-office/duplicates/check # agent/prospect:show: a duplicate check that changes nothing
+POST /api/platform/support/tickets/:id/files/:n/link # the support list key: a download link
+# Support (any member may raise and follow a ticket):
+POST /api/platform/support/tickets # the support create key: any member raises a ticket
+POST /api/platform/support/tickets/:id/messages # the support list key: a member follows up on a ticket
+# The sign-in door (no session yet):
+POST /api/platform/session/local # StaffSignIn: the local stand-in's sign-in door
