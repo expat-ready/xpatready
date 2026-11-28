@@ -123,6 +123,13 @@ ok "CI-PRE: ... and says the full run is asked only after a failed merge batch (
 echo "1 no full run on ${c2:0:9} yet: comment \`/run full\` on the PR (asked because the merge batch run 890 failed with this PR in it, P-743)" > "$T/fx/proof"
 guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "P-743: a PR a failed batch held, with no full run: the label comes off and the comment names the batch run" "$(grep -q '^DELETE label' <<< "$log" && grep -q 'asked because the merge batch run 890 failed with this PR in it, P-743' <<< "$log" && echo 1)" "exit $r, $out / $log"
+# LR-169 (#4019): proof exits 3 while the head's own pr-suites run is going: the label is kept, with a line saying so
+echo "3 pr-suites is not green on ${c2:0:9}: its pr-suites run 99 has not ended (LR-169)" > "$T/fx/proof"
+guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
+ok "LR-169: a reviewed head whose pr-suites run is still going keeps the label (proof exit 3)" "$(kept)" "exit $r, $out / $log"
+ok "LR-169: ... and says the queue gate judges it at the run's end" "$(grep -q 'its pr-suites run has not ended: .*run 99 has not ended.*the queue gate judges the label at its end, LR-169' <<< "$out" && echo 1)" "$out"
+echo "4 something else" > "$T/fx/proof"; guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
+ok "LR-169: any other proof exit still fails closed (exit 2: the workflow takes the label off)" "$([ $r = 2 ] && echo 1)" "exit $r, $out / $log"
 rm -f "$T/fx/proof"; guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "P-743: a reviewed head that no failed batch held (proof exits 0 with no full run): the label stays" "$(kept)" "$out / $log"
 echo "1 no full run on ${c2:0:9} yet: comment \`/run full\` on the PR" > "$T/fx/proof"; guard "$c1" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
