@@ -121,6 +121,11 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
             "timeout": 15,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/main-copy-suite-guard.py; [ -f \"$f\" ] || exit 0; python3 -I \"$f\" --hook",
+            "timeout": 15
           }
         ]
       },
