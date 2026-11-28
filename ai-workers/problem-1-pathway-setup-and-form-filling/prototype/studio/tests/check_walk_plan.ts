@@ -59,9 +59,10 @@ ok(`W9 over 20 on a PR (${touched} journeys reached through two shared files): w
 const appFile = `${STUDIO}api/src/front-office/firm-seed.ts`, ids = (q: { matrix: { name: string }[] }) => q.matrix.map((m) => m.name).join(" ");
 const m1 = walkPlan({ event: "push", jdir: J, title: "runtime: R1.29 — FO-9b part 3", body: "Completes: R1.40\n", changed: [appFile], pr: "3174", sha: "c".repeat(40), root: ROOT });
 const m2 = walkPlan({ event: "push", jdir: J, title: "qa: R1.29 re-run on main (25/25)", changed: ["records-elsewhere/notes.md"], pr: "3516", root: ROOT });
+const m3 = walkPlan({ event: "push", jdir: J, title: "records: R1.29 notes", changed: ["records-elsewhere/notes.md"], pr: "3517", root: ROOT });
 const pathsApp = paths.filter((g) => g !== ".github/workflows/walks.yml").map((g) => g.replace(/\*\*$/, ""));
-ok("W10 on this tree a merged PR naming R1.29 (title) and R1.40 (Completes) walks j_29 and j_38 only, no fixtures; a qa-records PR naming R1.29 walks nothing; APP equals walks.yml's paths",
-  ids(m1) === "j_29 j_38" && m1.pr === "3174" && m1.matrix[1].items === "R1.40" && m2.matrix.length === 0 && /changes nothing the app/.test(m2.reason) && JSON.stringify(pathsApp) === JSON.stringify(APP), { m1, m2, pathsApp, APP });
+ok("W10 on this tree a merged PR naming R1.29 (title) and R1.40 (Completes) walks j_29 and j_38 only, no fixtures; a qa PR changing only records and naming R1.29 walks j_29 (LR-055); any other records PR naming it walks nothing; APP equals walks.yml's paths",
+  ids(m1) === "j_29 j_38" && m1.pr === "3174" && m1.matrix[1].items === "R1.40" && ids(m2) === "j_29" && /LR-055/.test(m2.reason) && m3.matrix.length === 0 && /changes nothing the app/.test(m3.reason) && JSON.stringify(pathsApp) === JSON.stringify(APP), { m1, m2, m3, pathsApp, APP });
 const onPush = /\n  push:\s*\n\s*branches: \[main\]/.test(code) && !/\n  push:[\s\S]*?branches: \[(?!main\])/.test(code);
 const planIf = (plan.match(/\n    if: (.*)/) ?? [])[1] ?? "";
 ok("W11 walks.yml runs on a push to main: the plan finds the merged PR from this commit (commits/$SHA/pulls, merged, merge_commit_sha, base main; the fallback checks merged and merge_commit_sha too), reads title and body into files, passes --event push with --pr; the walk checks out this commit; the plan kept on every push, walk.json on a push; on a push a FAIL step never fails the job (review M1); no write scope in walks.yml",
