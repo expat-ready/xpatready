@@ -11,7 +11,9 @@
 #   4-8. Release 1 flow (ENF-782b, P-782 (3)): start to Proven, review rounds, first-time proof, reverse plan, queue
 #      bounces; defined at new_measures() below. --lead prints only these, as 5 lines (lead-watch.sh step 5b).
 # Read-only (GET only; --lead keeps its answer 30 min in $TMPDIR). Usage:
-#   python3 -I product/tools/flow-measure.py --since 2026-11-04T00:00:00Z [--until <time>] [--max-runs 1000] [--json]
+#   python3 -I product/tools/flow-measure.py --since 2026-11-04T00:00:00Z [--until <time>] [--max-runs N] [--json]
+#   (every ci.yml run in the window is read, a day at a time, a day split while over GitHub's 1000-result list cap;
+#   --max-runs N keeps only the newest N and says so: runs_cut, LR-098)
 #   python3 -I product/tools/flow-measure.py --since today|<time> --lead [--json] [--cache-min 30] [--now <time>]
 # Tests: test_flow_measure.py (no network; run by .github/workflows/cockpit-tests.yml). Needs main's history back to
 # 14 Nov for measures 4 and 5 (a shallow clone's edge is a baseline, never a change: git fetch --shallow-since=2026-11-13 origin main).
@@ -58,19 +60,43 @@ def t(s):
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) if s else None
 
 
-def runs_since(since, until, max_runs):
-    out, page = [], 1
-    q = f"created=%3E%3D{since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-    if until:
-        q = f"created={since.strftime('%Y-%m-%dT%H:%M:%SZ')}..{until.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-    while len(out) < max_runs:
-        d = get(f"{API}/actions/workflows/ci.yml/runs?per_page=100&page={page}&{q}")
-        rs = d.get("workflow_runs", [])
+LIST_CAP = 1000   # GitHub lists at most 1000 runs for a filtered query; past it, pages come back empty
+
+
+def runs_in(a, b):
+    """ci.yml runs created in [a, b), all of them: a slice over LIST_CAP is split in two (LR-098: a 7-day window held 2500
+    runs, and one query silently returned the newest 1000, about 2.8 of the 7 days)."""
+    q = f"created={a.strftime('%Y-%m-%dT%H:%M:%SZ')}..{(b - timedelta(seconds=1)).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    first = get(f"{API}/actions/workflows/ci.yml/runs?per_page=100&page=1&{q}")
+    if first.get("total_count", 0) > LIST_CAP and (b - a) > timedelta(minutes=2):
+        mid = a + (b - a) / 2
+        mid = mid.replace(microsecond=0)
+        return runs_in(a, mid) + runs_in(mid, b)
+    if first.get("total_count", 0) > LIST_CAP:
+        raise SystemExit(f"flow-measure: over {LIST_CAP} ci.yml runs between {a} and {b}: cannot be listed whole")
+    out, page, rs = [], 1, first.get("workflow_runs", [])
+    while True:
         out += rs
         if len(rs) < 100:
-            break
+            return out
         page += 1
-    return out[:max_runs]
+        rs = get(f"{API}/actions/workflows/ci.yml/runs?per_page=100&page={page}&{q}").get("workflow_runs", [])
+
+
+def runs_since(since, until, max_runs=0):
+    """Every ci.yml run in the window, newest first, read a day at a time (each day split while over 1000 runs). max_runs
+    > 0 keeps the newest max_runs and says so (runs_cut); 0 = all."""
+    end = until or datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=1)
+    out, b = [], end
+    while b > since:
+        a = max(since, b - timedelta(days=1))
+        out += runs_in(a, b)
+        b = a
+    seen, uniq = set(), []
+    for r in sorted(out, key=lambda r: r["created_at"], reverse=True):
+        if r["id"] not in seen:
+            seen.add(r["id"]); uniq.append(r)
+    return uniq[:max_runs] if max_runs > 0 else uniq
 
 
 def jobs(run, size=100):
@@ -467,7 +493,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", required=True)
     ap.add_argument("--until")
-    ap.add_argument("--max-runs", type=int, default=1000)
+    ap.add_argument("--max-runs", type=int, default=0, help="keep only the newest N runs (0 = all; LR-098)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--lead", action="store_true", help="only the five ENF-782b measures, as 5 lines for lead-watch.sh")
     ap.add_argument("--now", help="the time measures are read at (tests); default now")
@@ -551,6 +577,7 @@ def main():
     thrown = h["pr_cancelled"] + h["pr_failed"] + h["pr_earlier_failed"]
     res = {
         "window": f"{a.since} .. {a.until or 'now'}", "runs_read": len(runs),
+        "runs_cut": bool(a.max_runs) and len(runs) >= a.max_runs,
         "pr_check_hours": round(h["pr_total"], 1), "thrown_hours": round(thrown, 1),
         "thrown_share": round(100 * thrown / h["pr_total"], 1) if h["pr_total"] else None,
         "cancelled": [n["pr_cancelled"], round(h["pr_cancelled"], 1)], "failed": [n["pr_failed"], round(h["pr_failed"], 1)],
@@ -568,7 +595,8 @@ def main():
     if a.json:
         print(json.dumps(res, indent=1)); return
     w = res["approved_to_merged_min"]
-    print(f"Flow measure {res['window']} ({res['runs_read']} ci.yml runs read)")
+    print(f"Flow measure {res['window']} ({res['runs_read']} ci.yml runs read"
+          + (f", cut to the newest {a.max_runs} by --max-runs: not the whole window" if res["runs_cut"] else "") + ")")
     print(f"| Number | Value | P-371 target |\n|---|---|---|")
     print(f"| PR-check hours thrown away | {res['thrown_hours']} of {res['pr_check_hours']} h ({res['thrown_share']}%): cancelled {res['cancelled'][0]} runs {res['cancelled'][1]} h, failed {res['failed'][0]} runs {res['failed'][1]} h, earlier attempts' failed jobs {res['earlier_attempt_failed_jobs'][0]} ({res['earlier_attempt_failed_jobs'][1]} h) | under 20% |")
     print(f"| Same, by run wall time (start to end of each run, parts counted once) | {res['pr_run_wall_thrown_share']}% of {res['pr_run_wall_hours']} h | under 20% |")

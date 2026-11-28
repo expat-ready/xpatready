@@ -231,6 +231,47 @@ class JobsPaging(unittest.TestCase):
         with self.assertRaises(SystemExit):
             fm.jobs({"id": 7})
 
+
+class RunsWindow(unittest.TestCase):
+    """LR-098: GitHub lists at most 1000 runs a query; a 7-day window held 2500 and one query read only the newest 1000."""
+    def setUp(self):
+        self.real, self.calls = fm.get, []
+        base = datetime(2026, 11, 21, tzinfo=timezone.utc)
+        # 2500 runs over 7 days, one every 4 min 2 s, ids by time
+        self.runs = [{"id": n, "created_at": (base + fm.timedelta(seconds=242 * n)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+                     for n in range(2500)]
+
+        def get(url, raw=False):
+            self.calls.append(url)
+            q = url.split("created=")[1]
+            a, b = (datetime.strptime(x, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) for x in q.split(".."))
+            page = int(url.split("&page=")[1].split("&")[0])
+            hit = [r for r in reversed(self.runs) if a <= fm.t(r["created_at"]) <= b]
+            shown = hit[:fm.LIST_CAP]                       # GitHub's cap: past 1000, nothing
+            return {"total_count": len(hit), "workflow_runs": shown[(page - 1) * 100:page * 100]}
+        fm.get = get
+
+    def tearDown(self):
+        fm.get = self.real
+
+    def test_a_7_day_window_reads_every_run_once(self):
+        since, until = U("2026-11-21T00:00"), U("2026-11-28T00:00")
+        got = fm.runs_since(since, until)
+        self.assertEqual(sorted(r["id"] for r in got), list(range(2500)))
+        self.assertEqual(got[0]["id"], 2499)                                          # newest first
+
+    def test_a_slice_over_the_cap_is_split(self):
+        fm.LIST_CAP, cap = 300, fm.LIST_CAP
+        try:
+            got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-22T00:00"))
+        finally:
+            fm.LIST_CAP = cap
+        self.assertEqual(len(got), len([r for r in self.runs if r["created_at"] < "2026-11-22"]))   # 357 in that day
+
+    def test_max_runs_keeps_the_newest(self):
+        got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"), 10)
+        self.assertEqual([r["id"] for r in got], list(range(2499, 2489, -1)))
+
 if __name__ == "__main__":
     r = unittest.main(exit=False, verbosity=1).result
     print(f"{'PASS' if r.wasSuccessful() else 'FAIL'} test_flow_measure.py: {r.testsRun} tests, {len(r.failures) + len(r.errors)} failed")
