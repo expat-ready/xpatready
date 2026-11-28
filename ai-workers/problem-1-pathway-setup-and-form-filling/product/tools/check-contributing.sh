@@ -45,6 +45,8 @@ src = open(sys.argv[1]).read(); pat = re.search(r"reason = re\.search\(r\"(.+?)\
 m = re.search(pat, sys.stdin.read(), re.M); print(1 if m and re.search(r"\w", m.group(1)) else 0)' "$TOOLS/module-cards.py")" "$c"
 c=$(form 'STANDARDS §1: ' | sed 's/<.*>/the gap, two options, this one is smallest/')
 ok "the STANDARDS §1: example, typed out, is read by deps-line-check.sh's own pattern" "$(printf '%s\n' "$filled" "$c" | tr -d '\r' | sed -nE "$(grep -oE "s/\^STANDARDS §1:[^']*" "$TOOLS/deps-line-check.sh" | head -1)" | grep -q . && echo 1)" "$c"
-c=$(form 'Size exception: ')
-ok "the Size exception: example has the form pr-size.sh reads (Size exception: P-<digits> once filled)" "$(sed 's/NNN/779/' <<< "$c" | grep -qE 'Size exception:[[:space:]]*P-[0-9]+' && echo 1)" "$c"
+c=$(form 'Size exception: ' | sed 's/<the reason>/one webhook flow, a split is riskier/')
+ok "the Size exception: example, typed out with a reason and the label, passes pr-size.sh (P-857)" "$(printf '%s\n' "$c" | bash "$TOOLS/pr-size.sh" 900 0 no yes >/dev/null && echo 1)" "$c"
+c=$(grep -oE '`Size exception: P-NNN`' "$TPL" | tr -d '`')
+ok "the old Size exception: example has the form pr-size.sh reads (Size exception: P-<digits> once filled)" "$(sed 's/NNN/779/' <<< "$c" | grep -qE 'Size exception:[[:space:]]*P-[0-9]+' && echo 1)" "$c"
 finish

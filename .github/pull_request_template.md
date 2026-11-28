@@ -5,7 +5,7 @@
      at the start of a line of its own, WITHOUT the backticks (a line in backticks is not read).
        an item's last PR ........ `Completes: R1.77` (several: `Completes: R1.77, R1.78`)
        module code, card kept ... `Card unchanged: <the reason>`
-       over 800 changed lines ... `Size exception: P-NNN` (a size row of DECISIONS.md)
+       over 800 changed lines ... `Size exception: <the reason>` with the label size: exception (P-857), or `Size exception: P-NNN` (a size row)
        a new package ............ `STANDARDS §1: <the gap, the options and why this one>` -->
 
 **What and why.**
