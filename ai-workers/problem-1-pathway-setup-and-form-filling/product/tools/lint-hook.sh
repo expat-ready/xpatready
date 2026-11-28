@@ -12,17 +12,23 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
 S="$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio"
 ESLINT="${LINT_HOOK_ESLINT:-$S/node_modules/.bin/eslint}"
-f=$(python3 -I -c 'import json,sys
-try: print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))
-except Exception: print("")' 2>/dev/null)
+# The edited path and the studio path, both resolved (a relative path joins ROOT; symlinks such as macOS /tmp ->
+# /private/tmp resolve on both sides, so a studio edit is never skipped for its spelling).
+f=$(ROOT="$ROOT" python3 -I -c 'import json,os,sys
+try: p=json.load(sys.stdin).get("tool_input",{}).get("file_path","")
+except Exception: p=""
+print(os.path.realpath(os.path.join(os.environ["ROOT"],p)) if p else "")' 2>/dev/null)
 [ -n "$f" ] || exit 0
-case "$f" in /*) ;; *) f="$ROOT/$f" ;; esac
+S=$(cd "$S" 2>/dev/null && pwd -P) || exit 0
 case "$f" in "$S"/*) ;; *) exit 0 ;; esac
 rel="${f#"$S"/}"
 case "$rel" in *node_modules/*|evidence/*|*/dist/*|dist/*|*.d.ts) exit 0 ;; esac
 case "$rel" in *.ts|*.tsx|*.js|*.mjs|*.cjs) ;; *) exit 0 ;; esac
 [ -f "$f" ] && [ -x "$ESLINT" ] || exit 0
-out=$(cd "$S" && timeout "${LINT_HOOK_TIMEOUT:-15}" "$ESLINT" --config eslint.hook.config.js --pass-on-unpruned-suppressions \
+# GNU timeout (gtimeout from Homebrew coreutils on a Mac); without either, eslint runs unwrapped and the hook's own
+# 20 s limit in .claude/settings.json still bounds it. Never a silent no-op for want of timeout.
+T=$(command -v timeout || command -v gtimeout || true)
+out=$(cd "$S" && ${T:+"$T" "${LINT_HOOK_TIMEOUT:-15}"} "$ESLINT" --config eslint.hook.config.js --pass-on-unpruned-suppressions \
   --format stylish -- "$rel" 2>&1)
 rc=$?
 [ "$rc" = 1 ] || exit 0   # 0 clean; 2 config or crash, 124 timeout: never block the edit on the hook's own trouble

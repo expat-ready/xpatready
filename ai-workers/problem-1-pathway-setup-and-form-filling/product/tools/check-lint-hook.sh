@@ -40,6 +40,13 @@ sleep 5; exit 1
 SH
 chmod +x "$D/slow"
 [ "$(printf '{"tool_input":{"file_path":"%s"}}' "$P" | CLAUDE_PROJECT_DIR="$ROOT" LINT_HOOK_ESLINT="$D/slow" LINT_HOOK_TIMEOUT=1 bash ./lint-hook.sh >/dev/null 2>&1; echo $?)" = 0 ]; ok "eslint over the timeout: exit 0" $?
+# A Mac without GNU timeout (no timeout, no gtimeout on PATH): the hook still lints, never a silent no-op.
+mkdir -p "$D/bin"; ln -s "$(command -v python3)" "$D/bin/python3"; ln -s "$(command -v bash)" "$D/bin/bash"
+[ "$(printf '{"tool_input":{"file_path":"%s"}}' "$P" | PATH="$D/bin" CLAUDE_PROJECT_DIR="$ROOT" LINT_HOOK_ESLINT="$D/eslint" FAKE_LOG="$D/log" "$D/bin/bash" ./lint-hook.sh 2> "$D/err" >/dev/null; echo $?)" = 2 ] && grep -q no-unused-vars "$D/err"; ok "no timeout command on PATH: a finding still gives exit 2" $?
+# The project dir reached through a symlink (macOS /tmp -> /private/tmp): studio edits are still linted.
+ln -s "$ROOT" "$D/rootlink"; L="$D/rootlink/${S#"$ROOT"/}/web/src/$(basename "$P")"
+[ "$(printf '{"tool_input":{"file_path":"%s"}}' "$P" | CLAUDE_PROJECT_DIR="$D/rootlink" LINT_HOOK_ESLINT="$D/eslint" FAKE_LOG="$D/log" bash ./lint-hook.sh 2> "$D/err" >/dev/null; echo $?)" = 2 ] \
+  && [ "$(printf '{"tool_input":{"file_path":"%s"}}' "$L" | CLAUDE_PROJECT_DIR="$ROOT" LINT_HOOK_ESLINT="$D/eslint" FAKE_LOG="$D/log" bash ./lint-hook.sh 2>/dev/null >/dev/null; echo $?)" = 2 ]; ok "project dir or file path through a symlink: still linted (exit 2)" $?
 # The real eslint, when the studio's node_modules are there.
 if [ -x "$S/node_modules/.bin/eslint" ]; then
   printf 'export function f() {\n  const unused = 1;\n  return 2;\n}\n' > "$P"
