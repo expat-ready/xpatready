@@ -72,3 +72,29 @@ The code change is correct, a root-cause fix for the test, and safe. The open Im
 the code comment and the PR. It is a wording fix; round 2 only needs to check that comment.
 
 Reviewer: Changes 9325cfff35f2ecf54690eb345f73241cc344dffb
+
+---
+
+# Round 2 (diff only): `git diff 9325cfff35f2ecf54690eb345f73241cc344dffb..fd97b54eb6b2ef831e7a7fbb947e05d4a69fd161`
+
+Reviewed commit: `fd97b54eb6b2ef831e7a7fbb947e05d4a69fd161` (the PR head per the REST API), plus the updated PR body.
+The diff changes only the comment at `tests/check_pf5t_terms_browser.ts:194-197`. The code line at 198
+(`p.goto(`${BASE}/account`)`) is unchanged.
+
+**0 Important, 0 Nit, 0 Pre-existing** (no new findings)
+
+* **Finding 1 (Important): fixed.**
+  * The comment now names pn6 pending from before break M1, and any staff call from `p` after it ("the staff list read
+    again after Send invites, still in flight on a slow runner, or later the bell's poll"). It also says the next-click
+    rule is proved above. That matches the code and my round-1 reproduction.
+  * The PR body's root cause now names the staff-list read (`invite-panel.tsx:63`) and the line 179 DB-only wait. It
+    records the bell theory as corrected, with the right reason.
+  * The commit it names is right. `git log -S'const pn6 = publish'` on main shows that `435823a34` brought in pn6 and
+    break M1 there. The text matches `374dfc799`'s added lines (pn6, the second Send invites, pn4), which landed inside
+    `435823a34` as a squash. (This clone is shallow, so I could not walk the ancestry itself.)
+* **Finding 2 (Nit): fixed.** "Risk" now lists lines 147, 165 and 175.
+* **Finding 3 (Pre-existing):** recorded in the PR body as left alone, for the reason I agree with.
+
+Root cause or symptom: root-cause fix of the test (as in round 1). No rerun was needed for a comment-only diff.
+
+Reviewer: Approve fd97b54eb6b2ef831e7a7fbb947e05d4a69fd161
