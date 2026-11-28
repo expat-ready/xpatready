@@ -38,7 +38,13 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
 NOT_ASK = re.compile(r"(\b(would you like me to|do you want me to|want me to|shall i|should i)|\bi can(?!not\b)(?=\s))((\s+|,\s+then\s+)(?!(please|pls|could|so|but|otherwise|you|your|or|while|if|when)\b)[\w#][\w#-]*)*"  # an offer: to the end of its clause, whose verbs the Lead does
   r"|(\b(should|must|need|do|does)( not|n.t)\b(?!\s+(forget|hesitate)\b)|\bno need\b|\bnever\b(?!\s+(forget|hesitate)\b)|\bnothing (left )?for you( to do)?\b)(\s+(?!(please|pls|could|so|but|otherwise)\b)[\w#][\w#-]*){0,4}", I)  # a "not": with its own verbs, never past please or could; "do not forget to" stays an ask
 YOU = re.compile(r"\b(it would help|it helps|i would like it) if you \w+ed\b|\byou can (now |also |then )?(close|archive|merge|reopen|label|dispatch|trigger|press|click|run|add|open|convert|mark|edit)\b|\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
-  r"yourself|needs you|your (click|turn|side))", I)
+  r"yourself|needs you)", I)
+# LR-170 (founder A455): "your click", "your turn", "your side" address the founder only in a request, never in a report of
+# what happened ("The lane starts sat as cards waiting for your click", "Each became a card waiting for your click").
+# So they count only in a clause with no past-tense verb (review of LR-170: per clause, so "#12 was rebased and is waiting
+# for your click" still asks); "#12 is waiting for your click on Merge" still asks.
+YOURS = re.compile(r"\byour (click|turn|side)\b", I)
+PAST = re.compile(r"\b(was|were|sat|became|had|stood|stayed|waited|went|got|ended|turned|remained|lay|seemed|looked)\b", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
   r"(then |and |just |now |otherwise,? |if not,? |first,? |kindly |go ahead and )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit|close|archive|merge|dispatch|trigger|label"
   r"|run (the )?workflow(?! (was|is|ran|has)\b))\b", I)   # E-c verbs as a plain command too (review of #3665)
@@ -54,7 +60,8 @@ def asks(chunk, need_you):
         # "No need to wait: please merge #12" still asks and "Would you like me to merge it?" does not.
         k = NOT_ASK.sub(" OFFERED ", s) if need_you else s
         imp = any(IMP.search(p) for p in re.split(r"OFFERED[\s,:;-]*|,\s+", k))   # after a cut span, or after a leading clause (Lead 7)
-        if k and ASK.search(k) and (not need_you or YOU.search(k) or imp) and not ONLY.search(s):
+        you = YOU.search(k) or any(YOURS.search(c) and not PAST.search(c) for c in re.split(r"[,;:]\s+|\s+(?:and|so|but|then|while)\s+", k))
+        if k and ASK.search(k) and (not need_you or you or imp) and not ONLY.search(s):
             out.append(re.sub(r"\s+", " ", s)[:140])
     return out
 if mode == "text":
