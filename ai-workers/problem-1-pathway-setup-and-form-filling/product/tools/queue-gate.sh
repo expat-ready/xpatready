@@ -97,7 +97,7 @@ suites() {  # a commit → suites_state (success | missing | pending | <the conc
   # main, on this very commit, the check run in that run's own check suite, and the run itself ended success (breaker
   # M1: a check run made by another workflow's token, pointing at a real run, or a run of a PR into a side branch whose
   # pr-suites.yml is that branch's, never counts; a job of that name in another workflow needs a .github/ change anyway).
-  local s=$1 c rid r st co url cs ok; suites_state=missing; suites_why="no pr-suites run of pr-suites.yml on it yet"
+  local s=$1 c rid r st co url cs ok; suites_state=missing; suites_why="no pr-suites run of pr-suites.yml on it yet"; suites_inflight=""
   c=$(api "$API/repos/$REPO/commits/$s/check-runs?check_name=pr-suites&filter=latest&per_page=100") || { suites_state=unread; suites_why="its check runs cannot be read"; return; }
   while IFS=$'\t' read -r st co url cs; do
     rid=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$url"); [[ "$rid" =~ ^[0-9]+$ && "$cs" =~ ^[0-9]+$ ]] || continue
@@ -121,10 +121,13 @@ prpending() {  # LR-169 (founder A455, #4019): a head pushed while a draft has o
   # kept; the run's end judges it, queue-gate.sh event). A run of another PR, head, base or workflow is not this one.
   local s=$1 rs n
   rs=$(api "$API/repos/$REPO/actions/workflows/pr-suites.yml/runs?event=pull_request&head_sha=$s&per_page=100") || { suites_state=unread; suites_why="its pr-suites runs cannot be read"; return; }
-  n=$(jq -r --arg s "$s" --argjson n "$PR" '[.workflow_runs[]? | select(((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml" and .event == "pull_request"
-    and .head_sha == $s and .status != "completed" and any(.pull_requests[]?; .number == $n and .base.ref == "main"))] | sort_by(.created_at // "") | last | .id // empty' <<< "$rs" 2>/dev/null)
+  # Only a run started under QG_INFLIGHT_MIN (120) min ago: pr-suites' jobs time out within ~90 min, so an older one that
+  # never ended (waiting, stuck) holds no label (breaker of LR-169, D).
+  n=$(jq -r --arg s "$s" --argjson n "$PR" --argjson since "$(( ${QG_NOW:-$(date +%s)} - ${QG_INFLIGHT_MIN:-120} * 60 ))" '[.workflow_runs[]? | select(((.path // "") | split("@")[0]) == ".github/workflows/pr-suites.yml" and .event == "pull_request"
+    and .head_sha == $s and .status != "completed" and any(.pull_requests[]?; .number == $n and .base.ref == "main")
+    and (((.created_at // "") | sub("\\.[0-9]+"; "") | try fromdateiso8601 catch 0) >= $since))] | sort_by(.created_at // "") | last | .id // empty' <<< "$rs" 2>/dev/null)
   [[ "$n" =~ ^[0-9]+$ ]] || return 0
-  suites_state=pending; suites_why="its pr-suites run $n on ${s:0:9} (the PR marked ready after a draft push) has not ended (LR-169)"; }
+  suites_state=pending; suites_inflight=1; suites_why="its pr-suites run $n on ${s:0:9} (the PR marked ready after a draft push) has not ended (LR-169)"; }
 dispatched() {  # OS-87 (Lead 2, 26 Nov): a head with no pr-suites run of its own, or a skipped one (pushed while a draft),
   # counts the run suitesstart below started: pr-suites.yml by workflow_dispatch on main (so main's copy of the file, never
   # a branch's), named "pr-suites PR #<n> <head>" from its inputs. The newest such run decides: unfinished → pending; its
@@ -578,10 +581,14 @@ case "${1:-}" in
     fullproof $HEADS || { echo "$why"; exit 1; }
     # P-822: a label just put on (a person's, after the Lead's read) needs pr-suites green on the head itself, as the
     # gate's own does (breaker m1: never on an older commit of the walk back). HEADS starts with the head.
-    # LR-169: 3 when the head's pr-suites is still running (pending): label-guard.sh keeps the label, and the run's end judges it.
-    if [ "${RELABEL:-}" = 1 ]; then suitesok "$(awk '{print $1}' <<< "$HEADS")" || { echo "$why"; [ "$suites_state" = unread ] && exit 2; [ "$suites_state" = pending ] && exit 3; exit 1; }; fi
+    # LR-169: 3 only while the PR's own pull_request pr-suites run on the head is on its way (prpending: suites_inflight), the
+    # one pending whose end suitesend() judges; label-guard.sh keeps the label. Every other pending still refuses (review r1).
+    # The batch rule below is still asked before a 3 (breaker of LR-169, C).
+    hold=""
+    if [ "${RELABEL:-}" = 1 ]; then suitesok "$(awk '{print $1}' <<< "$HEADS")" || { [ "$suites_state" = unread ] && { echo "$why"; exit 2; }; [ "${suites_inflight:-}" = 1 ] || { echo "$why"; exit 1; }; hold=$why; }; fi
     # RELABEL (the label just put on) or a PR Mergify dequeued (B206 part 2 review M1): the batch rule too.
-    if [ "${RELABEL:-}" = 1 ] || has dequeued; then covered || { echo "$why"; exit 1; }; fi; exit 0;;
+    if [ "${RELABEL:-}" = 1 ] || has dequeued; then covered || { echo "$why"; exit 1; }; fi
+    [ -n "$hold" ] && { echo "$hold"; exit 3; }; exit 0;;
   # 3, not 1, when the full runs or (inside the full-run rule, P-743) the merge batches could not be read: label-sweep.sh
   # then keeps the label and tries again. covered()'s own unreadable batches (records PRs) stay 1.
   # With LABELED_AT (label-sweep.sh: a label a workflow's token put on, which starts no label-guard run), the batch rule

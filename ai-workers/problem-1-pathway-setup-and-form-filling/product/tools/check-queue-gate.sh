@@ -604,7 +604,7 @@ oldrun $HEAD1 success skipped "" failure; SG=block HEADS=" $HEAD1" RELABEL=1 run
 ok "OS-82: the run has a job pr-suites (red) but no check run read: refused, that job decides" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 oldrun $HEAD1 failure skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "OS-82: the run itself ended red: refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
-SR_STATUS=in_progress oldrun $HEAD1 "" skipped; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+SR_STATUS=in_progress oldrun $HEAD1 "" skipped; QG_NOW=1795626000 SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "OS-82: the run has not ended: pending, exit 3 (LR-169: label-guard keeps the label; the run's end judges it)" "$([ $r = 3 ] && grep -q 'has not ended (LR-169)' <<< "$out" && echo 1)" "exit $r: $out"
 for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "SR_BASE=side:a run of a PR into a side branch"; do
   ( export "${c%%:*}"; oldrun $HEAD1 success skipped ); SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
@@ -774,6 +774,7 @@ lr169() {  # lr169 <run status> [run conclusion] → the draft's skipped check r
     event: "pull_request", head_sha: $h, status: $st, conclusion: (if $co == "" then null else $co end), created_at: "2026-11-28T06:11:46Z",
     pull_requests: ($n | map({number: ., base: {ref: $b}}))}]}' > "$T/fx/suiteruns.json"
   }
+export QG_NOW=1795846363   # the label guard's run on #4019; the ready run started 06:11:46Z
 prj 7 $HEAD1 false "review: approved"; cirun $HEAD1 completed success 2026-11-28T06:11:46Z; lr169 in_progress
 SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "LR-169 (#4019): a label put on while the ready run is going: pending, exit 3 (kept), not skipped" "$([ $r = 3 ] && grep -q 'run 99 on 111111111 (the PR marked ready after a draft push) has not ended' <<< "$out" && echo 1)" "exit $r: $out"
@@ -785,6 +786,24 @@ for c in "SR_HEAD=$OLD:a run on another head" "SR_PRS=[8]:a run of another PR" "
   eval "export ${c%%:*}"; lr169 in_progress; unset SR_HEAD SR_PRS SR_BASE SR_PATH
   SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
   ok "LR-169: ${c#*:} in progress does not count: refused (exit 1)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"; done
+# breaker of LR-169 (D): a run that never ended, started over 2 h ago, holds no label
+lr169 in_progress; QG_NOW=1795853520 SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169 (breaker D): a ready run still \"in progress\" 2 h after it started counts for nothing: refused, exit 1" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+# breaker of LR-169 (C): while the run is on its way the failed-batch rule is still asked before keeping the label
+lr169 in_progress; held 7; rm -f "$T/fx/comments-extra-7.json"; nofull; full 50 7 $HEAD1 completed success; jobs 50 "fast:success"
+SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169 (breaker C): a failed batch held it and no line covers it: refused, exit 1, even with the ready run on its way" "$([ $r = 1 ] && grep -q 'Batch failures covered' <<< "$out" && echo 1)" "exit $r: $out"
+unheld; nofull; rm -f "$T/fx/jobs-50.json"
+# review r1 of LR-169: only the PR's own pull_request run on its way keeps the label; other pendings still refuse (exit 1)
+lr169 completed skipped
+jq -n --arg t "pr-suites PR #7 $HEAD1" '{workflow_runs: [{id: 61, display_title: $t, path: ".github/workflows/pr-suites.yml", event: "workflow_dispatch", head_branch: "main", status: "in_progress", conclusion: null, created_at: "2026-11-28T06:13:00Z"}]}' > "$T/fx/sdisp.json"
+SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169 r1 (a): the queue gate's own dispatched run in progress: pending but refused, exit 1 (its end is not judged by suitesend)" "$([ $r = 1 ] && grep -q 'started by the queue gate) has not ended' <<< "$out" && echo 1)" "exit $r: $out"
+rm -f "$T/fx/sdisp.json"
+suites $HEAD1 completed success; SR_STATUS=in_progress suites $HEAD1 completed success
+jq '.status = "completed" | .conclusion = "failure"' "$T/fx/run-88.json" > "$T/fx/r.json" && mv "$T/fx/r.json" "$T/fx/run-88.json"
+SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
+ok "LR-169 r1 (b): job pr-suites green but its run not ended green: pending but refused, exit 1" "$([ $r = 1 ] && grep -q 'has not ended green' <<< "$out" && echo 1)" "exit $r: $out"
 suites $HEAD1 completed success; SG=block HEADS=" $HEAD1" RELABEL=1 run proof 7
 ok "LR-169: once the ready run's job pr-suites is green on the head: exit 0" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # the run's end: a kept label comes off when pr-suites ended red on the PR's head; stays when green
@@ -799,5 +818,5 @@ printf '{"workflow_run": {"path": ".github/workflows/ci.yml", "event": "pull_req
 ok "LR-169: ... another workflow's end takes nothing off here" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
 prj 7 $HEAD1; printf '{"workflow_run": {"path": ".github/workflows/pr-suites.yml", "event": "pull_request", "head_sha": "%s", "conclusion": "failure", "pull_requests": [{"number": 7}]}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
 ok "LR-169: ... an unlabelled PR: nothing to take off" "$(! grep -q '^UNLABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
-rm -f "$T/fx/suiteruns.json"
+rm -f "$T/fx/suiteruns.json"; unset QG_NOW
 finish
