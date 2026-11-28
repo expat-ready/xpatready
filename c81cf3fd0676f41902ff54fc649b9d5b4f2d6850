@@ -1,0 +1,20 @@
+all_scopes: false
+checking_base_sha: d05473e42134963f85396a59c17610f60b16f8ec
+previous_check_retries: []
+previous_failed_batches: []
+pull_requests:
+  - number: 4163
+    scopes:
+      - pipeline
+  - number: 4149
+    scopes:
+      - pipeline
+  - number: 4087
+    scopes:
+      - pipeline
+  - number: 4084
+    scopes:
+      - pipeline
+queue_base_sha: d05473e42134963f85396a59c17610f60b16f8ec
+scopes:
+  - pipeline
