@@ -1,4 +1,4 @@
-# LR-180 (qa #4083): the Python form helpers step of cloud-setup.sh (python-helpers.sh) and its test. Each row switches one
+# LR-180 (qa #4083; named OS-0lr180.sh as OS-0lr090.sh is: an LR row, no OS row): the Python form helpers step of cloud-setup.sh (python-helpers.sh) and its test. Each row switches one
 # behaviour off; check-python-helpers.sh must fail. (The lock rows L1, L2 are not read in a guards copy: no prototype/env.)
 TESTS="$TESTS check-python-helpers.sh"
 MUT="$MUT"'
