@@ -52,11 +52,15 @@ export function readList(text: string): { allowed: Set<string>; errors: string[]
   return { allowed, errors };
 }
 
+/** Whether a wrong-role answer came from the READ_ONLY bearer on a plane where it holds reads: the platform plane, or
+ *  the simulated-plane retry of a keyed route. Never /api/system: a firm's token there is the wrong plane (review R2-1). */
+export const readsHeld = (plane: Plane, retried: boolean) => plane === "platform" || (plane === "simulated" && retried);
+
 /** One answer judged: null when fine, else the reason it is reported. */
 export function judge(mode: Mode, verb: string, path: string, status: number, allowed: Set<string>, bearer = false): string | null {
   if (status < 200 || status > 299) return null;
   if (allowed.has(key(mode, verb, path))) return null;
-  if (mode === "wrong-role" && (planeOf(path) === "platform" || bearer) && (verb === "GET" || verb === "HEAD")) return null;
+  if (mode === "wrong-role" && bearer && (verb === "GET" || verb === "HEAD")) return null;
   return `${mode} ${verb} ${path} answered ${status}`;
 }
 
@@ -78,13 +82,14 @@ function selfTest(): number {
     ["201 for the client on a studio write is reported", judge("wrong-role", "POST", "/api/drafts", 201, allowed) !== null],
     ["a listed open read is fine", judge("signed-out", "GET", "/api/whoami", 200, allowed) === null],
     ["the list is per mode", judge("wrong-role", "GET", "/api/whoami", 200, allowed) !== null],
-    ["READ_ONLY reading a platform page is fine", judge("wrong-role", "GET", "/api/front-office/leads", 200, allowed) === null],
-    ["READ_ONLY writing on the platform plane is reported", judge("wrong-role", "POST", "/api/front-office/leads", 201, allowed) !== null],
-    ["a firm token reading /api/system is reported", judge("wrong-role", "GET", "/api/system/firms", 200, allowed) !== null],
+    ["READ_ONLY reading a platform page is fine", judge("wrong-role", "GET", "/api/front-office/leads", 200, allowed, readsHeld("platform", false)) === null],
+    ["READ_ONLY writing on the platform plane is reported", judge("wrong-role", "POST", "/api/front-office/leads", 201, allowed, readsHeld("platform", false)) !== null],
+    ["a firm token reading /api/system is reported", judge("wrong-role", "GET", "/api/system/firms", 200, allowed, readsHeld("system", false)) !== null],
+    ["a client reading a studio page (no retry) is reported", judge("wrong-role", "GET", "/api/drafts", 200, allowed, readsHeld("simulated", false)) !== null],
     ["signed out, a platform read is reported", judge("signed-out", "GET", "/api/platform/me", 200, allowed) !== null],
     ["a listed line that stopped answering 2xx is stale", stale(allowed, new Set()).includes("signed-out GET /api/whoami")],
-    ["READ_ONLY reading a keyed runtime route (bearer retry) is fine", judge("wrong-role", "GET", "/api/runtime/clients", 200, allowed, true) === null],
-    ["READ_ONLY writing a keyed runtime route (bearer retry) is reported", judge("wrong-role", "POST", "/api/runtime/cases", 201, allowed, true) !== null],
+    ["READ_ONLY reading a keyed runtime route (bearer retry) is fine", judge("wrong-role", "GET", "/api/runtime/clients", 200, allowed, readsHeld("simulated", true)) === null],
+    ["READ_ONLY writing a keyed runtime route (bearer retry) is reported", judge("wrong-role", "POST", "/api/runtime/cases", 201, allowed, readsHeld("simulated", true)) !== null],
     ["the session's own sign-out runs after every other route", order("/api/platform/session/sign-out") > order("/api/platform/staff/:id/sign-out-everywhere") && order("/api/platform/staff/:id/sign-out-everywhere") > order("/api/cases")],
     ["parameters are filled", fill("/api/cases/:id/files/:fileId?") === `/api/cases/${ID}/files/${ID}`],
   ];
@@ -142,10 +147,11 @@ async function walk(port: number, db: string): Promise<number> {
       ["wrong-role", plane === "public" ? null : plane === "simulated" ? { "x-actor": "user-P" } : token ? { authorization: `Bearer ${token}` } : null]];
     for (const [mode, headers] of tries) {
       if (!headers) continue;
-      let status = await call(port, r, headers), bearer = plane !== "simulated";
+      let status = await call(port, r, headers), retried = false;
       // I-1: a keyed /api/runtime route answers the client 401 (it wants a platform bearer): ask again with the bearer.
-      if (mode === "wrong-role" && plane === "simulated" && status === 401 && token) { status = await call(port, r, { authorization: `Bearer ${token}` }); bearer = true; }
-      if (process.env.ROUTE_WALK_VERBOSE) console.log(`${mode}${bearer && mode === "wrong-role" ? " (bearer)" : ""} ${status} ${r.verb} ${r.path}`);   // every answer, for a reviewer
+      if (mode === "wrong-role" && plane === "simulated" && status === 401 && token) { status = await call(port, r, { authorization: `Bearer ${token}` }); retried = true; }
+      const bearer = mode === "wrong-role" && readsHeld(plane, retried);
+      if (process.env.ROUTE_WALK_VERBOSE) console.log(`${mode}${mode === "wrong-role" && (plane === "platform" || plane === "system" || retried) ? " (bearer)" : ""} ${status} ${r.verb} ${r.path}`);   // every answer, for a reviewer
       const write = r.verb !== "GET" && r.verb !== "HEAD";
       if (mode === "wrong-role" && write && ![401, 403].includes(status) && (status < 200 || status > 299)) unreached.push(`${status} ${r.verb} ${r.path}`);
       if (mode === "wrong-role" && write && plane === "platform" && ![401, 403].includes(status)) pastGuard.push(`${status} ${r.verb} ${r.path}`);
@@ -159,8 +165,8 @@ async function walk(port: number, db: string): Promise<number> {
   for (const s of stale(allowed, seen2xx)) reported.push(`listed but no longer 2xx (take it off route-walk-reviewed.txt): ${s}`);
   for (const line of reported) console.log(`::warning::${line}`);
   console.log(`${all.length} routes walked; answers: ${[...counts].sort().map(([k, n]) => `${k} ×${n}`).join(", ")}`);
-  if (process.env.ROUTE_WALK_VERBOSE) for (const u of pastGuard) console.log(`past the guard: ${u}`);
-  console.log(`not proven (I-2): ${unreached.length} wrong-role writes stopped before a permission check (400/404/422/5xx with "{}"); ${pastGuard.length} platform-plane writes got the READ_ONLY bearer past the guard (not 401/403; ROUTE_WALK_VERBOSE=1 lists them)`);
+  if (process.env.ROUTE_WALK_VERBOSE) { for (const u of unreached) console.log(`unreached: ${u}`); for (const u of pastGuard) console.log(`past the guard: ${u}`); }
+  console.log(`not proven (I-2): ${unreached.length} wrong-role writes stopped before a permission check (400/404/422/5xx with "{}"); ${pastGuard.length} platform-plane writes got the READ_ONLY bearer past the guard (not 401/403); ROUTE_WALK_VERBOSE=1 lists both`);
   console.log(reported.length ? `${reported.length} unexpected` : "0 unexpected 2xx");
   return reported.length || errors.length ? 1 : 0;
 }
