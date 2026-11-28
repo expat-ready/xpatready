@@ -48,9 +48,9 @@ def main(argv):
     try:
         event = json.load(sys.stdin)
     except ValueError:
-        return 0
+        return 0   # not JSON: nothing to judge
     if not isinstance(event, dict) or not isinstance(event.get("tool_input") or {}, dict):
-        return 0   # not a hook event: nothing to judge   # not a hook event: nothing to judge (the other hooks still run)
+        return 0   # not a hook event: nothing to judge (the other hooks still run)
     cmd = (event.get("tool_input") or {}).get("command") or ""
     out = verdict(cmd) if isinstance(cmd, str) else None
     if out:

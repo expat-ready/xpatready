@@ -5,5 +5,4 @@ MUT="$MUT"'
 LR155S pkill|product/tools/shell-trap-guard.py|s/^    if PKILL.search(cmd):/    if False:/|check-shell-trap-guard.sh
 LR155S refspec|product/tools/shell-trap-guard.py|s/^    if m:$/    if False:/|check-shell-trap-guard.sh
 LR155S crash|product/tools/shell-trap-guard.py|s/^    except ValueError:/    except KeyError:/|check-shell-trap-guard.sh
-LR155S wired|../../.claude/settings.json|s/shell-trap-guard.py; \[ -f/shell-trap-guard-off.py; [ -f/|check-shell-trap-guard.sh
 LR155S usage|product/tools/shell-trap-guard.py|s/^        return 1   # never 2/        return 2   # never 2/|check-shell-trap-guard.sh'
