@@ -16,7 +16,7 @@ Usage: factory-watch.py [idle|register|cap|pause-list ...] (default: idle regist
        [--pulls F] [--comments F] [--pushes F] [--merged F] [--register F] [--now EPOCH]   planted data (tests)
 Test: check-factory-watch.sh.
 """
-import argparse, json, os, re, subprocess, sys, time
+import argparse, json, os, re, shlex, subprocess, sys, time
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -49,13 +49,14 @@ def load(path, what, fetch):
 
 
 def gh(*a):
-    r = subprocess.run(["bash", os.path.join(HERE, "gh.sh"), "api", *a], capture_output=True, text=True, timeout=120)
+    cmd = shlex.split(os.environ["FACTORY_GH"]) if os.environ.get("FACTORY_GH") else ["bash", os.path.join(HERE, "gh.sh")]  # tests
+    r = subprocess.run(cmd + ["api", *a], capture_output=True, text=True, timeout=120)
     if r.returncode:
         raise RuntimeError((r.stderr or "gh failed").strip())
     return r.stdout
 
 
-def gh_list(url):  # --paginate with --slurp-free parsing: one JSON array per page
+def gh_list(url):  # lists only: gh.sh's curl fallback follows rel="next" for a list, not for a search's {items}
     out, dec, i = [], json.JSONDecoder(), 0
     s = gh("--paginate", url)
     while i < len(s):
@@ -64,6 +65,21 @@ def gh_list(url):  # --paginate with --slurp-free parsing: one JSON array per pa
         v, i = dec.raw_decode(s, i)
         out += v if isinstance(v, list) else v.get("items", [])
     return out
+
+
+def search_all(url):  # a search answer is {items}: paged by hand, 100 a page, until a short page (GitHub stops at 1000)
+    out = []
+    for page in range(1, 11):
+        items = json.loads(gh(f"{url}&per_page=100&page={page}")).get("items", [])
+        out += items
+        if len(items) < 100:
+            break
+    return out
+
+
+def ready(p, cs):
+    head = (p.get("head") or {}).get("sha", "")
+    return bool(head) and any("Ready for Lead read" in (c.get("body") or "") and head in (c.get("body") or "") for c in cs)
 
 
 def labels(p):
@@ -105,14 +121,20 @@ def idle(a, now, pulls):
     for p in pulls:
         if dependabot(p) or labels(p) or not is_lab(p):
             continue
-        n, head, who = str(p["number"]), (p.get("head") or {}).get("sha", ""), (p.get("user") or {}).get("login")
+        n, who = str(p["number"]), (p.get("user") or {}).get("login")
         cs = by.get(n, [])
-        if head and any("Ready for Lead read" in (c.get("body") or "") and head in (c.get("body") or "") for c in cs):
+        if ready(p, cs):
             continue
         lane = [ts(c.get("created_at")) for c in cs if (c.get("user") or {}).get("login") == who and not NOT_LANE.match(c.get("body") or "")]
         last = max([push.get(branch(p)) or ts(p.get("updated_at"))] + lane)  # no ref read: the PR's own update time
         m = (now - last) // 60
         if m > lim:
+            if not a.comments:  # live: the window holds 48 h only; a "Ready for Lead read" older than that still counts
+                try:
+                    if ready(p, gh_list(f"repos/{{owner}}/{{repo}}/issues/{n}/comments?per_page=100")):
+                        continue
+                except Exception:
+                    pass  # unread: the ACT stands (a wrong wake costs less than a lane left idle)
             s = SESSION.search(p.get("body") or "")
             rows.append((m, f"ACT   #{n} lane idle {m} min: wake it (type its next step in claude.ai){' [' + s.group(1) + ']' if s else ''}"))
     for _, l in sorted(rows, reverse=True):
@@ -122,8 +144,8 @@ def idle(a, now, pulls):
 
 def register(a, now):
     since = now - 48 * 3600
-    merged = load(a.merged, "PRs merged in 48 h", lambda: gh_list(
-        f"search/issues?q=repo:{{owner}}/{{repo}}+is:pr+is:merged+merged:%3E={iso(since)}&per_page=100"))
+    merged = load(a.merged, "PRs merged in 48 h", lambda: search_all(
+        f"search/issues?q=repo:{{owner}}/{{repo}}+is:pr+is:merged+merged:%3E={iso(since)}"))
     if a.register:
         text = open(a.register).read()
     else:

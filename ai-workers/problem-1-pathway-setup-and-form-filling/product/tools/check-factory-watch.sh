@@ -56,6 +56,29 @@ ok "cap: 9 ready PRs (drafts, Dependabot and paused out) over a cap of 5 is one 
 o=$(python3 -I "$FW" cap $A); ok "cap: 9 under the cap of 25: no ACT" "$(! grep -q '^ACT' <<<"$o" && grep -qx 'open PRs: 9 ready of cap 25' <<<"$o" && echo 1)" "$o"
 o=$(python3 -I "$FW" cap --pulls "$T/none.json"); ok "an unreadable answer is an ACT, never a silent 0" "$(grep -q '^ACT   factory watch cap: open PRs unreadable' <<<"$o" && echo 1)" "$o"
 o=$(python3 -I "$FW" register --merged "$T/merged.json" --register "$T/pulls.json" --now $NOW); ok "a register with no rows is an ACT" "$(grep -q '^ACT   factory watch register: lab register has no rows' <<<"$o" && echo 1)" "$o"
+# The live path (round 1 of #4003): a stand-in gh answers as GitHub does. A search answer is {items}, paged by hand; a
+# "Ready for Lead read" older than the 48 h comment window is found by reading that PR's own comments.
+cat > "$T/fakegh.py" <<'PY'
+import json, re, sys
+u = next(a for a in sys.argv[1:] if "/" in a); C = "c" * 40
+ready = lambda n, sha: [{"body": f"Ready for Lead read {sha}", "created_at": "2026-01-01T00:00:00Z", "user": {"login": "lane"}}]
+if "pulls?state=open" in u:
+    out = [{"number": n, "title": f"lab: live {n}", "draft": False, "labels": [], "body": "", "head": {"ref": f"claude/b{n}", "sha": C},
+            "user": {"login": "lane"}, "updated_at": "2026-01-01T00:00:00Z"} for n in (31, 32)]
+elif "issues/comments?since=" in u: out = []
+elif "issues/31/comments" in u: out = ready(31, C)
+elif "issues/32/comments" in u: out = ready(32, "d" * 40)
+elif u.startswith("search/issues") and re.search(r"[&?]page=1(&|$)", u) and "per_page=100" in u:
+    out = {"items": [{"number": 100 + i, "title": "x", "body": ""} for i in range(100)]}
+elif u.startswith("search/issues") and re.search(r"[&?]page=2(&|$)", u): out = {"items": [{"number": 40, "title": "lab: LR-012", "body": ""}]}
+else: sys.exit(f"unexpected {u}")
+print(json.dumps(out))
+PY
+printf '%s\tclaude/b31\n%s\tclaude/b32\n' $((NOW - 3010 * 60)) $((NOW - 3010 * 60)) > "$T/live-pushes.tsv"
+o=$(FACTORY_GH="python3 -I $T/fakegh.py" python3 -I "$FW" idle register cap --pushes "$T/live-pushes.tsv" --register "$T/reg.md" --now $NOW)
+ok "live: a \"Ready for Lead read\" on the head older than 48 h (only in the PR's own comments) is not an idle lane" "$(! grep -q '#31 ' <<<"$o" && echo 1)" "$o"
+ok "live: one on an old head is still an idle lane (3010 min)" "$(grep -q '^ACT   #32 lane idle 3010 min' <<<"$o" && echo 1)" "$o"
+ok "live: a merge on the search's second page is read (LR-012 in #40)" "$(grep -qx 'ACT   register: LR-012 merged in #40, still Intended' <<<"$o" && echo 1)" "$o"
 # lead-watch.sh's own step 10e, run on the planted data: the three lines, counted as ACTs.
 step=$(sed -n '/^# 10e\. /,/^fresh "factory-watch.py/p' "$TOOLS/lead-watch.sh")
 o=$(act=0; seen() { :; }; fresh() { :; }; ACT() { act=$((act+1)); echo "ACT   $1"; }; export FACTORY_ARGS="$A" OPEN_PR_CAP=5; eval "$step"; echo "act=$act")

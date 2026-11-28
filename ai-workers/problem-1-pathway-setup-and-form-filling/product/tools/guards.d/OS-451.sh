@@ -4,7 +4,10 @@
 TESTS="$TESTS check-factory-watch.sh"
 MUT="$MUT"'
 OS451 idle|product/tools/factory-watch.py|s/        if m > lim:/        if False:/|check-factory-watch.sh
-OS451 ready on head|product/tools/factory-watch.py|s/        if head and any(/        if False and any(/|check-factory-watch.sh
+OS451 ready on head|product/tools/factory-watch.py|s/        if ready(p, cs):/        if False:/|check-factory-watch.sh
+OS451 ready over 48 h|product/tools/factory-watch.py|s/            if not a.comments:  # live/            if False:  # live/|check-factory-watch.sh
+OS451 search pages|product/tools/factory-watch.py|s/        if len(items) < 100:/        if True:/|check-factory-watch.sh
+OS451 fallback labels list|product/tools/gh-fallback.py|s/                if k.endswith("\[\]") and/                if False and/|check-gh-fallback.sh
 OS451 lane comment|product/tools/factory-watch.py|s/ and not NOT_LANE.match(c.get("body") or "")\]/]/|check-factory-watch.sh
 OS451 lab only|product/tools/factory-watch.py|s/if dependabot(p) or labels(p) or not is_lab(p):/if dependabot(p):/|check-factory-watch.sh
 OS451 register|product/tools/factory-watch.py|s/            if i in status and status\[i\]\[1\].startswith("Intended"):/            if False:/|check-factory-watch.sh
