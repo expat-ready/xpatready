@@ -7,12 +7,14 @@ import { cn } from "@/lib/utils";
 import type { Area } from "@/modules/platform/frame";
 import { INVOICES_HOME, LIST_KEY } from "./invoices/contract";
 import { PAYMENTS_HOME, PAYMENTS_KEY } from "./payments/contract";
+import { GETTING_PAID_HOME } from "./settings/card-payments/contract";
 import { TRUST_HOME, TRUST_KEY } from "./trust/contract";
 import { useShortfall } from "./trust/state";
 
 const item = ({ isActive }: { isActive: boolean }) => cn("flex min-h-9 items-center rounded-lg px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-text/5");
 const ITEMS: { label: string; to: string; key: string; trust?: true }[] = [{ label: "Invoices", to: INVOICES_HOME, key: LIST_KEY }, { label: "Payments", to: PAYMENTS_HOME, key: PAYMENTS_KEY },   // FO-7s3a part 1: Payments
-  { label: "Trust", to: TRUST_HOME, key: TRUST_KEY, trust: true }];   // FO-7s3b part 1: only while trust shows (BR-1)
+  { label: "Trust", to: TRUST_HOME, key: TRUST_KEY, trust: true },   // FO-7s3b part 1: only while trust shows (BR-1)
+  { label: "Getting paid", to: GETTING_PAID_HOME, key: LIST_KEY }];   // FO-7s2 part 1: Getting paid
 
 /** FO-7s3b part 1: an item that exists only while trust shows; the shortfall read answers 404 otherwise (AG-6-59 r4-6). */
 function TrustOnly({ children }: { children: React.ReactNode }) { return useShortfall().isSuccess ? <>{children}</> : null; }

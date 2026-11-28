@@ -85,7 +85,7 @@ export class PaymentAccounts {
         before: row ? { status: row.status, stripeAccountId: row.stripeAccountId } : null, after: { status: "PENDING", stripeAccountId: made.id } });
       return { account: made.id, status: "PENDING" as MoneyAccountStatus };
     }, { timeout: 30_000 });
-    const back = `${this.ports.appUrl}/settings/payments`;   // Sample path: the screen is FO-7s2's
+    const back = `${this.ports.appUrl}/money/settings/getting-paid`;   // FO-7s2 part 1's Card payments section
     const link = await this.ports.rail.accountLink({ account: out.account, refreshUrl: `${back}?account=refresh`, returnUrl: `${back}?account=return` });
     return { status: out.status, url: link.url };
   }
@@ -175,7 +175,7 @@ export class PaymentAccounts {
       // card either way (AG-6-49). Logged by the event's id.
       try { if (this.ports.mail) after.push((await mailIn(this.ports.mail, tx, { firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "client_money.payment_account_disconnected", idempotencyKey: `payment-account-break:${eventId}:${o.id}`,
         subject: "Payment account disconnected",
-        text: `Your firm's payment account stopped taking card payments.\n\nUntil it is reconnected, clients cannot pay by card: they see your offline payment details instead. No payment is sent anywhere else.\n\nTo reconnect, sign in and open Settings, Payments: ${this.ports.appUrl}/settings/payments` })).dispatch); }
+        text: `Your firm's payment account stopped taking card payments.\n\nUntil it is reconnected, clients cannot pay by card: they see your offline payment details instead. No payment is sent anywhere else.\n\nTo reconnect, sign in and open Money, Getting paid: ${this.ports.appUrl}/money/settings/getting-paid` })).dispatch); }
       catch (e) { logPort.error("payment_account_break_mail_failed", e, { eventId }); }
     }
   }
