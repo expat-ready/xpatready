@@ -2,7 +2,7 @@
 const path = require("node:path"); const { chromium } = require(process.cwd()+"/node_modules/playwright");
 const OUT = path.join(process.cwd(), "..", "..", "product", "scout", "reports", "2026-10-25-firm-admin-day-one");
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions()); const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   const shot = (n) => p.screenshot({ path: `${OUT}/w1-${n}.png`, fullPage: true });
   const log = async (m) => console.log(m);
   await p.goto("http://localhost:4480/new", { waitUntil: "networkidle" }); await p.waitForTimeout(400);
