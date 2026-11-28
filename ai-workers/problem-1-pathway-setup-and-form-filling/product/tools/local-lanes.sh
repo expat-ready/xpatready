@@ -23,7 +23,7 @@ merges_since() {
   if [ -n "${LL_MERGES_SINCE:-}" ]; then $LL_MERGES_SINCE "$1"
   else git log --first-parent origin/main --since="@$1" --format=%h 2>/dev/null | wc -l | tr -d ' '; fi
 }
-mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }   # GNU first: on Linux "stat -f" (file-system status) succeeds and prints text
 # Claude Code names a project folder by its path with every character that is not a letter or digit turned into "-".
 encode() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
 # "paused" when, after the last message the founder typed, a tool result or the lane's own text says messages are paused.

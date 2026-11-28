@@ -501,11 +501,11 @@ queue_rules:
       # optional). guards.yml runs only on its `paths`, so the aggregate job `guards` is required when the PR touches one
       # of them; a PR touching none gets no run and is not held. Keep this regex in step with guards.yml's `paths` block:
       # check-queue-rules.py compares them on every tracked file.
-      # Two workflow names are split by a group, studio-(audit) and red-on-(old): their checks test that those report-only
-      # workflows are never named in this file as required (their two check-*.sh tests); the paths match the same.
+      # Lab A2 (LR-044, 28 Nov): every workflow is on guards.yml's paths (\.github/workflows/), so no workflow is named here;
+      # the two report-only workflows stay unnamed here (their own two tests check that).
       - or:
           - check-success = guards
-          - -files ~= ^(\.claude/settings\.json$|\.claude/skills/(lead|next|qa)/|\.github/workflows/(comment-run|label-guard|nightly|guards|studio-(audit)|red-on-(old)|pr-rules)\.yml$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/|ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves\.(tsv|md)$|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/(isolated\.sh|test-copies\.sh|item-proof\.mjs)$|\.mergify\.yml$|CONTRIBUTING\.md$|\.github/pull_request_template\.md$)
+          - -files ~= ^(\.claude/(settings\.json$|skills/|agents/)|\.github/workflows/|\.github/pull_request_template\.md$|\.githooks/|\.mergify\.yml$|(CONTRIBUTING|CLAUDE|AGENTS|REVIEW)\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/(tools/|WAY-OF-WORKING\.md$|focus-list\.md$|rules/account-switch\.md$|state/items\.schema\.json$|screens/B119/|design/(waves\.(tsv|md)|night-checklist\.json|full-power-plan-2026-11-17\.md|engineering-approved-setup\.json)$)|ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/|packages/xfa-engine/(fixtures/synthetic|src/__tests__/fixtures)/[^/]+\.pdf$)
     merge_conditions:
       - check-success = ci
     merge_method: merge
