@@ -1,0 +1,4 @@
+# STATE "Leads, in order", word for word (moved by Lead 11 at the hand-over, STATE size line)
+
+## Leads, in order
+**Leads:** account of 24 Nov: Lead 1-11; account of 26 Nov: Lead 1 (local_90e2d17d), Lead 2 (local_43b637a0), Lead 3 (local_adad5033, 14:36 IST), Lead 4 (local_b2e5d43a, 15:10 IST), Lead 5 (local_1c8b2ecd, 17:2x IST, current). Lead 6 (local_33c127af, 22:33 IST), Lead 7 (local_a579023a, 27 Nov 00:1x IST, current). Standby: none (Lead 7's start refused by the classifier 00:3x 27 Nov). New account 27 Nov: Lead 1 (local_92d34440, 06:05-09:1x IST), Lead 2 (local_1f9a58f1, 09:14-10:4x IST), Lead 3 (local_6d88d41d, 10:47-12:16 IST), Lead 4 (local_9f3ea9d5, 12:16-13:10 IST), Lead 5 (local_a96e7be4, 13:1x IST, current). Standby: Lead 6 (started 13:1x IST). Full line, word for word: `history/STATE-2026-11-26-1500-lead3-leads-report-owed-lines.md`.
