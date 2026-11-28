@@ -3,15 +3,18 @@
 //      with "Choose at least one file." before any file is handled (before, a string was taken file by file).
 //   39 (type confusion, fill-case.ts): a validated read-back takes one real list of one file with a real Buffer; a
 //      list-shaped object or a string "buffer" is refused with 400 before anything else is checked (before, both passed).
-//   33-34 (request forgery, bounces.ts): an address from an SNS notice is fetched only on SNS's own host in a known AWS
-//      region, rebuilt from the written list; a look-alike host is refused and nothing is fetched (before, any host of the
-//      shape sns.<xx-word-N>.amazonaws.com was fetched).
+//   33-34 (request forgery, bounces.ts): an address from an SNS notice is fetched only as rebuilt from checked pieces:
+//      SNS's own host in a written list of AWS regions, then one URI-encoded file name ending .pem (the certificate) or
+//      Action=ConfirmSubscription with its URI-encoded TopicArn and Token (the SubscribeURL); a look-alike host, another
+//      path or another action is refused and nothing is fetched (before, any host of the shape
+//      sns.<xx-word-N>.amazonaws.com was fetched, with the notice's own path and query).
 // Pure: the services are built with stubs; no server, no database, no network, no model call (US$0).
 //   tsx studio/tests/check_codeql_critical.ts
 import { HttpException } from "@nestjs/common";
 import { CaseForms } from "../api/src/fill-case.ts";
 import { Intake } from "../api/src/intake.ts";
-import { SesNotices } from "../api/src/platform/messages/channels/email/bounces.ts";
+import { createSign, generateKeyPairSync } from "node:crypto";
+import { SesNotices, snsStringToSign } from "../api/src/platform/messages/channels/email/bounces.ts";
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
@@ -57,7 +60,24 @@ const answer = async (f: () => Promise<unknown>) => { try { return { ok: await f
   await refused(real);
   ok("alerts 33-34 pass: SNS's own host in a known region is fetched, at exactly the address the notice named", fetched.length === 1 && fetched[0] === real, fetched);
   await refused("https://sns.eu-west-1.amazonaws.com//evil.example/x.pem");
-  ok("alerts 33-34 fail: a path starting // never moves the fetch to another host (it stays on sns.eu-west-1.amazonaws.com)", fetched.length === 2 && new URL(fetched[1]).hostname === "sns.eu-west-1.amazonaws.com", fetched);
+  await refused("https://sns.eu-west-1.amazonaws.com/a/b.pem");
+  await refused("https://sns.eu-west-1.amazonaws.com/x.pem?u=https://evil.example/");
+  ok("alerts 33-34 fail: a certificate path other than one file name ending .pem (//host/x.pem, a folder, a query) is refused and nothing is fetched", fetched.length === 1, fetched);
+
+  // SubscribeURL: the notice is signed by a key this run makes, so receive() reaches the address check.
+  const key = generateKeyPairSync("rsa", { modulusLength: 2048 }), CERT = "https://sns.ca-central-1.amazonaws.com/SimpleNotificationService-t.pem";
+  const visited: string[] = [], TOPIC = "arn:aws:sns:ca-central-1:000000000000:ses-notices";
+  const subs = new SesNotices({ db: {} as never, consent: {} as never, topics: [TOPIC], fetchCert: async () => key.publicKey.export({ type: "spki", format: "pem" }).toString(), confirm: async (u) => { visited.push(u); } });
+  const confirmation = (url: string) => {
+    const n: Record<string, string> = { Type: "SubscriptionConfirmation", MessageId: "m-2", Token: "tok-1", TopicArn: TOPIC, Message: "confirm", SubscribeURL: url, Timestamp: new Date().toISOString(), SignatureVersion: "2", SigningCertURL: CERT };
+    n.Signature = createSign("RSA-SHA256").update(snsStringToSign(n), "utf8").sign(key.privateKey, "base64");
+    return subs.receive(n).then((r) => r, (x: Error) => x.message);
+  };
+  const goodSub = `https://sns.ca-central-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=${encodeURIComponent(TOPIC)}&Token=tok-1`;
+  const g = await confirmation(goodSub);
+  ok("alerts 33-34 pass: a signed confirmation visits SNS's ConfirmSubscription address, rebuilt to the same address", g === "confirmation" && visited.length === 1 && visited[0] === goodSub, { g, visited });
+  const bad = [await confirmation("https://sns.ca-central-1.amazonaws.com/x/?Action=ConfirmSubscription&TopicArn=a&Token=b"), await confirmation("https://sns.ca-central-1.amazonaws.com/?Action=Publish&TopicArn=a&Token=b"), await confirmation("https://sns.ca-central-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=a"), await confirmation("https://sns.zz-fake-9.amazonaws.com/?Action=ConfirmSubscription&TopicArn=a&Token=b")];
+  ok("alerts 33-34 fail: a SubscribeURL with another path, another action, no token or a look-alike host is refused and never visited", bad.every((b) => b === "subscribe address not from Amazon SNS") && visited.length === 1, { bad, visited });
 
   process.exit(summary() ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });

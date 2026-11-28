@@ -81,14 +81,15 @@ export class Intake {
     need(actor, "author");
     // CodeQL alert 40 (type confusion): the upload's files must be a real list; a string or a list-shaped object would
     // pass the count check below with a length it chooses. Multer always gives a list today; this keeps it so for every caller.
-    if (!Array.isArray(files) || !files.length) fail("Choose at least one file.");
-    if (files!.length > MAX_FILES) fail(`Add at most ${MAX_FILES} files at a time.`, HttpStatus.PAYLOAD_TOO_LARGE);
+    const list: IntakeFile[] = Array.isArray(files) ? files : [];
+    if (!list.length) fail("Choose at least one file.");
+    if (list.length > MAX_FILES) fail(`Add at most ${MAX_FILES} files at a time.`, HttpStatus.PAYLOAD_TOO_LARGE);
     const workspaceId = await this.ws.id();
     const combination = combinationId ? await this.db.combination.findUnique({ where: { id: combinationId } }) : null;
     if (combinationId && !combination) fail("That combination does not exist (it may have been removed by a reset).", HttpStatus.NOT_FOUND);
     if (forForm && !(await this.db.combination.findUnique({ where: { id: forForm.combinationId } }))) fail("That combination does not exist (it may have been removed by a reset).", HttpStatus.NOT_FOUND);
     const results: IntakeResult[] = [];
-    for (const f of files!) {
+    for (const f of list) {
       const r = await this.oneSafely(actor, workspaceId, f, combination, via);
       results.push(forForm ? await this.forForm(actor, workspaceId, forForm, r) : r);
     }
