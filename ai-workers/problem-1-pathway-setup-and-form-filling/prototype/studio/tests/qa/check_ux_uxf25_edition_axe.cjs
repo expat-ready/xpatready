@@ -14,7 +14,7 @@ const base = `http://localhost:${port}`;
 let failed = 0; const ok = (n, c, d) => { if (!c) failed++; console.log(`${c ? "PASS" : "FAIL"}  ${n}${d !== undefined ? ` — ${JSON.stringify(d).slice(0, 500)}` : ""}`); };
 const api = async (path, actor) => (await fetch(base + "/api" + path, { headers: { "x-actor": actor } })).json();
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false })?.isFile() ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const open = async (actor, path, width = 1440) => {
     const ctx = await b.newContext({ viewport: { width, height: 900 } }); await ctx.addInitScript((a) => localStorage.setItem("xr-actor", a), actor);
     const p = await ctx.newPage(); await p.goto(base + path); await p.waitForLoadState("networkidle"); await p.waitForTimeout(1200);

@@ -20,7 +20,7 @@ const step = (n, ok, d) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : 
 const info = (n, d) => console.log(`INFO  ${n} — ${(typeof d === "string" ? d : JSON.stringify(d)).slice(0, 400)}`);
 
 (async () => {
-  const b = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : { channel: "chrome" }) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message));

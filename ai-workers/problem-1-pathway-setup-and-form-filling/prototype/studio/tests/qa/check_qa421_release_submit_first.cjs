@@ -32,7 +32,7 @@ let failed = 0, passed = 0; const ok = (name, pass, detail) => { pass ? passed++
   const left = ((await call("GET", "/draft", "user-A")).body?.rows ?? []).filter((r) => r.held && /^Not submitted for review/.test(r.why ?? ""));
   ok("setup (P-598): nothing else waits for the author's Submit", left.length === 0, left.map((r) => r.label));
 
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: W, height: 1000 }, reducedMotion: "reduce" });
   await ctx.addInitScript(() => { try { localStorage.setItem("xr-actor", "user-A"); } catch { /* ignore */ } });
   const p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(e.message));

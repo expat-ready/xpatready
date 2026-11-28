@@ -43,7 +43,7 @@ let failed = 0; const ok = (name, pass, d) => { if (!pass) failed++; console.log
   ok("QA-383s setup: With an LMIA is on the configured checkpoint", !!comboId());
   const opened = await api("POST", "/runtime/cases", { combinationId: comboId(), reference: `QA383S-${Date.now().toString(36)}`, clientActor: "user-P", principal: { displayName: "Sample Client A" } }, "user-O");
   ok("QA-383s setup: a case opens", opened.status === 201, { status: opened.status });
-  const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : require("node:fs").statSync("/opt/pw-browsers/chromium", { throwIfNoEntry: false })?.isFile() ? { executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] } : {}) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } }); await ctx.addInitScript(() => localStorage.setItem("xr-actor", "user-P"));
   const p = await ctx.newPage();
   await p.goto(`${base}/cases/${opened.body.id}/questionnaire`); await p.waitForLoadState("networkidle");

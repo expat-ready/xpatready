@@ -22,6 +22,7 @@ import { copyFirmHoursTo } from "../../api/src/front-office/booking-seed.ts";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [NAME, PORT] = [process.argv[2] ?? "qa_r147", Number(process.argv[3] ?? 4471)];
@@ -64,7 +65,7 @@ const inbox = async (address: string, want = 1): Promise<Mail[]> => {
   return m;
 };
 
-const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: !HEADED, slowMo: HEADED ? 250 : 0 }));
 const errors: string[] = [];
 async function pageAs(t: string | null): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();

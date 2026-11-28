@@ -15,7 +15,7 @@ const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 
 (async () => {
   if (!(await api("/demo/status")).body?.loaded) step("setup: Load sample", (await api("/demo/load", "user-A", "POST")).status === 201);
-  const b = await chromium.launch({ headless: true, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : { channel: "chrome" }) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errors = []; p.on("pageerror", (e) => errors.push(String(e)));
   const actAs = async (a) => { await p.goto(BASE); await p.evaluate((x) => localStorage.setItem("xr-actor", x), a); };

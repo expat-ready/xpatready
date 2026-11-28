@@ -23,6 +23,7 @@ import { auditEvent } from "../../api/src/platform/audit/audit-event.ts";
 import { ConsentStore } from "../../api/src/platform/messages/consent/consent-store.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 
 const [NAME, PORT] = [process.argv[2] ?? "qa_r133g", Number(process.argv[3] ?? 4472)];
 const WIDTH = Number(process.env.WIDTH ?? 1440);
@@ -32,7 +33,7 @@ const { ok, summary } = recorder();
 const { sql } = client(PORT, DBNAME);
 const run = Date.now().toString(36);
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
-const browser = await chromium.launch({ headless: process.env.HEADED !== "1", ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: process.env.HEADED !== "1" }));
 try {
   await seedSampleFirms(db);
   const fo = await seedSampleFirmsFrontOffice(db);

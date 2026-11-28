@@ -14,6 +14,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { chromium, type Page } from "playwright";
 import { copyFirmHoursTo } from "../../api/src/front-office/booking-seed.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const BASE = process.env.STUDIO_URL ?? "http://localhost:4472";
@@ -73,7 +74,7 @@ async function main() {
   await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30, windowDays: 130 } });
   console.log(`setup (not through the product: no firm, staff, hours or type screens yet): firm ${key}, one host, type "free"`);
 
-  const browser = await chromium.launch({ headless: !process.env.HEADED, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });   // as the builder suites
+  const browser = await chromium.launch(launchLib.chromiumOptions({ headless: !process.env.HEADED }));   // as the builder suites
   const ctx = await browser.newContext({ timezoneId: "Asia/Dubai", acceptDownloads: true });
   const p = await ctx.newPage();
   const runs: { width: number; day: string; time: string; utc: string; tag: string }[] = [

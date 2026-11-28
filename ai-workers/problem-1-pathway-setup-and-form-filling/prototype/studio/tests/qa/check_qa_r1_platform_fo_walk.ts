@@ -15,6 +15,7 @@ import { auditEvent } from "../../api/src/platform/audit/audit-event.ts";
 import { ConsentStore } from "../../api/src/platform/messages/consent/consent-store.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const PORT = Number(process.argv[2] ?? 4472), DBNAME = process.argv[3] ?? "xr_studio_qa_r1d", BASE = `http://localhost:${PORT}`;
@@ -76,7 +77,7 @@ const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 const consent = new ConsentStore(auditEvent);
 const wording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: `Send me news from Sample Firm by email. I can stop at any time. (Sample; Unconfirmed: no counsel) ${run}`, by: "seed:qa-r1-walk" }));
 const token = sql(`update fo_web_form set enabled = true, consent_wording_version_id = '${wording.id}' where firm_id = '${A}' returning public_token`);
-const browser = await chromium.launch({ headless: !process.env.HEADED, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+const browser = await chromium.launch(launchLib.chromiumOptions({ headless: !process.env.HEADED }));
 const shot = async (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
 const page = async (w: number) => { const c = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 1 }); return c.newPage(); };
 const send = async (p: Page, given: string, mail: string, tick: boolean) => {

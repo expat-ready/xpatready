@@ -9,12 +9,13 @@ const [NAME, PORT, OUT] = [process.argv[2], Number(process.argv[3]), process.arg
 if (PORT === 4400) process.exit(2);
 const BASE = `http://localhost:${PORT}`;
 import { execFileSync } from "node:child_process";
+import launchLib from "../../acceptance/lib/launch-options.cjs";
 // No shell: psql gets the query as one argument, so nothing in it needs escaping.
 const sql = (q: string) => execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", `xr_studio_${NAME}`, "-At", "-c", q]).toString().trim();
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 const mail = (a: string) => sql(`select email from platform_staff where actor_id = '${a}' and firm_id = '${A}'`);
 const token = async (m: string) => ((await (await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email: m, secondStep: true }) })).json()) as { token: string }).token;
-const browser = await chromium.launch(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {});
+const browser = await chromium.launch(launchLib.chromiumOptions());
 const out: string[] = []; const line = (ok: boolean, s: string, d: unknown = "") => { const t = `${ok ? "PASS" : "FAIL"}  ${s} — ${typeof d === "string" ? d : JSON.stringify(d)}`; out.push(t); console.log(t); };
 async function page(tok: string, w: number): Promise<{ p: Page; errs: string[] }> {
   const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 1 });

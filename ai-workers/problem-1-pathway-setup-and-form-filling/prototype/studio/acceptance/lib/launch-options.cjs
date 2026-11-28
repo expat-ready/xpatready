@@ -3,6 +3,7 @@
 // cloud session's image ships another (1243), so a bare chromium.launch() fails there. The channel "chrome" works on
 // every machine we run: the Mac's Google Chrome, GitHub's runners' Chrome, and in a cloud session the image's Chromium,
 // which tools/cloud-setup.sh links to /opt/google/chrome/chrome. Revisions are never linked to each other.
+//   chromiumOptions(extra) the older checks' order, kept (LR-183): Mac chrome, Playwright's own Chromium, the image's, chrome
 //   launchOptions(extra)  extra plus { channel: "chrome" } where that Chrome exists; extra as given when it already names
 //                          a channel or an executablePath (the caller chose)
 //   videoGap()            null when this Playwright can record video, else why not: video needs Playwright's own ffmpeg
@@ -23,6 +24,28 @@ function chromeChannel(env = { platform: process.platform, exists: existsSync })
 function launchOptions(extra = {}, env) {
   if (extra.channel || extra.executablePath) return { ...extra };
   return chromeChannel(env) ? { channel: "chrome", ...extra } : { ...extra };
+}
+
+// chromiumOptions(extra) (LR-183): the rule the older browser checks each wrote inline, in one place, in the order they
+// already used, so CI and a cloud session open the same browser as before: (1) a caller's channel or executablePath as
+// given; (2) the Mac: the channel chrome (the house rule, as the checks that name darwin already did); (3) Playwright's
+// own Chromium when installed (CI runs `playwright install chromium`): nothing added; (4) the cloud image's
+// /opt/pw-browsers/chromium (a link to whatever revision the image ships: never name a revision); (5) the channel chrome
+// where that Chrome exists; (6) nothing (Playwright's own error, which says how to install).
+// Step (3) reads chromium.executablePath(), the full Chromium; a headless launch uses chromium-headless-shell instead.
+// `playwright install chromium` (every workflow) installs both; a --no-shell or --only-shell install would mislead it. It differs from launchOptions() (chrome first) on purpose: moving ~250 checks from
+// Playwright's Chromium to Chrome stable in CI is a change of its own, not this row's.
+const PW_IMAGE = "/opt/pw-browsers/chromium";
+function playwrightChromium() {
+  try { return require("playwright").chromium.executablePath(); } catch { return ""; }
+}
+function chromiumOptions(extra = {}, env = { platform: process.platform, exists: existsSync, own: playwrightChromium() }) {
+  if (extra.channel || extra.executablePath) return { ...extra };
+  if (env.platform === "darwin") return { channel: "chrome", ...extra };
+  if (env.own && env.exists(env.own)) return { ...extra };
+  if (env.exists(PW_IMAGE)) return { executablePath: PW_IMAGE, ...extra };
+  if (chromeChannel(env)) return { channel: "chrome", ...extra };
+  return { ...extra };
 }
 
 // Where Playwright keeps its downloads: PLAYWRIGHT_BROWSERS_PATH ("0" = inside playwright-core), else its default cache.
@@ -49,4 +72,4 @@ function videoGap(env = process.env, platform = process.platform, exists = exist
   return exists(exe) ? null : `no video: Playwright's ffmpeg-${rev} is not installed (${exe})`;
 }
 
-module.exports = { CHROME, chromeChannel, launchOptions, browsersPath, ffmpegRevision, videoGap };
+module.exports = { CHROME, PW_IMAGE, chromeChannel, launchOptions, chromiumOptions, browsersPath, ffmpegRevision, videoGap };

@@ -22,7 +22,7 @@ const api = async (method, url, body, actor = "user-O") => { const r = await fet
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
-  const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
+  const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: true }));
   const errors = [];
   const shot = async (p, name) => p.screenshot({ path: path.join(SHOTS, name), fullPage: false });
   try {

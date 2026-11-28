@@ -16,7 +16,7 @@ const ok = (name, c, d) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "F
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
-  const b = await chromium.launch({ headless: !process.env.QA_HEADED, ...(fs.existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : { channel: "chrome" }) });
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").chromiumOptions({ headless: !process.env.QA_HEADED }));
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
   p.on("pageerror", (e) => errs.push(e.message));
