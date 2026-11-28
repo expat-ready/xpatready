@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { walker } from "../acceptance/lib/browser.ts";
 
 let pass = 0, fail = 0;
-const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 260)}` : ""}`); };
+const ok = (name: string, c: unknown, detail?: unknown) => { if (c) pass++; else fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 260)}` : ""}`); };
 
 const TEXT = "<p style='font:16px sans-serif;width:600px'>" + "A paragraph a person reads on this page. ".repeat(20) + "</p>";
 const PAGES: Record<string, string> = {

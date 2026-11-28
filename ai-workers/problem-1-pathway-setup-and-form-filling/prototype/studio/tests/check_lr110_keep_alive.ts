@@ -16,7 +16,7 @@ import { request } from "playwright";
 import { HEADERS_TIMEOUT_MS, KEEP_ALIVE_MS, keepAlive } from "../api/src/platform/http/keep-alive.ts";
 
 let pass = 0, fail = 0;
-const step = (name: string, ok: boolean, detail?: unknown) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${String(detail).slice(0, 220)}` : ""}`); };
+const step = (name: string, ok: boolean, detail?: unknown) => { if (ok) pass++; else fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${String(detail).slice(0, 220)}` : ""}`); };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // The server runs on its own thread (its own event loop), so holding its loop busy never holds the client's.
