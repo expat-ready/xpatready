@@ -47,3 +47,4 @@ Sections 1 (only lights already agreed with their lead), 2 and 6, neutral words,
 
 ## After the run
 One line per light and the top action in the next report to the founder; a red that needs his decision goes in the end-of-turn box (P-512). Record a new rule only through DECISIONS.
+ID codes (PF-, OS-, LR-, R1.n …) and their plain names: `ai-workers/problem-1-pathway-setup-and-form-filling/product/GLOSSARY.md`; show a code with its plain name.

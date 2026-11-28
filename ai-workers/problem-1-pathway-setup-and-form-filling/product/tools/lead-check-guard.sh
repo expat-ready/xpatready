@@ -67,12 +67,12 @@ print(n)' "$tp" 2>/dev/null)
   if [ -z "$why" ]; then rm -f "$cnt" 2>/dev/null
   else n=$(( $(cat "$cnt" 2>/dev/null || echo 0) + 1 )); mkdir -p "${fc%/*}" 2>/dev/null; echo "$n" > "$cnt" 2>/dev/null
     if [ "$n" -gt 3 ]; then gave="LR-167: this check turn ends without a finished lead-watch run after 3 blocks ($why). Tell the founder now: checks are not running (P-388)."
-    else jq -n --arg w "$why" '{decision:"block",reason:("This is the 30-minute check and " + $w + " (LR-167, founder A455). Run `bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh 30` to its end now (if it refuses a stale copy, run the command it prints, then run it again), act on its ACT lines, then stop.")}'
+    else jq -n --arg w "$why" '{decision:"block",reason:("Rule LR-167: this is the 30-minute check and " + $w + " (founder A455). Fix: run `bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh 30` to its end now (if it refuses a stale copy, run the command it prints, then run it again), act on its ACT lines, then stop.")}'
       exit 0; fi
   fi
   out=$(bash "$(dirname "$0")/app-view-check.sh" --stale-only 2>&1)
   if [ -n "$out" ]; then
-    jq -n --arg r "$out" '{decision:"block",reason:("This is a 30-minute check and the app view is stale (B197, founder A110): read every lane before you stop.\n" + $r + "\nIf the page cannot be read, save its UNREADABLE line and ask the founder to sign in.")}'
+    jq -n --arg r "$out" '{decision:"block",reason:("Rule B197: this is a 30-minute check and the app view is stale (founder A110). Fix: read every lane before you stop.\n" + $r + "\nIf the page cannot be read, save its UNREADABLE line and ask the founder to sign in.")}'
     exit 0; fi
   # LR-154 (founder A430, 27 Nov: "You should be reminding me if you're not able to manage these"): a saved app view that
   # says UNREADABLE (signed out, the call refused, the browser not reached) needs a PushNotification to the founder in this
@@ -99,7 +99,7 @@ print("yes" if any(isinstance(x, dict) and x.get("type") == "tool_use" and re.se
 PY
 )
   [ "$pushed" = yes ] && passed
-  jq -n --arg l "$(sed -n 2p "$av" | cut -c1-160)" '{decision:"block",reason:("The app view says \"" + $l + "\": send the founder a PushNotification 🔴 in this check with the sign-in URL (https://claude.ai/login; GitHub: https://github.com/login), then stop (LR-154, founder A430: \"You should be reminding me\").")}'
+  jq -n --arg l "$(sed -n 2p "$av" | cut -c1-160)" '{decision:"block",reason:("Rule LR-154: the app view says \"" + $l + "\". Fix: send the founder a PushNotification 🔴 in this check with the sign-in URL (https://claude.ai/login; GitHub: https://github.com/login), then stop (LR-154, founder A430: \"You should be reminding me\").")}'
   exit 0
 fi
 prompt=$(printf '%s' "$input" | jq -r '.tool_input.prompt // empty' 2>/dev/null)
@@ -114,4 +114,4 @@ why=""
 printf '%s' "$prompt" | grep -qi 'lead-watch' && why="it names lead-watch but is not the check's one line"
 [ -z "$why" ] && [ "$LANE" = lead ] && [ "$recurring" = yes ] && why="it is a recurring job in the Lead's copy, whose only recurring job is the check"
 [ -z "$why" ] && exit 0
-jq -n --arg w "$why" --arg c "$CANON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("The 30-minute check prompt is exactly \"" + $c + "\" (founder, 6 Nov: a prompt listing rows goes stale). Refused because " + $w + ". Put rows and rules in STATE \"Start here\" instead; a one-off reminder uses recurring: false.")}}'
+jq -n --arg w "$why" --arg c "$CANON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Rule F-6Nov: the 30-minute check prompt is exactly \"" + $c + "\" (founder, 6 Nov: a prompt listing rows goes stale). Refused because " + $w + ". Fix: put rows and rules in STATE \"Start here\" instead; a one-off reminder uses recurring: false.")}}'

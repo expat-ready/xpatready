@@ -102,7 +102,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     step("C1.8: the number of copies per line is stored and shown", copies, "no copies field on the line or in combination_form");
 
     // The same in the browser: the Preview tab for the child.
-    const browser = await chromium.launch({ headless: !process.env.QA_HEADED });
+    const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions({ headless: !process.env.QA_HEADED }));
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
     await page.addInitScript(() => localStorage.setItem("xr-actor", "user-A"));
     await page.goto(`${BASE}/review`, { waitUntil: "networkidle" }).catch(() => {});
