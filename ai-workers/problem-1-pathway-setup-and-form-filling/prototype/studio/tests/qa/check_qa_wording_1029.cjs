@@ -68,7 +68,7 @@ const hits = [];
   const casePages = [["cases-officer", "/cases", "user-O"], ["cases-client", "/cases", "user-P"]];
   if (ids.kase) casePages.push(["case-officer", `/cases/${ids.kase}`, "user-O"], ["case-client", `/cases/${ids.kase}`, "user-P"], ["case-questionnaire", `/cases/${ids.kase}/questionnaire`, "user-P"]);
 
-  const b = await chromium.launch();
+  const b = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions());
   const visit = async (name, url, actor, w) => {
     const ctx = await b.newContext({ viewport: { width: w, height: 900 } });
     await ctx.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch {} }, actor);
