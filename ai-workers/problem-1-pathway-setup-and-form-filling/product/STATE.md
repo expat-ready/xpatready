@@ -2,15 +2,14 @@
 
 current_lead: local_20a76d0f-c047-4dfa-aee7-38e1522df78c Lead 12 · 28 Nov 10:20 IST (after Lead 11 local_574cc0be at ~190k beyond start, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-28 10:20 IST (clock): **Lead 11 hands over to Lead 12 (P-446). Lab 🔴 Built 58/141, Proven 37/141 (40/16 at 09:27). See the hand-over block.** Lead 11's updated line word for word: `history/STATE-2026-11-28-1020-lead11-updated-line.md`.
+updated: 2026-11-28 11:20 IST (clock): **Lead 12 current since 10:21 (took over from Lead 11, P-446). Lab 🔴 Built 57/146, Proven 41/146 (after #4025).** Lead 11's updated line and hand-over block word for word: `history/STATE-2026-11-28-1120-lead12-lead11-handover-block.md`.
 
-## Hand-over Lead 11 → Lead 12, 10:20 IST 28 Nov (reason: Lead 11 at ~190k beyond its start read, P-446; no subagent running)
-**Do first:** create your check FIRST (cron 3,13,23,33,43,53, `run lead-watch; read STATE Start here`), CronDelete your gap check, send Lead 11 your CronList, rename "Lead 12 · 28 Nov <IST>", invoke `lead`, re-arm Monitor `bash /tmp/claude-501/lane-watch.sh` (allowed_domains api.github.com, github.com). Records: branch `lead/2026-11-28-lead11` (not yet a PR: open it once #4012's successor is needed; independent reviewer, then label). Lead 10's hand-over block: `history/STATE-2026-11-28-0950-lead11-handover-lead10-block.md`.
-**🔴 Waiting on the founder:** code-scanning alert 1 (label-guard.yml, actions/improper-access-control) — Lead read the false-positive reason in #4008 and verified it on main (checks out main, fetches the PR as data only); the API dismissal was refused by the shell classifier, so the founder was asked: dismiss himself or "Use the browser". It is the last P-857 restart condition on alerts (40/39/34/33 fixed 04:15Z).
-**Running lanes (cloud):** `lab-rescue-stale-prs` (task_a0ea7321: #3693 #3506 #3715 #3819 #3696 #3837 #3742 #3847; Lead reads posted on 3819 771fec065, 3715 f6a197234, 3506 75aa21006, 3696 e13d9309b — pr-rules red only for EXPLAINER MISSING (LR-141), lane told to edit the bodies; label each when pr-rules, fast/ci, pr-suites, guards green. Reads owed: #3693 cd2e0b28e, #3837 9c0e4b674, #3742 799bf7bff, #3847 733706541). `lab-prover` (task_04955f0a: #4016 #4017 #4018 merged; next batch owed; LR-046 "Built (part)" to fix; rows to add for #3962 and #4008). Fix lane pf5t done (#4013 merged). Lab starter routine (P-856) starts lanes hourly; #4019 (LR-047) Ready for Lead read with a --draft question. Records-cap lane #4006 still draft (told 09:1x: mark ready; label `size: exception` now exists).
-**Nightly (P-854):** night 1 dispatched 10:10 on 850d63a2c (run 46108614143); count from it; ~3 a day; a red resets to 0.
-**Owed by the Lead:** #3899 read (waits LR-144 Claude Approvals connect), #3808 #3219 (over 24 h), #4003, #3971 (A1 round 4); LR-057 runner groups; A7 records to private; qa cp311 lock tooling PR (brief at the founder's next typed turn); close #3956 (superseded by #4015; shell refused); 3 records nits (G-858 add "where the founder's sign-in allows it", G-857 enforced-by prose, goal-and-order heading "shortened"); cycle-plan.json for 28 Nov.
-**Founder today:** P-859 one org owner (LR-063 deferred); "Start the fix lane"; lift the lab constraint at full power without lowering quality (09:4x): measured answer given (84 rows had no PR, 10 stuck PRs, 10 merged-but-unrecorded), two lanes started.
+## Now (Lead 12, 11:20 IST 28 Nov)
+**🔴 Waiting on the founder:** (1) code-scanning alert 1 (verified false positive, #4008): dismiss, or "Use the browser" (last P-857 alert condition). (2) #4019 (LR-047): Lead read + `--draft` answer posted (yes, keep it; LR-047 Done when becomes "pr-rules warns a ready PR with no Approve line"); the shell refused ready + label: founder or "Use the browser".
+**Rescue lane done on the Lead side:** reads posted on #3693 #3837 #3742 #3847 #4025; all eight labelled; #3715 merged 05:4xZ; rounds allowed: #3506 to 8 (lane status comments that start a line with "Reviewer: <verdict>" count as rounds), #3693 to 4.
+**Running lanes (cloud):** `lab-rescue-stale-prs` (task_a0ea7321), `lab-prover` (task_04955f0a, next batch owed); lab starter routine hourly (P-856); details in the history block above.
+**Nightly (P-854):** night 1 run 46108614143 red at suites part 15 (check_c42_marking_browser: ECONNRESET to its own app, every assertion that ran passed); part re-run 10:58 IST; count reset to 0.
+**Owed by the Lead** (from Lead 11): #3899, #3808, #3219, #4003, #3971, LR-057, A7, qa cp311 brief, close #3956, 3 records nits, cycle-plan.json for 28 Nov; records PR for this branch; main copy is on lead/2026-11-27-lead5 with uncommitted changes not the Lead's (not recut).
 
 ## Founder asks (P-450 (4): stays until ticked)
 Rows A242-A418 word for word in `history/STATE-2026-11-27-0915-lead1-founder-asks-rows.md` (all answered or in force; A395 open).
@@ -50,4 +49,4 @@ Older Start here pointers and the red-row lanes line: `history/STATE-2026-11-24-
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-Account of 27 Nov: … Lead 9 (local_e9b535bc, 20:51), Lead 10 (local_68bddbc4, 28 Nov 00:21), Lead 11 (local_574cc0be, 08:26), Lead 12 (local_20a76d0f, current). Earlier, word for word: `history/STATE-2026-11-28-1020-lead11-leads-in-order.md`.
+Account of 27 Nov: … Lead 9 (local_e9b535bc, 20:51), Lead 10 (local_68bddbc4, 28 Nov 00:21), Lead 11 (local_574cc0be, 08:26), Lead 12 (local_20a76d0f, current since 10:21). Earlier, word for word: `history/STATE-2026-11-28-1020-lead11-leads-in-order.md`.
