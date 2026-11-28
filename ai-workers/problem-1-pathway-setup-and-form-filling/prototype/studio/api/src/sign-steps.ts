@@ -258,7 +258,7 @@ export class SignStepsController {
   constructor(@Inject(SignSteps) private readonly s: SignSteps) {}
   @Get("items/:id") read(@Headers("x-actor") a: H, @Param("id") id: string) { return this.s.read(actorOf(a), id); }
   @Post("items/:id/sign-steps/:key") @HttpCode(200) step(@Headers("x-actor") a: H, @Param("id") id: string, @Param("key") key: string, @Body() b: unknown) { return this.s.step(actorOf(a), id, key, b); }
-  // One byte over 20 MB so a file of exactly 20 MB is taken (as C6.4); the route's own check refuses more.
-  @Post("items/:id/signed-scan") @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES + 1, files: 1 } }))
+  // multer >= 2.3 takes a file of exactly fileSize bytes and refuses one byte more (it was one byte under), so 20 MB is taken (as C6.4).
+  @Post("items/:id/signed-scan") @UseGuards(CaseActorGuard) @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
   scan(@Headers("x-actor") a: H, @Param("id") id: string, @UploadedFiles() files: Upload[], @Body() b: unknown) { return this.s.scan(actorOf(a), id, files, b); }
 }

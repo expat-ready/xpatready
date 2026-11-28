@@ -74,7 +74,7 @@ esac
 input=$(cat)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || exit 0
-lane=$(cd "$ROOT" && bash "$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh" whoami 2>/dev/null)
+lane=$(cd "$ROOT" && bash "$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh" whoami 2>/dev/null | sed "s/^lead-stale$/lead/")
 [ "$lane" = lead ] || exit 0
 # The last assistant message: the hook's own field when Claude Code sends it, else the transcript's last assistant text.
 msg=$(printf '%s' "$input" | jq -r '.last_assistant_message // empty' 2>/dev/null)

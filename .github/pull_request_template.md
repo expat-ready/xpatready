@@ -20,6 +20,16 @@
 
 **Cost:** <!-- US$0 unless approved -->
 
+**Risk:** <!-- what could go wrong, for a person using the app or for the pipeline: low, medium or high, and why -->
+
+**How to revert:** <!-- "revert this PR", or the steps; a migration says how the data comes back -->
+
+**Explainer** <!-- money, schema, permission or pipeline PRs: pr-rules requires it (LR-141). At most 5 plain lines a
+     person who did not write the code can follow; other PRs may delete these three lines. -->
+What changed:
+Why:
+What could break:
+
 **Questions** (each with your recommendation):
 
 **Done when:**

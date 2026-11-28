@@ -184,10 +184,11 @@ try {
   ok("CS-C1s DS1 fail (BR-7): another firm's staff, an unknown id and a malformed id: 404 with the same words, nothing of the case",
     other.every((x) => x.status === 404 && x.body.code === "NOT_FOUND" && x.body.detail === "No such case in your firm.") && !JSON.stringify(other[0].body).includes(a.filings[0]), other.map((x) => [x.status, x.body.detail]));
   // A fixture (CS-K1's client key would refuse it; since CS-W1 part 2 the firm guard too, which fires ALWAYS, so it is
-  // disabled for this one statement: the state the read is tested on can no longer be made by the app).
-  sql(`begin; set local session_replication_role = replica; alter table runtime_case disable trigger case_firm_fixed; update runtime_case set firm_key = 'sample-solo-missing' where id = '${c.id}'; alter table runtime_case enable always trigger case_firm_fixed; commit;`);
+  // disabled for this one statement: the state the read is tested on can no longer be made by the app). Since CS-W1 part
+  // 2b the read goes by the case's platform firm id, so the fixture leaves the key and moves the id to another firm.
+  sql(`begin; set local session_replication_role = replica; alter table runtime_case disable trigger case_firm_fixed; update runtime_case set firm_id = (select id from platform_firm where key = 'sample-solo') where id = '${c.id}'; alter table runtime_case enable always trigger case_firm_fixed; commit;`);
   r = await read(c.id);
-  ok("CS-C1s DS1 fail (BR-7): a case whose firm key names no platform firm is 404 too", r.status === 404, r.status);
+  ok("CS-C1s DS1 fail (BR-7): a case whose platform firm is another firm (its key unchanged) is 404 too", r.status === 404, r.status);
 
   // ------------------------------------------------------------------------------------------------------------- DS2
   r = await read(a.id, TO);
