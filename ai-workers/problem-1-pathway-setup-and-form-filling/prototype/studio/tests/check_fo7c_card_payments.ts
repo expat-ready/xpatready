@@ -105,7 +105,7 @@ try {
     const body = JSON.stringify({ ...fixture(name).event, id, account }), s = sign(body);
     return read(await fetch(`${base}/api/hooks/stripe-connect`, { method: "POST", headers: { "content-type": "application/json", ...(s ? { "stripe-signature": s } : {}) }, body }));
   };
-  ok("setup: the feature registers the two controllers and the service; with no Stripe key its service connects nothing (503)", feature.controllers.length === 2 && (feature.providers[0] as { provide: unknown }).provide === PaymentAccounts);
+  ok("setup: the feature registers the two controllers and the service (and part 2a's two: the pay link and the door); with no Stripe key its service connects nothing (503)", feature.controllers.length === 4 && (feature.providers[0] as { provide: unknown }).provide === PaymentAccounts);
 
   await seedSampleFirms(owner);
   const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
