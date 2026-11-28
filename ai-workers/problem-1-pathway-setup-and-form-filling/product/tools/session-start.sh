@@ -35,11 +35,14 @@ case "$LANE" in
   screens|forms|evidence|runtime|qa) head="This is the $LANE builder's copy (branch $(git branch --show-current)). Command: /next $LANE (qa: /qa <mode>). Way of working: product/WAY-OF-WORKING.md; work list: product/BACKLOG.md.";;
   *) head="This copy is not bound yet: /next <area> (screens, forms, runtime, evidence) or /qa binds it. Way of working: product/WAY-OF-WORKING.md.";;
 esac
+# LR-166 (founder A455): the Lead's copy (and an unbound one) over 20 behind origin/main or on a base over 24 h old gets the
+# line lead-watch.sh refuses with (copy-gate.sh, on the fetch above): the same command, at the top.
+case "$LANE" in lead|lead-stale|unbound) gate=$(COPY_GATE_NOFETCH=1 bash "$PH/tools/copy-gate.sh" "$ROOT" 2>/dev/null) && gate="";; esac
 # OS-86 / LR-143 (founder A417): an account change opens a switch and prints its checklist first (switch.sh detect).
 sw=$(bash "$PH/tools/switch.sh" detect 2>/dev/null)
 # The page (private split, PS-1b): STATE.md where the records are (records-dir.sh: the Lead's private copy, else this
 # copy's while it is still here); once it has left xpatready, other copies get the public CURRENT-LEAD.md line instead.
 if RD=$(bash "$PH/tools/records-dir.sh" 2>/dev/null); then w="product/STATE.md"; [ "$RD" = "$PH" ] || w="STATE.md (private copy: $RD)"; page="--- $w ---"$'\n'"$(cat "$RD/STATE.md")"
 else page="--- product/CURRENT-LEAD.md (STATE.md is the Lead's, in the private repository) ---"$'\n'"$(cat "$PH/CURRENT-LEAD.md" 2>/dev/null)"; fi
-ctx=$([ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
+ctx=$([ -n "${gate:-}" ] && { echo "$gate"; echo; }; [ -n "$sw" ] && { echo "$sw"; echo; }; [ -n "$age" ] && { echo "$age"; echo; }; echo "$head"; [ -n "$behind" ] && { echo; echo "$behind"; }; echo; echo "$page")
 jq -n --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'

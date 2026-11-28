@@ -35,6 +35,11 @@ if [ "${1:-}" = gap ]; then
   [ "$n" -gt "${GAP_MAX:-15}" ] && { echo "ACT   watchdog: last Lead check $n min ago"; exit 1; }
   echo "ok    watchdog: last Lead check $n min ago"; exit 0
 fi
+# LR-166 (founder A455): this script's own copy over 20 commits behind origin/main, or its base over 24 h old, is refused
+# before any other step: one ACT line with the recut or clone command, exit 3, no check stamp (copy-gate.sh). The gap mode
+# above stays local (no GitHub call). LEAD_WATCH_GATE=off only in tests of later steps.
+if [ "${LEAD_WATCH_GATE:-on}" != off ]; then cg=$(bash "$TOOLS/copy-gate.sh" "$TOOLS" 2>&1); cgr=$?
+  [ "$cgr" = 0 ] || { grep -q '^ACT' <<<"$cg" && echo "$cg" | head -1 || echo "ACT   stale copy (LR-166): copy-gate.sh did not run ($(head -1 <<<"$cg"))"; exit 3; }; fi
 mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
 # Private split (PS-1b, design/private-split-plan-2026-11-27.md): STATE.md is read where the records are (records-dir.sh:
