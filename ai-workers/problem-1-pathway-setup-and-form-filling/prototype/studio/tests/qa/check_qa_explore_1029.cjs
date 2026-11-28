@@ -63,7 +63,7 @@ async function look(page, name, w, { axeOn = true } = {}) {
   const logText = JSON.stringify(load.body?.log ?? "");
   step("Load sample summary: no retired words (canonical, box)", !/canonical|\bbox/i.test(logText), techHits(logText));
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(require("../../acceptance/lib/launch-options.cjs").launchOptions());
   for (const w of [1440, 1024]) {
     const ctx = await browser.newContext({ viewport: { width: w, height: 900 } });
     await ctx.addInitScript(() => { try { localStorage.setItem("studio.actor", "user-A"); } catch {} });

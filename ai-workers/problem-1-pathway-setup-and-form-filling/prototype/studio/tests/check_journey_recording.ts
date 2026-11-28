@@ -1,8 +1,8 @@
 // P-700 (#224): a recorded gate A walk fails when its journey fails and still leaves its recording. It walks the fixture
 // tests/journeys/fixtures/j_0_fails.ts (one PASS, then a deliberate FAIL; no app, no copy) through tests/journeys/walk.mjs
 // and checks the exit code, walk.json, the trace and a screenshot per step (and the video where this machine's
-// Chromium records one: CI's Playwright Chromium does; a cloud session's pre-installed one records none, even with plain
-// Playwright, 18 Nov). Also a crashing journey (R3), process.exit mid-walk (R4), an out-dir that is not a walk's (R5) and a journey with no
+// Playwright has its own ffmpeg: CI's `playwright install chromium` brings it; a cloud image's older one does not, so
+// the recorder records no video there and says so, LR-179). Also a crashing journey (R3), process.exit mid-walk (R4), an out-dir that is not a walk's (R5) and a journey with no
 // copy line (R6). Then it checks .github/workflows/walks.yml keeps the shape that makes the upload unconditional.
 // No server, no database; US$0. Run from prototype/:
 //   tsx studio/tests/check_journey_recording.ts
@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import launchLib from "../acceptance/lib/launch-options.cjs";
 
 const J = join(import.meta.dirname, "journeys"), ROOT = join(import.meta.dirname, "..", "..", "..", "..", "..");
 let pass = 0, fail = 0;
@@ -28,7 +29,8 @@ ok("P-700 R1: a screenshot per step, the failed one included", steps.length === 
 const lines = existsSync(join(out, "steps.jsonl")) ? readFileSync(join(out, "steps.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [];
 ok("P-700 R1: steps.jsonl ties each step to its verdict and screenshot", lines.length === 2 && lines[1].verdict === "FAIL" && lines[1].screenshots.length === 1, lines);
 const videos = existsSync(join(out, "video")) ? readdirSync(join(out, "video")).filter((f) => f.endsWith(".webm")) : [];
-if (existsSync("/opt/pw-browsers/chromium")) console.log(`note  P-700 R1: video not judged on this machine (pre-installed Chromium records none); ${videos.length} written; CI judges it`);
+const gap = launchLib.videoGap();   // LR-179: the recorder's own rule (Playwright's ffmpeg of its release)
+if (gap) console.log(`note  P-700 R1: video not judged on this machine (${gap}); ${videos.length} written; CI judges it`);
 else ok("P-700 R1: the video is kept (video/*.webm)", videos.length === 1, videos);
 ok("P-700 R1: README.md says how to replay the trace", /show-trace/.test(existsSync(join(out, "README.md")) ? readFileSync(join(out, "README.md"), "utf8") : ""));
 
