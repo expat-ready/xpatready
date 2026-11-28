@@ -38,15 +38,15 @@
     "measure:isolation": "pnpm run build && node scripts/measure-isolation.mjs"
   },
   "devDependencies": {
-    "@types/node": "26.1.1",
+    "@types/node": "26.6.10",
     "typescript": "6.0.3",
     "vitest": "4.1.10"
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
-    "@noble/hashes": "2.2.0",
+    "@noble/hashes": "2.4.0",
     "@xmldom/xmldom": "0.9.12",
-    "acorn": "8.17.0",
+    "acorn": "8.19.0",
     "quickjs-emscripten-core": "0.32.0",
     "zod": "4.6.7"
   }
