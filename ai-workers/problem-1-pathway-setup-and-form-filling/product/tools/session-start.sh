@@ -27,6 +27,8 @@ case "$LANE" in lead|lead-stale)
   LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null)
   age=$(printf '%s\n%s' "$age" "$(bash "$PH/tools/lead-age.sh" line 2>/dev/null)" | sed '/^$/d');;
 esac
+# A368 (#3506): every other role gets this copy's age against origin/main (copy-age.sh); the Lead's is lead-age.sh's above
+case "$LANE" in lead|lead-stale) ;; *) fe=1; grep -q "could not be reached" <<<"$behind" && fe=""; age=$(FETCHED=$fe bash "$PH/tools/copy-age.sh" 2>/dev/null);; esac
 case "$LANE" in
   lead-stale) head="STALE LEAD COPY (LR-156): this lead branch is over 24 h old or over 200 commits behind origin/main and could not be recut; fix it before anything else (the command is below).";;
   lead) head="This is the tech lead's main copy (Mac). The founder types /lead here. Builders run /next <area> in their own copies; qa runs /qa. Way of working: product/WAY-OF-WORKING.md.";;
