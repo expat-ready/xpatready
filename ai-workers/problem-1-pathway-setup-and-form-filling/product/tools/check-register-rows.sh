@@ -33,10 +33,19 @@ reg "$(row LR-002 'DEFERRED (P-860: revisit when measures.py shows a need)' 'lat
 ok "a DEFERRED row with an event (\"revisit when ...\") passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
 reg "$(row LR-003 DO 'x' Intended)" "$(row LR-004 DONE 'x' 'Proven')"; chk
 ok "DO and DONE rows are not asked for either" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
+# review r1 of LR-173: an empty cell keeps the columns; a later date after an event marker counts; a date that does not exist
+reg "| LR-005 | item | | DROP | r | l | d | Intended | |"; chk
+ok "a DROP row with empty cells (Source(s), Gate notes) is still read: it fails" "$([ $r = 1 ] && grep -q '^FAIL  LR-005: DROP' <<<"$out" && echo 1)" "rc=$r $out"
+reg "$(row LR-006 'DEFERRED (trigger: 2026-02-30)' x Intended)"; chk
+ok "a trigger date that does not exist (2026-02-30) fails" "$([ $r = 1 ] && grep -q 'LR-006: DEFERRED trigger date 2026-02-30 is not a real date' <<<"$out" && echo 1)" "rc=$r $out"
+reg "$(row LR-007 'DEFERRED (revisit when Release 1 ships; trigger: 2026-11-01)' x Intended)" "$(row LR-008 'DEFERRED (P-860: revisit when measures.py shows a need)' x Intended 'revisit on 2026-11-01')"
+out=$(python3 -I "$RR" due --file "$T/r.md" --today 2026-11-28)
+ok "due: a date after an event marker, and a date in the Gate notes, are both ACTs" "$(grep -q 'deferred row due: LR-007 (trigger 2026-11-01' <<<"$out" && grep -q 'deferred row due: LR-008 (trigger 2026-11-01' <<<"$out" && echo 1)" "$out"
 # lab-progress: DEFERRED out of the goal, counted apart
 reg "$(row LR-010 DO x 'Built #1')" "$(row LR-011 DO x Intended)" "$(row LR-012 'DEFERRED (trigger: 2026-12-05)' x Intended)" "$(row LR-013 'DROP (exists elsewhere: LR-010)' x Intended)"
 out=$(TMPDIR="$T" python3 -I "$LP" --file "$T/r.md")
 ok "lab-progress.py leaves the DEFERRED row out of the goal (Built 1/2) and prints \"1 deferred\" apart" "$(grep -q 'Built 1/2 (50%)' <<<"$out" && grep -q '1 deferred (out of the goal)' <<<"$out" && echo 1)" "$out"
+ok "... and a --file run writes nothing to the rate log" "$([ ! -e "$T/lab-progress.log" ] && echo 1)" "$(cat "$T/lab-progress.log" 2>/dev/null)"
 # due: a date trigger today or past is an ACT; one ahead is not; an event is counted, never an ACT
 reg "$(row LR-020 'DEFERRED (trigger: 2026-11-28)' x Intended)" "$(row LR-021 'DEFERRED (trigger: 2026-12-05)' x Intended)" "$(row LR-022 'DEFERRED (revisit when Release 1 is near done)' x Intended)"
 out=$(python3 -I "$RR" due --file "$T/r.md" --today 2026-11-28)

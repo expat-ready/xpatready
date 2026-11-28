@@ -12,7 +12,7 @@ A row of design/lab-register-2026-11-27.md whose Verdict starts DROP must name w
 Read-only, no network, US$0. The default source is origin/main's register (git show). Test: check-register-rows.sh.
 """
 import os, re, subprocess, sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -34,11 +34,25 @@ def text(argv):
 
 
 def rows(t):
+    """(id, Verdict, Reason, Gate notes) per register row; split on "|" as lab-progress.py does, so an empty cell is kept."""
     for line in t.split("\n"):
-        if re.match(r"^\| LR-\d+ ", line):
-            c = [x.strip() for x in line.split(" | ")]
-            if len(c) >= 9:
-                yield c[0].lstrip("| ").strip(), c[3], c[4], c[-1].rstrip(" |")
+        if re.match(r"^\| LR-\d+", line):
+            c = [x.strip() for x in line.split("|")]
+            if len(c) >= 11:
+                yield c[1], c[4], c[5], c[9]
+
+
+def dates(cells):
+    """Every trigger date in the cells, valid ones (YYYY-MM-DD that exist) and bad ones apart."""
+    ok, bad = [], []
+    for x in cells:
+        for m in TRIG.finditer(x):
+            for d in DATE.findall(m.group(1)):
+                try:
+                    date.fromisoformat(d); ok.append(d)
+                except ValueError:
+                    bad.append(d)
+    return ok, bad
 
 
 def check(t):
@@ -49,6 +63,8 @@ def check(t):
             bad.append(f"FAIL  {rid}: DROP names no other home for its work (write \"exists elsewhere: <where>\", LR-173)")
         if verdict.startswith("DEFERRED") and not any(TRIG.search(x) for x in cells):
             bad.append(f"FAIL  {rid}: DEFERRED names no trigger (write \"trigger: <YYYY-MM-DD or an event>\", LR-173)")
+        elif verdict.startswith("DEFERRED") and dates(cells)[1]:
+            bad.append(f"FAIL  {rid}: DEFERRED trigger date {', '.join(dates(cells)[1])} is not a real date (LR-173)")
     return bad
 
 
@@ -58,12 +74,11 @@ def due(t, today):
         if not verdict.startswith("DEFERRED"):
             continue
         n += 1
-        m = next((m for m in (TRIG.search(x) for x in (verdict, reason, notes)) if m), None)
-        d = DATE.search(m.group(1)) if m else None
-        if d:
+        ds = sorted(dates((verdict, reason, notes))[0])   # every marker in every cell; the earliest date decides
+        if ds:
             dated += 1
-            if d.group(1) <= today:
-                acts.append(f"ACT   deferred row due: {rid} (trigger {d.group(1)}, today {today}): bring it back as DO or set a new trigger in the register (LR-173)")
+            if ds[0] <= today:
+                acts.append(f"ACT   deferred row due: {rid} (trigger {ds[0]}, today {today}): bring it back as DO or set a new trigger in the register (LR-173)")
     return [f"deferred: {n} rows ({dated} on a date, {n - dated} on an event; LR-173)"] + acts
 
 

@@ -49,7 +49,8 @@ try:
 except Exception:
     pass
 try:
-    open(log, 'a').write(f'{time.time():.0f} {built} {proven}\n')
+    if '--file' not in sys.argv:   # a test or by-hand run on a file never feeds the measured rate
+        open(log, 'a').write(f'{time.time():.0f} {built} {proven}\n')
 except Exception:
     pass
 h_left = max((BUILT_BY - now).total_seconds() / 3600, 0.01)
