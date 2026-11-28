@@ -1,0 +1,48 @@
+# ESLint over the studio, REPORT ONLY (lab row LR-083; technology gate: product/design/lr-083-gate-eslint.md).
+# eslint + typescript-eslint + react-hooks (studio/eslint.config.mjs). Every finding on main when it was added is held in
+# studio/eslint-suppressions.json (ESLint bulk suppressions), so the job reports only findings a PR adds; a held finding
+# that is fixed does not fail it (--pass-on-unpruned-suppressions; prune with `npx eslint . --prune-suppressions`).
+# Nothing here holds a PR: the lint step is continue-on-error, no Mergify condition and no ruleset names this job.
+# Read-only token, no secrets, package scripts off (--ignore-scripts), about 2 minutes on a hosted runner, US$0.
+# A later PR may make it blocking after 10 clean runs (the gate record says when to reconsider).
+name: lint-report
+on:
+  pull_request:
+    paths:
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/**"
+      - ".github/workflows/lint-report.yml"
+  workflow_dispatch:
+concurrency:
+  group: lint-report-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+permissions: {}
+jobs:
+  eslint:
+    if: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: { contents: read }
+    env:
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
+      - name: npm ci (package scripts off)
+        run: npm ci --prefix "$S" --ignore-scripts --no-audit --no-fund
+      - name: eslint, new findings only (report only)
+        continue-on-error: true
+        working-directory: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+        run: |
+          set -o pipefail
+          status=0
+          npx eslint . --pass-on-unpruned-suppressions --format stylish 2>&1 | tee eslint.txt || status=$?
+          {
+            echo "### ESLint (LR-083, report only): exit $status"
+            if [ -s eslint.txt ]; then echo '```'; tail -n 200 eslint.txt; echo '```'; else echo "No new findings beyond eslint-suppressions.json."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

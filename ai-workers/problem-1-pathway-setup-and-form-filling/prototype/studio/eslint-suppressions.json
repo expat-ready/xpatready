@@ -1,0 +1,6414 @@
+{
+  "acceptance/C1.6.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.10.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    }
+  },
+  "acceptance/C11.11.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.12.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    }
+  },
+  "acceptance/C11.13.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "acceptance/C11.14.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.15.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.16.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.17.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.3.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C11.8.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C2.12.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C2.4.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C2.6.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 32
+    }
+  },
+  "acceptance/C3.10.test.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "acceptance/C3.11.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 19
+    }
+  },
+  "acceptance/C3.12.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C3.16.test.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "acceptance/C3.2.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C3.4.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 9
+    }
+  },
+  "acceptance/C3.8.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "acceptance/C4.1.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 22
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "acceptance/C4.11-spread.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "acceptance/C4.11.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 60
+    }
+  },
+  "acceptance/C4.2.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "acceptance/C4.5.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 25
+    }
+  },
+  "acceptance/C4.6.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 12
+    }
+  },
+  "acceptance/C4.7.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    }
+  },
+  "acceptance/C4.8.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "acceptance/C5.1.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 20
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "acceptance/C5.2.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "acceptance/C5.4.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "acceptance/C6.13.test.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "acceptance/C6.15.test.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "acceptance/C6.18-schedule1.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "acceptance/C6.4.test.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "acceptance/C6.9.test.ts": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "acceptance/C7.5.test.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "acceptance/C7.6.test.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-escape": {
+      "count": 2
+    }
+  },
+  "acceptance/C8.3.test.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "acceptance/C9.5.test.ts": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "acceptance/X1a-submitted.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "acceptance/X1a.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "acceptance/lib/pack2.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "api/src/ai.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/answer-keys.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/case-clients/prospect-won.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "api/src/case-close.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "api/src/case-deadlines/milestones.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/case-feed.ts": {
+    "no-irregular-whitespace": {
+      "count": 1
+    }
+  },
+  "api/src/case-notes/service.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/case-prepare.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    },
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/case-stages.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "api/src/client-money/invoices/drafts.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/client-money/invoices/money.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    }
+  },
+  "api/src/client-money/reads/invoices.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "api/src/client-money/reads/payments.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/client-money/reports/exports.ts": {
+    "no-irregular-whitespace": {
+      "count": 1
+    }
+  },
+  "api/src/client-money/reports/summary.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "api/src/client-money/reversals/reverse.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/client-money/trust/money-out.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/client-money/trust/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/client-money/trust/to-move.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/core.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/demo.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/documents/keep-period.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/draft-qd.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/eligibility.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/features/case-milestones.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/features/checkpoint/085-conditional-filings.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/field-scope.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/fill-case.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/fill.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    }
+  },
+  "api/src/finder.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 3
+    }
+  },
+  "api/src/form-field-condition.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "api/src/form-lines.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/form-setup.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/forms.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/assignment/place.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/booking/consult/service.ts": {
+    "no-control-regex": {
+      "count": 2
+    }
+  },
+  "api/src/front-office/booking/ics.ts": {
+    "no-control-regex": {
+      "count": 2
+    }
+  },
+  "api/src/front-office/booking/service.ts": {
+    "no-control-regex": {
+      "count": 4
+    }
+  },
+  "api/src/front-office/booking/settings/availability.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/compliance/conflict/gate.ts": {
+    "no-control-regex": {
+      "count": 2
+    },
+    "no-misleading-character-class": {
+      "count": 4
+    }
+  },
+  "api/src/front-office/compliance/identity/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-misleading-character-class": {
+      "count": 5
+    }
+  },
+  "api/src/front-office/duplicates/merge/review.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "api/src/front-office/find.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/import-targets/person.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/retainers/docx.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-irregular-whitespace": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/retainers/service.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-control-regex": {
+      "count": 3
+    },
+    "no-misleading-character-class": {
+      "count": 3
+    }
+  },
+  "api/src/front-office/sales/common.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-misleading-character-class": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/sales/public.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-misleading-character-class": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/signing/any-document/completion.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "api/src/front-office/signing/contract.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/signing/fake-page.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/front-office/signing/service.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/health.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/library-changes.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/library-items.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/main.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 41
+    }
+  },
+  "api/src/official-pages.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/people-ai.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "api/src/platform/automation/registry.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/branding/branding.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/complaints/complaints.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 7
+    },
+    "no-control-regex": {
+      "count": 2
+    },
+    "no-misleading-character-class": {
+      "count": 1
+    }
+  },
+  "api/src/platform/erasure/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/files/file-type.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-irregular-whitespace": {
+      "count": 2
+    }
+  },
+  "api/src/platform/identity/service.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/platform/identity/session/service.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/platform/keep-period/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/messages/channels/email/bounces.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/platform/messages/channels/email/ses.ts": {
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "api/src/platform/messages/send/messages.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/platform/messages/templates/templates.ts": {
+    "no-control-regex": {
+      "count": 2
+    }
+  },
+  "api/src/platform/register/breaches/routes.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/platform/register/breaches/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/register/holds/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/register/requests/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/secret-box/reencrypt.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "api/src/platform/settings/offices/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/settings/profile/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/support/support.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-control-regex": {
+      "count": 2
+    },
+    "no-misleading-character-class": {
+      "count": 2
+    },
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "api/src/platform/switches/service.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/platform/system-console/support.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/platform/system-identity/routes.ts": {
+    "no-useless-escape": {
+      "count": 6
+    }
+  },
+  "api/src/pqr-drafts.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "api/src/programs.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    }
+  },
+  "api/src/proposals.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "api/src/readiness.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/refusal.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    }
+  },
+  "api/src/review-proposals.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/runtime.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/saved-readings.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "api/src/search/case-finder.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "api/src/search/party-search.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "api/src/sources.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 29
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    },
+    "no-useless-assignment": {
+      "count": 3
+    }
+  },
+  "api/src/studio.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 43
+    }
+  },
+  "contracts/cost-check.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "contracts/documents.ts": {
+    "no-control-regex": {
+      "count": 2
+    }
+  },
+  "contracts/form-library.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "contracts/milestones.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-irregular-whitespace": {
+      "count": 2
+    }
+  },
+  "contracts/release-fill-trials.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "contracts/runtime.ts": {
+    "no-control-regex": {
+      "count": 2
+    },
+    "no-irregular-whitespace": {
+      "count": 2
+    }
+  },
+  "contracts/submission-record.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "deploy/cdk/lib/checks.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "deploy/cdk/lib/service-checks.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    }
+  },
+  "deploy/cdk/test/observability.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "deploy/cdk/test/service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 12
+    }
+  },
+  "deploy/cdk/test/sign-in-task.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "engine/canada.ts": {
+    "no-irregular-whitespace": {
+      "count": 2
+    },
+    "no-misleading-character-class": {
+      "count": 2
+    },
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "engine/eligibility/condition.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/field-format.ts": {
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "engine/held-conditions.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/import.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 27
+    }
+  },
+  "engine/masters-ai.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/parts.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/people.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "engine/pqr-picks.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/render.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "engine/runtime/case-checklist.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/runtime/case.ts": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "engine/runtime/employer.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/runtime/questionnaires.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "engine/runtime/readiness.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "engine/runtime/stages.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "engine/snapshot.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 47
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 7
+    }
+  },
+  "engine/sources.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "engine/validate.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 28
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 7
+    }
+  },
+  "evidence/before-d279-d280/web-src/App.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "evidence/before-d279-d280/web-src/lib/api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "evidence/before-d279-d280/web-src/pages/composition.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    },
+    "no-useless-assignment": {
+      "count": 3
+    }
+  },
+  "evidence/before-d279-d280/web-src/pages/configuration.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 42
+    }
+  },
+  "evidence/before-d279-d280/web-src/pages/job.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 17
+    }
+  },
+  "evidence/before-d279-d280/web-src/pages/programs.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "evidence/before-d279-d280/web-src/pages/sources.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 24
+    }
+  },
+  "ports/arrival.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    },
+    "no-control-regex": {
+      "count": 2
+    }
+  },
+  "ports/client-money.ts": {
+    "no-control-regex": {
+      "count": 2
+    }
+  },
+  "ports/consent.ts": {
+    "no-misleading-character-class": {
+      "count": 1
+    }
+  },
+  "ports/contracts/audit-port.contract.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "ports/contracts/consult-record-port.contract.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "ports/contracts/erasure-port.contract.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "ports/fo-person.ts": {
+    "no-control-regex": {
+      "count": 1
+    },
+    "no-misleading-character-class": {
+      "count": 1
+    }
+  },
+  "ports/keep-period.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "ports/matching.ts": {
+    "no-control-regex": {
+      "count": 2
+    },
+    "no-misleading-character-class": {
+      "count": 3
+    }
+  },
+  "ports/messages.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "ports/metrics.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_a24_case_number_migration.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_a24_record_reference_browser.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_ai_drafting.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_ai_launch_paths.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/check_ai_live_switch.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_ai_orchestration.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 21
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_as1m_eligibility_move.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_as2a_cited_gates.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_aud1a_insert_only.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_aud1b_adapter.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 9
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_aud1m_case_writes.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_aud3_access.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 35
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    }
+  },
+  "tests/check_aud3c_platform_line.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_aud4_firm_log.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 12
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_aud4s_activity_log_browser.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-irregular-whitespace": {
+      "count": 2
+    }
+  },
+  "tests/check_aud5_check.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/check_aud5_keep_periods.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_aud_values.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b102_worked_out.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b106_gates_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_b112_merge_supplies_about.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b112_merge_supplies_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b124_rests_on.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b124_unconfirmed_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_b148_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b151_unpriced_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_b154_section_background.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    }
+  },
+  "tests/check_b155_siblings.ts": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_b164_no_engine_keys.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_b170c_xfa_adapter.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b52_own_yes_no.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b78_section_names.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b78_sp_case_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b83_own_question_screen_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_b83_undo_withdraw.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 28
+    }
+  },
+  "tests/check_bk10_form_rules_data.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk10_form_titles.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_bk14_review_any_form.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk15_fees_by_role.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_bk15_study_family_api.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk16_children_when.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk16_family_forms_api.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk21_pinned_account.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": {
+      "count": 1
+    }
+  },
+  "tests/check_bk22_filler_steps.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk25_own_statement.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk26_dependent_lists.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk2_fold_outs_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk3_client_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk3_frame_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk3_links_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_bk4a_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk4b_handoffs_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk4c_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_bk5_start_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_bk9_shared_filing_api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/check_bypass_uses.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c101_release_two_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c101_row_ten.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c102_copy_values.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_c102_finished_story_refusals.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c102_paper_readback.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c102_story_validated_match.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c10_1_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c10_1_configured.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1110_view_per_person_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1112_filing_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1112_prepare_api.ts": {
+    "no-useless-assignment": {
+      "count": 3
+    }
+  },
+  "tests/check_c1113_draft_fields.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1113_draft_fields_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1113_near_release_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1116_one_way_in_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c1117_field_messages_browser.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_c113_full_trail.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_c116_channels_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c116_item_channel_forms.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c119_library_items.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c119_library_items_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c16_header_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_c16_portal_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c18_age_case.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 11
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c18_copies.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 16
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c18_copies_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c313_reuse.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c313_reuse_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c313_search_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c314_rules.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c314_rules_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c3_11_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c3_11_signed_scan.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 31
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 3
+    }
+  },
+  "tests/check_c41_questionnaire_roles.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 25
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c41_section_order.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c41_section_order_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c42_marking_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c42_section_titles.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    }
+  },
+  "tests/check_c42_still_asked_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c44_part2_browser.cjs": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c44_question_types_browser.cjs": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c45_supplies_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c45_supplies_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_c46_preview_channels.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 27
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c46_preview_channels_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c48_sqr_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c612_fees_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_c614_providers.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 3
+    }
+  },
+  "tests/check_c615_document_sets.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c616_privacy_browser.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_c617_stages_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c617_stages_migration.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c618_officer_background.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c64_storage_api.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c65_documents_api.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c69_page_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_c69_runs.ts": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_c75_findings_api.ts": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_c75_findings_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c75_form_review_engine.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "tests/check_c75_review_page_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c76_ready_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_c79_must_verify.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_c81_sign_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c81_signing_api.ts": {
+    "prefer-const": {
+      "count": 2
+    }
+  },
+  "tests/check_c82_filing_numbers.ts": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "tests/check_c82_filing_record_api.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_c82_record_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c91_impact_ai.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_c95_release_update_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_case_feed.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-irregular-whitespace": {
+      "count": 1
+    }
+  },
+  "tests/check_contract_seams.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_cost_check.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_cost_override.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_cost_warning_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csc1_close.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csc1s_decision_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csc1s_view.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csd5_flags.ts": {
+    "no-useless-assignment": {
+      "count": 3
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_csd5_flags_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csd5_preview_browser.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_csd5c_type_defaults.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 9
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_csd6_reads_keep.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_csdl1_deadlines.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_csdl1_deadlines_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csk1_client.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_csmv1_money_visibility.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csnk1_name_key.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_csnt1_notes.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_csnt1_timeline.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csnt1d_panel_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csr1_reports.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_css1_index.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_css1_search.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_cssd1_no_drift.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-regex-spaces": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_csv1_inputs.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_csw2_links.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_csw3_firm_scope.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_d1_reset_to_six.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_d1_reset_to_six_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_d3_saved_edition.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_demo_link_seed.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_deps_fresh.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 2
+    }
+  },
+  "tests/check_dv_backbone_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_engine.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_f8_empty_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_fd1_find.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_features_registry.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fill_duty.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_finder_long_page_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_finder_long_page_key.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo10_assignment.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo10p2_sharing.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo13_compliance_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo13c_conflict.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo13i_identity.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo1a_sales_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo1b_booking_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_fo1p_person_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2_leads_prospects.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2b_corporate.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2p3_prospects.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2p3b_arrival_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2p4_calls_timeline.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2pv_prospect_value.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2v_lead_visibility.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo2w_won_event.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3_booking.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3a1c_set_names.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3a2_consult_record.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3a2_feed.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3a_booking_types.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3a_hours_timings.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3c2_consultation_agreement.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3c_consultation_agreement.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3m_answers.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3pa_public_answers.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3sa_any_time.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3sr_routes.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3st1_calendar_browser.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3st2_availability_browser.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/check_fo3v_video.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3vr_visibility.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo3w_booking_browser.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo5_retainers.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_fo5b_retainer_checklist.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo5d_decline_withdraw.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo6_4d_signed_downloads.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo6_door_code.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo6_signing.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo6_signing_api.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo6_signing_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo6d_any_document.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7a2_ledger_rules.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7a_money_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-constant-binary-expression": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7b_c5_scope.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7b_invoices.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7b_refunds.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 11
+    }
+  },
+  "tests/check_fo7c_card_payments.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7g3_bill_to.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7g_tax_defaults.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7lk_lock_order.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7mv_move_list.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7q_parties.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7q_reads.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7r3_exports.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7r_statement.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7r_statement_send.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7t_money_out.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7t_to_move.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7t_trust.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7ts_money_settings.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7v_reversals.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo7w1_retainer_invoice.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9a_duplicates.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9a_phone_edit.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9a_won_duplicates.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_2m_money_merged.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_auto_merge.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_merge.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_pairs_model.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_phone_doors.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_fo9b_review.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_focus_ring_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_ai_errors.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b116_own_unmapped.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b81_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b81_not_on_form.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b81_routes.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b82_case_lines.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b86_door.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b86_panel_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b88_panel_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b88_qa263.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_b88_spread.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c1113_acceptance.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c1115_download_link.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c1115_redo.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c117_part_b.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "tests/check_forms_c118_acceptance.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c118_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c212_complete.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c212_progress.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c212_queue_forms.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c212_rail_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c212_to_review_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c24_same_and_new.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c26_checklist.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c26_queue_breaks.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c312_field_map.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c31_acceptance.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c31_formats.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c31_formats_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c33_acceptance.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c33_failed_run_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c34_ai.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 39
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c34_ai_live.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c34_masters.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "tests/check_forms_c34_masters_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c36_answer_values.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c36_answer_values_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c36_requirement_type.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c36_requirement_type_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c36_rule_facts.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c36_rule_facts_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c411_contract.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c411_draft_qd.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_forms_c411_draft_qd_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c47_pqr_picks.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 20
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 5
+    }
+  },
+  "tests/check_forms_c47_pqr_picks_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_c47_v2_jobs.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_forms_channels.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_channels_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_channels_migration.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_d2_live_fails_offer_saved.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_demo.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_f1p.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_f3a0.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_f3a1c.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_focus_landings_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_held_conditions_pure.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    }
+  },
+  "tests/check_forms_k11_minors_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_k11_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_p80_guard.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_pa_track_a_jobs.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_forms_pd_apply_replayed.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_pd_unique_paths.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_pdf_hardening.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_proposal_contract.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa101_103.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa144_numbered_headings.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa162_fact_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa162_run_reasons_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa162_saved_matching.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa193_batch_mark.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa206_name_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa206_section_headings.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    }
+  },
+  "tests/check_forms_qa218_saved_masters_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa53.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_qa75_job_page_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_rounds.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_s4_canada.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_s4_finder.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 38
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_s4_library_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_s4_run_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_s4_runs.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 32
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_saved_parts.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_schema_lint.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_slice2.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_slice2b.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_tab_refresh_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_w102_fix.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_x5_finder_baseline.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_forms_x5_library.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_g1_source_entry_points_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_g1_source_register_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_g2_answer_key_gate_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_g3_demo_release_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_g4_answer_keys.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_g4_tests_tab_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_gcore_b2_door.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_gcore_b4_field_map_check.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_gcore_b5_field_map_bulk.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_gcore_check_api.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_gcore_engine.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_grounding_db.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 6
+    }
+  },
+  "tests/check_irm_editions.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_item_proof.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_journey_recording.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_k13_names_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_m3s4_blocking_api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "tests/check_m3s5_online_only_api.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_m4_demo_smoke.ts": {
+    "no-regex-spaces": {
+      "count": 4
+    }
+  },
+  "tests/check_no_array_tx.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_official_pages.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_os73_vitals_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_p121_rating.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_p154_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf0a_audit_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 2
+    }
+  },
+  "tests/check_pf0bp_body_errors.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf0p_ports.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    },
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_pf10a_import_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf10b_import_engine.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf10t_targets.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf11c_close.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "tests/check_pf12_walls.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf12b_bypass_audit.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf12b_doors.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf13_branding.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf13b_images.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf14_jobs.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf15_booking.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf15_cases.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf15_limits.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_pf16_billing_rules.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf17_console.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 41
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf17_demo_signin.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf17_support.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 12
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18a_notifications.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 14
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18a_offices.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18b_support.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18bk_keys.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18n2_lead_notices.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18n_notifications.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf18np_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19a_messages_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19b2_ses.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19b3_delivery.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19b_mail.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19b_sending.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19m_mailbox_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19p_platform_mail.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19r_case_links.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19r_every_sender.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf19r_senders.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/check_pf20_engine.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21_complaints.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21b_holds.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/check_pf21b_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21b_requests.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21c_breaches.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21d_erasure.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21d_fo_eraser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21d_switch.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/check_pf21i_idempotent.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21j_handler_key.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21rs_r0.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21v_views.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf21w_routes.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf23_observability.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/check_pf23m_log_calls.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_pf23w_jobs_wired.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf24_secrets.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf24w_environment.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf25_web_address.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf25w_routes.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf26_person_export_port.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf27_lock.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf28_inputs.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf28_system_reason.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/check_pf3_platform_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4_identity.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4b_session_reads.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4bc_cognito_admin.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4c1b_batch.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4c_batch_invite.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4c_licence_format.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4dn_invite_name.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/check_pf4s_system_signin.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_pf5_exit_clock.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf5_signup_billing.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf5s2_billing_browser.ts": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_pf5t_terms.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 13
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_pf5tv_current_terms.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf5v_signup_mail.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf6b_permission_rules.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf6m2_invite_recheck.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pf6m_money_line.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf6r_roles_read.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 16
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pf8b_f6_pg18_nobypass.ts": {
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_pf8b_f7_data_walls.ts": {
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_pf8r_nightly_job.ts": {
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_pf8r_restore.ts": {
+    "no-regex-spaces": {
+      "count": 6
+    }
+  },
+  "tests/check_pff1_s3_files.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pff1b_bind.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 3
+    }
+  },
+  "tests/check_pff1c_catchup_walls.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pff2_uploads.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pff4_file_type.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pffd_delete.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pffp_pdf.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pffw_files_limits.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pfle_libraries.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 2
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_pfr1_reports.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_pfr2cm_metrics.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pfr2fo_metrics.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_pool_tx_return.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_ports_events.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/check_pqr.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 28
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_pqr_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_preview_sets.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 57
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_preview_sets_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_prisma_schema.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa117_person_sections.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa119_next_step_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa144_ee_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa144_fs_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa144_lmia_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa144_place_step.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/check_qa144_sp_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa144_vv_release.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa145_clean_clone.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa172_plain_titles_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa180_one_rule.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa184_live_state_browser.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa196_check_landers.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_qa207_previous_editions.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa221_who_age.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa270_file_route.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa275_fill_files.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa317_sheet_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa391_kept_forms_browser.cjs": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/check_qa400_principal_per_person.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa417_counts_browser.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa421_release_submit_first_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa427_client_card_browser.cjs": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_qa439_deciders_first.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa439_question_order_api.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa441_next_not_done_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa445_every_part_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa446_confirm_counts_browser.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa518_unsubscribe_address.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa621_persona_door_production.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_qa779_person_email_browser.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa77_names_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa78_words_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa91_who_can_be_run.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa91_who_can_be_run_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_qa92_95_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_qa99_who_can_be_trail.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_queue_tx.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_r146_whole_form_output.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_r196_plans.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_r196_write_offs.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "tests/check_review_item_words.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_runtime_n7.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s2_fill_trials.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_leadcheck.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 45
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 4
+    }
+  },
+  "tests/check_s5_leadcheck_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_live_approval_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_people_ai.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 20
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_slice1.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 37
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_s5_slice1_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_slice2.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 48
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_slice2_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_slice3.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 28
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_s5_slice3_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s6_field_drafts.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s6_library_pages_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s6_library_sources.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s6_p149.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 37
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s6_queue_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s7_dialogs_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s7_load.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_s7_reset.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_screen01_api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 58
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_screen01_channels.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 14
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_screen01_release_race.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/check_screen01_rules.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_screen02_fix.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 25
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 3
+    },
+    "prefer-const": {
+      "count": 2
+    }
+  },
+  "tests/check_screen02_slice1.cjs": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_screen02_slice2.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 27
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_screens_qa_1029_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_setup_card_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_setup_checklist.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_sh2_where_used.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_sh2b_doc_type_uses.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_speed_budget.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_stand_ins.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_studio_browser.cjs": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_tx_end_guard.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa1_counts_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa1_counts_rules.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa2_row_words_rules.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa2_to_review_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa3_status_words_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa3_words_rules.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_uxa4_details_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_vv_checklist_api.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_vv_prepare_api.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_w115_slice1.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 30
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_w115_slice2.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 39
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_w115_slice2_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w115_slice3.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 32
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_w115_slice3_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_before_forms_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_level_tokens.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_programs_r3.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_programs_s2.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_qa51_52_54.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_s1s2_fix.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_start_setup.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_start_setup_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_structure.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 39
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_structure_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_structure_path.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_structure_r3.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_w1_visual_system.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_walk_plan.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-regex-spaces": {
+      "count": 5
+    }
+  },
+  "tests/check_who_can_be_qa.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_who_fills.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 9
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/check_who_fills_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_workspace_first_calls.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_x1_overview_strip_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_x1_tabs_focus_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-extra-boolean-cast": {
+      "count": 1
+    }
+  },
+  "tests/check_x1b_filing_tag_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_x2b_bulk_apply.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_x2b_bulk_preview.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/check_x2b_dialog_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/check_x9b_ai_now_refused.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/fill_queue_kinds.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/fixtures/c75-made-up-run.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/fixtures/pf4bc-cognito/fake-cognito.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/fixtures/scale_100.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "tests/journeys/j_10.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_100.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_102.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_104.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_108.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_109.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_110.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_13.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_20.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_24.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_37.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_38.ts": {
+    "no-irregular-whitespace": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_4.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "tests/journeys/j_67.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_69.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_77.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_8.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_86.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_9.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_90.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/journeys/j_93.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/lib/conflict-clear.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_c73_pdf_vs_sheet.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "tests/qa/check_qa13_readd_form.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa144_lmia_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa144_vv_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa180_two_gates.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa19_demo_leftovers.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "tests/qa/check_qa1_release_bypass.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa231_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa270_preview_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa275_fill_overwrite.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa277_withdraw_reason_feed.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa338_earlier_cases_disagree.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa391_not_applying_out_of_date.cjs": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa400_principal_flag_per_person.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa401_picker_review.cjs": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa421_release_submit_first.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa427_client_card.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa439_deciders_first.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa445_save_and_continue.cjs": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa446_confirm_rule.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa447_self_review_record.cjs": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa452_jobs_observed.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa453_real_jobport.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa470_host_mail_zone.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa477_owner_own_leads.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "tests/qa/check_qa477_owner_view.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/qa/check_qa478_479_r16_breaks.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa510_expired_id_document.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa5_stored_times.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_ai_paths.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1027.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101_api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101_browser.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101b_api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101b_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101c_runtime_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101c_validated.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101c_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101d_c212_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101e_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101f_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_1101g_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_ch_1030.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_fix_1027.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_r3_1028.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_r69_1028.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_s2_1027.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_s3_1029.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_s4_1028.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_am_s5_1029.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 3
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_c1113_rename_released.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_dv_1029.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_explore_1025.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/qa/check_qa_explore_1029.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_f1_probe.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_golden_2.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_m2_journeys.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 2
+    }
+  },
+  "tests/qa/check_qa_p227_imm5532_saved.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_p227_r146_saved_maps.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_qn_1029.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_r1_platform_fo_walk.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_r1a_probe.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_r1c_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_r1d_walk.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_s2_probe.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_s4_filing.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_vv_1102_probe.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_qa_wording_1029.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "tests/qa/check_r127_lead_source.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r138_r140_booking_page_walk.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r140_inbox_walk.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r140_staff_move_invite.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r14_walls_gate_a.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "tests/qa/check_r16_deny_sweep.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r16_money_keys_by_invitation.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r19_jobs_walk.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r1_fo3_tz_walk.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/qa/check_r1_platform_gate_a.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/runtime/check_c3_paper_validate.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/runtime/check_c611_team.ts": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "tests/runtime/check_case_engine.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/runtime/check_m3s3_waive_api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/runtime/check_runtime_r1a.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tests/runtime/prepare_c44.cjs": {
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "tests/runtime/setup_visitor_visa.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tests/scout/check_sc2_sc4_1025.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/scout/walk1_1025.cjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/seed_proposals.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "tests/walk_b72_rule_fact_1440.cjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tests/walk_c614_1440.ts": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tools/check-gate-b.mjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tools/check-port-contracts.mjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tools/check-works-set.mjs": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "tools/demo-dump.mjs": {
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tools/gate-b.mjs": {
+    "no-irregular-whitespace": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tools/item-proof.mjs": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "tools/record-field-drafts.ts": {
+    "no-async-promise-executor": {
+      "count": 1
+    }
+  },
+  "tools/walk-plan.mjs": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 2
+    },
+    "prefer-const": {
+      "count": 1
+    }
+  },
+  "tools/works-set.mjs": {
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "tools/xfa-writer-trial.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 32
+    }
+  },
+  "web/src/App.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "web/src/components/add-to-structure.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/components/ai-launch.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/bulk-lines.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/conditions.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/cost-warning.tsx": {
+    "react-hooks/purity": {
+      "count": 2
+    },
+    "react-hooks/refs": {
+      "count": 2
+    }
+  },
+  "web/src/components/demo-finished-story.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/focus-item.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/frame.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/levels.tsx": {
+    "react-hooks/static-components": {
+      "count": 1
+    }
+  },
+  "web/src/components/own-questions.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/components/pqr-draft.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/source-panel.tsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/ui/controls.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "web/src/components/ui/menu-root.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/components/workspace.tsx": {
+    "react-hooks/refs": {
+      "count": 5
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/lib/api.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/client-money/invoices/credit-note-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/client-money/invoices/list.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/modules/client-money/payments/list.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/modules/client-money/payments/record-payment.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/client-money/trust/party.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking-public/brand.tsx": {
+    "react-hooks/refs": {
+      "count": 18
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking-public/contract.ts": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking-public/manage-page.tsx": {
+    "no-control-regex": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking-public/type-page.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 9
+    }
+  },
+  "web/src/modules/front-office/booking/availability/availability-page.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/front-office/booking/calendar/calendar-page.tsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "react-hooks/purity": {
+      "count": 2
+    },
+    "react-hooks/refs": {
+      "count": 9
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking/calendar/new-booking.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/modules/front-office/booking/settings/timings-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking/settings/type-timings.tsx": {
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/booking/settings/types-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/modules/front-office/compliance/identity/identity-panel.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/duplicates/merge-dialog.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/duplicates/people-to-merge-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/duplicates/use-duplicate-check.ts": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/embed/form-embed.js": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "no-var": {
+      "count": 44
+    }
+  },
+  "web/src/modules/front-office/retainers/end-panels.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/front-office/retainers/retainer-card.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/modules/front-office/retainers/retainer-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/front-office/sales/lead-owner.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/sales/lead-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/sales/prospect-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/sales/source-filter.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/front-office/sales/web-form-settings-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/front-office/sign/signature-requests.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/platform/audit/activity-log-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 4
+    }
+  },
+  "web/src/modules/platform/complaints/action-drawer.tsx": {
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 3
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/complaints/record-drawer.tsx": {
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/modules/platform/complaints/record-page.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/find/find-box.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/platform/frame.tsx": {
+    "react-hooks/refs": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/import/import-flow.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/messages/messages-panel.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/messages/templates/templates-page.tsx": {
+    "react-hooks/refs": {
+      "count": 6
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/notifications/all-page.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/notifications/bell.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/saas/address-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/saas/billing-page.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 5
+    }
+  },
+  "web/src/modules/platform/settings/firm-profile-page.tsx": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/settings/notifications-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/settings/office-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/settings/offices-page.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/settings/place-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/signup/invited-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/signup/signup-page.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/signup/verify-page.tsx": {
+    "react-hooks/refs": {
+      "count": 4
+    }
+  },
+  "web/src/modules/platform/staff/invite-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/platform/staff/person-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/modules/platform/terms/terms-gate.tsx": {
+    "react-hooks/refs": {
+      "count": 2
+    }
+  },
+  "web/src/modules/platform/trial-banner.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    }
+  },
+  "web/src/modules/system/firms-page.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/system/privacy/breach-page.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/system/privacy/holds-page.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/modules/system/privacy/record-breach.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/system/privacy/request-page.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/system/privacy/requests-page.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/modules/system/support-page.tsx": {
+    "react-hooks/purity": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/ai.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    }
+  },
+  "web/src/pages/configuration.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 29
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/field-scope.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/history.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "web/src/pages/job.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 14
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    }
+  },
+  "web/src/pages/library-forms.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "web/src/pages/library.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 11
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 5
+    }
+  },
+  "web/src/pages/preview.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 37
+    }
+  },
+  "web/src/pages/programs.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 6
+    }
+  },
+  "web/src/pages/proposals.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/release.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 8
+    }
+  },
+  "web/src/pages/review-items.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/review.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 17
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "web/src/pages/sets-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/sources.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/start.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/structure.tsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 7
+    },
+    "react-hooks/immutability": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/pages/supplies-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/pages/to-review.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/pages/workspace/documents.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "web/src/pages/workspace/finder.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/pages/workspace/forms.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/pages/workspace/questionnaires.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "web/src/pages/workspace/sources.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/static-components": {
+      "count": 5
+    }
+  },
+  "web/src/runtime/case-decision.tsx": {
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/case-notes.tsx": {
+    "react-hooks/immutability": {
+      "count": 2
+    },
+    "react-hooks/refs": {
+      "count": 2
+    }
+  },
+  "web/src/runtime/cases.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/runtime/document-preview.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/employer.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/filing-changes.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/findings.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/item-channels.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/milestones.tsx": {
+    "react-hooks/immutability": {
+      "count": 2
+    },
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/runtime/questionnaire.tsx": {
+    "react-hooks/refs": {
+      "count": 4
+    }
+  },
+  "web/src/runtime/readiness.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/release-update.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/representative-review.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/runtime/review.tsx": {
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/sign-steps.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "web/src/runtime/stages.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "web/src/runtime/submission.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  }
+}
