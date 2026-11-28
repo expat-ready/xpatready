@@ -1,0 +1,92 @@
+# .claude/approvals.yml: the Claude Approvals policy (lab register LR-144; founder decision P-849, 27 Nov).
+# Schema: code.claude.com/docs/en/approvals-policy, approvals-setup, approvals-github-rules (read 28 Nov 2026).
+# Read from main only: a change here counts once merged, and this file is on the tech lead's read-first paths.
+#
+# P-849: no GitHub bot account; Claude Approvals is the approver GitHub records (it counts toward the "1 approval"
+# rule). On money, schema, migration, permission and pipeline paths Claude Code Review must pass first; the Lead's
+# after-merge read stays (P-823). When a second person joins, they take the human seat: then raise `seats`.
+#   * No seat for people (`seats: 0`) and no "!pr/authors" set: every PR is opened by the founder's account, which
+#     GitHub never counts as its own approver, so such a seat could never be filled (gap research finding 1).
+#   * Approvals takes the strictest verdict of the rules that apply ("blocks outranks comments, which outranks
+#     approves"), so a PR touching one risky path gets the risky rule's verdict.
+#   * claude/code_review is named ONLY in the risky rules' override (gap research finding 2: a policy naming it
+#     "can start a billed Code Review when a pull request opens and at each push"); routine PRs start none.
+#   * mode: observe: the "Claude Approvals" check shows what these rules WOULD decide and blocks nothing; "observe
+#     mode is billed" (approvals-setup). Enforcing is a later, separate step (delete the mode line) after the observe
+#     week (LR-144 Done when) and the switch (LR-072).
+#   * reuse across a main-merge push is LR-148 (lane ship-security-2), built on this file.
+# product/tools/check-approvals-policy.sh (ci) checks these points.
+version: 1
+mode: observe
+rules:
+  - purpose: "Every change: Claude approves with no review (P-849); ci, pr-suites and the reviewer agent stay the gate."
+    paths: ["**"]
+    verdict: { claude: approves, seats: 0 }
+
+  - purpose: "Client money, fees, payments, trust, invoices and billing: Claude approves only after Code Review passes."
+    paths:
+      - "**/client-money/**"
+      - "**/client-money-*"
+      - "**/client-money.prisma"
+      - "**/*fees*"
+      - "**/*-fee.*"
+      - "**/*-fee-*"
+      - "**/fee-*"
+      - "**/*payment*"
+      - "**/*trust*"
+      - "**/*invoice*"
+      - "**/*refund*"
+      - "**/*billing*"
+      - "**/*ledger*"
+      - "**/*pric*"
+      - "**/*stripe*"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
+  - purpose: "The database schema and migrations: Claude approves only after Code Review passes."
+    paths:
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/**"
+      - "**/prisma.config.*"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
+  - purpose: "Permissions, roles, identity, firm scope and access checks: Claude approves only after Code Review passes."
+    paths:
+      - "**/*permission*"
+      - "**/*role*"
+      - "**/platform/identity/**"
+      - "**/*identity*"
+      - "**/*case-access*"
+      - "**/audit/access/**"
+      - "**/platform/firm-scope.ts"
+      - "**/platform/terms/gate.ts"
+      - "**/features/platform-terms.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/**/*public*"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/src/**/*-public/**"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
+  - purpose: "The pipeline and the rules agents follow (workflows, merge queue, hooks, guards, review rules): Claude approves only after Code Review passes; no PR loosens its own judge."
+    paths:
+      - ".github/**"
+      - ".mergify.yml"
+      - ".githooks/**"
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - "REVIEW.md"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/**"
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
+
+  - purpose: "The review rules and agent settings, this file included, at any depth: Claude approves only after Code Review passes."
+    paths: ["**/.claude/**"]
+    nested: inherit
+    verdict: { claude: comments, seats: 0 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 0 } }
