@@ -196,6 +196,152 @@ class LeadLines(unittest.TestCase):
         self.assertFalse([l for l in fm.lead_lines(m) if "None" in l])
 
 
+
+class JobsPaging(unittest.TestCase):
+    """LR-098: a 7-day run ended on GitHub's 502 for a 100-job page of one big re-run run; 30 a page works."""
+    def setUp(self):
+        self.real, self.calls = fm.get, []
+
+    def tearDown(self):
+        fm.get = self.real
+
+    def stub(self, fail):
+        def get(url, raw=False):
+            self.calls.append(url)
+            size = int(url.split("per_page=")[1].split("&")[0]); page = int(url.split("page=")[-1])
+            if size == 100 and fail:
+                msg = "Server Error" if fail == "502" else "Not Found"
+                raise SystemExit("GET %s failed: {\"message\": \"%s\"} curl: (22) ... error: %s" % (url, msg, fail))
+            total = 111
+            return {"jobs": [{"id": n} for n in range((page - 1) * size, min(page * size, total))]}
+        fm.get = get
+
+    def test_502_on_100_a_page_falls_back_to_30(self):
+        self.stub("502")
+        self.assertEqual([j["id"] for j in fm.jobs({"id": 7})], list(range(111)))
+        self.assertEqual(sum("per_page=30" in u for u in self.calls), 4)          # 30+30+30+21
+
+    def test_no_fallback_when_100_works(self):
+        self.stub(None)
+        self.assertEqual(len(fm.jobs({"id": 7})), 111)
+        self.assertFalse(any("per_page=30" in u for u in self.calls))
+
+    def test_other_errors_still_end_the_run(self):
+        self.stub("404")
+        with self.assertRaises(SystemExit):
+            fm.jobs({"id": 7})
+
+
+class RunsWindow(unittest.TestCase):
+    """LR-098: GitHub lists at most 1000 runs a query; a 7-day window held 2500 and one query read only the newest 1000."""
+    def setUp(self):
+        self.real, self.calls = fm.get, []
+        base = datetime(2026, 11, 21, tzinfo=timezone.utc)
+        # 2500 runs over 7 days, one every 4 min 2 s, ids by time
+        self.runs = [{"id": n, "created_at": (base + fm.timedelta(seconds=242 * n)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+                     for n in range(2500)]
+
+        def get(url, raw=False):
+            self.calls.append(url)
+            q = url.split("created=")[1]
+            a, b = (datetime.strptime(x, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) for x in q.split(".."))
+            page = int(url.split("&page=")[1].split("&")[0])
+            hit = [r for r in reversed(self.runs) if a <= fm.t(r["created_at"]) <= b]
+            shown = hit[:fm.LIST_CAP]                       # GitHub's cap: past 1000, nothing
+            return {"total_count": len(hit), "workflow_runs": shown[(page - 1) * 100:page * 100]}
+        fm.get = get
+
+    def tearDown(self):
+        fm.get = self.real
+
+    def test_a_7_day_window_reads_every_run_once(self):
+        since, until = U("2026-11-21T00:00"), U("2026-11-28T00:00")
+        got = fm.runs_since(since, until)
+        self.assertEqual(sorted(r["id"] for r in got), list(range(2500)))
+        self.assertEqual(got[0]["id"], 2499)                                          # newest first
+
+    def test_a_slice_over_the_cap_is_split(self):
+        fm.LIST_CAP, cap = 300, fm.LIST_CAP
+        try:
+            got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-22T00:00"))
+        finally:
+            fm.LIST_CAP = cap
+        self.assertEqual(len(got), len([r for r in self.runs if r["created_at"] < "2026-11-22"]))   # 357 in that day
+
+    def test_max_runs_keeps_the_newest(self):
+        got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"), 10)
+        self.assertEqual([r["id"] for r in got], list(range(2499, 2489, -1)))
+        self.assertTrue(fm.runs_since.cut)
+        fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"), 2500)
+        self.assertFalse(fm.runs_since.cut)                                           # exactly N: nothing dropped
+
+    def test_a_run_on_a_day_boundary_is_read_once(self):
+        self.runs.append({"id": 9999, "created_at": "2026-11-27T00:00:00Z"})
+        got = fm.runs_since(U("2026-11-21T00:00"), U("2026-11-28T00:00"))
+        self.assertEqual([r["id"] for r in got].count(9999), 1)
+
+
+class JobsCacheAndBudget(unittest.TestCase):
+    """LR-098: a completed run's jobs are read once; a run that cannot afford its calls does not start."""
+    def setUp(self):
+        import tempfile
+        self.real, self.cache, self.calls = fm.get, fm.JOBS_CACHE, []
+        fm.JOBS_CACHE = tempfile.mkdtemp()
+
+        def get(url, raw=False):
+            self.calls.append(url)
+            if url.endswith("/rate_limit"):
+                return {"resources": {"core": {"remaining": self.left}}}
+            return {"jobs": [{"id": 1}]}
+        fm.get, self.left = get, 5000
+
+    def tearDown(self):
+        fm.get, fm.JOBS_CACHE = self.real, self.cache
+
+    def test_completed_runs_are_read_once(self):
+        run = {"id": 5, "run_attempt": 2, "status": "completed"}
+        first, again = fm.jobs(run), fm.jobs(run)
+        self.assertEqual(first, [{"id": 1}]); self.assertEqual(again, [{k: None for k in fm.JOB_FIELDS}])   # kept fields
+        self.assertEqual(len(self.calls), 1)
+        fm.jobs(dict(run, run_attempt=3))                                              # a new attempt is read again
+        self.assertEqual(len(self.calls), 2)
+
+    def test_runs_in_progress_are_not_cached(self):
+        run = {"id": 6, "status": "in_progress"}
+        fm.jobs(run); fm.jobs(run)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_a_short_budget_warms_the_cache_and_converges(self):
+        runs = [{"id": n, "status": "completed"} for n in range(4000)]
+        self.left = 5000                                                              # the Mac's gh token
+        ok, need, left = fm.budget_ok(runs)
+        self.assertFalse(ok)
+        self.assertEqual(fm.warm(runs, left - fm.BUDGET_MARGIN), 1500)                 # newest first, what the hour allows
+        self.assertEqual(len(fm.uncached(runs)), 2500)
+        fm.warm(runs, 1500)                                                           # the next hour
+        self.assertEqual(len(fm.uncached(runs)), 1000)
+        self.assertTrue(fm.budget_ok(runs)[0])                                        # 1,000 + 3,500 <= 5,000: it runs
+        self.assertEqual(fm.warm([{"id": 0, "status": "in_progress"}], 10), 0)         # never caches a run in progress
+
+    def test_the_cache_keeps_only_the_fields_read_and_prunes_old_files(self):
+        fm.get = lambda url, raw=False: {"jobs": [{"name": "a", "started_at": "x", "steps": [1] * 99, "conclusion": "success"}]}
+        fm.jobs({"id": 8, "status": "completed"})
+        with open(fm.cache_path({"id": 8})) as f:
+            self.assertEqual(sorted(json.load(f)[0]), sorted(fm.JOB_FIELDS))
+        old = fm.cache_path({"id": 8}); os.utime(old, (1, 1))
+        fm.prune_cache()
+        self.assertFalse(os.path.exists(old))
+
+    def test_budget_counts_uncached_runs_plus_the_margin(self):
+        runs = [{"id": n, "status": "completed"} for n in range(3000)]
+        fm.jobs(runs[0])
+        ok, need, left = fm.budget_ok(runs)
+        self.assertEqual((ok, need, left), (False, 2999 + fm.BUDGET_MARGIN, 5000))
+        self.left = 2999 + fm.BUDGET_MARGIN
+        self.assertTrue(fm.budget_ok(runs)[0])
+
+
+
 if __name__ == "__main__":
     r = unittest.main(exit=False, verbosity=1).result
     print(f"{'PASS' if r.wasSuccessful() else 'FAIL'} test_flow_measure.py: {r.testsRun} tests, {len(r.failures) + len(r.errors)} failed")

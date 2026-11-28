@@ -11,7 +11,11 @@
 #   4-8. Release 1 flow (ENF-782b, P-782 (3)): start to Proven, review rounds, first-time proof, reverse plan, queue
 #      bounces; defined at new_measures() below. --lead prints only these, as 5 lines (lead-watch.sh step 5b).
 # Read-only (GET only; --lead keeps its answer 30 min in $TMPDIR). Usage:
-#   python3 -I product/tools/flow-measure.py --since 2026-11-04T00:00:00Z [--until <time>] [--max-runs 1000] [--json]
+#   python3 -I product/tools/flow-measure.py --since 2026-11-04T00:00:00Z [--until <time>] [--max-runs N] [--json]
+#   (every ci.yml run in the window is read, a day at a time, a day split while over GitHub's 1000-result list cap;
+#   --max-runs N keeps only the newest N and says so: runs_cut, LR-098). A completed run's jobs are cached in
+#   $FLOW_JOBS_CACHE (default $TMPDIR/flow-measure-jobs); exit 3 when the API calls left this hour do not cover the
+#   uncached runs + a margin (GET /rate_limit), so a run never meets the rate limit halfway.
 #   python3 -I product/tools/flow-measure.py --since today|<time> --lead [--json] [--cache-min 30] [--now <time>]
 # Tests: test_flow_measure.py (no network; run by .github/workflows/cockpit-tests.yml). Needs main's history back to
 # 14 Nov for measures 4 and 5 (a shallow clone's edge is a baseline, never a change: git fetch --shallow-since=2026-11-13 origin main).
@@ -58,29 +62,128 @@ def t(s):
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc) if s else None
 
 
-def runs_since(since, until, max_runs):
-    out, page = [], 1
-    q = f"created=%3E%3D{since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-    if until:
-        q = f"created={since.strftime('%Y-%m-%dT%H:%M:%SZ')}..{until.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-    while len(out) < max_runs:
-        d = get(f"{API}/actions/workflows/ci.yml/runs?per_page=100&page={page}&{q}")
-        rs = d.get("workflow_runs", [])
+LIST_CAP = 1000   # GitHub lists at most 1000 runs for a filtered query; past it, pages come back empty
+
+
+def runs_in(a, b):
+    """ci.yml runs created in [a, b), all of them: a slice over LIST_CAP is split in two (LR-098: a 7-day window held 2500
+    runs, and one query silently returned the newest 1000, about 2.8 of the 7 days)."""
+    q = f"created={a.strftime('%Y-%m-%dT%H:%M:%SZ')}..{(b - timedelta(seconds=1)).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    first = get(f"{API}/actions/workflows/ci.yml/runs?per_page=100&page=1&{q}")
+    if first.get("total_count", 0) > LIST_CAP and (b - a) > timedelta(minutes=2):
+        mid = a + (b - a) / 2
+        mid = mid.replace(microsecond=0)
+        return runs_in(a, mid) + runs_in(mid, b)
+    if first.get("total_count", 0) > LIST_CAP:
+        raise SystemExit(f"flow-measure: over {LIST_CAP} ci.yml runs between {a} and {b}: cannot be listed whole")
+    out, page, rs = [], 1, first.get("workflow_runs", [])
+    while True:
         out += rs
         if len(rs) < 100:
-            break
+            return out
         page += 1
-    return out[:max_runs]
+        rs = get(f"{API}/actions/workflows/ci.yml/runs?per_page=100&page={page}&{q}").get("workflow_runs", [])
 
 
-def jobs(run):
+def runs_since(since, until, max_runs=0):
+    """Every ci.yml run in the window, newest first, read a day at a time (each day split while over 1000 runs). max_runs
+    > 0 keeps the newest max_runs and says so (runs_cut); 0 = all."""
+    end = until or datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=1)
+    out, b = [], end
+    while b > since:
+        a = max(since, b - timedelta(days=1))
+        out += runs_in(a, b)
+        b = a
+    seen, uniq = set(), []
+    for r in sorted(out, key=lambda r: r["created_at"], reverse=True):
+        if r["id"] not in seen:
+            seen.add(r["id"]); uniq.append(r)
+    runs_since.cut = 0 < max_runs < len(uniq)   # runs were dropped by max_runs (runs_cut)
+    return uniq[:max_runs] if max_runs > 0 else uniq
+
+
+JOBS_CACHE = os.environ.get("FLOW_JOBS_CACHE") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "flow-measure-jobs")
+
+
+JOB_FIELDS = ("name", "started_at", "completed_at", "conclusion", "run_attempt")
+CACHE_DAYS = 9   # older cache files are pruned: a 7-day window never reads them
+
+
+def prune_cache(now=None):
+    cut = (now or time.time()) - CACHE_DAYS * 86400
+    try:
+        for n in os.listdir(JOBS_CACHE):
+            fp = os.path.join(JOBS_CACHE, n)
+            if os.path.getmtime(fp) < cut:
+                os.remove(fp)
+    except OSError:
+        pass
+
+
+def cache_path(run):
+    return os.path.join(JOBS_CACHE, "%s-%s.json" % (run["id"], run.get("run_attempt") or 1))
+
+
+def jobs(run, size=100):
+    """The run's jobs (all attempts). A completed run's jobs never change, so they are kept in JOBS_CACHE and read once
+    (LR-098: a whole 7-day window is ~4,000 runs, one call each; later runs pay only for the new ones)."""
+    done = run.get("status") == "completed"
+    if done:
+        try:
+            with open(cache_path(run)) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            pass
     js, page = [], 1
     while True:
-        d = get(f"{API}/actions/runs/{run['id']}/jobs?filter=all&per_page=100&page={page}")
+        try:
+            d = get(f"{API}/actions/runs/{run['id']}/jobs?filter=all&per_page={size}&page={page}")
+        except SystemExit as e:
+            # LR-098 (28 Nov): GitHub answers 502 to every 100-job page of a big re-run run (45925238406: 111 jobs over
+            # 3 attempts; read 4 times by get(), twice more by hand), so the 7-day run ended there; 30 a page works.
+            if size > 30 and re.search(r"\b50[24]\b|Server Error|Gateway", str(e)):
+                return jobs(run, 30)
+            raise
         js += d.get("jobs", [])
-        if len(d.get("jobs", [])) < 100:
-            return js
+        if len(d.get("jobs", [])) < size:
+            break
         page += 1
+    if done:
+        try:
+            os.makedirs(JOBS_CACHE, exist_ok=True)
+            with open(cache_path(run) + ".tmp", "w") as f:   # only the fields this script reads (secs, guard, attempts)
+                json.dump([{k: j.get(k) for k in JOB_FIELDS} for j in js], f)
+            os.replace(cache_path(run) + ".tmp", cache_path(run))
+        except OSError:
+            pass   # no cache: the next run reads them again
+    return js
+
+
+def warm(runs, n):
+    """Read and cache the jobs of up to n uncached completed runs, newest first (a 5,000-an-hour token converges over a
+    few hours instead of never starting). -> how many were cached."""
+    todo = [r for r in uncached(runs) if r.get("status") == "completed"][:max(0, n)]
+    with ThreadPoolExecutor(16) as ex:
+        list(ex.map(jobs, todo))
+    return len(todo)
+
+
+BUDGET_MARGIN = 3500   # merged PRs' facts (2+ calls each, ~1,064 merges a week on 28 Nov) and the ENF-782b reads (~700)
+
+
+def uncached(runs):
+    return [r for r in runs if not (r.get("status") == "completed" and os.path.exists(cache_path(r)))]
+
+
+def budget_ok(runs):
+    """-> (ok, need, left): the jobs calls still to make (uncached runs) plus BUDGET_MARGIN against the core calls left
+    this hour (GET /rate_limit costs nothing). Unreadable: ok, as before (the run then fails where it fails)."""
+    need = len(uncached(runs)) + BUDGET_MARGIN
+    try:
+        left = get("https://api.github.com/rate_limit")["resources"]["core"]["remaining"]
+    except (SystemExit, KeyError, TypeError):
+        return True, need, None
+    return left >= need, need, left
 
 
 def secs(j):
@@ -460,7 +563,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", required=True)
     ap.add_argument("--until")
-    ap.add_argument("--max-runs", type=int, default=1000)
+    ap.add_argument("--max-runs", type=int, default=0, help="keep only the newest N runs (0 = all; LR-098)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--lead", action="store_true", help="only the five ENF-782b measures, as 5 lines for lead-watch.sh")
     ap.add_argument("--now", help="the time measures are read at (tests); default now")
@@ -487,6 +590,14 @@ def main():
         return
 
     runs = runs_since(since, until, a.max_runs)
+    prune_cache()
+    ok, need, left = budget_ok(runs)
+    if not ok:   # LR-098: stop before GitHub's rate limit does, mid-run; first warm the cache with what this hour allows
+        warmed = warm(runs, left - BUDGET_MARGIN)
+        print(f"flow-measure: needs about {need} API calls ({len(runs)} runs, the uncached ones' jobs + {BUDGET_MARGIN}), "
+              f"{left} left this hour: not measured; {warmed} runs' jobs cached now, so a later hour needs fewer",
+              file=sys.stderr)
+        sys.exit(3)
     with ThreadPoolExecutor(16) as ex:
         js = list(ex.map(jobs, runs))
     h = {"pr_total": 0.0, "pr_cancelled": 0.0, "pr_failed": 0.0, "pr_earlier_failed": 0.0, "pr_guard": 0.0, "queue_total": 0.0, "queue_thrown": 0.0, "pr_wall": 0.0, "pr_wall_thrown": 0.0}
@@ -544,6 +655,7 @@ def main():
     thrown = h["pr_cancelled"] + h["pr_failed"] + h["pr_earlier_failed"]
     res = {
         "window": f"{a.since} .. {a.until or 'now'}", "runs_read": len(runs),
+        "runs_cut": bool(getattr(runs_since, "cut", False)),
         "pr_check_hours": round(h["pr_total"], 1), "thrown_hours": round(thrown, 1),
         "thrown_share": round(100 * thrown / h["pr_total"], 1) if h["pr_total"] else None,
         "cancelled": [n["pr_cancelled"], round(h["pr_cancelled"], 1)], "failed": [n["pr_failed"], round(h["pr_failed"], 1)],
@@ -561,7 +673,8 @@ def main():
     if a.json:
         print(json.dumps(res, indent=1)); return
     w = res["approved_to_merged_min"]
-    print(f"Flow measure {res['window']} ({res['runs_read']} ci.yml runs read)")
+    print(f"Flow measure {res['window']} ({res['runs_read']} ci.yml runs read"
+          + (f", cut to the newest {a.max_runs} by --max-runs: not the whole window" if res["runs_cut"] else "") + ")")
     print(f"| Number | Value | P-371 target |\n|---|---|---|")
     print(f"| PR-check hours thrown away | {res['thrown_hours']} of {res['pr_check_hours']} h ({res['thrown_share']}%): cancelled {res['cancelled'][0]} runs {res['cancelled'][1]} h, failed {res['failed'][0]} runs {res['failed'][1]} h, earlier attempts' failed jobs {res['earlier_attempt_failed_jobs'][0]} ({res['earlier_attempt_failed_jobs'][1]} h) | under 20% |")
     print(f"| Same, by run wall time (start to end of each run, parts counted once) | {res['pr_run_wall_thrown_share']}% of {res['pr_run_wall_hours']} h | under 20% |")

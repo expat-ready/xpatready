@@ -4545,12 +4545,14 @@ def main():
     fm = json.load(open(fm_path)) if os.path.exists(fm_path) else None
     fm_age = hours(ts(fm["_as_of"]), NOW) if fm else None
     if not gh.offline and (fm is None or fm_age > a.flow_max_age_h):
-        if remaining >= 4200:   # ~3,500 for runs and PRs + ~700 for ENF-782b (verdict comments, queue comments, shard logs)
+        if remaining >= 3000:   # LR-098: flow-measure checks its own budget (uncached runs' jobs + 2,500) and exits 3 short of it
             since7 = (NOW - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
             env = dict(os.environ, FLOW_TOKEN=gh.token)
             r = subprocess.run(["python3", "-I", os.path.join(HERE, "flow-measure.py"), "--since", since7, "--json"],
-                               capture_output=True, text=True, env=env, cwd=ROOT, timeout=1500)
-            if r.returncode == 0:
+                               capture_output=True, text=True, env=env, cwd=ROOT, timeout=3000)   # the whole window: ~4,000 runs, first run uncached
+            if r.returncode == 3:
+                ERRORS.append(f"flow-measure.py not started: {r.stderr.strip()[-200:]}; last answer kept")
+            elif r.returncode == 0:
                 fm = json.loads(r.stdout)
                 fm["_as_of"] = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
                 json.dump(fm, open(fm_path, "w"))
@@ -4558,10 +4560,10 @@ def main():
             else:
                 ERRORS.append(f"flow-measure.py exit {r.returncode}: {r.stderr[-200:]}")
         else:
-            ERRORS.append(f"flow-measure.py skipped: {remaining} API calls left this hour (needs ~4,200); last answer kept")
+            ERRORS.append(f"flow-measure.py skipped: {remaining} API calls left this hour (needs 3,000 or more); last answer kept")
     fm_src = (f"tools/flow-measure.py --json, 7 days, run {ist(ts(fm['_as_of']))}" if fm else "tools/flow-measure.py not run yet")
-    if fm and (fm.get("runs_read") or 0) >= 1000:
-        fm_src += " (its run figures cover only the newest 1,000 runs: the runs API cap; PR figures cover all 7 days)"
+    if fm and (fm.get("runs_cut") or ("runs_cut" not in fm and (fm.get("runs_read") or 0) >= 1000)):
+        fm_src += " (its run figures cover only the newest runs, not all 7 days; PR figures cover all 7 days)"
 
     # ---- lead input
     li, li_src = None, "Lead input missing"
@@ -4821,7 +4823,7 @@ def main():
                             job_hours=V(ci_hours, fm_src + ": pr_check_hours + queue_hours (job time over the runs it read)")),
         "thrown_share": V(fmv.get("thrown_share"), fm_src + ": thrown_share (P-371 target under 20%)", n=fmv.get("runs_read")),
         "records_share": V(fmv.get("records_share"), fm_src + ": records_share (target under 20%)"),
-        "runs_read": V(fmv.get("runs_read"), fm_src + ": runs_read (the runs API returns at most 1,000 per created filter)"),
+        "runs_read": V(fmv.get("runs_read"), fm_src + ": runs_read (every ci.yml run of the 7 days, read a day at a time past the API's 1,000-per-query list cap, LR-098)"),
     }
 
     # merges per day and the trend series
