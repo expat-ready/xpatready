@@ -2,7 +2,7 @@
 
 current_lead: local_860bb0bd-a07a-4424-bbf4-18cb9203d572 Lead 14 · 28 Nov 18:2x IST (after Lead 13 local_6d6761de at ~190k beyond start, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-28 18:21 IST (clock): **Lead 13 hands over to Lead 14 (P-446). Lab 🔴 Built 75/147, Proven 56/147 (#4125 merged); 19 PRs queued in the one-at-a-time lab queue; 11 lab lanes in claude.ai. See the hand-over block below.**
+updated: 2026-11-28 22:06 IST (clock): **Lead 14 (took over 18:22). Lab 🔴 Built 87/150 (58%), Proven 65/150 (43%), measured 3.5 rows/h, Built ETA 29 Nov 16:10 IST. #4106 merged 20:15 by the queue; #4109 merged directly 21:55 on the founder's yes (A458, P-214). 8 labelled A455/budget PRs (#4084-#4097) out of the queue on a red guards part 1/8 (check-tools-fresh first section) and pr-rules: lanes told to fix. Round allowances on #4111 (3), #4116 (3), #4075 (5), #3971 (5) refused to the Lead by the permission check: with the founder.**
 
 ## Hand-over Lead 13 → Lead 14, 18:2x IST 28 Nov (reason: Lead 13 ~190k beyond its start read, P-446; no subagent running)
 **Do first:** create your check FIRST (cron 3,13,23,33,43,53, `run lead-watch; read STATE Start here`), CronDelete your gap check, send Lead 13 your CronList, rename "Lead 14 · 28 Nov <IST>", invoke `lead`, re-arm the lane watch. Every check STARTS with a full lead-watch run (the stamp); PR work without it tripped the standby gap alarm three times today.
@@ -18,6 +18,7 @@ Rows A242-A418 word for word in `history/STATE-2026-11-27-0915-lead1-founder-ask
 |---|---|---|
 | A435-A448 | 27-28 Nov | rows moved word for word | `history/STATE-2026-11-28-1825-lead13-asks-A435-A448-rows.md` |
 | A419-A434 | 27 Nov | wave 2, token efficiency, enforcement, health, stale branches (A423, A425, A427, A429-A434 open) | word for word: `history/STATE-2026-11-27-1458-lead6-asks-A419-A434-rows.md` |
+| A458 | 28 Nov 18:3x (answered 21:55) | "keep moving and check whether we are on the track or not. Try to manage, recover, find ways to bottleneck, manage everything. Like log into the Claude.ai and check no lane is waiting. ... let me know how far we are done with the lab work and are we on track. If not, then recover." Plus: yes, merge #4106 and #4109 directly now | Lead 14: #4109 merged 21:55 (#4106 had merged 20:15); every idle lane typed its next step 22:0x; reads #4144 #4145 #4148; report sent. Open: recovery to the Built ETA |
 | A455-A457 | 28 Nov 13:1x-15:5x | A455 enforcement and lab review; class C (P-860); product first (P-861); GitHub App; do it yourself (P-862) | P-860, P-861, P-862 decided; App created 15:4x; LR-166 to LR-178 in flight; decision page https://claude.ai/artifact/5J2Unw7gkfoTAZk85xZH5w |
 | A455 | 28 Nov 13:1x (via Lead 12) | written-but-not-running, stale copy, unseen waits: fix each root cause by enforcement, review the whole lab through that lens, confidence of meeting the goal + recovery with all resources | In progress (Lead 13): word for word and root causes in `history/STATE-2026-11-28-1335-lead13-A455-row.md` |
 | A452 | 28 Nov 07:5x-08:0x | review the lab against industry practice, worth it?, rate it; then "start implementing, you have my approval" | Decided P-857; implementing |
