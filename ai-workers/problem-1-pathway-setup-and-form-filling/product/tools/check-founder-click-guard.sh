@@ -99,7 +99,8 @@ ok "the Python program inside the bash single quotes has no ' (one would end it,
 # LR-170 (founder A455, 28 Nov): past-tense reports pass; a present-tense wait for the founder's click still asks.
 for m in "The app's lane starts sat as cards waiting for your click" 'Each became a card waiting for your click'; do
   r=$(stop lead "$m"); ok "passes (LR-170, a report, not a request): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
-for m in '#12 is waiting for your click on Merge.' 'It is your turn: click Merge on #12.'; do
+for m in '#12 is waiting for your click on Merge.' 'It is your turn: click Merge on #12.' '#12 was rebased and is waiting for your click on Merge.' \
+         'The checks had passed, so #12 now waits for your click.' 'I had a look: #12 waits for your click on Merge.'; do
   r=$(stop lead "$m"); ok "refused (LR-170, still a request): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
 r=$(stop lead 'Nothing for you to do: I will close #3601 myself.'); ok "passes (#3665 review 4): nothing for you to do" "$([ "$r" = pass ] && echo 1)" "got $r"
 for m in 'I can merge it now if you want.' 'Shall I close the stale issue?' 'Archive of the old lanes is done.' 'Next I merge #12 and archive the forms-2 session.'; do

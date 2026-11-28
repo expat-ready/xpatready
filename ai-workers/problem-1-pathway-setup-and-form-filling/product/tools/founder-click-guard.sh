@@ -41,7 +41,8 @@ YOU = re.compile(r"\b(it would help|it helps|i would like it) if you \w+ed\b|\by
   r"yourself|needs you)", I)
 # LR-170 (founder A455): "your click", "your turn", "your side" address the founder only in a request, never in a report of
 # what happened ("The lane starts sat as cards waiting for your click", "Each became a card waiting for your click").
-# So they count only in a sentence with no past-tense verb; "#12 is waiting for your click on Merge" still asks.
+# So they count only in a clause with no past-tense verb (review of LR-170: per clause, so "#12 was rebased and is waiting
+# for your click" still asks); "#12 is waiting for your click on Merge" still asks.
 YOURS = re.compile(r"\byour (click|turn|side)\b", I)
 PAST = re.compile(r"\b(was|were|sat|became|had|stood|stayed|waited|went|got|ended|turned|remained|lay|seemed|looked)\b", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
@@ -59,7 +60,7 @@ def asks(chunk, need_you):
         # "No need to wait: please merge #12" still asks and "Would you like me to merge it?" does not.
         k = NOT_ASK.sub(" OFFERED ", s) if need_you else s
         imp = any(IMP.search(p) for p in re.split(r"OFFERED[\s,:;-]*|,\s+", k))   # after a cut span, or after a leading clause (Lead 7)
-        you = YOU.search(k) or (YOURS.search(k) and not PAST.search(k))
+        you = YOU.search(k) or any(YOURS.search(c) and not PAST.search(c) for c in re.split(r"[,;:]\s+|\s+(?:and|so|but|then|while)\s+", k))
         if k and ASK.search(k) and (not need_you or you or imp) and not ONLY.search(s):
             out.append(re.sub(r"\s+", " ", s)[:140])
     return out
